@@ -24,6 +24,44 @@ afterEach(() => {
 });
 
 describe('createOpfsEncryptionStartupGate', () => {
+  it('retains a presentation failure until startup waits without claiming an unlocked application', async () => {
+    const gate = createOpfsEncryptionStartupGate({ inspection: createCredentialRequiredInspection() });
+    const error = new Error('unlock view failed to load');
+
+    gate.reportUnlockPresentationFailure({ error });
+    gate.reportUnlockPresentationReady();
+
+    await expect(gate.wait()).rejects.toBe(error);
+    await expect(gate.waitForUnlockPresentation()).rejects.toBe(error);
+    expect(gate.phase.value).toBe('locked');
+    expect(gate.applicationError.value).toBeUndefined();
+  });
+
+  it('rejects pending presentation waits after unlock if the presentation fails', async () => {
+    vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase').mockResolvedValue(undefined);
+    const gate = createOpfsEncryptionStartupGate({ inspection: createCredentialRequiredInspection() });
+    await gate.unlockWithPassphrase({ passphrase: 'test passphrase' });
+    await gate.wait();
+    const error = new Error('unlock presentation failed');
+    const presentation = expect(gate.waitForUnlockPresentation()).rejects.toBe(error);
+
+    gate.reportUnlockPresentationFailure({ error });
+
+    await presentation;
+    expect(gate.phase.value).toBe('preparing_application');
+  });
+
+  it('preserves successful unlock and presentation settlement against a late presentation failure', async () => {
+    vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase').mockResolvedValue(undefined);
+    const gate = createOpfsEncryptionStartupGate({ inspection: createCredentialRequiredInspection() });
+    await gate.unlockWithPassphrase({ passphrase: 'test passphrase' });
+    gate.reportUnlockPresentationReady();
+    gate.reportUnlockPresentationFailure({ error: new Error('late presentation failure') });
+
+    await expect(gate.wait()).resolves.toBeUndefined();
+    await expect(gate.waitForUnlockPresentation()).resolves.toBeUndefined();
+  });
+
   it('unlocks credential-required storage with a passphrase before completing the gate', async () => {
     const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
       .mockResolvedValue(undefined);

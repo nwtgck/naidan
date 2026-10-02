@@ -123,6 +123,7 @@ export class SlicedGarbageCollectionCycle {
   private compactionPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
   private diagnosticsValue: MaintenanceDiagnostics;
   private markCursor: GarbageCollectionMarkCursor;
+  private markingStarted = false;
   private phase: "marking" | "sweeping" | "terminal" = "marking";
   private policy: HizoFSMaintenancePolicy;
   private retainedPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
@@ -219,7 +220,8 @@ export class SlicedGarbageCollectionCycle {
       return this.terminal;
     }
     case "marking": {
-      if (this.diagnosticsValue.snapshot().length === 0) {
+      if (!this.markingStarted) {
+        this.markingStarted = true;
         this.diagnosticsValue.record({ event: { phase: "marking", type: "phase_started" } });
       }
       const mark = await this.markCursor.runSlice({ hasForegroundWaiter, now, signal });

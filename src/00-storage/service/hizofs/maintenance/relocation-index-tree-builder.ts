@@ -96,6 +96,21 @@ export async function buildRelocationIndexTree({ appendPhysicalOnlyPage, entries
     }
   }
 
+  const leafMaximum = HIZOFS_V1_FORMAT_CONSTANTS.pageItemMaximumCounts.relocationLeaf;
+  const branchMaximum = HIZOFS_V1_FORMAT_CONSTANTS.pageItemMaximumCounts.relocationBranch;
+  let levelPageCount = Math.ceil(detachedEntries.length / leafMaximum);
+  let requiredPageCount = levelPageCount;
+  while (levelPageCount > 1) {
+    levelPageCount = Math.ceil(levelPageCount / branchMaximum);
+    requiredPageCount += levelPageCount;
+  }
+  if (requiredPageCount > policy.maxRelocationIndexPages) {
+    throw new RelocationIndexTreeBuilderError({
+      code: "page_budget_exceeded",
+      message: "Relocation Index rebuild exceeds the explicit page-count budget",
+    });
+  }
+
   let pageCount = 0;
   const appendPage = async ({ isRoot, level, plaintext }: {
     isRoot: boolean;
@@ -127,7 +142,6 @@ export async function buildRelocationIndexTree({ appendPhysicalOnlyPage, entries
     return createPhysicalRecordReference({ fields: physicalReference });
   };
 
-  const leafMaximum = HIZOFS_V1_FORMAT_CONSTANTS.pageItemMaximumCounts.relocationLeaf;
   const leafChunks = chunks({ items: detachedEntries, maximum: leafMaximum });
   if (leafChunks.length === 1) {
     const onlyLeaf = leafChunks[0];
@@ -158,7 +172,6 @@ export async function buildRelocationIndexTree({ appendPhysicalOnlyPage, entries
     nodes.push(Object.freeze({ physicalReference, upperBound: cloneKey({ key: last }) }));
   }
 
-  const branchMaximum = HIZOFS_V1_FORMAT_CONSTANTS.pageItemMaximumCounts.relocationBranch;
   let level = 1;
   while (nodes.length > 1) {
     if (level > HIZOFS_V1_FORMAT_CONSTANTS.limits.treeLevel) {

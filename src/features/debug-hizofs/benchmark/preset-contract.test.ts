@@ -3,7 +3,8 @@ import {
   createHizoFSBenchmarkPresetConfiguration,
   estimateHizoFSBenchmarkWrittenBytes,
 } from './presets';
-import { hizoFSBenchmarkConfigurationSchema } from './types';
+import { serializeHizoFSBenchmarkConfiguration } from './report';
+import { hizoFSBenchmarkConfigurationJsonInputSchema, hizoFSBenchmarkConfigurationSchema } from './types';
 
 describe('HizoFS benchmark presets', () => {
   it('produces schema-valid quick, standard, and stress configurations', () => {
@@ -11,6 +12,41 @@ describe('HizoFS benchmark presets', () => {
       expect(hizoFSBenchmarkConfigurationSchema.parse(
         createHizoFSBenchmarkPresetConfiguration({ preset }),
       ).preset).toBe(preset);
+    }
+  });
+
+  it('roundtrips each default preset through its configuration JSON into the unchanged runtime DTO', () => {
+    for (const preset of ['quick', 'standard', 'stress'] as const) {
+      const configuration = createHizoFSBenchmarkPresetConfiguration({ preset });
+      const json = JSON.parse(serializeHizoFSBenchmarkConfiguration({ configuration }));
+      expect(Object.hasOwn(json, 'runLabel')).toBe(false);
+      expect(hizoFSBenchmarkConfigurationSchema.safeParse(json).success).toBe(false);
+      const restored = hizoFSBenchmarkConfigurationJsonInputSchema.parse(json);
+      expect(restored).toStrictEqual(configuration);
+      expect(hizoFSBenchmarkConfigurationSchema.parse(restored)).toStrictEqual(configuration);
+    }
+  });
+
+  it('preserves nonempty and empty labels when importing configuration JSON', () => {
+    for (const runLabel of ['shared configuration', '']) {
+      const configuration = { ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }), runLabel };
+      const json = JSON.parse(serializeHizoFSBenchmarkConfiguration({ configuration }));
+      expect(hizoFSBenchmarkConfigurationJsonInputSchema.parse(json)).toStrictEqual(configuration);
+    }
+  });
+
+  it('keeps configuration JSON strict while only allowing an omitted runLabel', () => {
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const { randomSeed: _randomSeed, ...missingRequired } = configuration;
+    for (const invalid of [
+      { ...configuration, runLabel: null },
+      { ...configuration, runLabel: 'x'.repeat(201) },
+      { ...configuration, backendMode: 'unknown' },
+      { ...configuration, randomSeed: 0 },
+      { ...configuration, unknownOption: true },
+      missingRequired,
+    ]) {
+      expect(hizoFSBenchmarkConfigurationJsonInputSchema.safeParse(JSON.parse(JSON.stringify(invalid))).success).toBe(false);
     }
   });
 

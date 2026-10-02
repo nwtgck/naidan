@@ -2,7 +2,7 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
-import { ensureStrings } from '@/strings';
+import { currentLocale, ensureStrings, setLocale } from '@/strings';
 import OpfsEncryptionSettingsPanel from './OpfsEncryptionSettingsPanel.vue';
 
 const mockShowConfirm = vi.fn();
@@ -345,6 +345,50 @@ line two`,
     await rawButton!.trigger('click');
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: { kind: 'opfs-root' } });
     expect(wrapper.get('[data-testid="opfs-encryption-disable-conflict-review"]')).toBeDefined();
+  });
+
+  it('preserves the Japanese data-loss warning when destructive cleanup is declined', async () => {
+    const previousLocale = currentLocale.value;
+    try {
+      await setLocale({ locale: 'ja' });
+      vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+        { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
+      );
+      vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({
+        entries: [{ entryKind: 'file', relativePath: 'naidan-storage/settings.json' }],
+        inspectionId: 'conflict-warning',
+        totalEntryCount: 1,
+        truncated: false,
+        type: 'conflict',
+      });
+      mockShowConfirm.mockResolvedValue(false);
+      const wrapper = await mountPanel({ storageType: 'opfs' });
+      try {
+        await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+        await flushPromises();
+
+        const authorityWarning = '復号したデータの検証が完了し、保存先の切り替えが終わるまで、暗号化済みHizoFSが正式な保存先として維持されます。';
+        const lossWarning = 'これらの項目は、現在使用中のHizoFSの保存領域とは別にOPFS上へ保存されています。削除すると、ここにしかないデータが永久に失われる可能性があります。元に戻すことはできません。';
+        const dialog = getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-dialog"]');
+        expect(dialog.text()).toContain(authorityWarning);
+        expect(dialog.text()).toContain(lossWarning);
+
+        await getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-cleanup"]').trigger('click');
+        await flushPromises();
+
+        expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+          confirmButtonVariant: 'danger',
+          message: `${lossWarning}\n\n${authorityWarning}`,
+        }));
+        expect(storageService.cleanupOpfsEncryptionDisableConflict).not.toHaveBeenCalled();
+        expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
+        expect(mockBeginLocalOperation).not.toHaveBeenCalled();
+      } finally {
+        wrapper.unmount();
+      }
+    } finally {
+      await setLocale({ locale: previousLocale });
+    }
   });
 
   it('deletes an unchanged conflict only after destructive confirmation and retries normal disable', async () => {

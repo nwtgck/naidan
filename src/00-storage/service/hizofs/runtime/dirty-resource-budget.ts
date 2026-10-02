@@ -100,7 +100,7 @@ export class DirtyResourceBudget {
     });
   }
 
-  private addToBothByteBudgets({ bytes }: { bytes: number }): void {
+  private assertAdditionalByteBudgets({ bytes }: { bytes: number }): void {
     const nextDirtyMetadataBytes = checkedAdd({
       left: this.dirtyMetadataBytes,
       name: "dirty metadata bytes",
@@ -123,8 +123,12 @@ export class DirtyResourceBudget {
         message: "unpublished physical byte limit reached",
       });
     }
-    this.dirtyMetadataBytes = nextDirtyMetadataBytes;
-    this.unpublishedPhysicalBytes = nextUnpublishedPhysicalBytes;
+  }
+
+  private addToBothByteBudgets({ bytes }: { bytes: number }): void {
+    this.assertAdditionalByteBudgets({ bytes });
+    this.dirtyMetadataBytes += bytes;
+    this.unpublishedPhysicalBytes += bytes;
   }
 
   beginStagedCommitMaterializationAttempt({ frameBytes }: {
@@ -298,8 +302,14 @@ export class DirtyResourceBudget {
               message: "staged Commit materialization headroom size changed within one dirty epoch",
             });
           }
+          // Every accepted successor must leave room for the first append's
+          // risk charge without consuming the retained retry headroom.
+          this.assertAdditionalByteBudgets({ bytes });
           return;
         }
+        this.assertAdditionalByteBudgets({
+          bytes: checkedAdd({ left: bytes, name: "staged Commit initial materialization capacity", right: bytes }),
+        });
         this.addToBothByteBudgets({ bytes });
         this.stagedCommitMaterializationHeadroomBytes = bytes;
         introducedStagedCommitMaterializationHeadroom = true;

@@ -23,6 +23,17 @@ afterEach(() => {
 });
 
 describe('OpfsEncryptionTransitionView', () => {
+  it('distinguishes startup recovery from restarting an interrupted operation', () => {
+    const transition = useOpfsEncryptionTransition();
+    transition.beginLocalOperation();
+    const wrapper = shallowMount(OpfsEncryptionTransitionView);
+
+    expect(wrapper.text()).toContain('The original source remains available until the new storage has been completely verified.');
+    expect(wrapper.text()).toContain('After an interruption, Naidan checks the storage state on the next startup and attempts recovery.');
+    expect(wrapper.text()).toContain('If interrupted before switching to the new storage, you must start the operation again from the beginning to complete it.');
+    expect(wrapper.text()).not.toContain('An interrupted operation resumes on the next startup.');
+  });
+
   it('keeps the transition presentation in place after settlement until reload', () => {
     const transition = useOpfsEncryptionTransition();
     transition.beginLocalOperation();

@@ -1,1 +1,1 @@
-export const opfsEncryption__source_remains_until_verified = (): string => '새 저장소가 완전히 검증될 때까지 기존 데이터 원본을 사용할 수 있습니다. 중단된 작업은 다음 시작 시 재개됩니다.';
+export const opfsEncryption__source_remains_until_verified = (): string => '새 저장소가 완전히 검증될 때까지 기존 데이터 원본을 사용할 수 있습니다. 중단 후 다음 시작 시 Naidan이 저장소 상태를 확인하고 복구를 시도합니다. 새 저장소로 전환하기 전에 중단된 경우 작업을 완료하려면 처음부터 다시 시작해야 합니다.';

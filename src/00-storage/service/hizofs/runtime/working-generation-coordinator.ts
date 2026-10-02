@@ -82,7 +82,6 @@ export type WorkingGenerationCoordinatorSnapshot = Readonly<{
 export class WorkingGenerationCoordinator {
   private readonly dirtyResources: DirtyResourceBudget;
   private durabilityStalled = false;
-  private durableGeneration: WorkingGenerationIdentity;
   private flushActive = false;
   private managementBarrierActive = false;
   private mutationAdmissionActive = false;
@@ -94,7 +93,6 @@ export class WorkingGenerationCoordinator {
     policy: HizoFSLazyDurabilityPolicy;
   }) {
     this.dirtyResources = new DirtyResourceBudget({ policy });
-    this.durableGeneration = initialDurableGeneration;
     this.syncWaiters = new SyncWaiterRegistry({
       initialDurableGeneration,
       maximumWaiters: policy.maximumSyncWaiters,
@@ -195,7 +193,6 @@ export class WorkingGenerationCoordinator {
       });
     }
     this.syncWaiters.advanceDurableGeneration({ durable: durableGeneration });
-    this.durableGeneration = durableGeneration;
     this.dirtyResources.resetAfterDurablePublication();
   }
 
@@ -303,7 +300,7 @@ export class WorkingGenerationCoordinator {
           });
         }
         if (this.durabilityStalled || !sameWorkingGenerationIdentity({
-          left: this.durableGeneration,
+          left: this.syncWaiters.durableGeneration(),
           right: this.workingGeneration,
         })) {
           throw new WorkingGenerationCoordinatorError({
@@ -325,7 +322,7 @@ export class WorkingGenerationCoordinator {
   snapshot(): WorkingGenerationCoordinatorSnapshot {
     return Object.freeze({
       dirtyResources: this.dirtyResources.snapshot(),
-      durableGeneration: this.durableGeneration,
+      durableGeneration: this.syncWaiters.durableGeneration(),
       flushState: this.flushActive ? "flushing" : this.durabilityStalled ? "stalled" : "idle",
       managementBarrierActive: this.managementBarrierActive,
       syncWaiterCount: this.syncWaiters.waiterCount(),

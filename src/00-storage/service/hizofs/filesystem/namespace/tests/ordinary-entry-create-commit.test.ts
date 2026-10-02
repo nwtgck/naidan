@@ -142,6 +142,131 @@ function inlineEntriesAtPromotionBoundary(): readonly DirectoryLeafEntry[] {
 }
 
 describe("prepareOrdinaryEntryCreateCommit", () => {
+  it("prepares the canonical Inode Table root and advances the inode allocator for an inline directory", async () => {
+    const rootReference = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      offset: 64n,
+    });
+    const parent: DirectoryInodeEntry = {
+      content: { entries: [], type: "inline" },
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 1n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+    const pageStore = new MemoryInodePageStore();
+    pageStore.pages.set(rootReference, { entries: [parent], level: 0, type: "leaf" });
+    const baseCommit = createFileSystemCommitPayload({ payload: {
+      commitSequence: createCommitSequence({ value: 1n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
+      nestedSubvolumeTableRootHomeRef: null,
+      nextInodeNumber: createInodeNumber({ value: 2n }),
+      nextSubvolumeId: createSubvolumeId({ value: 2n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootInodeTableRootHomeRef: rootReference,
+    } });
+    const result = await prepareOrdinaryEntryCreateCommit({
+      baseCommit,
+      directoryPageStore: {
+        readPage: async () => {
+          throw new Error("inline creation must not read Directory pages");
+        },
+        writePage: async () => {
+          throw new Error("inline creation must not write Directory pages");
+        },
+      },
+      inodeTablePageStore: pageStore,
+      maximumKnownInodeNumber: parent.inodeNumber,
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+      parent,
+      request: { type: "file" },
+      target: {
+        entryName: "file",
+        parentAccess: "read_write",
+        parentDirectoryInodeNumber: parent.inodeNumber,
+        parentSubvolumeId: createSubvolumeId({ value: 1n }),
+      },
+    });
+
+    expect(result.commitPayload.commitSequence).toBe(2n);
+    expect(result.commitPayload.nextInodeNumber).toBe(3n);
+    expect(result.commitPayload.mutationId).toEqual(new Uint8Array(16).fill(7));
+    expect(result.commitPayload.rootInodeTableRootHomeRef).not.toBe(baseCommit.rootInodeTableRootHomeRef);
+    expect(result.plan.directoryEntry.name).toBe("file");
+    const writtenRoot = pageStore.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
+    expect(writtenRoot).toMatchObject({ level: 0, type: "leaf" });
+    if (writtenRoot?.type !== "leaf") throw new Error("expected written root Inode Table leaf");
+    expect(writtenRoot.entries).toMatchObject([
+      { inodeKind: "directory", inodeNumber: 1n, inodeRevision: 2n },
+      { inodeKind: "file", inodeNumber: 2n, inodeRevision: 1n },
+    ]);
+  });
+
+  it("prepares a new Commit root and advances the inode allocator for a tree-backed directory", async () => {
+    const directoryRoot = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      offset: 64n,
+    });
+    const inodeRoot = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      offset: 256n,
+    });
+    const parent: DirectoryInodeEntry = {
+      content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" },
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 1n }),
+      inodeRevision: createInodeRevision({ value: 4n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+    const directoryPort = new MemoryDirectoryPagePort();
+    directoryPort.pages.set(directoryRoot, {
+      entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 2n }), name: "z", targetType: "inode" }],
+      level: 0,
+      type: "leaf",
+    });
+    const directoryPageStore = createDirectoryPageTreePageStore({ pagePort: directoryPort });
+    const inodePageStore = new MemoryInodePageStore();
+    inodePageStore.pages.set(inodeRoot, { entries: [parent], level: 0, type: "leaf" });
+    const baseCommit = createFileSystemCommitPayload({ payload: {
+      commitSequence: createCommitSequence({ value: 1n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
+      nestedSubvolumeTableRootHomeRef: null,
+      nextInodeNumber: createInodeNumber({ value: 3n }),
+      nextSubvolumeId: createSubvolumeId({ value: 2n }),
+      rootDirectoryInodeNumber: parent.inodeNumber,
+      rootInodeTableRootHomeRef: inodeRoot,
+    } });
+    const operationTimestamp = createTimestampMilliseconds({ value: 1_700_000_000_000n });
+    const result = await prepareOrdinaryEntryCreateCommit({
+      baseCommit,
+      directoryPageStore,
+      inodeTablePageStore: inodePageStore,
+      maximumKnownInodeNumber: createInodeNumber({ value: 2n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      operationTimestamp,
+      parent,
+      request: { type: "file" },
+      target: {
+        entryName: "file",
+        parentAccess: "read_write",
+        parentDirectoryInodeNumber: parent.inodeNumber,
+        parentSubvolumeId: createSubvolumeId({ value: 1n }),
+      },
+    });
+
+    expect(result.commitPayload.commitSequence).toBe(2n);
+    expect(result.commitPayload.nextInodeNumber).toBe(4n);
+    expect(result.commitPayload.mutationId).toEqual(new Uint8Array(16).fill(7));
+    expect(result.commitPayload.rootInodeTableRootHomeRef).not.toBe(baseCommit.rootInodeTableRootHomeRef);
+    const writtenRoot = inodePageStore.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
+    if (writtenRoot?.type !== "leaf") throw new Error("expected written root Inode Table leaf");
+    expect(writtenRoot.entries).toMatchObject([
+      { inodeKind: "directory", inodeNumber: 1n, inodeRevision: 5n },
+      { inodeKind: "file", inodeNumber: 3n, inodeRevision: 1n },
+    ]);
+  });
+
   it("promotes a full inline directory before publishing the new child inode", async () => {
     const existingEntries = inlineEntriesAtPromotionBoundary();
     const parent: DirectoryInodeEntry = {

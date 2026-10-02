@@ -1,7 +1,7 @@
 import { defineComponent, ref, shallowRef } from 'vue';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { StartupState } from '@/logic/startup/types';
-import type { OpfsEncryptionStartupGate } from '@/logic/startup/opfs-encryption-startup-gate';
+import type { OpfsEncryptionStartupGate } from '@/composables/opfs-encryption-startup-gate';
 import { TEST_ONLY } from './useAppPresentation';
 
 const settingsInitialized = ref(false);

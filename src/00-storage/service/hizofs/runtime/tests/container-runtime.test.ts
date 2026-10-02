@@ -77,10 +77,12 @@ const RUNTIME_SCOPE_TOKEN = parseContainerCoordinationScopeToken({ value: "AQEBA
 function runtime({
   backgroundFlushTimerPort,
   crossRealmLockPort = new InMemoryCrossRealmLockPort(),
+  maxMaintenanceRootRegistrations = 64,
   maximumAcceptedMutationsPerDirtyEpoch = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY.maximumAcceptedMutationsPerDirtyEpoch,
 }: {
   backgroundFlushTimerPort?: HizoFSBackgroundFlushTimerPort;
   crossRealmLockPort?: CrossRealmLockPort;
+  maxMaintenanceRootRegistrations?: number;
   maximumAcceptedMutationsPerDirtyEpoch?: number;
 } = {}) {
   return new ContainerRuntime({
@@ -92,7 +94,7 @@ function runtime({
         maximumAcceptedMutationsPerDirtyEpoch,
       },
       maxHeldLockNames: 64,
-      maxMaintenanceRootRegistrations: 64,
+      maxMaintenanceRootRegistrations,
       maxReaderPins: 16,
       maxSegmentReferences: 16,
     },
@@ -288,6 +290,30 @@ function publishedDescriptorFromWorking({ working }: {
     }),
     workingIdentity: working.workingIdentity,
   });
+}
+
+function acceptFlushSuccessor({ authority, mutationByte, offset, resourcePressure }: {
+  authority: ReturnType<ContainerRuntime["attachAuthenticatedApplicationGeneration"]>;
+  mutationByte: number;
+  offset: bigint;
+  resourcePressure: boolean;
+}) {
+  const base = authority.capture();
+  const working = unpublishedSuccessorDescriptor({ base, mutationByte, offset });
+  const publish = vi.fn(async () => ({
+    durableSuccessor: publishedDescriptorFromWorking({ working }),
+    type: "published" as const,
+  }));
+  const admission = authority.openAcceptedMutationAdmission({
+    dirtyMetadataBytes: resourcePressure ? DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY.maximumDirtyMetadataBytes : 1,
+    expectedBase: base,
+    unpublishedPhysicalBytes: 1,
+  });
+  admission.commitAcceptedSuccessor({
+    publisher: { abandon: () => undefined, completeOutcomeUnknownResolution: () => undefined, publish },
+    successor: working,
+  });
+  return { publish, working };
 }
 
 class RejectNextAuthorityAcquirePort implements CrossRealmLockPort {
@@ -581,6 +607,198 @@ describe("container runtime", () => {
     });
   });
 
+  it.each(["staged", "materialized"] as const)("releases an accepted %s admission when candidate root installation fails", (variant) => {
+    const value = runtime({ maxMaintenanceRootRegistrations: 1 });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const base = authority.capture();
+    const held = value.acquireWorkingGenerationDependencyRoot({ commitReference: base.durableAuthority.commitReference });
+    const publisher = {
+      abandon: vi.fn(),
+      completeOutcomeUnknownResolution: vi.fn(),
+      publish: async (): Promise<never> => {
+        throw new Error("uninstalled candidate must not publish");
+      },
+    };
+    const admission = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 32, expectedBase: base, unpublishedPhysicalBytes: 96 });
+    const install = () => {
+      switch (variant) {
+      case "staged":
+        admission.commitAcceptedStagedSuccessor({ publisher, successor: stagedSuccessorDescriptor({ base, mutationByte: 51 }) });
+        return;
+      case "materialized":
+        admission.commitAcceptedSuccessor({ publisher, successor: unpublishedSuccessorDescriptor({ base, mutationByte: 51, offset: 85_000n }) });
+        return;
+      default: return variant satisfies never;
+      }
+    };
+    expect(install).toThrow(expect.objectContaining({ code: "root_limit_exceeded" }));
+    expect(authority.capture()).toBe(base);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      candidatePublicationState: "empty", dirtyMetadataBytes: 0, dirtyMutationCount: 0,
+      mutationAdmissionActive: false, unpublishedPhysicalBytes: 0,
+    });
+    expect(publisher.abandon).not.toHaveBeenCalled();
+    held.release();
+    admission.rollback();
+    const next = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 32, expectedBase: base, unpublishedPhysicalBytes: 96 });
+    next.rollback();
+  });
+
+  it("releases partial staged root acquisition and the unused accepted admission", async () => {
+    const value = runtime({ maxMaintenanceRootRegistrations: 1 });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const base = authority.capture();
+    const staged = stagedSuccessorDescriptor({ base, mutationByte: 52 });
+    const successor = createAuthenticatedStagedApplicationGenerationDescriptor({
+      commit: createFileSystemCommitPayload({ payload: {
+        ...staged.commit,
+        nestedSubvolumeTableRootHomeRef: createHomeRecordReference({ fields: {
+          ...inodeTableReference({ offset: 86_000n }),
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.nested_subvolume_table_page,
+        } }),
+      } }),
+      durableAuthority: staged.durableAuthority,
+      workingIdentity: staged.workingIdentity,
+    });
+    const abandon = vi.fn();
+    const admission = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 32, expectedBase: base, unpublishedPhysicalBytes: 96 });
+    expect(admission.hasAcceptedSuccessor()).toBe(false);
+    expect(() => admission.commitAcceptedStagedSuccessor({
+      publisher: {
+        abandon,
+        completeOutcomeUnknownResolution: vi.fn(),
+        publish: async (): Promise<never> => {
+          throw new Error("uninstalled candidate must not publish");
+        },
+      },
+      successor,
+    })).toThrow(expect.objectContaining({ code: "root_limit_exceeded" }));
+    const roots = await value.beginMaintenanceRootCapture();
+    try {
+      expect(roots.workingGenerationPageRoots).toEqual([]);
+      expect(roots.workingGenerationDependencyRoots).toEqual([]);
+    } finally {
+      roots.release();
+      await roots.released;
+    }
+    const reused = value.acquireWorkingGenerationPageRoot({ pageReference: staged.workingRootAuthority.rootInodeTableRootHomeRef });
+    reused.release();
+    expect(authority.capture()).toBe(base);
+    expect(abandon).not.toHaveBeenCalled();
+    admission.rollback();
+    expect(admission.hasAcceptedSuccessor()).toBe(false);
+    const next = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 32, expectedBase: base, unpublishedPhysicalBytes: 96 });
+    next.rollback();
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({ dirtyMutationCount: 0, mutationAdmissionActive: false });
+  });
+
+  it.each([
+    ["staged", "scheduled"],
+    ["materialized", "scheduled"],
+    ["staged", "deferred"],
+    ["materialized", "deferred"],
+    ["staged", "rearm_failure"],
+    ["materialized", "rearm_failure"],
+  ] as const)("keeps the retained candidate publishable after a failed %s replacement with a %s timer", async (variant, timerState) => {
+    const timers = controlledBackgroundFlushTimers();
+    const schedulingFailure = new Error("failed candidate cleanup could not rearm background publication");
+    const value = runtime({
+      backgroundFlushTimerPort: {
+        schedule: (args) => {
+          if (timerState === "rearm_failure" && timers.scheduled.length === 1) throw schedulingFailure;
+          return timers.port.schedule(args);
+        },
+      },
+      maxMaintenanceRootRegistrations: 2,
+    });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 53, offset: 87_000n });
+    const abandonPrevious = vi.fn();
+    const completePrevious = vi.fn();
+    const publishPrevious = vi.fn(async () => ({ durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const }));
+    authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 16, expectedBase: base, unpublishedPhysicalBytes: 48 }).commitAcceptedSuccessor({
+      publisher: { abandon: abandonPrevious, completeOutcomeUnknownResolution: completePrevious, publish: publishPrevious },
+      successor: working,
+    });
+    const held = value.acquireWorkingGenerationDependencyRoot({ commitReference: base.durableAuthority.commitReference });
+    const rejectedPublisher = {
+      abandon: vi.fn(), completeOutcomeUnknownResolution: vi.fn(),
+      publish: async (): Promise<never> => {
+        throw new Error("uninstalled candidate must not publish");
+      },
+    };
+    const admission = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 32, expectedBase: working, unpublishedPhysicalBytes: 96 });
+    if (timerState !== "scheduled") {
+      timers.scheduled[0]!.callback();
+      await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+      expect(value.lazyDurabilityDiagnostics()).toMatchObject({ backgroundFlush: { backgroundFlushDeferred: true } });
+    }
+    const install = () => {
+      switch (variant) {
+      case "staged":
+        admission.commitAcceptedStagedSuccessor({ publisher: rejectedPublisher, successor: stagedSuccessorDescriptor({ base: working, mutationByte: 54 }) });
+        return;
+      case "materialized":
+        admission.commitAcceptedSuccessor({ publisher: rejectedPublisher, successor: unpublishedSuccessorDescriptor({ base: working, mutationByte: 54, offset: 88_000n }) });
+        return;
+      default: return variant satisfies never;
+      }
+    };
+    if (timerState === "rearm_failure") {
+      expect(install).toThrow(expect.objectContaining({
+        errors: [expect.objectContaining({ code: "root_limit_exceeded" }), schedulingFailure],
+      }));
+    } else {
+      expect(install).toThrow(expect.objectContaining({ code: "root_limit_exceeded" }));
+    }
+    held.release();
+    admission.rollback();
+    expect(authority.capture()).toBe(working);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      candidatePublicationState: "installed", dirtyMetadataBytes: 16, dirtyMutationCount: 1,
+      mutationAdmissionActive: false, unpublishedPhysicalBytes: 48,
+      backgroundFlush: {
+        automaticRetryBlocked: timerState === "rearm_failure",
+        backgroundFlushDeferred: false,
+        backgroundFlushScheduled: timerState !== "rearm_failure",
+      },
+      flushState: timerState === "rearm_failure" ? "stalled" : "idle",
+    });
+    expect(timers.scheduled).toHaveLength(timerState === "deferred" ? 2 : 1);
+    expect(abandonPrevious).not.toHaveBeenCalled();
+    expect(rejectedPublisher.abandon).not.toHaveBeenCalled();
+    const roots = await value.beginMaintenanceRootCapture();
+    try {
+      expect(roots.workingGenerationDependencyRoots).toEqual([working.commitReference]);
+      expect(roots.workingGenerationPageRoots).toEqual([]);
+    } finally {
+      roots.release();
+      await roots.released;
+    }
+    if (timerState === "scheduled") {
+      const next = authority.openAcceptedMutationAdmission({ dirtyMetadataBytes: 1, expectedBase: working, unpublishedPhysicalBytes: 1 });
+      next.rollback();
+    }
+    if (timerState === "deferred") {
+      const durable = authority.waitForSyncTarget({ target: working.workingIdentity });
+      timers.scheduled[1]!.callback();
+      await durable;
+      await authority.waitForInFlightPublication();
+    } else {
+      await authority.requestExplicitFlush();
+    }
+    expect(publishPrevious).toHaveBeenCalledOnce();
+    expect(completePrevious).toHaveBeenCalledWith({ outcome: "confirmed_published" });
+    expect(abandonPrevious).not.toHaveBeenCalled();
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({ candidatePublicationState: "empty", dirtyMutationCount: 0, durableGeneration: "1" });
+    const timerCount = timers.scheduled.length;
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({ status: "disposed" });
+    admission.rollback();
+    expect(timers.scheduled).toHaveLength(timerCount);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({ backgroundFlush: { backgroundFlushScheduled: false } });
+  });
+
   it("publishes only the latest accepted runtime candidate during explicit flush", async () => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
@@ -693,6 +911,223 @@ describe("container runtime", () => {
     expect(authority.capture().durableAuthority.identity).toEqual(
       publishedDescriptorFromWorking({ working }).durableAuthority.identity,
     );
+  });
+
+  it("preserves the next epoch's timer when explicit flush only joins older background work", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const deliveryScheduled = deferred<void>();
+    const value = runtime({ backgroundFlushTimerPort: { schedule: args => {
+      const timer = port.schedule(args);
+      if (args.delayMilliseconds === 0) deliveryScheduled.resolve();
+      return timer;
+    } } });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 41, offset: 40_960n, resourcePressure: false });
+    scheduled[0]!.callback();
+    const original = authority.requestExplicitFlush();
+    await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+    const second = acceptFlushSuccessor({ authority, mutationByte: 42, offset: 45_056n, resourcePressure: false });
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(true);
+    expect(scheduled).toHaveLength(2);
+    const joined = authority.requestExplicitFlush();
+    expect(joined).toBe(original);
+    expect(scheduled[1]!.cancelled).toBe(false);
+    scheduled[1]!.callback();
+    await joined;
+    await deliveryScheduled.promise;
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(false);
+    expect(first.publish).toHaveBeenCalledOnce();
+    expect(second.publish).not.toHaveBeenCalled();
+    expect(authority.isSyncTargetDurable({ target: second.working.workingIdentity })).toBe(false);
+    expect(scheduled[2]).toMatchObject({ delayMilliseconds: 0 });
+    scheduled[2]!.callback();
+    await authority.waitForSyncTarget({ target: second.working.workingIdentity });
+    expect(second.publish).toHaveBeenCalledOnce();
+    await authority.waitForInFlightPublication();
+  });
+
+  it.each([new Error("asynchronous timer rearming failed"), undefined])("retains accepted work and fail-stops asynchronous rearming with %s", async cause => {
+    vi.useFakeTimers();
+    try {
+      const { port, scheduled } = controlledBackgroundFlushTimers();
+      const value = runtime({ backgroundFlushTimerPort: { schedule: args => {
+        if (args.delayMilliseconds === 0) throw cause;
+        return port.schedule(args);
+      } } });
+      const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+      const first = acceptFlushSuccessor({ authority, mutationByte: 41, offset: 40_960n, resourcePressure: true });
+      await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+      const second = acceptFlushSuccessor({ authority, mutationByte: 42, offset: 45_056n, resourcePressure: false });
+      expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(true);
+      const pending = authority.waitForSyncTarget({ target: second.working.workingIdentity }).then(
+        () => ({ type: "resolved" as const }),
+        failure => ({ cause: failure, type: "rejected" as const }),
+      );
+      scheduled[0]!.callback();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+        backgroundFlush: {
+          automaticRetryBlocked: true,
+          backgroundFlushDeferred: false,
+          backgroundFlushInFlight: false,
+          backgroundFlushScheduled: false,
+          dirty: true,
+        },
+        flushState: "stalled",
+      });
+      await expect(pending).resolves.toEqual({ cause, type: "rejected" });
+      expect(authority.capture()).toBe(second.working);
+      expect(first.publish).toHaveBeenCalledOnce();
+      expect(second.publish).not.toHaveBeenCalled();
+      expect(scheduled).toHaveLength(1);
+      await authority.requestExplicitFlush();
+      expect(second.publish).toHaveBeenCalledOnce();
+      expect(authority.isSyncTargetDurable({ target: second.working.workingIdentity })).toBe(true);
+      expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+        backgroundFlush: { automaticRetryBlocked: false, dirty: false },
+        flushState: "idle",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("delivers next-epoch pressure after background completion without another timer task", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 43, offset: 49_152n, resourcePressure: true });
+    await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+    const second = acceptFlushSuccessor({ authority, mutationByte: 44, offset: 53_248n, resourcePressure: true });
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushDeferred).toBe(true);
+    await authority.waitForSyncTarget({ target: second.working.workingIdentity });
+    expect(first.publish).toHaveBeenCalledOnce();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(scheduled).toHaveLength(0);
+    await authority.waitForInFlightPublication();
+  });
+
+  it.each([false, true])("publishes a notified target missed by older explicit work with pressure=%s", async resourcePressure => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 45, offset: 57_344n, resourcePressure: false });
+    const original = authority.requestExplicitFlush();
+    expect(scheduled[0]!.cancelled).toBe(true);
+    await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+    const second = acceptFlushSuccessor({ authority, mutationByte: 46, offset: 61_440n, resourcePressure });
+    if (!resourcePressure) {
+      expect(scheduled).toHaveLength(2);
+      scheduled[1]!.callback();
+    }
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(true);
+    await original;
+    await authority.waitForInFlightPublication();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(authority.isSyncTargetDurable({ target: second.working.workingIdentity })).toBe(true);
+    expect(scheduled).toHaveLength(resourcePressure ? 1 : 2);
+  });
+
+  it("does not republish a joined target already covered by explicit work or chase a later epoch", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const deliveryScheduled = deferred<void>();
+    const value = runtime({
+      backgroundFlushTimerPort: { schedule: args => {
+        const timer = port.schedule(args);
+        if (args.delayMilliseconds === 0) deliveryScheduled.resolve();
+        return timer;
+      } },
+      maximumAcceptedMutationsPerDirtyEpoch: 2,
+    });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 47, offset: 65_536n, resourcePressure: false });
+    const original = authority.requestExplicitFlush();
+    const second = acceptFlushSuccessor({ authority, mutationByte: 48, offset: 69_632n, resourcePressure: false });
+    await authority.waitForSyncTarget({ target: second.working.workingIdentity });
+    const third = acceptFlushSuccessor({ authority, mutationByte: 49, offset: 73_728n, resourcePressure: false });
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled[1]).toMatchObject({ cancelled: false, delayMilliseconds: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY.maximumDirtyAgeMilliseconds });
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(true);
+    scheduled[1]!.callback();
+    await original;
+    await authority.waitForInFlightPublication();
+    expect(first.publish).not.toHaveBeenCalled();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(third.publish).not.toHaveBeenCalled();
+    expect(authority.isSyncTargetDurable({ target: third.working.workingIdentity })).toBe(false);
+    await deliveryScheduled.promise;
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushInFlight).toBe(false);
+    expect(scheduled).toHaveLength(3);
+    expect(scheduled[2]).toMatchObject({ delayMilliseconds: 0 });
+    scheduled[2]!.callback();
+    await authority.waitForSyncTarget({ target: third.working.workingIdentity });
+    expect(third.publish).toHaveBeenCalledOnce();
+    await authority.waitForInFlightPublication();
+  });
+
+  it("fail-stops a rejected joined publication without automatic retries", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port, maximumAcceptedMutationsPerDirtyEpoch: 2 });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    acceptFlushSuccessor({ authority, mutationByte: 50, offset: 77_824n, resourcePressure: false });
+    const original = authority.requestExplicitFlush();
+    const second = acceptFlushSuccessor({ authority, mutationByte: 51, offset: 81_920n, resourcePressure: false });
+    second.publish.mockRejectedValueOnce(undefined);
+    await expect(original).rejects.toBeUndefined();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: true, backgroundFlushScheduled: false },
+      flushState: "stalled",
+    });
+    scheduled[0]!.callback();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("fail-stops a rejected follow-up publication without retrying its notified target", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 52, offset: 86_016n, resourcePressure: false });
+    const original = authority.requestExplicitFlush();
+    await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+    const second = acceptFlushSuccessor({ authority, mutationByte: 53, offset: 90_112n, resourcePressure: true });
+    second.publish.mockRejectedValueOnce(undefined);
+    await original;
+    await expect(authority.waitForInFlightPublication()).rejects.toBeUndefined();
+    expect(first.publish).toHaveBeenCalledOnce();
+    expect(second.publish).toHaveBeenCalledOnce();
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: true, backgroundFlushScheduled: false },
+      flushState: "stalled",
+    });
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("yields a busy follow-up publication until foreground admission closes", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority: authenticatedGenerationFixture() });
+    const first = acceptFlushSuccessor({ authority, mutationByte: 54, offset: 94_208n, resourcePressure: false });
+    const original = authority.requestExplicitFlush();
+    await authority.waitForSyncTarget({ target: first.working.workingIdentity });
+    const second = acceptFlushSuccessor({ authority, mutationByte: 55, offset: 98_304n, resourcePressure: true });
+    const foreground = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 0, expectedBase: authority.capture(), unpublishedPhysicalBytes: 0,
+    });
+    await original;
+    await expect(authority.waitForInFlightPublication()).rejects.toMatchObject({ code: "working_authority_busy" });
+    expect(second.publish).not.toHaveBeenCalled();
+    expect(scheduled).toHaveLength(1);
+    expect(value.lazyDurabilityDiagnostics().backgroundFlush.backgroundFlushDeferred).toBe(true);
+    foreground.rollback();
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled[1]).toMatchObject({ delayMilliseconds: 0 });
+    expect(second.publish).not.toHaveBeenCalled();
+    scheduled[1]!.callback();
+    await authority.waitForSyncTarget({ target: second.working.workingIdentity });
+    expect(second.publish).toHaveBeenCalledOnce();
+    await authority.waitForInFlightPublication();
   });
 
   it("queues resource-pressure publication before the next foreground writer", async () => {
@@ -1292,6 +1727,7 @@ describe("container runtime", () => {
       expectedBase: base,
       unpublishedPhysicalBytes: 1,
     });
+    expect(admission.hasAcceptedSuccessor()).toBe(false);
 
     expect(() => admission.commitAcceptedSuccessor({
       publisher: Object.freeze({
@@ -1304,6 +1740,7 @@ describe("container runtime", () => {
       }),
       successor: working,
     })).toThrow(schedulingFailure);
+    expect(admission.hasAcceptedSuccessor()).toBe(true);
     expect(authority.capture()).toBe(working);
     expect(value.workingCandidatePublicationState()).toBe("installed");
     expect(() => authority.openAcceptedMutationAdmission({
@@ -1315,6 +1752,8 @@ describe("container runtime", () => {
     await expect(authority.requestExplicitFlush()).resolves.toBeUndefined();
     expect(publicationCount).toBe(1);
     await expect(authority.waitForSyncTarget({ target: working.workingIdentity })).resolves.toBeUndefined();
+    admission.rollback();
+    expect(admission.hasAcceptedSuccessor()).toBe(true);
   });
 
   it("keeps a staged accepted generation commitless until flush materializes its exact candidate", async () => {
@@ -1336,6 +1775,7 @@ describe("container runtime", () => {
       unpublishedPhysicalBytes: 1,
     });
     admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    expect(admission.hasAcceptedSuccessor()).toBe(false);
     admission.commitAcceptedStagedSuccessor({
       publisher: Object.freeze({
         abandon: vi.fn(),
@@ -1355,6 +1795,7 @@ describe("container runtime", () => {
       }),
       successor: staged,
     });
+    expect(admission.hasAcceptedSuccessor()).toBe(true);
 
     expect(value.lazyDurabilityDiagnostics()).toMatchObject({
       dirtyMetadataBytes: 6,
@@ -1431,14 +1872,16 @@ describe("container runtime", () => {
     expect(completeOutcomeUnknownResolution).not.toHaveBeenCalled();
   });
 
-  it("retains a not-published candidate for an explicit single-flight retry", async () => {
+  it.each([
+    new Error("first publication did not cross the commit point"),
+    undefined,
+  ])("retains a not-published candidate for an explicit single-flight retry: %s", async failure => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
     const base = authority.capture();
     const working = unpublishedSuccessorDescriptor({ base, mutationByte: 22, offset: 12_352n });
-    const failure = new Error("first publication did not cross the commit point");
     let attempt = 0;
     const admission = authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
@@ -1471,14 +1914,17 @@ describe("container runtime", () => {
     await expect(authority.waitForSyncTarget({ target: working.workingIdentity })).resolves.toBeUndefined();
   });
 
-  it("retains an outcome-unknown selected candidate and fails closed", async () => {
+  it.each([
+    { failure: new Error("publication authority could not be resolved"), outcome: "outcome_unknown" as const },
+    { failure: undefined, outcome: "outcome_unknown" as const },
+    { failure: undefined, outcome: "rejection" as const },
+  ])("retains an outcome-unknown selected candidate and fails closed: $outcome / $failure", async ({ failure, outcome }) => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
     const base = authority.capture();
     const working = unpublishedSuccessorDescriptor({ base, mutationByte: 23, offset: 16_448n });
-    const failure = new Error("publication authority could not be resolved");
     const admission = authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
       expectedBase: base,
@@ -1488,7 +1934,13 @@ describe("container runtime", () => {
       publisher: Object.freeze({
         abandon: () => undefined,
         completeOutcomeUnknownResolution: () => undefined,
-        publish: async () => ({ cause: failure, type: "outcome_unknown" as const }),
+        publish: async () => {
+          switch (outcome) {
+          case "outcome_unknown": return { cause: failure, type: "outcome_unknown" as const };
+          case "rejection": throw failure;
+          default: return outcome satisfies never;
+          }
+        },
       }),
       successor: working,
     });
@@ -2155,16 +2607,21 @@ describe("container runtime", () => {
     await secondSession.close();
   });
 
-  it("releases writer ownership when a sync profile gate rejects", async () => {
+  it.each([
+    { phase: "profile" as const, rejection: new Error("durability unavailable") },
+    { phase: "profile" as const, rejection: undefined },
+    { phase: "recheck" as const, rejection: undefined },
+  ])("releases writer ownership when a sync $phase rejects: $rejection", async ({ phase, rejection }) => {
     const value = runtime();
     const session = await openSession({ value });
-    const rejection = new Error("durability unavailable");
 
     await expect(session.syncDurableState({
       assertDurabilityDemonstrated: () => {
-        throw rejection;
+        if (phase === "profile") throw rejection;
       },
-      recheckAuthority: async () => undefined,
+      recheckAuthority: async () => {
+        if (phase === "recheck") throw rejection;
+      },
     })).rejects.toBe(rejection);
 
     const writer = await session.acquireWriter();

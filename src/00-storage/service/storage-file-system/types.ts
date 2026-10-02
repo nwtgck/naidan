@@ -35,6 +35,8 @@ export type StorageFileStat = {
 };
 
 export interface StorageWritableFile {
+  readonly read: StorageBinaryObjectReadHandle['read'] | undefined;
+
   write({ position, data }: {
     position: number;
     data: Uint8Array;
@@ -106,6 +108,20 @@ export interface StorageDirectoryHandle {
   }): Promise<StorageEntryHandle>;
 
   entries(): AsyncIterable<readonly [name: string, handle: StorageEntryHandle]>;
+
+  /**
+   * Optional genuinely bounded listing of an immutable directory. Returns the
+   * first maximumEntries names strictly after afterName in unsigned UTF-8 byte
+   * order; truncated is true exactly when more names remain. maximumEntries
+   * must be a positive safe integer. Unordered or full-list adapters omit this.
+   */
+  listEntriesPage?({ afterName, maximumEntries }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+  }): Promise<Readonly<{
+    entries: readonly (readonly [name: string, handle: StorageEntryHandle])[];
+    truncated: boolean;
+  }>>;
 
   removeEntry({ name, recursive }: {
     name: string;

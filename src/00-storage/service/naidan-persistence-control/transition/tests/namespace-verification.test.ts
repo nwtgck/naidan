@@ -99,6 +99,32 @@ describe('bounded transition namespace verification', () => {
     })).rejects.toMatchObject({ code: 'directory_mismatch', path: '/' });
   });
 
+  it('verifies canonical Unicode order across different page partitions', async () => {
+    const names = ['entry-a', 'entry-\uFF21', 'entry-\u{10400}'];
+    const orderedPort = ({ pageSize }: { pageSize: number }): TransitionNamespaceSourcePort => ({
+      ...port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined }),
+      listDirectory: async ({ afterName, maximumEntries }) => {
+        const start = afterName === undefined ? 0 : names.indexOf(afterName) + 1;
+        const entries = names.slice(start, start + Math.min(maximumEntries, pageSize))
+          .map(name => ({ kind: 'file', metadata, name, size: BigInt(file.byteLength) } as const));
+        return { entries, state: start + entries.length === names.length ? 'complete' : 'more' };
+      },
+    });
+    const source = orderedPort({ pageSize: 1 });
+    const target = orderedPort({ pageSize: 2 });
+    let cursor = createTransitionNamespaceVerificationCursor();
+    let slices = 0;
+    while (cursor.state !== 'complete') {
+      cursor = await runTransitionNamespaceVerificationSlice({
+        cursor, policy: { ...policy, maximumDirectoryEntriesPerRead: 2 }, signal: undefined, source, target,
+      });
+      slices += 1;
+      expect(slices).toBeLessThan(30);
+    }
+    expect(cursor.verifiedEntries).toBe(3n);
+    expect(cursor.verifiedBytes).toBe(15n);
+  });
+
   it('continues to reject a missing entry and noncanonical ordering', async () => {
     const complete = port({ changedByte: undefined, extraName: 'z', modifiedAt: undefined });
     const missing = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   fileSystemIdToNaidanContainerToken,
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
@@ -7,6 +7,8 @@ import {
   cleanupNativePlainApplicationNamespace,
   createNativePlainApplicationNamespaceSession,
   listNativePlainApplicationNamespaceEntryNames,
+  projectCanonicalNaidanApplicationNamespaceSession,
+  TEST_ONLY,
 } from '@/00-storage/service/naidan-opfs/native-plain-application-namespace';
 import {
   NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES,
@@ -14,7 +16,9 @@ import {
 } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
-import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
+import type { StorageDirectoryHandle, StorageEntryHandle, StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
+import { compareTransitionNamespaceEntryNameBytes } from '@/00-storage/service/naidan-persistence-control/transition/namespace-contracts';
 import { InMemoryOpfsDirectoryHandle } from '@/00-storage/service/test-support/in-memory-opfs';
 
 const FILE_SYSTEM_ID = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
@@ -40,6 +44,78 @@ async function listStorageEntryNames({ directory }: {
 }
 
 describe('native plain application namespace', () => {
+  it('merges bounded raw pages with only missing managed roots and preserves real entry kinds', async () => {
+    const root = createInMemoryStorageRoot({ name: 'root' });
+    await root.getFileHandle({ create: true, name: 'naidan-storage' });
+    await root.createSymlink({ name: 'naidan-tmp', target: 'somewhere' });
+    await root.getDirectoryHandle({ create: true, name: 'extra-directory' });
+    for (const name of ['a', '\uFF21', '\u{10400}']) await root.getFileHandle({ create: true, name });
+    const raw: Array<readonly [string, StorageEntryHandle]> = [];
+    for await (const entry of root.entries()) raw.push(entry);
+    const bytes = (name: string) => new TextEncoder().encode(name);
+    const compare = (left: string, right: string) => compareTransitionNamespaceEntryNameBytes({ left: bytes(left), right: bytes(right) });
+    raw.sort(([left], [right]) => compare(left, right));
+    const rawPage = vi.fn<NonNullable<StorageDirectoryHandle['listEntriesPage']>>(async ({ afterName, maximumEntries }) => {
+      const remaining = raw.filter(([name]) => afterName === undefined || compare(name, afterName) > 0);
+      return { entries: remaining.slice(0, maximumEntries), truncated: remaining.length > maximumEntries };
+    });
+    root.listEntriesPage = rawPage;
+    const enumerate = vi.spyOn(root, 'entries');
+    const lookup = vi.spyOn(root, 'getEntryHandle');
+    const stat = vi.spyOn(root, 'stat');
+    const close = vi.fn(async () => undefined);
+    const session: StorageFileSystemSession = {
+      capabilities: { atomicMove: 'supported', directBlob: 'unsupported', symbolicLink: 'supported', wholeFileClone: 'supported' },
+      root, close, sync: async () => undefined,
+    };
+    const projected = projectCanonicalNaidanApplicationNamespaceSession({ session });
+    expect(rawPage).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+    const expected = [...new Set([...raw.map(([name]) => name), ...NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES])].sort(compare);
+    const received: string[] = [];
+    let afterName: string | undefined;
+    for (;;) {
+      const callsBefore = lookup.mock.calls.length;
+      const page = await projected.root.listEntriesPage!({ afterName, maximumEntries: 2 });
+      expect(page.entries.length).toBeLessThanOrEqual(2);
+      expect(lookup.mock.calls.length - callsBefore).toBeLessThanOrEqual(NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES.length);
+      received.push(...page.entries.map(([name]) => name));
+      if (!page.truncated) break;
+      afterName = page.entries.at(-1)![0];
+    }
+    expect(received).toEqual(expected);
+    const arbitrary = await projected.root.listEntriesPage!({ afterName: 'naidan-chat', maximumEntries: 3 });
+    expect(arbitrary.entries.map(([name]) => name)).toEqual(expected.filter(name => compare(name, 'naidan-chat') > 0).slice(0, 3));
+    await expect(projected.root.getEntryHandle({ name: 'naidan-storage' })).resolves.toMatchObject({ kind: 'file' });
+    await expect(projected.root.getEntryHandle({ name: 'naidan-tmp' })).resolves.toMatchObject({ kind: 'symlink' });
+    const virtual = await projected.root.getDirectoryHandle({ create: false, name: 'naidan-chat-wesh' });
+    await expect(virtual.listEntriesPage!({ afterName: undefined, maximumEntries: 1 })).resolves.toEqual({ entries: [], truncated: false });
+    await expect(virtual.stat()).resolves.toMatchObject({ size: 0 });
+    expect(stat).not.toHaveBeenCalled();
+    expect(enumerate).not.toHaveBeenCalled();
+    const filtered = TEST_ONLY.projectDirectory({ assertOpen: undefined, directory: root, filterDirectChild: ({ name }) => name !== 'a' });
+    expect(filtered.listEntriesPage).toBeUndefined();
+    await projected.close();
+    expect(close).toHaveBeenCalledOnce();
+    await expect(virtual.stat()).rejects.toThrow('closed');
+    await expect(listStorageEntryNames({ directory: virtual })).rejects.toThrow('closed');
+    await expect(virtual.listEntriesPage!({ afterName: undefined, maximumEntries: 1 })).rejects.toThrow('closed');
+    await expect(virtual.getEntryHandle({ name: 'missing' })).rejects.toThrow('closed');
+    await expect(projected.root.listEntriesPage!({ afterName: undefined, maximumEntries: 1 })).rejects.toThrow('closed');
+  });
+
+  it.each([new Error('root lookup failed'), undefined])('does not turn a failed managed-root lookup into a virtual entry: %s', async cause => {
+    const root = createInMemoryStorageRoot({ name: 'root' });
+    root.listEntriesPage = async () => ({ entries: [], truncated: false });
+    vi.spyOn(root, 'getEntryHandle').mockRejectedValue(cause);
+    const projected = projectCanonicalNaidanApplicationNamespaceSession({ session: {
+      capabilities: { atomicMove: 'supported', directBlob: 'unsupported', symbolicLink: 'supported', wholeFileClone: 'supported' },
+      close: async () => undefined, root, sync: async () => undefined,
+    } });
+    await expect(projected.root.listEntriesPage!({ afterName: undefined, maximumEntries: 2 })).rejects.toBe(cause);
+    await projected.close();
+  });
+
   it('projects a stable empty managed-root shape without creating raw directories', async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: 'window',

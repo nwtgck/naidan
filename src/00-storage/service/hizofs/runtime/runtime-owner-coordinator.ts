@@ -93,32 +93,35 @@ export class RuntimeOwnerCoordinator {
     await releaseCompletion;
   }
 
-  private async requireLease(): Promise<CrossRealmRuntimeOwnerLease> {
+  async attach(): Promise<RuntimeOwnerAttachment> {
     this.assertUsable();
     await this.waitForReleaseCompletion();
     this.assertUsable();
+    // Register in the same continuation that observes the lease. Returning a
+    // bare lease across an await lets the last attachment release it first.
     const existing = this.lease;
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) return this.createAttachment();
     const pendingTryAcquisition = this.tryAcquisition;
     if (pendingTryAcquisition !== undefined) {
       const acquired = await pendingTryAcquisition;
       if (this.tryAcquisition === pendingTryAcquisition) this.tryAcquisition = undefined;
       if (acquired !== undefined) {
         this.lease ??= acquired;
-        return this.lease;
+        return this.createAttachment();
       }
     }
     this.acquisition ??= this.acquireLease();
     try {
       const acquired = await this.acquisition;
       this.lease = acquired;
-      return acquired;
+      return this.createAttachment();
     } finally {
       this.acquisition = undefined;
     }
   }
 
   private createAttachment(): RuntimeOwnerAttachment {
+    this.assertUsable();
     this.attachmentCountValue += 1;
     let releaseCompletion: Promise<void> | undefined;
     return Object.freeze({
@@ -127,12 +130,6 @@ export class RuntimeOwnerCoordinator {
         await releaseCompletion;
       },
     });
-  }
-
-  async attach(): Promise<RuntimeOwnerAttachment> {
-    await this.requireLease();
-    this.assertUsable();
-    return this.createAttachment();
   }
 
   async tryAttach(): Promise<RuntimeOwnerAttachment | undefined> {
@@ -160,7 +157,6 @@ export class RuntimeOwnerCoordinator {
       acquired.release();
       await acquired.released;
     }
-    this.assertUsable();
     return this.createAttachment();
   }
 

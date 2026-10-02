@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_V1_FORMAT_CONSTANTS,
@@ -46,7 +46,8 @@ import {
   SuperblockPublicationConflictError,
   type SuperblockLogicalState,
 } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
-import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
+import { physicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
+import { canonicalContainerDirectory, canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 
@@ -205,7 +206,7 @@ describe("HizoFS Superblock store", () => {
     rootKey.destroy();
   });
 
-  it("selects the surviving authenticated copy as degraded", async () => {
+  it.each(["missing", "directory", "invalid"] as const)("selects the surviving authenticated copy when its sibling is %s", async sibling => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
@@ -218,18 +219,75 @@ describe("HizoFS Superblock store", () => {
       rootKey,
       supportedFeatureBits: createFeatureBits({ value: 0n }),
     });
-    await backend.removeFile({ path: canonicalContainerPath({ value: HIZOFS_SUPERBLOCK_FILES[1] }) });
+    const path = canonicalContainerPath({ value: HIZOFS_SUPERBLOCK_FILES[1] });
+    await backend.removeFile({ path });
+    if (sibling === "directory") await backend.createDirectoryExclusive({ path: canonicalContainerDirectory({ value: path }) });
+    if (sibling === "invalid") {
+      const file = await backend.createFileExclusive({ path });
+      await backend.closeFile({ file });
+    }
+    const writes = ["createFileExclusive", "openFileForUpdate", "removeFile"] as const;
+    const spies = writes.map(method => vi.spyOn(backend, method));
 
-    const opened = await openSuperblockCopies({
-      backend,
-      fileSystemId,
-      rootKey,
-      supportedFeatureBits: createFeatureBits({ value: 0n }),
-    });
-    expect(opened.copyState).toBe("superblock_redundancy_degraded");
-    expect(opened.authenticatedLogicalStates).toEqual([opened.logicalState]);
-    expect(opened.selectedPublicationSequence).toBe(1n);
-    rootKey.destroy();
+    try {
+      const opened = await openSuperblockCopies({
+        backend,
+        fileSystemId,
+        rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(opened.copyState).toBe("superblock_redundancy_degraded");
+      expect(opened.authenticatedLogicalStates).toEqual([opened.logicalState]);
+      expect(opened.selectedPublicationSequence).toBe(1n);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      expect(backend.openHandleCount()).toBe(0);
+    } finally {
+      rootKey.destroy();
+    }
+  });
+
+  it.each(["missing", "directory", "invalid"] as const)("fails closed with the existing classification when both copies are %s", async entry => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const rootKey = generateFileSystemRootKey({ randomSource: deterministicRandomSource() });
+    for (const value of HIZOFS_SUPERBLOCK_FILES) {
+      if (entry === "directory") await backend.createDirectoryExclusive({ path: canonicalContainerDirectory({ value }) });
+      if (entry === "invalid") {
+        const file = await backend.createFileExclusive({ path: canonicalContainerPath({ value }) });
+        await backend.closeFile({ file });
+      }
+    }
+    try {
+      await expect(openSuperblockCopies({
+        backend,
+        fileSystemId: parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" }),
+        rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      })).rejects.toMatchObject({ code: entry === "missing" ? "incomplete_container" : "control_plane_corrupt" });
+      expect(backend.openHandleCount()).toBe(0);
+    } finally {
+      rootKey.destroy();
+    }
+  });
+
+  it.each([
+    new Error("backend read failed"),
+    physicalStoreError({ code: "file_too_large", message: "bounded read failed", path: HIZOFS_SUPERBLOCK_FILES[0] }),
+    physicalStoreError({ code: "is_directory", message: "different entry is a directory", path: "unrelated" }),
+    Object.assign(new Error("untyped directory failure"), { code: "is_directory", path: HIZOFS_SUPERBLOCK_FILES[0] }),
+  ])("propagates read failures that do not prove the exact copy is a directory: %s", async failure => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const rootKey = generateFileSystemRootKey({ randomSource: deterministicRandomSource() });
+    vi.spyOn(backend, "readFileBounded").mockRejectedValue(failure);
+    try {
+      await expect(openSuperblockCopies({
+        backend,
+        fileSystemId: parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" }),
+        rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      })).rejects.toBe(failure);
+    } finally {
+      rootKey.destroy();
+    }
   });
 
   it("does not misclassify a destroyed root-key capability as copy corruption", async () => {
@@ -528,6 +586,101 @@ describe("HizoFS Superblock store", () => {
       supportedFeatureBits: createFeatureBits({ value: 0n }),
     })).resolves.toMatchObject({ type: "not_published" });
     rootKey.destroy();
+  });
+
+  it.each((["mutation", "relocation", "unlock_floor"] as const).flatMap(kind => (
+    [3, 4].map(failureOccurrence => ({ failureOccurrence, kind }))
+  )))(
+    "confirms readable $kind authority is durable after flush $failureOccurrence fails",
+    async ({ failureOccurrence, kind }) => {
+      const faultInjector = new DeterministicPhysicalStoreFaultInjector({
+        schedule: [{ occurrence: failureOccurrence, operation: "syncFileData", timing: "before" }],
+      });
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({ faultInjector });
+      const randomSource = deterministicRandomSource();
+      const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+      const rootKey = generateFileSystemRootKey({ randomSource });
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const base = await createInitialSuperblockCopies({
+        backend, fileSystemId, logicalState: initialLogicalState(), randomSource, rootKey, supportedFeatureBits,
+      });
+      const { intendedLogicalState, publish, resolve } = (() => {
+        switch (kind) {
+        case "mutation": return {
+          intendedLogicalState: nextLogicalState({ previous: base.logicalState }),
+          publish: publishMutationSuperblockCopies,
+          resolve: resolveMutationSuperblockPublication,
+        };
+        case "relocation": return {
+          intendedLogicalState: relocationLogicalState({ previous: base.logicalState }),
+          publish: publishRelocationSuperblockCopies,
+          resolve: resolveRelocationSuperblockPublication,
+        };
+        case "unlock_floor": return {
+          intendedLogicalState: { ...base.logicalState, minimumUnlockSequence: createUnlockSequence({ value: 2n }) },
+          publish: publishUnlockFloorSuperblockCopies,
+          resolve: resolveUnlockFloorSuperblockPublication,
+        };
+        default: return kind satisfies never;
+        }
+      })();
+      try {
+        await expect(publish({
+          backend, base, fileSystemId,
+          firstPublicationSequence: createPublicationSequence({ value: 3n }),
+          logicalState: intendedLogicalState, randomSource, rootKey,
+          secondPublicationSequence: createPublicationSequence({ value: 4n }),
+          supportedFeatureBits,
+        })).rejects.toBeInstanceOf(Error);
+        const expectedCopyState = failureOccurrence === 3 ? "superblock_redundancy_degraded" : "normal";
+        await expect(resolve({
+          backend, base, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+        })).resolves.toMatchObject({ superblock: { copyState: expectedCopyState }, type: "published" });
+
+        await backend.crashAndRecover();
+        const reopened = await openSuperblockCopies({ backend, fileSystemId, rootKey, supportedFeatureBits });
+        expect(reopened.copyState).toBe(expectedCopyState);
+        expect(reopened.logicalState).toEqual(intendedLogicalState);
+        expect(backend.openHandleCount()).toBe(0);
+        faultInjector.assertExhausted();
+      } finally {
+        rootKey.destroy();
+      }
+    },
+  );
+
+  it("rejects visible normal copies when durability confirmation still fails", async () => {
+    const faultInjector = new DeterministicPhysicalStoreFaultInjector({
+      schedule: [
+        { occurrence: 4, operation: "syncFileData", timing: "before" },
+        { occurrence: 5, operation: "syncFileData", timing: "before" },
+      ],
+    });
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({ faultInjector });
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const base = await createInitialSuperblockCopies({
+      backend, fileSystemId, logicalState: initialLogicalState(), randomSource, rootKey, supportedFeatureBits,
+    });
+    const intendedLogicalState = nextLogicalState({ previous: base.logicalState });
+    try {
+      await expect(publishMutationSuperblockCopies({
+        backend, base, fileSystemId,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        logicalState: intendedLogicalState, randomSource, rootKey,
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+        supportedFeatureBits,
+      })).rejects.toBeInstanceOf(SuperblockMutationPublicationError);
+      await expect(resolveMutationSuperblockPublication({
+        backend, base, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+      })).rejects.toBeInstanceOf(Error);
+      expect(backend.openHandleCount()).toBe(0);
+      faultInjector.assertExhausted();
+    } finally {
+      rootKey.destroy();
+    }
   });
 
   it("reports committed degraded when the second-copy write fails after the commit point", async () => {

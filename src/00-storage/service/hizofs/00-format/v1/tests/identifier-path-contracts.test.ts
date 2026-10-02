@@ -11,7 +11,6 @@ import {
   segmentIdToRelativePath,
   segmentIdToShard,
 } from '@/00-storage/service/hizofs/00-format/v1/paths';
-import { fileSystemIdToNaidanContainerToken, parseNaidanContainerToken } from '@/00-storage/service/naidan-persistence-control/00-format/container-path';
 
 describe('HizoFS V1 identifier and path contracts', () => {
   it('accepts only the exact 21-character Nano ID profile', () => {
@@ -59,13 +58,5 @@ describe('HizoFS V1 identifier and path contracts', () => {
     expect(segmentIdToRelativePath({ id, segmentClass: 'metadata' })).toBe('segments/metadata/af/0102030405060708090a0b0c0d0e0faf.enc');
     expect(() => assertSegmentPathBinding({ id, segmentClass: 'metadata', relativePath: 'segments/metadata/ae/wrong.enc' })).toThrow('does not match');
     expect(() => parseSegmentFilename({ value: '0102030405060708090A0B0C0D0E0FAF.enc' })).toThrow('lowercase');
-  });
-
-  it('roundtrips the Naidan canonical container token without case-folding the ID', () => {
-    const id = parseFileSystemId({ value: 'Abcdefghij_klmnopq-12' });
-    const token = fileSystemIdToNaidanContainerToken({ id });
-    expect(token).toBe('fs-4162636465666768696a5f6b6c6d6e6f70712d3132.hizofs');
-    expect(parseNaidanContainerToken({ value: token })).toBe(id);
-    expect(() => parseNaidanContainerToken({ value: token.toUpperCase() })).toThrow();
   });
 });

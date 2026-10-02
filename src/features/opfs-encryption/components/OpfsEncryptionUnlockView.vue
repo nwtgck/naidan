@@ -15,7 +15,7 @@ import { useFileExplorerModal } from '@/features/file-explorer/composables/useFi
 import type {
   OpfsEncryptionStartupGate,
   OpfsEncryptionStartupPhase,
-} from '@/logic/startup/opfs-encryption-startup-gate';
+} from '@/composables/opfs-encryption-startup-gate';
 import { ensureStrings, lazyStrings } from '@/strings';
 import OpfsEncryptionUnlockButton from './OpfsEncryptionUnlockButton.vue';
 import OpfsEncryptionTransitionProgress from './OpfsEncryptionTransitionProgress.vue';

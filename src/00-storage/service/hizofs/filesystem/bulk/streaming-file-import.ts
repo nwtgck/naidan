@@ -122,42 +122,6 @@ export class StreamingFileImport {
     return this.extentRoot;
   }
 
-  private async appendNonZeroRun({ bytes, fileOffset }: {
-    bytes: Uint8Array;
-    fileOffset: bigint;
-  }): Promise<void> {
-    let rootReference = await this.ensureExtentRoot();
-    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
-    let changes: FileExtentTreeMutation[] = [];
-
-    const flush = async (): Promise<void> => {
-      if (changes.length === 0) return;
-      rootReference = await applyFileExtentTreeMutations({
-        changes,
-        pageStore: this.port.extentPageStore,
-        rootReference,
-      });
-      changes = [];
-    };
-
-    for (let offset = 0; offset < bytes.byteLength; offset += maximumPayload) {
-      const chunk = new Uint8Array(bytes.subarray(offset, Math.min(offset + maximumPayload, bytes.byteLength)));
-      const fileDataHomeRef = await this.port.writeFileData({ bytes: chunk });
-      changes.push({
-        entry: {
-          byteLength: chunk.byteLength,
-          dataOffset: 0,
-          fileDataHomeRef,
-          fileOffset: createFileOffset({ value: fileOffset + BigInt(offset) }),
-        },
-        type: "set",
-      });
-      if (changes.length >= this.extentMutationBatchLimit) await flush();
-    }
-    await flush();
-    this.extentRoot = rootReference;
-  }
-
   async writeChunk({ bytes, offset }: {
     bytes: Uint8Array;
     offset: bigint;
@@ -177,17 +141,44 @@ export class StreamingFileImport {
     }
 
     try {
+      const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+      let changes: FileExtentTreeMutation[] = [];
+      const flush = async (): Promise<void> => {
+        if (changes.length === 0) return;
+        if (this.extentRoot === undefined) throw new Error("streaming file import extent changes have no root");
+        this.extentRoot = await applyFileExtentTreeMutations({
+          changes,
+          pageStore: this.port.extentPageStore,
+          rootReference: this.extentRoot,
+        });
+        changes = [];
+      };
+
+      // Keep sparse runs and their File Data records unchanged, but batch their
+      // extent updates together. No pending changes survive a completed chunk.
       let searchOffset = 0;
       while (searchOffset < bytes.byteLength) {
         const runStart = firstNonZeroByte({ bytes, start: searchOffset });
         if (runStart === undefined) break;
         const runEnd = firstZeroByte({ bytes, start: runStart });
-        await this.appendNonZeroRun({
-          bytes: bytes.subarray(runStart, runEnd),
-          fileOffset: offset + BigInt(runStart),
-        });
+        if (this.extentRoot === undefined) await this.ensureExtentRoot();
+        for (let dataOffset = runStart; dataOffset < runEnd; dataOffset += maximumPayload) {
+          const chunk = new Uint8Array(bytes.subarray(dataOffset, Math.min(dataOffset + maximumPayload, runEnd)));
+          const fileDataHomeRef = await this.port.writeFileData({ bytes: chunk });
+          changes.push({
+            entry: {
+              byteLength: chunk.byteLength,
+              dataOffset: 0,
+              fileDataHomeRef,
+              fileOffset: createFileOffset({ value: offset + BigInt(dataOffset) }),
+            },
+            type: "set",
+          });
+          if (changes.length >= this.extentMutationBatchLimit) await flush();
+        }
         searchOffset = runEnd;
       }
+      if (changes.length > 0) await flush();
       this.nextOffset += BigInt(bytes.byteLength);
     } catch (cause: unknown) {
       this.stateValue = "failed";

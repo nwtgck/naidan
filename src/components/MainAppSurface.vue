@@ -5,7 +5,7 @@ import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
 import {
   provideInitialRouteRenderReadiness,
-} from '@/logic/startup/initial-route-render-readiness';
+} from '@/composables/useInitialRouteRenderReadiness';
 
 type PostStartupFeatureActivation = 'inactive' | 'active';
 

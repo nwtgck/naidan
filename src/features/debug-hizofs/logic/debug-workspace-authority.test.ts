@@ -50,12 +50,18 @@ function authority(): {
         return {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'debug-file-system',
-          fileSystemSession,
-          generateComprehensiveFixture: vi.fn(async () => ({
-            coverage: [],
-            manifestPath: '/__hizofs_fixture__/manifest.json',
-            rootPath: '/__hizofs_fixture__',
-          })),
+          decryptedRoot: fileSystemSession.root,
+          generateComprehensiveFixture: vi.fn(async () => {
+            await writeStorageFileText({
+              fileHandle: await fileSystemSession.root.getFileHandle({ name: 'probe.txt', create: true }),
+              value: 'HizoFS probe',
+            });
+            return {
+              coverage: [],
+              manifestPath: '/__hizofs_fixture__/manifest.json',
+              rootPath: '/__hizofs_fixture__',
+            };
+          }),
           dispose: async () => await fileSystemSession.close(),
         };
       },
@@ -106,11 +112,14 @@ describe('HizoFS debug workspaces', () => {
     });
 
     const session = await openHizoFSDebugWorkspace({ workspaceId: summary.workspaceId });
-    await writeStorageFileText({
-      fileHandle: await session.decryptedRoot.getFileHandle({ name: 'probe.txt', create: true }),
-      value: 'HizoFS probe',
-    });
+    await expect(session.decryptedRoot.getFileHandle({ name: 'probe.txt', create: false })).rejects.toThrow();
+    await generateHizoFSDebugWorkspaceComprehensiveFixture({ onProgress: vi.fn(), workspaceId: summary.workspaceId });
+    await expect(session.decryptedRoot.getFileHandle({ name: 'probe.txt', create: false })).resolves.toBeDefined();
     await session.dispose();
+    expect(configured.close).not.toHaveBeenCalled();
+    const reopened = await openHizoFSDebugWorkspace({ workspaceId: summary.workspaceId });
+    expect(reopened.decryptedRoot).toBe(session.decryptedRoot);
+    await reopened.dispose();
 
     expect(await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root })).toContainEqual(summary);
     await destroyHizoFSDebugWorkspace({ workspaceId: summary.workspaceId, nativeOpfsRoot: root });
@@ -155,7 +164,7 @@ describe('HizoFS debug workspaces', () => {
         return {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'retryable-file-system',
-          fileSystemSession,
+          decryptedRoot: fileSystemSession.root,
           generateComprehensiveFixture: vi.fn(async () => ({
             coverage: [],
             manifestPath: '/__hizofs_fixture__/manifest.json',
@@ -208,7 +217,7 @@ describe('HizoFS debug workspaces', () => {
         return {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'in-flight-file-system',
-          fileSystemSession,
+          decryptedRoot: fileSystemSession.root,
           generateComprehensiveFixture: vi.fn(async () => ({
             coverage: [],
             manifestPath: '/__hizofs_fixture__/manifest.json',

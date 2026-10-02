@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createInitialRouteRenderReadinessCoordinator } from './initial-route-render-readiness';
+import { createInitialRouteRenderReadinessCoordinator } from './useInitialRouteRenderReadiness';
 
 describe('initial route render readiness', () => {
   it('reports an ordinary route ready as soon as it mounts', () => {

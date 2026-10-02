@@ -1,7 +1,8 @@
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 
 const UTF8_ENCODER = new TextEncoder();
-const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+// U+FEFF is field data, not a stream signature; preserve names and targets exactly.
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 function assertWellFormedUnicode({ label, value }: { label: string; value: string }): void {
   encodedUtf8StrictByteLength({ label, value });

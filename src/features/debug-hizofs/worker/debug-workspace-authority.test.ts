@@ -69,12 +69,14 @@ describe("HizoFS debug workspace creation authority", () => {
   it("keeps credential and runtime construction behind the injected owner", async () => {
     const backingDirectory = new MockFileSystemDirectoryHandle({ name: "temporary.hizofs" });
     const session = fileSystemSession();
+    const decryptedRoot = createInMemoryStorageRoot({ name: "read-only-root" });
     const dispose = vi.fn(async () => undefined);
     const createRuntime = vi.fn(async ({ backingDirectory: received }: {
       backingDirectory: FileSystemDirectoryHandle;
     }) => {
       expect(received).toBe(backingDirectory);
       return {
+        decryptedRoot,
         fileSystemId: "temporary-file-system",
         fileSystemSession: session,
         dispose,
@@ -86,7 +88,8 @@ describe("HizoFS debug workspace creation authority", () => {
 
     expect(createRuntime).toHaveBeenCalledOnce();
     expect(product.fileSystemId).toBe("temporary-file-system");
-    expect(product.fileSystemSession).toBe(session);
+    expect(product.decryptedRoot).toBe(decryptedRoot);
+    expect("fileSystemSession" in product).toBe(false);
     expect(product.authenticatedInspectionSession).toEqual(expect.objectContaining({
       inspectContainer: expect.any(Function),
       inspectHomeRecord: expect.any(Function),

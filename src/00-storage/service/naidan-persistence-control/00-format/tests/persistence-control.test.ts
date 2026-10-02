@@ -8,6 +8,7 @@ import {
   type NaidanPersistenceControlV1,
   parseTransitionOperationId,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
+import { fileSystemIdToNaidanContainerToken, parseNaidanContainerToken } from '@/00-storage/service/naidan-persistence-control/00-format/container-path';
 
 const A = parsePortableFileSystemId({ value: '0123456789_ABCDEFGHIJ' });
 const B = parsePortableFileSystemId({ value: '1123456789_ABCDEFGHIJ' });
@@ -15,6 +16,16 @@ const C = parsePortableFileSystemId({ value: '2123456789_ABCDEFGHIJ' });
 const DIGEST = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const NONCE = 'AAAAAAAAAAAAAAAA';
 const TAG = 'AAAAAAAAAAAAAAAAAAAAAA';
+
+describe('Naidan canonical container token', () => {
+  it('roundtrips the Naidan canonical container token without case-folding the ID', () => {
+    const id = parsePortableFileSystemId({ value: 'Abcdefghij_klmnopq-12' });
+    const token = fileSystemIdToNaidanContainerToken({ id });
+    expect(token).toBe('fs-4162636465666768696a5f6b6c6d6e6f70712d3132.hizofs');
+    expect(parseNaidanContainerToken({ value: token })).toBe(id);
+    expect(() => parseNaidanContainerToken({ value: token.toUpperCase() })).toThrow();
+  });
+});
 
 function plain({ copy = 0, sequence = 1 }: { copy?: 0 | 1; sequence?: number } = {}): NaidanPersistenceControlV1 {
   return {
@@ -92,6 +103,14 @@ describe('Naidan Persistence Control canonical JSON', () => {
     const text = new TextDecoder().decode(encodePersistenceControl({ control: plain() }));
     expect(() => decodePersistenceControl({ bytes: encodePersistenceControlUtf8({ value: text.replace('"formatVersion":1,"copy":0', '"copy":0,"formatVersion":1') }) })).toThrow('canonical order');
     expect(() => decodePersistenceControl({ bytes: encodePersistenceControlUtf8({ value: text.replace('"sequence":1', '"unknown":0,"sequence":1') }) })).toThrow('canonical order');
+  });
+
+  it('rejects a UTF-8 BOM before otherwise canonical JSON', () => {
+    const encoded = encodePersistenceControl({ control: plain() });
+    const prefixed = new Uint8Array(encoded.byteLength + 3);
+    prefixed.set([0xef, 0xbb, 0xbf]);
+    prefixed.set(encoded, 3);
+    expect(() => decodePersistenceControl({ bytes: prefixed })).toThrow();
   });
 
   it('rejects byte and nesting bounds before authority use', () => {

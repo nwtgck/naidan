@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService } from '@/features/import-export/service';
 import { StorageService } from './index';
 import { toBinaryObjectId, toChatId } from '@/01-models/ids';
+import { InMemoryOpfsDirectoryHandle } from './test-support/in-memory-opfs';
+import { createInMemoryStorageRoot } from './storage-file-system/test-support/in-memory-storage-file-system';
+import { exposeStorageVolumeAccess, type StorageVolumeAccess } from './volume-access';
 
 // --- Improved Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -212,5 +215,50 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const shardDir = await binDir.getDirectoryHandle('a1');
     await shardDir.getFileHandle(`${binaryID}.bin`);
     await shardDir.getFileHandle(`.${binaryID}.bin.complete`);
+  });
+});
+
+describe('native special filesystem fallback', () => {
+  it('preserves non-native, direct, and absent access without replacing their identity', () => {
+    const storageAccess: StorageVolumeAccess = {
+      type: 'storage_directory',
+      handle: createInMemoryStorageRoot({ name: 'custom' }),
+    };
+    const directAccess: StorageVolumeAccess = {
+      type: 'direct_directory',
+      handle: new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'window', name: 'direct' }) as unknown as FileSystemDirectoryHandle,
+    };
+
+    expect(exposeStorageVolumeAccess({ access: storageAccess })).toBe(storageAccess);
+    expect(exposeStorageVolumeAccess({ access: directAccess })).toBe(directAccess);
+    expect(exposeStorageVolumeAccess({ access: null })).toBeNull();
+  });
+
+  it.each(['local', 'memory'] as const)('returns the same native terminal directory with the %s provider', async (type) => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'window', name: 'root' });
+    const getDirectory = vi.spyOn(navigator.storage, 'getDirectory')
+      .mockResolvedValue(root as unknown as FileSystemDirectoryHandle);
+    try {
+      const storageService = new StorageService();
+      await storageService.init({ type });
+      expect(storageService.getCurrentType()).toBe(type);
+      getDirectory.mockClear();
+
+      const access = await storageService.openOpfsSpecialFileSystemDirectory({
+        type: 'chat_wesh',
+        path: '/global/home/user',
+        create: true,
+      });
+
+      const chatWeshRoot = await root.getDirectoryHandle('naidan-chat-wesh');
+      const globalRoot = await chatWeshRoot.getDirectoryHandle('global');
+      const homeRoot = await globalRoot.getDirectoryHandle('home');
+      const userRoot = await homeRoot.getDirectoryHandle('user');
+      expect(access?.type).toBe('direct_directory');
+      expect(access?.handle).toBe(userRoot);
+      expect(getDirectory).toHaveBeenCalledTimes(1);
+    } finally {
+      getDirectory.mockRestore();
+    }
   });
 });

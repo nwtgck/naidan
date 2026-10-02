@@ -14,7 +14,10 @@ import {
   finalizeRecursiveSubvolumeSnapshotRows,
   prepareRecursiveSubvolumeSnapshotPlan,
 } from "@/00-storage/service/hizofs/filesystem/subvolume/recursive-subvolume-snapshot-plan";
-import type { SubvolumeTopologyMount } from "@/00-storage/service/hizofs/filesystem/subvolume/subvolume-topology";
+import {
+  validateSubvolumeTopology,
+  type SubvolumeTopologyMount,
+} from "@/00-storage/service/hizofs/filesystem/subvolume/subvolume-topology";
 
 function rootReference(seed: number) {
   return createHomeRecordReference({ fields: {
@@ -96,7 +99,7 @@ function input({
       entryName: "snapshot",
       parentAccess,
       parentDirectoryInodeNumber: createInodeNumber({ value: 50n }),
-      parentSubvolumeId: createSubvolumeId({ value: 10n }),
+      parentSubvolumeId: rootSubvolumeId,
       requestedAccess,
     },
   } as const;
@@ -112,15 +115,27 @@ function errorCode(parameters: Parameters<typeof prepareRecursiveSubvolumeSnapsh
 }
 
 describe("Recursive Subvolume snapshot plan", () => {
-  it("assigns fresh identities and requires COW for every parent containing rewritten mounts", () => {
+  it("rejects a destination parent absent from the captured topology before allocating rows", () => {
+    const parameters = input({ nextSubvolumeId: 100n, sourceTopologyRows: [] });
+    expect(errorCode({
+      ...parameters,
+      target: { ...parameters.target, parentSubvolumeId: createSubvolumeId({ value: 99n }) },
+    })).toBe("destination_parent_missing");
+  });
+
+  it.each([1n, 2n])("preserves a valid recursive snapshot graph under destination parent %s", (parentId) => {
     const sourceRows = [
       nested({ id: 3, parentId: 2, name: "archive" }),
       nested({ id: 2, parentId: 1, name: "workspace" }),
     ];
-    const plan = prepareRecursiveSubvolumeSnapshotPlan(input({
+    const parameters = input({
       sourceTopologyMounts: sourceRows.map(source => mount({ source })),
       sourceTopologyRows: sourceRows,
-    }));
+    });
+    const plan = prepareRecursiveSubvolumeSnapshotPlan({
+      ...parameters,
+      target: { ...parameters.target, parentSubvolumeId: createSubvolumeId({ value: parentId }) },
+    });
 
     expect(plan.directoryEntry).toEqual({ name: "snapshot", subvolumeId: 20n, targetType: "subvolume" });
     expect(plan.nextSubvolumeId).toBe(23n);
@@ -136,7 +151,7 @@ describe("Recursive Subvolume snapshot plan", () => {
       subvolumeId: draft.subvolumeId,
       rootPlanType: draft.inodeTableRootPlan.type,
     }))).toEqual([
-      { access: "read", entryName: "snapshot", parentSubvolumeId: 10n, rootPlanType: "rewrite_mount_entries", subvolumeId: 20n },
+      { access: "read", entryName: "snapshot", parentSubvolumeId: parentId, rootPlanType: "rewrite_mount_entries", subvolumeId: 20n },
       { access: "read", entryName: "workspace", parentSubvolumeId: 20n, rootPlanType: "rewrite_mount_entries", subvolumeId: 21n },
       { access: "read", entryName: "archive", parentSubvolumeId: 21n, rootPlanType: "share", subvolumeId: 22n },
     ]);
@@ -175,6 +190,13 @@ describe("Recursive Subvolume snapshot plan", () => {
       rewrittenChild,
       sourceRows[0]?.inodeTableRootHomeRef,
     ]);
+    const combinedRows = [...sourceRows, ...rows];
+    expect(() => validateSubvolumeTopology({
+      maxTopologyEntries: parameters.maxTopologyEntries,
+      mounts: combinedRows.map(source => mount({ source })),
+      rootSubvolumeId,
+      rows: combinedRows,
+    })).not.toThrow();
   });
 
   it("rejects missing, duplicate, or unexpected rewritten roots", () => {
@@ -213,7 +235,7 @@ describe("Recursive Subvolume snapshot plan", () => {
   });
 
   it("rejects allocator regression and graph-sized exhaustion before assigning identities", () => {
-    expect(errorCode(input({ nextSubvolumeId: 10n }))).toBe("allocator_regression");
+    expect(errorCode(input({ nextSubvolumeId: 3n }))).toBe("allocator_regression");
     expect(errorCode(input({ nextSubvolumeId: UINT64_MAXIMUM - 1n }))).toBe("allocator_exhausted");
   });
 
@@ -245,6 +267,32 @@ describe("Recursive Subvolume snapshot plan", () => {
       sourceTopologyRows: rows,
     }));
     expect(plan.sourceToSnapshotSubvolumeIds.map(entry => entry.sourceSubvolumeId)).toEqual([1n, 2n, 8n, 9n]);
+  });
+
+  it("assigns snapshot identities in child-ID depth-first preorder for shuffled topology", () => {
+    const rows = [
+      nested({ id: 4, parentId: 2, name: "second-child" }),
+      nested({ id: 9, parentId: 1, name: "sibling" }),
+      nested({ id: 5, parentId: 3, name: "grandchild" }),
+      nested({ id: 2, parentId: 1, name: "parent" }),
+      nested({ id: 3, parentId: 2, name: "first-child" }),
+    ];
+    const plan = prepareRecursiveSubvolumeSnapshotPlan(input({
+      maxTopologyEntries: rows.length,
+      sourceTopologyMounts: rows.map(source => mount({ source })),
+      sourceTopologyRows: rows,
+    }));
+
+    expect(plan.sourceToSnapshotSubvolumeIds).toEqual([
+      { snapshotSubvolumeId: 20n, sourceSubvolumeId: 1n },
+      { snapshotSubvolumeId: 21n, sourceSubvolumeId: 2n },
+      { snapshotSubvolumeId: 22n, sourceSubvolumeId: 3n },
+      { snapshotSubvolumeId: 23n, sourceSubvolumeId: 5n },
+      { snapshotSubvolumeId: 24n, sourceSubvolumeId: 4n },
+      { snapshotSubvolumeId: 25n, sourceSubvolumeId: 9n },
+    ]);
+    expect(plan.snapshotRowDrafts.map(draft => draft.parentSubvolumeId)).toEqual([1n, 20n, 21n, 22n, 21n, 20n]);
+    expect(plan.nextSubvolumeId).toBe(26n);
   });
 
   it("rejects captured topology beyond the explicit memory bound", () => {

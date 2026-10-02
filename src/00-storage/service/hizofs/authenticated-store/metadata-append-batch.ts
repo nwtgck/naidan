@@ -3,6 +3,7 @@ import {
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
+import type { AuthenticatedNamespaceRecord } from "./namespace-record-source";
 import {
   AuthenticatedSegmentCapacityError,
   type AppendedRecord,
@@ -112,6 +113,16 @@ export class AuthenticatedMetadataAppendBatch {
       default: return result satisfies never;
       }
     });
+  }
+
+  readPendingHomeRecord({ reference }: { reference: HomeRecordReference }): AuthenticatedNamespaceRecord | undefined {
+    this.requireOpen();
+    const index = this.plannedResults.findIndex(result => result.type === "home"
+      && sameRecordReferenceFields({ left: result.homeReference, right: reference }));
+    if (index < 0) return undefined;
+    const record = this.records[index];
+    if (record === undefined) throw new Error("pending metadata payload is missing");
+    return { plaintext: record.plaintext.slice(), recordKind: record.recordKind };
   }
 
   pendingFrameBytes(): number {

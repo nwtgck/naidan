@@ -1,6 +1,6 @@
 import type { Component } from 'vue';
 import type { ApplicationShellRenderGate } from './application-shell-render-gate';
-import type { OpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
+import type { OpfsEncryptionStartupGate } from '@/composables/opfs-encryption-startup-gate';
 
 export type StartupState =
   | {

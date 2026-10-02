@@ -1,4 +1,5 @@
 import {
+  compareUnsignedBytes,
   decodeBase64UrlUnpadded,
   encodeBase64UrlUnpadded,
   decodeRestrictedCanonicalJson,
@@ -30,6 +31,10 @@ export function encodePersistenceControlAsciiString({ value }: { value: string }
 
 export function encodePortableFilenameComponent({ value }: { value: string }): Uint8Array {
   return encodeFilenameComponent({ value });
+}
+
+export function comparePortableFilenameComponentBytes({ left, right }: { left: Uint8Array; right: Uint8Array }): number {
+  return compareUnsignedBytes({ left, right });
 }
 
 export function encodePortableSymlinkTarget({ value }: { value: string }): Uint8Array {

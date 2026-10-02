@@ -199,8 +199,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 37,
-    benchmarkImplementationVersion: 111,
+    schemaVersion: 38,
+    benchmarkImplementationVersion: 112,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -232,29 +232,15 @@ function createReport(): HizoFSBenchmarkReport {
       backingStorePathAttributionScope: 'canonical_container_path_kind',
       backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
       physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
+      caseParameterScope: "common_to_recorded_measured_samples",
+      sampleParameterScope: "each_recorded_iteration_including_warmup",
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: 1024 * 1024,
-        maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 2,
-        fileChunkReadPrefetchConcurrencyPerReader: 4,
-        backingFileHandleCacheEntryLimitPerRuntime: 1024,
-        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 2 * 1024 * 1024,
+        application: { type: "unavailable", reason: "artificial report fixture" },
         fileDataAppendBatchFrameByteLimitPerWriter: 16 * 1024 * 1024 + 128 * (64 + 16 + 7),
         fileDataAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
         fileDataAppendBatchRecordLimitPerWriter: 128,
         fileExtentMutationBatchEntryLimitPerWriter: 64,
         fileExtentTailAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 4 * 1024 * 1024,
-        metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
-        metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
-        inodeIndexLeafEntryLimitPerRuntime: 10,
-        directoryIndexLeafEntryLimitPerRuntime: 64,
-        fileExtentIndexLeafEntryLimitPerRuntime: 32,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
-        fileChunkCacheEntryLimitPerRuntime: 2048,
-        fileChunkCacheAdmission: 'read',
       },
     },
     configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
@@ -278,6 +264,7 @@ function createReport(): HizoFSBenchmarkReport {
             iteration: 0,
             phase: 'measured',
             includedInAggregates: true,
+            parameters: { count: 1 },
             acceptedDurationMs: 1,
             settlementDurationMs: undefined,
             durationMs: 1,
@@ -336,6 +323,7 @@ function createReport(): HizoFSBenchmarkReport {
             iteration: 0,
             phase: 'measured',
             includedInAggregates: true,
+            parameters: { count: 1 },
             acceptedDurationMs: 1,
             settlementDurationMs: 1,
             durationMs: 2,
@@ -419,6 +407,39 @@ function createReport(): HizoFSBenchmarkReport {
 }
 
 describe('HizoFS benchmark report serialization', () => {
+  it('retains iteration parameters in full reports and explicitly omits them from summaries', () => {
+    const report = createReport();
+    const rawOpfs = report.results[0]?.backends.rawOpfs;
+    const measured = rawOpfs?.samples[0];
+    if (rawOpfs === undefined || measured === undefined) throw new TypeError('missing report fixture sample');
+    rawOpfs.sampleCount = 2;
+    rawOpfs.samples = [
+      { ...measured, phase: 'warmup', includedInAggregates: false, parameters: { count: 1, uniqueBlockPositions: 99 } },
+      { ...measured, parameters: { count: 1, uniqueBlockPositions: 7 } },
+      { ...measured, iteration: 1, parameters: { count: 1, uniqueBlockPositions: 8 } },
+    ];
+    const validated = hizoFSBenchmarkReportSchema.parse(report);
+    const full = JSON.parse(serializeHizoFSBenchmarkFullReport({ report: validated })) as {
+      results: Array<{ backends: { rawOpfs: {
+        samples: Array<{ parameters: Record<string, number> }>;
+      } } }>;
+    };
+    expect(full.results[0]?.backends.rawOpfs?.samples.map(sample => sample.parameters.uniqueBlockPositions))
+      .toEqual([99, 7, 8]);
+    const summary = JSON.parse(serializeHizoFSBenchmarkSummaryReport({ report })) as {
+      measurementModel: { caseParameterScope: string; sampleParameterScope: string };
+      results: Array<{ parameters: object; backends: { rawOpfs: {
+        sampleCount: number; samples?: unknown; sampleDetailScope: string;
+      } } }>;
+    };
+    expect(summary.measurementModel.caseParameterScope).toBe('common_to_recorded_measured_samples');
+    expect(summary.results[0]?.parameters).toEqual({ count: 1 });
+    expect(summary.results[0]?.backends.rawOpfs.sampleCount).toBe(2);
+    expect(summary.results[0]?.backends.rawOpfs.samples).toBeUndefined();
+    expect(summary.results[0]?.backends.rawOpfs.sampleDetailScope)
+      .toBe('samples_and_per_iteration_parameters_omitted');
+  });
+
   it('keeps samples and error stacks only in the full report', () => {
     const report = createReport();
     const full = JSON.parse(serializeHizoFSBenchmarkFullReport({ report })) as object;
@@ -586,6 +607,11 @@ describe('HizoFS benchmark report serialization', () => {
       ...report,
       schemaVersion: 25,
       benchmarkImplementationVersion: 34,
+    })).toThrow();
+    expect(() => hizoFSBenchmarkReportSchema.parse({
+      ...report,
+      schemaVersion: 37,
+      benchmarkImplementationVersion: 111,
     })).toThrow();
   });
 

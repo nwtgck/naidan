@@ -13,6 +13,10 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import type { CapturedCandidateSegment } from "@/00-storage/service/hizofs/maintenance/candidate-segment-batch";
 import { createCandidateFrameOrdinalAuthority } from "@/00-storage/service/hizofs/authenticated-store/candidate-frame-ordinal-authority";
+import {
+  MaintenanceDiagnostics,
+  MaintenanceDiagnosticsUnavailableError,
+} from "@/00-storage/service/hizofs/diagnostics/maintenance-diagnostics";
 import type { ResolvedMaintenanceRecord } from "@/00-storage/service/hizofs/maintenance/garbage-collection-mark-cursor";
 import { createMaintenancePolicy } from "@/00-storage/service/hizofs/maintenance/maintenance-policy";
 import {
@@ -160,6 +164,72 @@ describe("sliced garbage collection cycle", () => {
       removeSegment: removeSuccess,
       signal: undefined,
     })).phase).toBe("completed");
+  });
+
+  it("announces marking only on the first slice without reading diagnostic snapshots", async () => {
+    const { cycle } = setup();
+    expect(cycle.diagnostics()).toEqual([]);
+    const snapshot = vi.spyOn(MaintenanceDiagnostics.prototype, "snapshot");
+    try {
+      for (let index = 0; index < 2; index += 1) {
+        expect(await cycle.runSlice({
+          classifySweepFailure: retainFailure,
+          hasForegroundWaiter: () => true,
+          now: constantNow,
+          removeSegment: removeSuccess,
+          signal: undefined,
+        })).toEqual({ phase: "marking", reason: "foreground_waiter" });
+      }
+      expect(snapshot).not.toHaveBeenCalled();
+      expect(cycle.diagnostics().filter(event => event.type === "phase_started" && event.phase === "marking"))
+        .toEqual([{ phase: "marking", sequence: 1, type: "phase_started" }]);
+    } finally {
+      snapshot.mockRestore();
+    }
+  });
+
+  it("continues marking and sweeping after observation recording becomes unavailable", async () => {
+    const { beginDeletion, cycle, validateAndPrepareSweep } = setup();
+    const record = MaintenanceDiagnostics.prototype.record;
+    const observation = vi.spyOn(MaintenanceDiagnostics.prototype, "record").mockImplementationOnce(function (this: MaintenanceDiagnostics) {
+      record.call(this, { event: { copiedBytes: -1, type: "compaction_progress" } });
+    });
+    const removeSegment = vi.fn(removeSuccess);
+    try {
+      expect(await cycle.runSlice({
+        classifySweepFailure: retainFailure,
+        hasForegroundWaiter: () => true,
+        now: constantNow,
+        removeSegment,
+        signal: undefined,
+      })).toEqual({ phase: "marking", reason: "foreground_waiter" });
+      expect(() => cycle.diagnostics()).toThrow(MaintenanceDiagnosticsUnavailableError);
+      const result = await cycle.runSlice({
+        classifySweepFailure: retainFailure,
+        hasForegroundWaiter: noForeground,
+        now: constantNow,
+        removeSegment,
+        signal: undefined,
+      });
+      expect(result.phase).toBe("completed");
+      if (result.phase !== "completed") expect.unreachable("unavailable observations must not stop collection");
+      expect(ids({ values: result.compactionSegmentIds })).toEqual([segmentIdToLowercaseHex({ id: segmentId({ seed: 50 }) })]);
+      expect(ids({ values: result.removedSegmentIds })).toEqual([segmentIdToLowercaseHex({ id: segmentId({ seed: 60 }) })]);
+      expect(result.retainedSegmentIds).toEqual([]);
+      expect(await cycle.runSlice({
+        classifySweepFailure: retainFailure,
+        hasForegroundWaiter: noForeground,
+        now: constantNow,
+        removeSegment,
+        signal: undefined,
+      })).toBe(result);
+      expect(validateAndPrepareSweep).toHaveBeenCalledOnce();
+      expect(beginDeletion).toHaveBeenCalledOnce();
+      expect(removeSegment).toHaveBeenCalledOnce();
+      expect(() => cycle.diagnostics()).toThrow(MaintenanceDiagnosticsUnavailableError);
+    } finally {
+      observation.mockRestore();
+    }
   });
 
   it("aborts before deletion when the short-gate validation rejects the captured roots", async () => {

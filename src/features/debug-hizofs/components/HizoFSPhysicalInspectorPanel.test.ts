@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { HIZOFS_V1_FORMAT_CONSTANTS } from "@/00-storage/service/hizofs/00-format";
 import type { HizoFSAuthenticatedInspectionSession } from "@/features/debug-hizofs/worker/authenticated-inspection-session";
 import type { HizoFSPhysicalInspectionWorker } from "@/features/debug-hizofs/worker/physical-inspection";
 import HizoFSPhysicalInspectorPanel from "./HizoFSPhysicalInspectorPanel.vue";
@@ -609,6 +610,48 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-record"]').text()).toContain("file data, 48 bytes");
   });
 
+  it.each([
+    { role: "root", context: { pageIsRoot: true } },
+    { role: "non_root", context: { pageIsRoot: false } },
+    { role: "unspecified", context: {} },
+  ] as const)("preserves the $role page role when resolving a selected structural Home Record", async ({ role, context }) => {
+    const containerView = mocks.createContainerView();
+    const frame = containerView.segmentRows[0].frames[0];
+    frame.recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page;
+    frame.homeReference.recordKind = frame.recordKind;
+    const inspector = createWorker();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { inspector } });
+    try {
+      await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("container passphrase");
+      await wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').trigger("click");
+      await flushPromises();
+      await wrapper.get('[data-testid="hizofs-physical-inspector-frame"]').trigger("click");
+      await wrapper.get('[data-testid="hizofs-physical-inspector-page-role"]').setValue(role);
+      await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("container passphrase");
+      await wrapper.get('[data-testid="hizofs-physical-inspector-read-home-record"]').trigger("click");
+      await flushPromises();
+
+      expect(inspector.inspectHomeRecord).toHaveBeenCalledExactlyOnceWith({
+        maximumPreviewBytes: 4096,
+        passphrase: "container passphrase",
+        request: {
+          frameLength: 128,
+          homeOffset: "64",
+          homeSegmentId: "00000000000000000000000000000001",
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+          ...context,
+        },
+      });
+      const request = vi.mocked(inspector.inspectHomeRecord).mock.calls[0]?.[0].request;
+      expect(request).not.toHaveProperty("physicalOffset");
+      expect(request).not.toHaveProperty("physicalSegmentId");
+      if (role === "unspecified") expect(request).not.toHaveProperty("pageIsRoot");
+      expect((wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').element as HTMLInputElement).value).toBe("");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("follows an authoritative Commit home reference with a new one-shot passphrase", async () => {
     const inspector = createWorker();
     mocks.createRecordView
@@ -1020,6 +1063,73 @@ describe("HizoFSPhysicalInspectorPanel", () => {
       .toContain("not a direct lineage or ownership view");
   });
 
+  it.each([
+    { columnTestId: "hizofs-physical-inspector-namespace-ancestor", inodeNumber: "1", entryPosition: 1, path: "/" },
+    { columnTestId: "hizofs-physical-inspector-namespace", inodeNumber: "2", entryPosition: 2, path: "/docs" },
+  ])("opens the containing page with the clicked $path Inode observation", async ({ columnTestId, inodeNumber, entryPosition, path }) => {
+    const parent = mocks.createNamespaceView({ inspection: { pathComponents: [] } });
+    const child = mocks.createNamespaceView({ inspection: { pathComponents: ["docs"] } });
+    const entries = [
+      { inodeKind: "directory", inodeNumber: "1" },
+      { inodeKind: "directory", inodeNumber: "2" },
+    ];
+    const parentEntryJson = JSON.stringify(entries[0], undefined, 2);
+    const childEntryJson = JSON.stringify(entries[1], undefined, 2);
+    mocks.createNamespaceView
+      .mockReturnValueOnce({
+        ...parent,
+        selectedInodeEvidence: { ...parent.selectedInodeEvidence, entry: entries[0], entryJson: parentEntryJson },
+      })
+      .mockReturnValueOnce({
+        ...child,
+        inodeNumber: "2",
+        selectedInodeEvidence: { ...child.selectedInodeEvidence, entry: entries[1], entryJson: childEntryJson },
+      });
+    const payload = {
+      decodedPayload: { entries, level: 0, type: "leaf" },
+      family: "inode_table",
+      state: "decoded",
+    };
+    mocks.createRecordView.mockReturnValue({
+      ...mocks.createRecordView(),
+      payload,
+      payloadJson: JSON.stringify(payload.decodedPayload, undefined, 2),
+      recordKindName: "inode_table_page",
+    });
+    const authenticatedSession = createAuthenticatedSession();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, {
+      props: { authenticatedSession, requestedNamespacePath: "/docs" },
+    });
+    try {
+      await flushPromises();
+      const column = wrapper.get(`[data-testid="${columnTestId}"]`);
+      await column.get('[data-testid="hizofs-physical-inspector-selected-inode-reference"]').trigger("click");
+      await flushPromises();
+
+      expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(2);
+      expect(authenticatedSession.inspectHomeRecord).toHaveBeenCalledExactlyOnceWith({
+        maximumPreviewBytes: 4096,
+        request: parent.selectedInodeEvidence.containingInodeTablePage,
+      });
+      expect(wrapper.find('[data-testid="hizofs-physical-inspector-error"]').exists()).toBe(false);
+      const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-selected-inode-context"]');
+      expect(context.text()).toContain(`Commit 4 · ${path} · Inode ${inodeNumber}`);
+      expect(context.text()).toContain(`selected Inode at entry ${String(entryPosition)}`);
+      expect(wrapper.get('[data-testid="hizofs-physical-inspector-record-payload"]').text())
+        .toContain(JSON.stringify(payload.decodedPayload, undefined, 2));
+      const returnButton = wrapper.get('[data-testid="hizofs-physical-inspector-return-logical-context"]');
+      expect(returnButton.text()).toBe(`Return to logical ${path}`);
+      await returnButton.trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').attributes("data-namespace-column-path"))
+        .toBe(path);
+      expect(vi.mocked(authenticatedSession.inspectNamespacePath).mock.calls.map(([request]) => request.pathComponents))
+        .toEqual(path === "/" ? [[], ["docs"], []] : [[], ["docs"]]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("shows a nested Subvolume as a traversal boundary with a canonical table-root route", async () => {
     const base = mocks.createNamespaceView({ inspection: { pathComponents: [] } });
     mocks.createNamespaceView.mockReturnValueOnce({
@@ -1065,6 +1175,70 @@ describe("HizoFSPhysicalInspectorPanel", () => {
         recordKind: 17,
       },
     });
+  });
+
+  it("returns to the clicked ancestor observation after opening its Nested Subvolume Table route", async () => {
+    const parent = mocks.createNamespaceView({ inspection: { pathComponents: [] } });
+    const child = mocks.createNamespaceView({ inspection: { pathComponents: ["docs"] } });
+    const tableRequest = {
+      frameLength: 192,
+      homeOffset: "512",
+      homeSegmentId: "00000000000000000000000000000008",
+      pageIsRoot: true,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.nested_subvolume_table_page,
+    };
+    const nestedSubvolumeTableRoot = {
+      label: "nestedSubvolumeTableRootHomeRef",
+      request: tableRequest,
+      targetType: "home_record",
+    };
+    mocks.createNamespaceView
+      .mockReturnValueOnce({
+        ...parent,
+        directoryEntries: [...parent.directoryEntries, {
+          kind: "subvolume",
+          name: "snapshot",
+          path: "/snapshot",
+          pathComponents: ["snapshot"],
+          target: "Subvolume 7",
+        }],
+        nestedSubvolumeTableRoot,
+      })
+      .mockReturnValueOnce({ ...child, inodeNumber: "2", nestedSubvolumeTableRoot });
+    const authenticatedSession = createAuthenticatedSession();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, {
+      props: { authenticatedSession, requestedNamespacePath: "/docs" },
+    });
+    try {
+      await flushPromises();
+      const parentColumn = wrapper.get('[data-testid="hizofs-physical-inspector-namespace-ancestor"]');
+      const childColumn = wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]');
+      expect(parentColumn.attributes("data-namespace-column-path")).toBe("/");
+      expect(childColumn.attributes("data-namespace-column-path")).toBe("/docs");
+      expect(childColumn.find('[data-testid="hizofs-physical-inspector-nested-subvolume-table-root"]').exists()).toBe(false);
+      await parentColumn.get('[data-testid="hizofs-physical-inspector-nested-subvolume-table-root"]').trigger("click");
+      await flushPromises();
+
+      expect(authenticatedSession.inspectHomeRecord).toHaveBeenCalledExactlyOnceWith({
+        maximumPreviewBytes: 4096,
+        request: tableRequest,
+      });
+      expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(2);
+      expect(wrapper.find('[data-testid="hizofs-physical-inspector-error"]').exists()).toBe(false);
+      const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-logical-context"]');
+      expect(context.text()).toContain("logical / at Commit 4");
+      expect(context.text()).not.toContain("/docs");
+      const returnButton = context.get('[data-testid="hizofs-physical-inspector-return-logical-context"]');
+      expect(returnButton.text()).toBe("Return to logical /");
+      await returnButton.trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').attributes("data-namespace-column-path"))
+        .toBe("/");
+      expect(vi.mocked(authenticatedSession.inspectNamespacePath).mock.calls.map(([request]) => request.pathComponents))
+        .toEqual([[], ["docs"], []]);
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it("keeps an evidence-only logical observation on namespace-derived records and returns to it", async () => {

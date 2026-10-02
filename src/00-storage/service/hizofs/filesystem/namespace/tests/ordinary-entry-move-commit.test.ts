@@ -9,6 +9,7 @@ import {
   createTimestampMilliseconds,
   createFileOffset,
   createUInt64,
+  encodeDirectoryEntry,
   parseMutationId,
   parseSegmentId,
   type DirectoryInodeEntry,
@@ -20,13 +21,14 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import {
   createDirectoryPageTreePageStore,
+  readDirectoryPageTreeEntry,
   type DirectoryPagePort,
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTablePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import { prepareOrdinaryEntryMoveCommit } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-move-commit";
 import { prepareOrdinaryEntryMovePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-move-plan";
 import type { ImmutableBTreePage } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 type InodePage = ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>;
 
@@ -42,14 +44,22 @@ function reference({ kind, offset }: { kind: number; offset: bigint }): HomeReco
 class MemoryDirectoryPagePort implements DirectoryPagePort {
   readonly pages = new Map<HomeRecordReference, DirectoryPage>();
   private nextOffset = 1_024n;
+  private reading = false;
 
   async readPage({ reference: pageReference }: {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<DirectoryPage> {
-    const page = this.pages.get(pageReference);
-    if (page === undefined) throw new Error("missing Directory page");
-    return page;
+    if (this.reading) throw new Error("Directory page authority is not reentrant");
+    this.reading = true;
+    try {
+      await Promise.resolve();
+      const page = this.pages.get(pageReference);
+      if (page === undefined) throw new Error("missing Directory page");
+      return page;
+    } finally {
+      this.reading = false;
+    }
   }
 
   async writePage({ page }: { isRoot: boolean; page: DirectoryPage }): Promise<HomeRecordReference> {
@@ -164,6 +174,27 @@ function rootEntries({ root, store }: {
 const operationTimestamp = createTimestampMilliseconds({ value: 1_700_000_000_000n });
 const subvolumeId = createSubvolumeId({ value: 1n });
 
+function inlineBoundaryFixture() {
+  const source = binding({ inodeKind: "file", inodeNumber: 17n, name: "s" });
+  const entries = [
+    ...Array.from({ length: 15 }, (_, index) => binding({
+      inodeKind: "file",
+      inodeNumber: BigInt(index + 2),
+      name: `${index.toString().padStart(3, "0")}${"x".repeat(247)}`,
+    })),
+    source,
+  ];
+  const parent = directoryInode({ entries, inodeNumber: 1n });
+  return {
+    parent,
+    source,
+    state: fixture({
+      inodes: [parent, ...entries.map(entry => fileInode({ inodeNumber: entry.inodeNumber }))],
+      rootDirectoryInodeNumber: parent.inodeNumber,
+    }),
+  };
+}
+
 async function prepare({
   destinationEntry,
   destinationName,
@@ -214,6 +245,55 @@ async function prepare({
 }
 
 describe("ordinary entry move Commit", () => {
+  it.each([
+    { destinationName: "z".repeat(122), expectedBytes: 4096, expectedType: "inline" },
+    { destinationName: "z".repeat(123), expectedBytes: 4097, expectedType: "tree" },
+    { destinationName: "\u754c".repeat(41), expectedBytes: 4097, expectedType: "tree" },
+  ] as const)("selects $expectedType for a rename requiring $expectedBytes UTF-8 bytes", async ({ destinationName, expectedBytes, expectedType }) => {
+    const { parent, source, state } = inlineBoundaryFixture();
+    if (parent.content.type !== "inline") throw new Error("expected inline input");
+    expect(parent.content.entries.reduce((total, entry) => total + encodeDirectoryEntry({ entry: entry === source
+      ? { ...entry, name: destinationName }
+      : entry }).byteLength, 0)).toBe(expectedBytes);
+    const result = await prepare({
+      destinationEntry: null,
+      destinationName,
+      destinationParent: parent,
+      fixture: state,
+      replace: false,
+      sourceEntry: source,
+      sourceParent: parent,
+    });
+    const content = result.mutation.updatedSourceParent.content;
+    expect(content.type).toBe(expectedType);
+    expect(result.mutation.updatedSourceParent.inodeRevision).toBe(2n);
+    expect(state.directoryPort.pages.size).toBe(expectedType === "inline" ? 0 : 1);
+    if (content.type === "tree") {
+      await expect(readDirectoryPageTreeEntry({ name: destinationName, pageStore: state.directoryPageStore, rootReference: content.directoryTreeRootHomeRef }))
+        .resolves.toEqual({ ...source, name: destinationName });
+    }
+    expect(parent.content.entries.at(-1)).toBe(source);
+  });
+
+  it("leaves the captured parent and Inode Table unchanged when promotion fails", async () => {
+    const { parent, source, state } = inlineBoundaryFixture();
+    const failure = new Error("Directory Page write failed");
+    vi.spyOn(state.directoryPort, "writePage").mockRejectedValueOnce(failure);
+    await expect(prepare({
+      destinationEntry: null,
+      destinationName: "z".repeat(250),
+      destinationParent: parent,
+      fixture: state,
+      replace: false,
+      sourceEntry: source,
+      sourceParent: parent,
+    })).rejects.toBe(failure);
+    expect(parent.content).toMatchObject({ entries: expect.arrayContaining([source]), type: "inline" });
+    expect(parent.inodeRevision).toBe(1n);
+    expect(state.directoryPort.pages.size).toBe(0);
+    expect(state.inodePageStore.pages.size).toBe(1);
+  });
+
   it("renames an inline entry within one parent and increments the parent once", async () => {
     const source = binding({ inodeKind: "file", inodeNumber: 2n, name: "z-source" });
     const keep = binding({ inodeKind: "file", inodeNumber: 3n, name: "keep" });
@@ -285,7 +365,7 @@ describe("ordinary entry move Commit", () => {
     }).map(entry => entry.inodeNumber)).toEqual([1n, 2n, 3n]);
   });
 
-  it("rewrites a tree-backed same-parent rename through the authoritative page writer", async () => {
+  it.each(["leaf", "branch"] as const)("rewrites a tree-backed same-parent rename through a serialized %s page writer", async rootType => {
     const source = binding({ inodeKind: "file", inodeNumber: 2n, name: "source" });
     const parentBase = directoryInode({ entries: [], inodeNumber: 1n });
     const directoryRoot = reference({
@@ -300,7 +380,15 @@ describe("ordinary entry move Commit", () => {
       inodes: [parent, fileInode({ inodeNumber: 2n })],
       rootDirectoryInodeNumber: parent.inodeNumber,
     });
-    state.directoryPort.pages.set(directoryRoot, { entries: [source], level: 0, type: "leaf" });
+    if (rootType === "leaf") {
+      state.directoryPort.pages.set(directoryRoot, { entries: [source], level: 0, type: "leaf" });
+    } else {
+      const child = reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page, offset: 384n });
+      state.directoryPort.pages.set(directoryRoot, {
+        entries: [{ childPageHomeRef: child, upperBoundName: source.name }], level: 1, type: "branch",
+      });
+      state.directoryPort.pages.set(child, { entries: [source], level: 0, type: "leaf" });
+    }
 
     const result = await prepare({
       destinationEntry: null,
@@ -313,7 +401,9 @@ describe("ordinary entry move Commit", () => {
     });
 
     if (result.mutation.updatedSourceParent.content.type !== "tree") throw new Error("expected tree parent");
-    expect(state.directoryPort.pages.get(result.mutation.updatedSourceParent.content.directoryTreeRootHomeRef))
-      .toMatchObject({ entries: [{ ...source, name: "moved" }], type: "leaf" });
+    await expect(readDirectoryPageTreeEntry({
+      name: "moved", pageStore: state.directoryPageStore,
+      rootReference: result.mutation.updatedSourceParent.content.directoryTreeRootHomeRef,
+    })).resolves.toEqual({ ...source, name: "moved" });
   });
 });

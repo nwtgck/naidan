@@ -1,7 +1,8 @@
 import type { StorageVolumeAccess } from './volume-access';
 import { writeReadableStreamToFileHandle } from '@/utils/file-system-stream';
-import type { StorageDirectoryHandle } from './storage-file-system/types';
+import type { StorageDirectoryHandle, StorageFileHandle } from './storage-file-system/types';
 import { writeStorageReadableStream } from './storage-file-system/io';
+import { runWithStorageBinaryObjectReadHandleClose } from './binary-object-io';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
@@ -32,6 +33,7 @@ export interface StorageDirectoryTransferSource {
 
 export interface StorageDirectoryTransferTarget {
   createDirectory({ path }: { path: string }): Promise<void>,
+  /** Owns consumption or cancellation of the received unlocked source, including setup failures. */
   writeFile({
     path,
     size,
@@ -138,6 +140,21 @@ export async function createStorageDirectoryTransferSource({
   }
 }
 
+async function throwAfterTransferSourceCleanup({ cause, source }: {
+  cause: unknown;
+  source: ReadableStream<Uint8Array>;
+}): Promise<never> {
+  try {
+    if (!source.locked) await source.cancel(cause);
+  } catch (cleanupFailure: unknown) {
+    throw new AggregateError(
+      [cause, cleanupFailure],
+      'Storage transfer setup and source cancellation both failed',
+    );
+  }
+  throw cause;
+}
+
 export function createDirectStorageDirectoryTransferTarget({
   root,
 }: {
@@ -148,19 +165,25 @@ export function createDirectStorageDirectoryTransferTarget({
       await resolveDirectDirectory({ root, path, create: true });
     },
     async writeFile({ path, source, signal }) {
-      const parts = path.split('/').filter(Boolean);
-      const name = parts.pop();
-      if (name === undefined) {
-        throw new Error(`Direct transfer file path has no name: ${path}`);
+      let fileHandle: FileSystemFileHandleWithWritable;
+      try {
+        const parts = path.split('/').filter(Boolean);
+        const name = parts.pop();
+        if (name === undefined) {
+          throw new Error(`Direct transfer file path has no name: ${path}`);
+        }
+        const directory = await resolveDirectDirectory({
+          root,
+          path: `/${parts.join('/')}`,
+          create: true,
+        });
+        fileHandle = await directory.getFileHandle(name, {
+          create: true,
+        }) as FileSystemFileHandleWithWritable;
+        signal?.throwIfAborted();
+      } catch (cause: unknown) {
+        return await throwAfterTransferSourceCleanup({ cause, source });
       }
-      const directory = await resolveDirectDirectory({
-        root,
-        path: `/${parts.join('/')}`,
-        create: true,
-      });
-      const fileHandle = await directory.getFileHandle(name, {
-        create: true,
-      }) as FileSystemFileHandleWithWritable;
       await writeReadableStreamToFileHandle({
         source,
         targetHandle: fileHandle,
@@ -217,35 +240,65 @@ export function createStorageFileSystemDirectoryTransferSource({
               const readable = await entry.openReadable({
                 mimeType: 'application/octet-stream',
               });
-              const stream = readable.stream({
-                start: 0,
-                end: undefined,
-                signal: undefined,
-              });
-              return new ReadableStream<Uint8Array>({
-                start(controller) {
-                  const reader = stream.getReader();
-                  const pump = async (): Promise<void> => {
+              let reader: ReadableStreamDefaultReader<Uint8Array>;
+              try {
+                reader = readable.stream({
+                  start: 0,
+                  end: undefined,
+                  signal: undefined,
+                }).getReader();
+              } catch (cause: unknown) {
+                return await runWithStorageBinaryObjectReadHandleClose({
+                  handle: readable,
+                  operation: async () => {
+                    throw cause;
+                  },
+                });
+              }
+              let terminal = false;
+              let cancelled = false;
+              let cleanupPromise: Promise<void> | undefined;
+              const finish = ({ operation }: { operation: () => Promise<void> }): Promise<void> => {
+                if (cleanupPromise !== undefined) return cleanupPromise;
+                terminal = true;
+                cleanupPromise = runWithStorageBinaryObjectReadHandleClose({
+                  handle: readable,
+                  operation: async () => {
                     try {
-                      while (true) {
-                        const result = await reader.read();
-                        if (result.done) {
-                          controller.close();
-                          await readable.close();
-                          return;
-                        }
-                        controller.enqueue(result.value);
-                      }
-                    } catch (error) {
-                      controller.error(error);
-                      await readable.close().catch(() => {});
+                      await operation();
+                    } finally {
+                      reader.releaseLock();
                     }
-                  };
-                  void pump();
+                  },
+                });
+                return cleanupPromise;
+              };
+              return new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                  if (terminal) return;
+                  try {
+                    const result = await reader.read();
+                    if (terminal) return;
+                    if (result.done) {
+                      await finish({ operation: async () => undefined });
+                      if (!cancelled) controller.close();
+                      return;
+                    }
+                    controller.enqueue(result.value);
+                  } catch (cause: unknown) {
+                    if (cancelled) return;
+                    try {
+                      await finish({ operation: async () => {
+                        throw cause;
+                      } });
+                    } catch (failure: unknown) {
+                      if (!cancelled) controller.error(failure);
+                    }
+                  }
                 },
-                async cancel(reason) {
-                  await readable.close();
-                  void reason;
+                cancel(reason) {
+                  cancelled = true;
+                  return finish({ operation: async () => await reader.cancel(reason) });
                 },
               });
             },
@@ -280,17 +333,22 @@ export function createStorageFileSystemDirectoryTransferTarget({
       await resolveStorageFileSystemDirectory({ root, path, create: true });
     },
     async writeFile({ path, size, source, signal }) {
-      const parts = path.split('/').filter(Boolean);
-      const name = parts.pop();
-      if (name === undefined) {
-        throw new Error(`Storage filesystem transfer path has no file name: ${path}`);
+      let fileHandle: StorageFileHandle;
+      try {
+        const parts = path.split('/').filter(Boolean);
+        const name = parts.pop();
+        if (name === undefined) {
+          throw new Error(`Storage filesystem transfer path has no file name: ${path}`);
+        }
+        const directory = await resolveStorageFileSystemDirectory({
+          root,
+          path: `/${parts.join('/')}`,
+          create: true,
+        });
+        fileHandle = await directory.getFileHandle({ name, create: true });
+      } catch (cause: unknown) {
+        return await throwAfterTransferSourceCleanup({ cause, source });
       }
-      const directory = await resolveStorageFileSystemDirectory({
-        root,
-        path: `/${parts.join('/')}`,
-        create: true,
-      });
-      const fileHandle = await directory.getFileHandle({ name, create: true });
       await writeStorageReadableStream({
         fileHandle,
         source,

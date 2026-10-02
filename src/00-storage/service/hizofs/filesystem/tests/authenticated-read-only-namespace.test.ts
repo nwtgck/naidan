@@ -23,6 +23,7 @@ import {
   type AuthenticatedNamespaceRecordSource,
 } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
 import {
+  createAuthenticatedFileExtentReader,
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
@@ -231,6 +232,56 @@ describe("authenticated read-only HizoFS namespace", () => {
     expect(startedReads).toBe(2);
     expect(decodeCalls).toBe(1);
     directoryCache.dispose();
+  });
+
+  it("validates fully overlaid extent structure without reading replaced File Data", async () => {
+    const root = reference({ kind: KINDS.file_extent_page, offset: 320n });
+    const data = reference({ kind: KINDS.file_data, offset: 576n });
+    const plaintext = encodeFileExtentPage({ isRoot: true, page: {
+      entries: [{ byteLength: 4, dataOffset: 0, fileDataHomeRef: data, fileOffset: createFileOffset({ value: 0n }) }],
+      level: 0,
+      type: "leaf",
+    } });
+    const readHomeRecord = vi.fn(async () => ({ plaintext: plaintext.slice(), recordKind: KINDS.file_extent_page }));
+    const recordSource = recordSourceFromReadHomeRecord({ readHomeRecord });
+    const copyFileDataRange = vi.spyOn(recordSource, "copyFileDataRange");
+    const read = createAuthenticatedFileExtentReader({
+      indexDiagnostics: undefined,
+      recordSource,
+      validationCache: new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 }),
+    });
+    const inode = {
+      content: { extentTreeRootHomeRef: root, type: "tree" as const },
+      fileSize: createFileOffset({ value: 4n }),
+      inodeKind: "file" as const,
+      inodeNumber: createInodeNumber({ value: 2n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+    const request = {
+      copyPending: ({ destination }: { destination: Uint8Array }) => {
+        destination.fill(9);
+        return [];
+      },
+      inode,
+      length: 4n,
+      offset: 0n,
+    };
+    await expect(read(request)).resolves.toEqual(new Uint8Array(4).fill(9));
+    await expect(read(request)).resolves.toEqual(new Uint8Array(4).fill(9));
+    expect(readHomeRecord).toHaveBeenCalledOnce();
+    expect(copyFileDataRange).not.toHaveBeenCalled();
+    await expect(read({
+      ...request,
+      inode: { ...inode, fileSize: createFileOffset({ value: 3n }) },
+      length: 3n,
+    })).rejects.toThrow("beyond the inode file size");
+    expect(copyFileDataRange).not.toHaveBeenCalled();
+    await read({
+      ...request,
+      inode: { ...inode, content: { type: "tree", extentTreeRootHomeRef: { ...root, frameLength: root.frameLength + 16 } } },
+    });
+    expect(readHomeRecord).toHaveBeenCalledTimes(3);
   });
 
   it("reads an authenticated extent range across File Data payload offsets", async () => {

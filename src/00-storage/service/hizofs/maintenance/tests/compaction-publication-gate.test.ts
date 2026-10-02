@@ -23,6 +23,16 @@ function relocationRoot({ seed = 9 }: { seed?: number } = {}) {
   } });
 }
 
+function convergedGate({ sourceSeeds }: { sourceSeeds: readonly number[] }) {
+  const gate = new CompactionPublicationGate({ sourceSegmentIds: sourceSeeds.map(seed => segmentId({ seed })) });
+  gate.markDestinationFramesDurable();
+  gate.markRelocationIndexDurable({ rootPhysicalReference: relocationRoot() });
+  gate.markRootsRevalidated();
+  gate.markPublicationStarted();
+  gate.markCopiesConverged({ publishedRelocationRootPhysicalReference: relocationRoot() });
+  return gate;
+}
+
 describe("compaction publication gate", () => {
   it("protects source segments until destination, tree, revalidation, and both copies converge", () => {
     const gate = new CompactionPublicationGate({ sourceSegmentIds: [segmentId({ seed: 2 }), segmentId({ seed: 1 })] });
@@ -90,6 +100,64 @@ describe("compaction publication gate", () => {
     const leases = await leasesPromise;
     expect(leases).toHaveLength(1);
     expect(leases[0]?.segmentId[0]).toBe(1);
+  });
+
+  it("transfers every successful deletion lease to the caller without releasing it", async () => {
+    const gate = convergedGate({ sourceSeeds: [3, 1, 2] });
+    const released: number[] = [];
+    const leases = await gate.prepareSourceDeletionLeases({
+      beginDeletion: async ({ segmentId }) => ({ release: () => {
+        released.push(segmentId[0]!);
+      } }),
+    });
+    expect(leases.map(lease => lease.segmentId[0])).toEqual([1, 2, 3]);
+    expect(released).toEqual([]);
+    for (const lease of [...leases].reverse()) lease.release();
+    expect(released).toEqual([3, 2, 1]);
+  });
+
+  it.each([new Error("source lease acquisition failed"), undefined])(
+    "preserves the acquisition cause after successful reverse cleanup: %s",
+    async (primaryFailure) => {
+      const gate = convergedGate({ sourceSeeds: [1, 2, 3] });
+      const released: number[] = [];
+      await expect(gate.prepareSourceDeletionLeases({
+        beginDeletion: async ({ segmentId }) => {
+          const seed = segmentId[0]!;
+          if (seed === 3) throw primaryFailure;
+          return { release: () => {
+            released.push(seed);
+          } };
+        },
+      })).rejects.toBe(primaryFailure);
+      expect(released).toEqual([2, 1]);
+    },
+  );
+
+  it.each([
+    { primaryFailure: new Error("source lease acquisition failed"), failedReleaseSeeds: [2] },
+    { primaryFailure: new Error("source lease acquisition failed"), failedReleaseSeeds: [2, 1] },
+    { primaryFailure: undefined, failedReleaseSeeds: [2, 1] },
+  ])("attempts every reverse cleanup and keeps the primary cause first: %j", async ({ primaryFailure, failedReleaseSeeds }) => {
+    const gate = convergedGate({ sourceSeeds: [1, 2, 3] });
+    const released: number[] = [];
+    const cleanupFailures = new Map(failedReleaseSeeds.map(seed => [seed, new Error(`source lease ${seed} cleanup failed`)]));
+    await expect(gate.prepareSourceDeletionLeases({
+      beginDeletion: async ({ segmentId }) => {
+        const seed = segmentId[0]!;
+        if (seed === 3) throw primaryFailure;
+        return { release: () => {
+          released.push(seed);
+          const failure = cleanupFailures.get(seed);
+          if (failure !== undefined) throw failure;
+        } };
+      },
+    })).rejects.toSatisfy((cause: unknown) => {
+      expect(cause).toBeInstanceOf(AggregateError);
+      expect((cause as AggregateError).errors).toEqual([primaryFailure, ...cleanupFailures.values()]);
+      return true;
+    });
+    expect(released).toEqual([2, 1]);
   });
 
 });

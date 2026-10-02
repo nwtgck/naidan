@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 37,
-    benchmarkImplementationVersion: 111,
+    schemaVersion: 38,
+    benchmarkImplementationVersion: 112,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -57,39 +57,15 @@ function createReport({
       backingStorePathAttributionScope: 'canonical_container_path_kind',
       backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
       physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
+      caseParameterScope: "common_to_recorded_measured_samples",
+      sampleParameterScope: "each_recorded_iteration_including_warmup",
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
-        maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter:
-          configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
-        fileChunkReadPrefetchConcurrencyPerReader:
-          configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
-        backingFileHandleCacheEntryLimitPerRuntime:
-          configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit,
-        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter:
-          configuration.hizoFSRuntimePolicy.fileChunkSize
-          * configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
+        application: { type: "unavailable", reason: "artificial report fixture" },
         fileDataAppendBatchFrameByteLimitPerWriter: 16 * 1024 * 1024 + 128 * (64 + 16 + 7),
         fileDataAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
         fileDataAppendBatchRecordLimitPerWriter: 128,
         fileExtentMutationBatchEntryLimitPerWriter: 64,
         fileExtentTailAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader:
-          configuration.hizoFSRuntimePolicy.fileChunkSize
-          * configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
-        metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
-        metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
-        inodeIndexLeafEntryLimitPerRuntime: 10,
-        directoryIndexLeafEntryLimitPerRuntime: 64,
-        fileExtentIndexLeafEntryLimitPerRuntime: 32,
-        fileChunkCacheByteLimitPerRuntime:
-          configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit,
-        fileChunkCacheEntryLimitPerRuntime:
-          configuration.hizoFSRuntimePolicy.fileChunkCacheEntryLimit,
-        fileChunkCacheAdmission:
-          configuration.hizoFSRuntimePolicy.fileChunkCacheAdmission,
       },
     },
     configuration,

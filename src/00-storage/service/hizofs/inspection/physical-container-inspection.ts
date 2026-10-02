@@ -119,7 +119,7 @@ export type HizoFSSegmentInspection = Readonly<{
   physicalSegmentId: string | undefined;
   reason: string | undefined;
   segmentClass: SegmentClass;
-  state: "invalid" | "sealed" | "unsealed_complete" | "unsealed_incomplete" | "unknown_physical_entry";
+  state: SegmentIndexState | "invalid" | "unknown_physical_entry";
 }>;
 
 export type HizoFSAuthoritySelectionInspection =
@@ -465,17 +465,6 @@ function entryName({ entry }: { entry: HizoFSInspectionPhysicalEntry }): string 
   }
 }
 
-function segmentState({ state }: { state: SegmentIndexState }): HizoFSSegmentInspection["state"] {
-  switch (state) {
-  case "sealed": return "sealed";
-  case "complete_unsealed": return "unsealed_complete";
-  case "abandoned_unsealed":
-  case "footer_unusable":
-    return "unsealed_incomplete";
-  default: return state satisfies never;
-  }
-}
-
 function segmentReason({ state }: { state: SegmentIndexState }): string | undefined {
   switch (state) {
   case "footer_unusable": return "Segment Footer is unusable; valid prefix retained";
@@ -515,7 +504,7 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
     let shardEntries: readonly HizoFSInspectionPhysicalEntry[];
     try {
       shardEntries = checkedEntries({
-        entries: await physical.list({ directory: classDirectory }),
+        entries: await physical.list({ directory: classDirectory, maximumEntries: 256 }),
         label: `${segmentClass} segment class directory`,
         maximum: 256,
       });
@@ -542,7 +531,7 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
       let fileEntries: readonly HizoFSInspectionPhysicalEntry[];
       try {
         fileEntries = checkedEntries({
-          entries: await physical.list({ directory: shardDirectory }),
+          entries: await physical.list({ directory: shardDirectory, maximumEntries: maximumSegments }),
           label: `${segmentClass} segment shard directory`,
           maximum: maximumSegments,
         });
@@ -644,7 +633,7 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
             physicalSegmentId: segmentIdToLowercaseHex({ id: segmentId }),
             reason: segmentReason({ state: index.state }),
             segmentClass,
-            state: segmentState({ state: index.state }),
+            state: index.state,
           });
         } catch (cause: unknown) {
           if (cause instanceof InspectionFrameBudgetExceededError) throw cause;

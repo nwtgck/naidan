@@ -36,7 +36,7 @@ function debugAuthority(): HizoFSDebugWorkspaceAuthority {
       return {
         authenticatedInspectionSession: authenticatedInspectionSession(),
         fileSystemId: 'debug-file-system',
-        fileSystemSession,
+        decryptedRoot: fileSystemSession.root,
         generateComprehensiveFixture: vi.fn(async () => ({
           coverage: [],
           manifestPath: '/__hizofs_fixture__/manifest.json',

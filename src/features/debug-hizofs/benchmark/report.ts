@@ -102,9 +102,11 @@ function omitSamples({
   result,
 }: {
   result: NonNullable<HizoFSBenchmarkReport['results'][number]['backends']['rawOpfs']>;
-}): Omit<typeof result, 'samples'> {
+}): Omit<typeof result, 'samples'> & {
+  readonly sampleDetailScope: 'samples_and_per_iteration_parameters_omitted';
+} {
   const { samples: _samples, ...summary } = result;
-  return summary;
+  return { ...summary, sampleDetailScope: 'samples_and_per_iteration_parameters_omitted' };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

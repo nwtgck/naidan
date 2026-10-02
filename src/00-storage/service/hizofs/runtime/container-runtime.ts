@@ -53,6 +53,7 @@ import {
   WorkingGenerationCoordinator,
   WorkingGenerationCoordinatorError,
   type WorkingGenerationCoordinatorSnapshot,
+  type WorkingGenerationMutationAdmission,
   type WorkingGenerationManagementBarrier,
 } from "@/00-storage/service/hizofs/runtime/working-generation-coordinator";
 import {
@@ -86,6 +87,7 @@ import {
 import {
   SessionLifecycle,
   SessionLifecycleError,
+  type OwnedSessionChild,
   type SessionChildRegistration,
   type SessionLifecycleState,
   type SessionOperationAuthority,
@@ -154,6 +156,7 @@ export type ContainerRuntimeAcceptedMutationAdmission = Readonly<{
     publisher: ContainerRuntimeSelectedCandidatePublisher;
     successor: AuthenticatedApplicationGenerationDescriptor;
   }) => void;
+  hasAcceptedSuccessor: () => boolean;
   replaceResourceReservation: ({ dirtyMetadataBytes, unpublishedPhysicalBytes }: {
     dirtyMetadataBytes: number;
     unpublishedPhysicalBytes: number;
@@ -610,6 +613,10 @@ export class ContainerRuntimeSession {
     return await this.lifecycle.runOperation({ operation: async () => await operation() });
   }
 
+  registerReadChild({ child }: { child: OwnedSessionChild }): SessionChildRegistration {
+    return this.lifecycle.registerChild({ child });
+  }
+
   private async captureAndAcquireReaderPinInternal<Value>({ capture, ownedBySession }: {
     capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
     ownedBySession: boolean;
@@ -802,7 +809,7 @@ export class ContainerRuntimeSession {
       return;
     }
     const writer = await this.acquireWriter();
-    let primary: unknown | undefined;
+    let primary: { cause: unknown } | undefined;
     try {
       await writer.runPublication({ operation: async ({ authority }) => {
         authority.assertPublicationAllowed();
@@ -812,17 +819,17 @@ export class ContainerRuntimeSession {
         assertDurabilityDemonstrated();
       } });
     } catch (cause: unknown) {
-      primary = cause;
+      primary = { cause };
     }
     try {
       await writer.close();
     } catch (closeCause: unknown) {
       if (primary !== undefined) {
-        throw new AggregateError([primary, closeCause], "sync barrier and writer cleanup both failed");
+        throw new AggregateError([primary.cause, closeCause], "sync barrier and writer cleanup both failed");
       }
       throw closeCause;
     }
-    if (primary !== undefined) throw primary;
+    if (primary !== undefined) throw primary.cause;
   }
 
   async acquireSegmentReference({ kind, segmentId }: {
@@ -880,6 +887,7 @@ export class ContainerRuntime {
     });
     this.backgroundFlushScheduler = new HizoFSBackgroundFlushScheduler({
       maximumDirtyAgeMilliseconds: validatedPolicy.lazyDurability.maximumDirtyAgeMilliseconds,
+      onDeferredDeliveryFailure: ({ cause }) => this.failBackgroundDurability({ cause }),
       requestFlush: async ({ trigger }) => await this.requestBackgroundFlush({ trigger }),
       ...(backgroundFlushTimerPort === undefined ? {} : { timerPort: backgroundFlushTimerPort }),
     });
@@ -1039,6 +1047,8 @@ export class ContainerRuntime {
       }),
       openManagementCleanHeadBarrier: ({ writerOwnership }) => this.openManagementCleanHeadBarrierInternal({ writerOwnership }),
       requestExplicitFlush: () => {
+        const existing = this.flushOperation;
+        if (existing !== undefined) return existing;
         this.backgroundFlushScheduler.prepareExplicitFlush();
         return this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
       },
@@ -1141,25 +1151,41 @@ export class ContainerRuntime {
           // Acquire the ordinary writer gate before mutation admission is
           // fenced, so an existing prepared writer can finish instead of being
           // trapped behind a barrier that needs its Segment lease.
-          const ownership = await this.acquireInternalWriterOwnership();
-          let primary: unknown | undefined;
-          let result: AuthenticatedApplicationGenerationDescriptor | undefined;
-          try {
-            result = await ownership.runPublication({ operation: flushUnderOwnedWriter });
-          } catch (cause: unknown) {
-            primary = cause;
-          }
-          try {
-            await ownership.release();
-          } catch (cleanupCause: unknown) {
-            if (primary !== undefined) {
-              throw new AggregateError([primary, cleanupCause], "management clean-head flush and writer cleanup both failed");
+          for (;;) {
+            requireActive();
+            const ownership = await this.acquireInternalWriterOwnership();
+            let primary: unknown | undefined;
+            let result:
+              | Readonly<{ type: "captured"; descriptor: AuthenticatedApplicationGenerationDescriptor }>
+              | Readonly<{ type: "wait_for_publication"; publication: Promise<void> }>
+              | undefined;
+            try {
+              result = await ownership.runPublication({ operation: async () => {
+                // Check after both leases are held. A queued flush must be
+                // awaited only after returning this result and releasing them.
+                const publication = this.flushOperation;
+                if (publication !== undefined) return { publication, type: "wait_for_publication" as const };
+                return { descriptor: await flushUnderOwnedWriter(), type: "captured" as const };
+              } });
+            } catch (cause: unknown) {
+              primary = cause;
             }
-            throw cleanupCause;
+            try {
+              await ownership.release();
+            } catch (cleanupCause: unknown) {
+              if (primary !== undefined) {
+                throw new AggregateError([primary, cleanupCause], "management clean-head flush and writer cleanup both failed");
+              }
+              throw cleanupCause;
+            }
+            if (primary !== undefined) throw primary;
+            if (result === undefined) throw new TypeError("management clean-head flush completed without a generation");
+            switch (result.type) {
+            case "captured": return result.descriptor;
+            case "wait_for_publication": await result.publication; break;
+            default: return result satisfies never;
+            }
           }
-          if (primary !== undefined) throw primary;
-          if (result === undefined) throw new TypeError("management clean-head flush completed without a generation");
-          return result;
         }
         default: return writerOwnership satisfies never;
         }
@@ -1194,7 +1220,20 @@ export class ContainerRuntime {
     trigger: HizoFSBackgroundFlushTrigger;
   }): Promise<void> {
     try {
-      await this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+      const existing = this.flushOperation;
+      if (existing === undefined) {
+        await this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+      } else {
+        const coordinator = this.requireWorkingGenerations();
+        const target = coordinator.captureSyncTarget();
+        await existing;
+        // A preceding explicit flush can finish publication before this new
+        // target is accepted, yet still own its final cleanup. Deliver only
+        // this notification's target; do not chase later epochs or retry failure.
+        if (!coordinator.isSyncTargetDurable({ target })) {
+          await this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+        }
+      }
     } catch (cause: unknown) {
       if (cause instanceof WorkingGenerationCoordinatorError && cause.code === "working_authority_busy") {
         this.backgroundFlushScheduler.deferAfterForegroundBusy({ trigger });
@@ -1379,27 +1418,86 @@ export class ContainerRuntime {
       // before entering flush so foreground and flush-time Segment leases can
       // never overlap, including across realms.
       const ownership = await this.acquireInternalWriterOwnership();
-      let primary: unknown | undefined;
+      let primary: { cause: unknown } | undefined;
       try {
         await ownership.runPublication({ operation: runFlush });
       } catch (cause: unknown) {
-        primary = cause;
+        primary = { cause };
       }
       try {
         await ownership.release();
       } catch (cleanupCause: unknown) {
         if (primary !== undefined) {
-          throw new AggregateError([primary, cleanupCause], "runtime flush and writer ownership cleanup both failed");
+          throw new AggregateError([primary.cause, cleanupCause], "runtime flush and writer ownership cleanup both failed");
         }
         throw cleanupCause;
       }
-      if (primary !== undefined) throw primary;
+      if (primary !== undefined) throw primary.cause;
     })();
     const tracked = operation.finally(() => {
       if (this.flushOperation === tracked) this.flushOperation = undefined;
     });
     this.flushOperation = tracked;
     return tracked;
+  }
+
+  private throwAcceptedMutationFailure({ cause, coordinator, generationAdmission, candidateAdmission, phase, variant }: {
+    cause: unknown;
+    coordinator: WorkingGenerationCoordinator;
+    generationAdmission: WorkingGenerationMutationAdmission;
+    candidateAdmission: WorkingCandidateAdmission<ContainerRuntimeSelectedCandidatePublisher>;
+    phase: "candidate_uninstalled" | "candidate_installed" | "generation_accepted";
+    variant: "staged" | "materialized";
+  }): never {
+    let mutationLabel: string;
+    switch (variant) {
+    case "staged": mutationLabel = "accepted staged runtime mutation"; break;
+    case "materialized": mutationLabel = "accepted runtime mutation"; break;
+    default: return variant satisfies never;
+    }
+    switch (phase) {
+    case "generation_accepted": {
+      const failures: unknown[] = [cause];
+      try {
+        const flush = coordinator.openFlush();
+        flush.fail({ cause });
+      } catch (cleanupCause: unknown) {
+        failures.push(cleanupCause);
+      }
+      this.backgroundFlushScheduler.markStalled();
+      if (failures.length === 1) throw cause;
+      throw new AggregateError(
+        failures,
+        `${mutationLabel} committed but fail-closed finalization failed`,
+      );
+    }
+    case "candidate_installed":
+    case "candidate_uninstalled": break;
+    default: return phase satisfies never;
+    }
+    const cleanupFailures: unknown[] = [];
+    try {
+      switch (phase) {
+      case "candidate_installed": candidateAdmission.resolve({ outcome: "discarded" }); break;
+      case "candidate_uninstalled": candidateAdmission.closeWithoutCandidate(); break;
+      default: return phase satisfies never;
+      }
+    } catch (cleanupCause: unknown) {
+      cleanupFailures.push(cleanupCause);
+    }
+    try {
+      generationAdmission.rollback();
+      this.notifyBackgroundFlushForegroundIdle();
+    } catch (cleanupCause: unknown) {
+      cleanupFailures.push(cleanupCause);
+    }
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError(
+        [cause, ...cleanupFailures],
+        `${mutationLabel} and rollback both failed`,
+      );
+    }
+    throw cause;
   }
 
   private openAcceptedMutationAdmission({ dirtyMetadataBytes, expectedBase, unpublishedPhysicalBytes }: {
@@ -1436,6 +1534,7 @@ export class ContainerRuntime {
       throw cause;
     }
     let active = true;
+    let generationAccepted = false;
     return Object.freeze({
       commitAcceptedStagedSuccessor: ({ publisher, successor }) => {
         if (!active) throw new TypeError("runtime accepted mutation admission is already closed");
@@ -1451,7 +1550,7 @@ export class ContainerRuntime {
         ) {
           throw new TypeError("accepted staged mutation successor is not the exact next runtime generation");
         }
-        let generationAccepted = false;
+        let candidateInstalled = false;
         try {
           const roots = successor.workingRootAuthority;
           candidateAdmission.installStaged({
@@ -1469,6 +1568,7 @@ export class ContainerRuntime {
               ? [roots.rootInodeTableRootHomeRef]
               : [roots.rootInodeTableRootHomeRef, roots.nestedSubvolumeTableRootHomeRef],
           });
+          candidateInstalled = true;
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
           // WHY: once the coordinator accepts this successor it is the working
@@ -1488,39 +1588,16 @@ export class ContainerRuntime {
           active = false;
         } catch (cause: unknown) {
           active = false;
-          if (generationAccepted) {
-            const failures: unknown[] = [cause];
-            try {
-              const flush = coordinator.openFlush();
-              flush.fail({ cause });
-            } catch (cleanupCause: unknown) {
-              failures.push(cleanupCause);
-            }
-            this.backgroundFlushScheduler.markStalled();
-            if (failures.length === 1) throw cause;
-            throw new AggregateError(
-              failures,
-              "accepted staged runtime mutation committed but fail-closed finalization failed",
-            );
-          }
-          const cleanupFailures: unknown[] = [];
-          try {
-            candidateAdmission.resolve({ outcome: "discarded" });
-          } catch (cleanupCause: unknown) {
-            cleanupFailures.push(cleanupCause);
-          }
-          try {
-            generationAdmission.rollback();
-          } catch (cleanupCause: unknown) {
-            cleanupFailures.push(cleanupCause);
-          }
-          if (cleanupFailures.length > 0) {
-            throw new AggregateError(
-              [cause, ...cleanupFailures],
-              "accepted staged runtime mutation and rollback both failed",
-            );
-          }
-          throw cause;
+          this.throwAcceptedMutationFailure({
+            cause,
+            coordinator,
+            generationAdmission,
+            candidateAdmission,
+            phase: generationAccepted
+              ? "generation_accepted"
+              : candidateInstalled ? "candidate_installed" : "candidate_uninstalled",
+            variant: "staged",
+          });
         }
       },
       commitAcceptedSuccessor: ({ publisher, successor }) => {
@@ -1537,7 +1614,7 @@ export class ContainerRuntime {
         ) {
           throw new TypeError("accepted mutation successor is not the exact next runtime generation");
         }
-        let generationAccepted = false;
+        let candidateInstalled = false;
         try {
           candidateAdmission.install({
             candidate: publisher,
@@ -1556,6 +1633,7 @@ export class ContainerRuntime {
             },
             workingIdentity: successor.workingIdentity,
           });
+          candidateInstalled = true;
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
           // WHY: once the coordinator accepts this successor it is the working
@@ -1575,41 +1653,19 @@ export class ContainerRuntime {
           active = false;
         } catch (cause: unknown) {
           active = false;
-          if (generationAccepted) {
-            const failures: unknown[] = [cause];
-            try {
-              const flush = coordinator.openFlush();
-              flush.fail({ cause });
-            } catch (cleanupCause: unknown) {
-              failures.push(cleanupCause);
-            }
-            this.backgroundFlushScheduler.markStalled();
-            if (failures.length === 1) throw cause;
-            throw new AggregateError(
-              failures,
-              "accepted runtime mutation committed but fail-closed finalization failed",
-            );
-          }
-          const cleanupFailures: unknown[] = [];
-          try {
-            candidateAdmission.resolve({ outcome: "discarded" });
-          } catch (cleanupCause: unknown) {
-            cleanupFailures.push(cleanupCause);
-          }
-          try {
-            generationAdmission.rollback();
-          } catch (cleanupCause: unknown) {
-            cleanupFailures.push(cleanupCause);
-          }
-          if (cleanupFailures.length > 0) {
-            throw new AggregateError(
-              [cause, ...cleanupFailures],
-              "accepted runtime mutation and rollback both failed",
-            );
-          }
-          throw cause;
+          this.throwAcceptedMutationFailure({
+            cause,
+            coordinator,
+            generationAdmission,
+            candidateAdmission,
+            phase: generationAccepted
+              ? "generation_accepted"
+              : candidateInstalled ? "candidate_installed" : "candidate_uninstalled",
+            variant: "materialized",
+          });
         }
       },
+      hasAcceptedSuccessor: () => generationAccepted,
       replaceResourceReservation: ({ dirtyMetadataBytes, unpublishedPhysicalBytes }) => {
         if (!active) throw new TypeError("runtime accepted mutation admission is already closed");
         generationAdmission.replaceResourceReservation({ dirtyMetadataBytes, unpublishedPhysicalBytes });

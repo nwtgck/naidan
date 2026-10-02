@@ -9,6 +9,10 @@ import {
 import { naidanOpfsContainerOriginRelativePathComponents } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
 import { OPFSStorageProvider, TEST_ONLY as OPFS_STORAGE_TEST_ONLY } from './opfs-storage';
 import { InMemoryWebLockManager } from '@/00-storage/service/test-support/in-memory-web-locks';
+import type { StorageFileSystemSession } from './storage-file-system/types';
+import { createInMemoryStorageRoot } from './storage-file-system/test-support/in-memory-storage-file-system';
+import { MemoryStorageProvider } from './memory-storage';
+import { OpfsStorageSessionLock } from './opfs/opfs-storage-session-lock';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -77,6 +81,50 @@ class MockFileSystemDirectoryHandle {
 }
 
 const mockOpfsRoot = new MockFileSystemDirectoryHandle('opfs-root');
+
+function createUnlockedSessionFixture({ fileSystemId }: { fileSystemId: string }) {
+  const backend = new MemoryStorageProvider();
+  const fileSystemClose = vi.fn(async () => undefined);
+  const close = vi.fn(async () => undefined);
+  const session: OpfsPersistenceUnlockedSession = {
+    backend,
+    close,
+    fileSystemId: PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({ fileSystemId }).mode.activeFileSystemId,
+    fileSystemSession: {
+      root: createInMemoryStorageRoot({ name: 'session-root' }),
+      capabilities: { atomicMove: 'supported', directBlob: 'supported', symbolicLink: 'supported', wholeFileClone: 'supported' },
+      close: fileSystemClose,
+      sync: async () => undefined,
+    },
+    openAuthenticatedInspectionSession: undefined,
+    openManagementCleanHeadBarrier: () => {
+      throw new Error('unexpected management barrier');
+    },
+    writableProfile: 'release-qualified',
+  };
+  return { backend, close, fileSystemClose, session };
+}
+
+async function createProviderLifecycleFixture({ session }: { session: OpfsPersistenceUnlockedSession }) {
+  const storageRoot = await mockOpfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+  await storageRoot.getDirectoryHandle('persistence-control', { create: true });
+  vi.stubGlobal('navigator', {
+    locks: new InMemoryWebLockManager(),
+    storage: { getDirectory: async () => mockOpfsRoot },
+  });
+  const runtime = {
+    writableProfile: 'release-qualified',
+    inspect: vi.fn(async () => PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({ firstSequence: 1, secondSequence: undefined })),
+    runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
+    runStartupMaintenance: vi.fn(async () => undefined),
+    runUnlockedMaintenance: vi.fn<OpfsPersistenceRuntime['runUnlockedMaintenance']>(async () => ({ state: 'completed', remainingEntryCount: 0, removedEntryCount: 0 })),
+    unlockWithPassphrase: vi.fn<OpfsPersistenceRuntime['unlockWithPassphrase']>(async () => session),
+    changePassphrase: vi.fn<OpfsPersistenceRuntime['changePassphrase']>(async ({ session: current }) => current),
+    runTransition: vi.fn<OpfsPersistenceRuntime['runTransition']>(async () => ({ type: 'completed' })),
+  } satisfies OpfsPersistenceRuntime;
+  const uninstall = installOpfsPersistenceRuntimeFactory({ factory: async () => runtime });
+  return { provider: new OPFSStorageProvider(), runtime, uninstall };
+}
 
 describe('OPFS Persistence Control runtime composition', () => {
   beforeEach(() => {
@@ -379,6 +427,12 @@ describe('OPFS Persistence Control runtime composition', () => {
       close: snapshotClose,
       root: snapshotRoot,
     }));
+    const inspectionAdapter = await import('./naidan-opfs/production-persistence-runtime');
+    const openReadObservation = vi.spyOn(inspectionAdapter, 'openProviderHizoFSReadObservation')
+      .mockImplementationOnce(async () => ({
+        close: snapshotClose,
+        root: snapshotRoot as unknown as StorageFileSystemSession['root'],
+      }));
     const session = {
       backend: {},
       close: sessionClose,
@@ -388,6 +442,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       fileSystemSession: { createReadSnapshot },
     } as unknown as OpfsPersistenceUnlockedSession;
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -435,7 +490,10 @@ describe('OPFS Persistence Control runtime composition', () => {
     const decryptedLease = await openActiveAuthenticatedHizoFSDecryptedSnapshotLease();
     if (decryptedLease === undefined) throw new Error('expected active decrypted snapshot lease');
     expect(decryptedLease.root).toBe(snapshotRoot);
-    expect(createReadSnapshot).toHaveBeenCalledOnce();
+    expect(createReadSnapshot).not.toHaveBeenCalled();
+    expect(openReadObservation).toHaveBeenCalledExactlyOnceWith({
+      session: session.fileSystemSession,
+    });
     await decryptedLease.dispose();
     expect(snapshotClose).toHaveBeenCalledOnce();
 
@@ -444,6 +502,7 @@ describe('OPFS Persistence Control runtime composition', () => {
     await expect(openActiveAuthenticatedHizoFSContainerLocationLease()).rejects.toThrow('unavailable');
     expect(sessionClose).toHaveBeenCalledOnce();
     uninstall();
+    openReadObservation.mockRestore();
   });
 
   it('settles unlocked maintenance before starting a re-encryption transition', async () => {
@@ -470,6 +529,7 @@ describe('OPFS Persistence Control runtime composition', () => {
     } as unknown as OpfsPersistenceUnlockedSession;
     const runTransition = vi.fn(async () => ({ type: 'completed' as const }));
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => {
         await maintenance.promise;
@@ -550,6 +610,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       fileSystemSession: {},
     } as unknown as OpfsPersistenceUnlockedSession;
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -599,9 +660,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       secondSequence: 1,
     });
     const previousCleanupFailure = new Error('previous session cleanup failed');
-    const firstClose = vi.fn(async () => {
-      throw previousCleanupFailure;
-    });
+    const firstClose = vi.fn(async () => undefined).mockRejectedValueOnce(previousCleanupFailure);
     const secondClose = vi.fn(async () => undefined);
     const firstSession = {
       backend: {},
@@ -620,6 +679,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       fileSystemSession: {},
     } as unknown as OpfsPersistenceUnlockedSession;
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -644,7 +704,270 @@ describe('OPFS Persistence Control runtime composition', () => {
     expect(secondClose).toHaveBeenCalledOnce();
     await expect(openActiveAuthenticatedHizoFSContainerLocationLease()).rejects.toThrow('unavailable');
     await provider.dispose();
+    expect(firstClose).toHaveBeenCalledTimes(2);
+    expect(secondClose).toHaveBeenCalledOnce();
     uninstall();
+  });
+
+  it.each([
+    { terminal: 'dispose', cause: new Error('session cleanup failed') },
+    { terminal: 'dispose', cause: undefined },
+    { terminal: 'lockEncryption', cause: new Error('session cleanup failed') },
+    { terminal: 'lockEncryption', cause: undefined },
+  ] as const)('retains wrapper cleanup after $terminal fails with $cause', async ({ terminal, cause }) => {
+    const current = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    current.close.mockRejectedValueOnce(cause);
+    const { provider, uninstall } = await createProviderLifecycleFixture({ session: current.session });
+    try {
+      await provider.unlockWithPassphrase({ passphrase: 'fixture credential' });
+      const lease = await openActiveAuthenticatedHizoFSContainerLocationLease();
+      await expect(provider[terminal]()).rejects.toBe(cause);
+      expect(current.close).toHaveBeenCalledOnce();
+      expect(current.fileSystemClose).not.toHaveBeenCalled();
+      expect(() => lease.assertCurrent()).toThrow('no longer current');
+      await expect(provider.inspectEncryptionSettings()).resolves.toMatchObject({ access: 'locked' });
+      await expect(provider.listChatMetasRaw()).rejects.toThrow('suspended');
+
+      await provider[terminal]();
+      await provider[terminal]();
+      expect(current.close).toHaveBeenCalledTimes(2);
+      expect(current.fileSystemClose).not.toHaveBeenCalled();
+    } finally {
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('retains both replacement cleanup owners and blocks new openers until cleanup settles', async () => {
+    const first = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const second = createUnlockedSessionFixture({ fileSystemId: 'ABCDEFGHIJ_0123456789' });
+    const pendingFailure = new Error('first cleanup still pending');
+    const candidateFailure = new Error('candidate cleanup failed');
+    first.close.mockRejectedValueOnce(undefined).mockRejectedValueOnce(pendingFailure);
+    second.close.mockRejectedValueOnce(candidateFailure);
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: first.session });
+    runtime.changePassphrase.mockResolvedValue(second.session);
+    try {
+      await provider.unlockWithPassphrase({ passphrase: 'fixture credential' });
+      await expect(provider.changePassphrase({ passphrase: 'replacement credential' })).rejects.toMatchObject({
+        name: 'AggregateError', errors: [undefined, candidateFailure],
+      });
+      expect(first.close).toHaveBeenCalledOnce();
+      expect(second.close).toHaveBeenCalledOnce();
+      await expect(openActiveAuthenticatedHizoFSContainerLocationLease()).rejects.toThrow('unavailable');
+
+      await expect(provider.unlockWithPassphrase({ passphrase: 'retry credential' })).rejects.toBe(pendingFailure);
+      expect(runtime.unlockWithPassphrase).toHaveBeenCalledOnce();
+      expect(first.close).toHaveBeenCalledTimes(2);
+      expect(second.close).toHaveBeenCalledTimes(2);
+      expect(first.close.mock.invocationCallOrder[1]).toBeLessThan(second.close.mock.invocationCallOrder[1]!);
+
+      await provider.dispose();
+      expect(first.close).toHaveBeenCalledTimes(3);
+      expect(second.close).toHaveBeenCalledTimes(2);
+      expect(first.fileSystemClose).not.toHaveBeenCalled();
+      expect(second.fileSystemClose).not.toHaveBeenCalled();
+    } finally {
+      first.close.mockReset().mockResolvedValue(undefined);
+      second.close.mockReset().mockResolvedValue(undefined);
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('preserves the active wrapper when a replacement opener fails', async () => {
+    const first = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const second = createUnlockedSessionFixture({ fileSystemId: 'ABCDEFGHIJ_0123456789' });
+    const openingFailure = new Error('replacement open failed');
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: first.session });
+    try {
+      await provider.unlockWithPassphrase({ passphrase: 'first credential' });
+      const lease = await openActiveAuthenticatedHizoFSContainerLocationLease();
+      runtime.unlockWithPassphrase.mockRejectedValueOnce(openingFailure);
+      await expect(provider.unlockWithPassphrase({ passphrase: 'failed replacement' })).rejects.toBe(openingFailure);
+      expect(first.close).not.toHaveBeenCalled();
+      expect(() => lease.assertCurrent()).not.toThrow();
+
+      runtime.unlockWithPassphrase.mockResolvedValueOnce(second.session);
+      await provider.unlockWithPassphrase({ passphrase: 'successful replacement' });
+      expect(first.close).toHaveBeenCalledOnce();
+      expect(second.close).not.toHaveBeenCalled();
+      expect(() => lease.assertCurrent()).toThrow('no longer current');
+    } finally {
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('queues lifecycle work before named-lock admission and resumes after disposal', async () => {
+    const first = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const second = createUnlockedSessionFixture({ fileSystemId: 'ABCDEFGHIJ_0123456789' });
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: first.session });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    runtime.unlockWithPassphrase.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return first.session;
+    }).mockResolvedValueOnce(second.session);
+    const acquire = vi.spyOn(OpfsStorageSessionLock.prototype, 'acquire');
+    const firstUnlock = provider.unlockWithPassphrase({ passphrase: 'first credential' });
+    await entered.promise;
+    const disposal = provider.dispose();
+    const secondUnlock = provider.unlockWithPassphrase({ passphrase: 'second credential' });
+    const completion = Promise.all([firstUnlock, disposal, secondUnlock]);
+    try {
+      expect(acquire).toHaveBeenCalledOnce();
+      expect(runtime.unlockWithPassphrase).toHaveBeenCalledOnce();
+      release.resolve();
+      await completion;
+      expect(first.close).toHaveBeenCalledOnce();
+      expect(second.close).not.toHaveBeenCalled();
+      expect(first.close.mock.invocationCallOrder[0]).toBeLessThan(runtime.unlockWithPassphrase.mock.invocationCallOrder[1]!);
+      expect((await openActiveAuthenticatedHizoFSContainerLocationLease()).physicalPath).toEqual(
+        naidanOpfsContainerOriginRelativePathComponents({ fileSystemId: second.session.fileSystemId }),
+      );
+    } finally {
+      release.resolve();
+      await Promise.allSettled([completion]);
+      acquire.mockRestore();
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('retains ordinary backend-operation drain during queued receiver suspension', async () => {
+    const current = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const { provider, uninstall } = await createProviderLifecycleFixture({ session: current.session });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const suspendEntered = Promise.withResolvers<void>();
+    const originalSuspend = OpfsStorageSessionLock.prototype.suspend;
+    const suspend = vi.spyOn(OpfsStorageSessionLock.prototype, 'suspend').mockImplementation(function (this: OpfsStorageSessionLock) {
+      suspendEntered.resolve();
+      return originalSuspend.call(this);
+    });
+    const read = vi.spyOn(current.backend, 'listChatMetasRaw').mockImplementation(async () => {
+      entered.resolve();
+      await release.promise;
+      return [];
+    });
+    await provider.unlockWithPassphrase({ passphrase: 'fixture credential' });
+    const pendingRead = provider.listChatMetasRaw();
+    await entered.promise;
+    let suspended = false;
+    const suspension = provider.suspendStorageSession().then(() => {
+      suspended = true;
+    });
+    try {
+      await suspendEntered.promise;
+      expect(suspended).toBe(false);
+      expect(current.close).not.toHaveBeenCalled();
+      await expect(provider.listChatMetasRaw()).rejects.toThrow('suspended');
+      release.resolve();
+      await expect(pendingRead).resolves.toEqual([]);
+      await suspension;
+      expect(suspended).toBe(true);
+      expect(current.close).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      await Promise.allSettled([pendingRead, suspension]);
+      read.mockRestore();
+      suspend.mockRestore();
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('captures the replacement session only when queued passphrase work begins', async () => {
+    const first = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const second = createUnlockedSessionFixture({ fileSystemId: 'ABCDEFGHIJ_0123456789' });
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: first.session });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    await provider.unlockWithPassphrase({ passphrase: 'first credential' });
+    runtime.unlockWithPassphrase.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return second.session;
+    });
+    const replacement = provider.unlockWithPassphrase({ passphrase: 'replacement credential' });
+    await entered.promise;
+    const change = provider.changePassphrase({ passphrase: 'next credential' });
+    const completion = Promise.all([replacement, change]);
+    try {
+      expect(runtime.changePassphrase).not.toHaveBeenCalled();
+      release.resolve();
+      await completion;
+      expect(runtime.changePassphrase).toHaveBeenCalledWith(expect.objectContaining({ session: second.session }));
+      expect(first.close).toHaveBeenCalledOnce();
+      expect(second.close).not.toHaveBeenCalled();
+    } finally {
+      release.resolve();
+      await Promise.allSettled([completion]);
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it('holds lifecycle order through the complete transition and provider settlement', async () => {
+    const first = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const second = createUnlockedSessionFixture({ fileSystemId: 'ABCDEFGHIJ_0123456789' });
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: first.session });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    runtime.runTransition.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return { type: 'completed' };
+    });
+    await provider.unlockWithPassphrase({ passphrase: 'first credential' });
+    const transition = provider.disableEncryption({ signal: undefined });
+    await entered.promise;
+    runtime.unlockWithPassphrase.mockResolvedValueOnce(second.session);
+    const nextUnlock = provider.unlockWithPassphrase({ passphrase: 'second credential' });
+    const completion = Promise.all([transition, nextUnlock]);
+    try {
+      expect(runtime.runTransition).toHaveBeenCalledWith(expect.objectContaining({
+        request: { operation: 'disable', session: first.session },
+      }));
+      expect(runtime.unlockWithPassphrase).toHaveBeenCalledOnce();
+      release.resolve();
+      await completion;
+      expect(first.close).toHaveBeenCalledOnce();
+      expect(second.close).not.toHaveBeenCalled();
+      expect(first.close.mock.invocationCallOrder[0]).toBeLessThan(runtime.unlockWithPassphrase.mock.invocationCallOrder[1]!);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([completion]);
+      await provider.dispose();
+      uninstall();
+    }
+  });
+
+  it.each([false, true])('attempts transition cleanup once and retains failure when runtime failed=%s', async runtimeFails => {
+    const current = createUnlockedSessionFixture({ fileSystemId: '0123456789_ABCDEFGHIJ' });
+    const cleanupFailure = new Error('transition cleanup failed');
+    current.close.mockRejectedValueOnce(cleanupFailure);
+    const { provider, runtime, uninstall } = await createProviderLifecycleFixture({ session: current.session });
+    if (runtimeFails) runtime.runTransition.mockRejectedValueOnce(undefined);
+    try {
+      await provider.unlockWithPassphrase({ passphrase: 'fixture credential' });
+      const transition = provider.disableEncryption({ signal: undefined });
+      if (runtimeFails) {
+        await expect(transition).rejects.toMatchObject({ name: 'AggregateError', errors: [undefined, cleanupFailure] });
+      } else {
+        await expect(transition).rejects.toBe(cleanupFailure);
+      }
+      expect(current.close).toHaveBeenCalledOnce();
+      expect(current.fileSystemClose).not.toHaveBeenCalled();
+      await provider.dispose();
+      expect(current.close).toHaveBeenCalledTimes(2);
+    } finally {
+      current.close.mockReset().mockResolvedValue(undefined);
+      await provider.dispose();
+      uninstall();
+    }
   });
 
   it('closes a runtime session whose File System ID cannot identify a canonical container', async () => {
@@ -662,6 +985,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       fileSystemSession: {},
     } as unknown as OpfsPersistenceUnlockedSession;
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -697,6 +1021,7 @@ describe('OPFS Persistence Control runtime composition', () => {
     await storageRoot.getDirectoryHandle('persistence-control', { create: true });
     const expected = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({ fileSystemId: 'encrypted-store' });
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -729,6 +1054,7 @@ describe('OPFS Persistence Control runtime composition', () => {
     const maintenance = Promise.withResolvers<void>();
     const runStartupMaintenance = vi.fn(async () => await maintenance.promise);
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,
@@ -769,6 +1095,7 @@ describe('OPFS Persistence Control runtime composition', () => {
     const maintenanceError = new Error('retired source is temporarily busy');
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const runtime: OpfsPersistenceRuntime = {
+      runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => ({
         remainingEntryCount: 0,

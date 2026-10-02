@@ -1,6 +1,7 @@
 import {
   compareFilenameComponentsByUtf8,
   compareUnsignedBytes,
+  encodedSymlinkTargetByteLength,
   encodeFilenameComponent,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
@@ -87,6 +88,7 @@ export type ReadOnlyInodeStat = Readonly<{
   inodeRevision: InodeRevision;
   kind: InodeLeafEntry["inodeKind"];
   modifiedAt: TimestampMilliseconds | null;
+  symlinkTargetByteLength?: number;
 }>;
 
 export type ReadOnlyDirectoryListing = Readonly<{
@@ -223,8 +225,11 @@ function projectStat({ inode }: { inode: InodeLeafEntry }): ReadOnlyInodeStat {
   };
   switch (inode.inodeKind) {
   case "file": return { ...base, fileSize: inode.fileSize };
-  case "directory":
-  case "symlink": return base;
+  case "directory": return base;
+  case "symlink": return {
+    ...base,
+    symlinkTargetByteLength: encodedSymlinkTargetByteLength({ value: inode.target }),
+  };
   default: return inode satisfies never;
   }
 }
@@ -615,6 +620,28 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
         remainingInodeKinds.delete(rootDirectoryInodeNumber);
 
         const pendingDirectoryInodeNumbers: InodeNumber[] = [rootDirectoryInodeNumber];
+        const bindEntry = ({ entry }: { entry: DirectoryLeafEntry }): Extract<DirectoryLeafEntry, { targetType: "inode" }> | undefined => {
+          switch (entry.targetType) {
+          case "subvolume":
+            // Mounted Subvolume topology has a separate cross-record proof.
+            // Its root inode belongs to the child Subvolume Inode Table, not
+            // this ordinary namespace graph.
+            return undefined;
+          case "inode": {
+            const inodeKind = remainingInodeKinds.get(entry.inodeNumber);
+            if (inodeKind === undefined || inodeKind !== entry.inodeKind) return entry;
+            remainingInodeKinds.delete(entry.inodeNumber);
+            switch (inodeKind) {
+            case "directory": pendingDirectoryInodeNumbers.push(entry.inodeNumber); break;
+            case "file":
+            case "symlink": break;
+            default: inodeKind satisfies never;
+            }
+            return undefined;
+          }
+          default: return entry satisfies never;
+          }
+        };
         while (pendingDirectoryInodeNumbers.length > 0) {
           const directoryInodeNumber = pendingDirectoryInodeNumbers.pop();
           if (directoryInodeNumber === undefined) throw new Error("namespace validation directory stack invariant failed");
@@ -624,39 +651,38 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
           if (inode === undefined || inode.inodeKind !== "directory") {
             throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "reachable directory inode is missing or changed kind" });
           }
-          for (const entry of await listDirectoryEntries({ inode })) {
-            switch (entry.targetType) {
-            case "subvolume":
-              // Mounted Subvolume topology has a separate cross-record proof.
-              // Its root inode belongs to the child Subvolume Inode Table, not
-              // this ordinary namespace graph.
-              break;
-            case "inode": {
-              const inodeKind = remainingInodeKinds.get(entry.inodeNumber);
-              if (inodeKind === undefined) {
-                const existing = await getValidatedInodePoint({ inodeNumber: entry.inodeNumber });
-                if (existing === undefined) {
-                  throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry references a missing inode" });
-                }
-                throw new ReadOnlyNamespaceError({
-                  code: "corrupt_namespace",
-                  message: "ordinary inode has more than one parent or the directory graph contains a cycle",
-                });
-              }
-              if (inodeKind !== entry.inodeKind) {
-                throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry inode kind disagrees with the Inode Table" });
-              }
-              remainingInodeKinds.delete(entry.inodeNumber);
-              switch (inodeKind) {
-              case "directory": pendingDirectoryInodeNumbers.push(entry.inodeNumber); break;
-              case "file":
-              case "symlink": break;
-              default: inodeKind satisfies never;
-              }
-              break;
+          let inconsistentEntry: ReturnType<typeof bindEntry> = undefined;
+          switch (inode.content.type) {
+          case "inline":
+            for (const entry of await listDirectoryEntries({ inode })) {
+              inconsistentEntry = bindEntry({ entry });
+              if (inconsistentEntry !== undefined) break;
             }
-            default: entry satisfies never;
+            break;
+          case "tree": {
+            const rootReference = inode.content.directoryTreeRootHomeRef;
+            // Finish structural validation before classifying the first binding
+            // failure, without retaining every entry from the Directory tree.
+            for await (const entry of directoryReader.entries({ rootReference })) {
+              if (inconsistentEntry === undefined) inconsistentEntry = bindEntry({ entry });
             }
+            validations.rememberValidatedFullTraversal({ kind: "directory_tree", reference: rootReference });
+            break;
+          }
+          default: inode.content satisfies never;
+          }
+          if (inconsistentEntry !== undefined) {
+            if (remainingInodeKinds.get(inconsistentEntry.inodeNumber) === undefined) {
+              const existing = await getValidatedInodePoint({ inodeNumber: inconsistentEntry.inodeNumber });
+              if (existing === undefined) {
+                throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry references a missing inode" });
+              }
+              throw new ReadOnlyNamespaceError({
+                code: "corrupt_namespace",
+                message: "ordinary inode has more than one parent or the directory graph contains a cycle",
+              });
+            }
+            throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry inode kind disagrees with the Inode Table" });
           }
         }
         if (remainingInodeKinds.size !== 0) {
@@ -852,36 +878,6 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       }
     },
   };
-}
-
-export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryInodeNumber, source }: {
-  inodeTableRootHomeRef: HomeRecordReference;
-  rootDirectoryInodeNumber: InodeNumber;
-  source: ReadOnlyNamespacePageSource;
-}): ReadOnlyNamespace {
-  const resolver = createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDirectoryInodeNumber, source });
-  // Strip resolver-only capabilities exhaustively. A future capability addition must
-  // fail typechecking here instead of leaking through the ordinary read namespace.
-  const {
-    maximumKnownInodeNumber: _maximumKnownInodeNumber,
-    list,
-    listAfterBounded,
-    listBounded,
-    listDirectoryEntries: _listDirectoryEntries,
-    listDirectoryEntriesAfterBounded: _listDirectoryEntriesAfterBounded,
-    listDirectoryEntriesBounded: _listDirectoryEntriesBounded,
-    lookupDirectoryEntry: _lookupDirectoryEntry,
-    readFile,
-    readlink,
-    resolveDirectoryWithAncestors: _resolveDirectoryWithAncestors,
-    resolveInode: _resolveInode,
-    resolveInodeByNumber: _resolveInodeByNumber,
-    stat,
-    validateDirectoryStructure: _validateDirectoryStructure,
-    ...unhandledResolver
-  } = resolver;
-  unhandledResolver satisfies Record<PropertyKey, never>;
-  return { list, listAfterBounded, listBounded, readFile, readlink, stat };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

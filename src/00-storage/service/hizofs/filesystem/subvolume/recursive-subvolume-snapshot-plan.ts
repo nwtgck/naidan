@@ -24,6 +24,7 @@ export type RecursiveSubvolumeSnapshotPlanErrorCode =
   | "allocator_regression"
   | "cross_device"
   | "destination_exists"
+  | "destination_parent_missing"
   | "duplicate_rewritten_inode_table_root"
   | "duplicate_subvolume_identity"
   | "invalid_rewritten_inode_table_root"
@@ -183,6 +184,13 @@ export function prepareRecursiveSubvolumeSnapshotPlan({
       });
     }
   }
+  if (target.parentSubvolumeId !== rootSubvolumeId
+    && topology.rowFor({ subvolumeId: target.parentSubvolumeId }) === undefined) {
+    throw new RecursiveSubvolumeSnapshotPlanError({
+      code: "destination_parent_missing",
+      message: "Recursive Subvolume snapshot destination parent is absent from the captured topology",
+    });
+  }
 
   let greatestKnownSubvolumeId = sourceRoot.subvolumeId > target.parentSubvolumeId
     ? sourceRoot.subvolumeId
@@ -197,41 +205,17 @@ export function prepareRecursiveSubvolumeSnapshotPlan({
     });
   }
 
+  // The locally validated tree only needs preorder here so parents receive IDs before children.
   const sourceNodes: SourceGraphNode[] = [];
-  const visiting = new Set<SubvolumeId>();
-  const visited = new Set<SubvolumeId>();
-  const stack: Array<Readonly<SourceGraphNode & { phase: "enter" | "exit" }>> = [{
+  const stack: SourceGraphNode[] = [{
     entry: sourceRoot,
     parentSourceSubvolumeId: null,
-    phase: "enter",
     sourceMount: null,
   }];
   while (stack.length > 0) {
     const frame = stack.pop();
     if (frame === undefined) throw new Error("Recursive snapshot traversal stack became inconsistent");
-    switch (frame.phase) {
-    case "exit": {
-      visiting.delete(frame.entry.subvolumeId);
-      visited.add(frame.entry.subvolumeId);
-      continue;
-    }
-    case "enter": break;
-    default: frame.phase satisfies never;
-    }
-    if (visiting.has(frame.entry.subvolumeId)) {
-      throw new RecursiveSubvolumeSnapshotPlanError({
-        code: "topology_cycle",
-        message: "Recursive snapshot source topology contains a reachable cycle",
-      });
-    }
-    if (visited.has(frame.entry.subvolumeId)) continue;
-    visiting.add(frame.entry.subvolumeId);
-    sourceNodes.push({
-      entry: frame.entry,
-      parentSourceSubvolumeId: frame.parentSourceSubvolumeId,
-      sourceMount: frame.sourceMount,
-    });
-    stack.push({ ...frame, phase: "exit" });
+    sourceNodes.push(frame);
     const children = topology.childrenOf({ parentSubvolumeId: frame.entry.subvolumeId });
     for (let index = children.length - 1; index >= 0; index -= 1) {
       const child = children[index];
@@ -239,7 +223,6 @@ export function prepareRecursiveSubvolumeSnapshotPlan({
       stack.push({
         entry: child,
         parentSourceSubvolumeId: frame.entry.subvolumeId,
-        phase: "enter",
         sourceMount: child,
       });
     }

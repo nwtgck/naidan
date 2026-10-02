@@ -14,13 +14,13 @@ import {
   type RootInodeTablePageStore,
 } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import {
-  inlineDirectoryCreateCandidateFits,
   prepareInlineDirectoryCreateCandidateParent,
   prepareInlineDirectoryCreateMutationFromCandidate,
 } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-create-mutation";
 import {
+  inlineDirectoryEntriesFit,
   prepareInlineDirectoryPromotionCreateMutation,
-} from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-promotion-create-mutation";
+} from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-promotion";
 import {
   prepareOrdinaryEntryCreatePlan,
   type OrdinaryEntryCreatePlan,
@@ -139,7 +139,7 @@ export class CapturedOrdinaryEntryCreateDestination {
         switch (this.representation.type) {
         case "inline": {
           const candidateParent = prepareInlineDirectoryCreateCandidateParent({ parent: this.parent, plan });
-          if (inlineDirectoryCreateCandidateFits({ candidateParent })) {
+          if (inlineDirectoryEntriesFit({ entries: candidateParent.content.entries })) {
             return prepareInlineDirectoryCreateMutationFromCandidate({ candidateParent, plan });
           }
           return await prepareInlineDirectoryPromotionCreateMutation({

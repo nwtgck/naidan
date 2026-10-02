@@ -101,6 +101,13 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
   ]),
 }).strict();
 
+// JSON omits undefined properties; restore the explicit key required by the
+// runtime DTO without weakening the Worker configuration boundary.
+export const hizoFSBenchmarkConfigurationJsonInputSchema = hizoFSBenchmarkConfigurationSchema
+  .extend({ runLabel: hizoFSBenchmarkConfigurationSchema.shape.runLabel.optional() })
+  .transform(configuration => ({ ...configuration, runLabel: configuration.runLabel }))
+  .pipe(hizoFSBenchmarkConfigurationSchema);
+
 const benchmarkParametersSchema = z.record(
   z.string(),
   z.union([z.string(), z.number(), z.boolean()]),
@@ -462,6 +469,7 @@ const benchmarkSampleSchema = z.object({
   iteration: z.number().int().nonnegative(),
   phase: z.union([z.literal('warmup'), z.literal('measured')]),
   includedInAggregates: z.boolean(),
+  parameters: benchmarkParametersSchema,
   acceptedDurationMs: z.number().nonnegative(),
   settlementDurationMs: z.union([z.number().nonnegative(), z.undefined()]),
   durationMs: z.number().nonnegative(),
@@ -483,7 +491,7 @@ const benchmarkSampleSchema = z.object({
 
 const benchmarkBackendCaseResultSchema = z.object({
   sampleCount: z.number().int().nonnegative(),
-  durationMs: durationSummarySchema,
+  durationMs: z.union([durationSummarySchema, z.undefined()]),
   operationsPerSecond: z.union([z.number().nonnegative(), z.undefined()]),
   throughputBytesPerSecond: z.union([z.number().nonnegative(), z.undefined()]),
   apiOperationTotals: benchmarkApiCountersSchema,
@@ -556,9 +564,31 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
   ]),
 }).strict();
 
+const benchmarkRuntimePolicyApplicationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('unavailable'),
+    reason: z.string(),
+  }).strict(),
+  z.object({
+    type: z.literal('production_options'),
+    options: z.object({
+      backingFileHandleCacheEntryLimit: z.number().int().nonnegative(),
+      decodedInodeIndexPageCacheEntryLimit: z.number().int().nonnegative(),
+      metadataRecordCachePolicy: z.object({
+        maximumBytes: z.number().int().nonnegative(),
+        maximumEntries: z.number().int().nonnegative(),
+      }).strict(),
+    }).strict(),
+    notAppliedConfigurationFields: z.array(
+      hizoFSBenchmarkConfigurationSchema.shape.hizoFSRuntimePolicy
+        .omit({ backingFileHandleCacheEntryLimit: true }).keyof(),
+    ),
+  }).strict(),
+]);
+
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(37),
-  benchmarkImplementationVersion: z.literal(111),
+  schemaVersion: z.literal(38),
+  benchmarkImplementationVersion: z.literal(112),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -594,33 +624,15 @@ export const hizoFSBenchmarkReportSchema = z.object({
     backingStorePathAttributionScope: z.literal('canonical_container_path_kind'),
     backingStoreListEntryMaterializationScope: z.literal('entries_values_and_keys_yields'),
     physicalStoreShapeScope: z.literal('tracked_immutable_segment_files_and_distinct_shards'),
+    caseParameterScope: z.literal('common_to_recorded_measured_samples'),
+    sampleParameterScope: z.literal('each_recorded_iteration_including_warmup'),
     hizoFSRuntimePolicy: z.object({
-      fileChunkSizeBytes: z.number().int().positive(),
-      maxDirtyFileBytesPerWriter: z.number().int().positive(),
-      fileChunkWriteConcurrencyPerWriter: z.number().int().positive(),
-      fileChunkReadPrefetchConcurrencyPerReader: z.number().int().positive(),
-      backingFileHandleCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
-      backingFileSnapshotCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
-      maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
+      application: benchmarkRuntimePolicyApplicationSchema,
       fileDataAppendBatchFrameByteLimitPerWriter: z.number().int().positive(),
       fileDataAppendBatchPlaintextByteLimitPerWriter: z.number().int().positive(),
       fileDataAppendBatchRecordLimitPerWriter: z.number().int().positive(),
       fileExtentMutationBatchEntryLimitPerWriter: z.number().int().positive(),
       fileExtentTailAppendBatchPlaintextByteLimitPerWriter: z.number().int().positive(),
-      maximumPlaintextChunkReadBytesInFlightPerReader: z.number().int().positive(),
-      metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
-      metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
-      decodedInodeIndexPageCacheEntryLimitPerRuntime:
-        z.number().int().nonnegative(),
-      inodeIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
-      directoryIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
-      fileExtentIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
-      fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),
-      fileChunkCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
-      fileChunkCacheAdmission: z.union([
-        z.literal('read'),
-        z.literal('read_write'),
-      ]),
     }).strict(),
   }).strict(),
   configuration: hizoFSBenchmarkConfigurationSchema,

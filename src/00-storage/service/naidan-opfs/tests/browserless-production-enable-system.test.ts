@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Settings } from "@/01-models/types";
+import { toBinaryObjectId } from "@/01-models/ids";
 import { NaidanOpfsStorageBackend } from "@/00-storage/service/naidan-opfs/backend";
+import { NaidanOpfsLayoutWritableFile } from "@/00-storage/service/naidan-opfs/layout-handle";
 import {
   createDevelopmentOpfsPersistenceRuntime,
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
@@ -162,6 +164,52 @@ afterEach(() => {
 });
 
 describe("browserless production HizoFS enable system", () => {
+  it("completes a fresh enable while an interrupted target still awaits retired cleanup", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: "window", name: "opfs-root" });
+    vi.stubGlobal("navigator", { storage: createInMemoryOpfsStorageManager({ root }) });
+    const before = await plainBackend({ root });
+    await before.saveSettings({ settings: settings({ endpointUrl: "http://retry-with-retired-target" }) });
+    await before.dispose();
+    const storageRoot = await (root as unknown as FileSystemDirectoryHandle)
+      .getDirectoryHandle(NAIDAN_OPFS_STORAGE_DIRECTORY_NAME, { create: false });
+    const nativeNamespaceRoot = root as unknown as FileSystemDirectoryHandle;
+    const aborter = new AbortController();
+    await expect(runtime().runTransition({
+      nativeNamespaceRoot,
+      onProgress: ({ progress }) => {
+        if (progress.phase === "verifying") aborter.abort(new DOMException("planned interruption", "AbortError"));
+      },
+      request: { operation: "enable", passphrase: PASSPHRASE },
+      signal: aborter.signal,
+      storageRoot,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    await runtime().runTransition({
+      nativeNamespaceRoot,
+      onProgress: undefined,
+      request: { operation: "converge", retainedCredentials: [{ passphrase: PASSPHRASE }] },
+      signal: undefined,
+      storageRoot,
+    });
+
+    const retryRuntime = runtime();
+    await expect(retryRuntime.runTransition({
+      nativeNamespaceRoot,
+      onProgress: undefined,
+      request: { operation: "enable", passphrase: PASSPHRASE },
+      signal: undefined,
+      storageRoot,
+    })).resolves.toEqual({ type: "completed" });
+    const reopened = await runtime().unlockWithPassphrase({ passphrase: PASSPHRASE, storageRoot });
+    try {
+      await expect(reopened.backend.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://retry-with-retired-target" },
+      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot })).resolves.toEqual([]);
+    } finally {
+      await reopened.close();
+    }
+  }, 60_000);
+
   it("enables, reloads, unlocks, writes, and reopens through the production composition", async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: "window",
@@ -211,8 +259,28 @@ describe("browserless production HizoFS enable system", () => {
     expect(await secondSession.backend.loadSettings()).toMatchObject({
       endpoint: { url: "http://before-transition" },
     });
+    const writeFailure = new Error("settings adapter failed after staging bytes");
+    const originalWrite = NaidanOpfsLayoutWritableFile.prototype.write;
+    const failedWrite = vi.spyOn(NaidanOpfsLayoutWritableFile.prototype, "write")
+      .mockImplementationOnce(async function(this: NaidanOpfsLayoutWritableFile, value) {
+        await originalWrite.call(this, value);
+        throw writeFailure;
+      });
+    try {
+      await expect(secondSession.backend.saveSettings({
+        settings: settings({ endpointUrl: "http://failed-save" }),
+      })).rejects.toBe(writeFailure);
+    } finally {
+      failedWrite.mockRestore();
+    }
+    expect(await secondSession.backend.loadSettings()).toMatchObject({
+      endpoint: { url: "http://before-transition" },
+    });
     await secondSession.backend.saveSettings({
       settings: settings({ endpointUrl: "http://after-transition" }),
+    });
+    expect(await secondSession.backend.loadSettings()).toMatchObject({
+      endpoint: { url: "http://after-transition" },
     });
     await secondSession.close();
 
@@ -303,6 +371,14 @@ describe("browserless production HizoFS enable system", () => {
       const before = new OPFSStorageProvider();
       await before.init();
       await before.saveSettings({ settings: settings({ endpointUrl: "http://provider-before" }) });
+      const binaryObjectId = toBinaryObjectId({ raw: "00000000-0000-4000-a000-0000000000a1" });
+      const binaryBytes = new Uint8Array(65_536).fill(7);
+      await before.saveFile({
+        binaryObjectId, blob: new Blob([binaryBytes]), name: "binary.bin", mimeType: "application/x-original",
+      });
+      const plainBinary = await before.openBinaryObject({ binaryObjectId });
+      expect(plainBinary?.backing.type).toBe("direct_blob");
+      await plainBinary?.close();
       for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
         await writeNativeManagedRootFile({ bytes, root, type });
       }
@@ -334,6 +410,36 @@ describe("browserless production HizoFS enable system", () => {
       expect(await afterReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://provider-before" },
       });
+      const encryptedBinary = await afterReload.openBinaryObject({ binaryObjectId });
+      expect(encryptedBinary).not.toBeNull();
+      if (encryptedBinary === null) throw new Error("Expected encrypted binary reader");
+      try {
+        expect(encryptedBinary).toMatchObject({
+          size: binaryBytes.length, mimeType: "application/x-original", backing: { type: "reader_only" },
+        });
+        const buffer = new Uint8Array(8).fill(99);
+        await expect(encryptedBinary.read({ buffer, offset: 2, length: 1, position: 0, signal: undefined }))
+          .resolves.toEqual({ bytesRead: 1 });
+        expect([...buffer]).toEqual([99, 99, 7, 99, 99, 99, 99, 99]);
+        await afterReload.saveFile({
+          binaryObjectId, blob: new Blob([Uint8Array.of(8, 9)]), name: "replacement.bin", mimeType: "application/x-replacement",
+        });
+        await expect(encryptedBinary.read({ buffer, offset: 0, length: 8, position: binaryBytes.length - 1, signal: undefined }))
+          .resolves.toEqual({ bytesRead: 1 });
+        expect(buffer[0]).toBe(7);
+        expect(encryptedBinary.size).toBe(binaryBytes.length);
+        await expect(encryptedBinary.read({ buffer, offset: 0, length: 1, position: binaryBytes.length, signal: undefined }))
+          .resolves.toEqual({ bytesRead: 0 });
+        const tail = await new Response(encryptedBinary.stream({
+          start: -2, end: binaryBytes.length + 8, signal: undefined,
+        })).arrayBuffer();
+        expect([...new Uint8Array(tail)]).toEqual([7, 7]);
+      } finally {
+        await encryptedBinary.close();
+      }
+      const replacementBinary = await afterReload.getFile({ binaryObjectId });
+      expect(replacementBinary?.type).toBe("application/x-replacement");
+      expect([...new Uint8Array(await replacementBinary!.arrayBuffer())]).toEqual([8, 9]);
       await afterReload.saveSettings({
         settings: settings({ endpointUrl: "http://provider-after" }),
       });

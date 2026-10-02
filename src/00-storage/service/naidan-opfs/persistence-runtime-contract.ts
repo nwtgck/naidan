@@ -114,6 +114,11 @@ export type OpfsPersistenceTransitionResult = { readonly type: 'completed' };
 export interface OpfsPersistenceRuntime {
   readonly writableProfile: OpfsPersistenceWritableProfile;
   inspect({ storageRoot }: { storageRoot: FileSystemDirectoryHandle }): Promise<OpfsEncryptionInspection>;
+  runWithStableEncryptedAuthority<T>({ operation, session, storageRoot }: {
+    operation: () => Promise<T>;
+    session: OpfsPersistenceUnlockedSession;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<T>;
   runStartupMaintenance({ nativeNamespaceRoot, storageRoot }: {
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     storageRoot: FileSystemDirectoryHandle;

@@ -148,7 +148,7 @@ export class WorkingCandidateCoordinator {
   private readonly acquireWorkingGenerationPageRoot: ({ pageReference }: {
     pageReference: HomeRecordReference;
   }) => RuntimeMaintenancePageRootRegistration;
-  private poison: unknown | undefined;
+  private poison: { cause: unknown } | undefined;
   private reservation: WorkingCandidateReservation | undefined;
   private slot: WorkingCandidateSlot | undefined;
 
@@ -204,7 +204,7 @@ export class WorkingCandidateCoordinator {
     const slot = this.slot;
     if (slot === undefined || slot.state !== "outcome_unknown" || this.poison === undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.poison,
+        cause: this.poison?.cause,
         code: "outcome_resolution_invalid",
         message: "runtime working candidate has no outcome-unknown authority to resolve",
       });
@@ -225,7 +225,7 @@ export class WorkingCandidateCoordinator {
         : undefined;
     if (resolution === undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.poison,
+        cause: this.poison.cause,
         code: "outcome_resolution_conflict",
         message: "observed durable authority matches neither the retained candidate nor its durable base",
       });
@@ -241,7 +241,7 @@ export class WorkingCandidateCoordinator {
       const cause = failures.length === 1
         ? failures[0]
         : new AggregateError(failures, "resolved working-candidate cleanup failed");
-      this.poison = cause;
+      this.poison = { cause };
       throw new WorkingCandidateCoordinatorError({
         cause,
         code: "coordinator_poisoned",
@@ -310,7 +310,7 @@ export class WorkingCandidateCoordinator {
   private assertCoordinatorHealthy({ operationLabel }: { operationLabel: string }): void {
     if (this.poison !== undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.poison,
+        cause: this.poison.cause,
         code: "coordinator_poisoned",
         message: `${operationLabel} cannot use a poisoned working-candidate coordinator`,
       });
@@ -610,7 +610,7 @@ export class WorkingCandidateCoordinator {
               ? failures[0]
               : new AggregateError(failures, `${operationLabel} replaced candidate cleanup failed`);
             slot.state = "outcome_unknown";
-            this.poison = cause;
+            this.poison = { cause };
             throw new WorkingCandidateCoordinatorError({
               cause,
               code: "coordinator_poisoned",
@@ -641,7 +641,7 @@ export class WorkingCandidateCoordinator {
           }
         }
         slot.owner = undefined;
-        this.poison = cause;
+        this.poison = { cause };
         this.reservation = undefined;
         active = false;
       },
@@ -651,7 +651,7 @@ export class WorkingCandidateCoordinator {
         case "installed": slot.state = "publishing"; break;
         case "publishing": break;
         case "outcome_unknown": throw new WorkingCandidateCoordinatorError({
-          cause: this.poison,
+          cause: this.poison?.cause,
           code: "coordinator_poisoned",
           message: `${operationLabel} cannot publish an unresolved runtime working candidate`,
         });
@@ -775,7 +775,7 @@ export class WorkingCandidateCoordinator {
         });
         active = false;
         current.state = "outcome_unknown";
-        this.poison = cause;
+        this.poison = { cause };
       },
       workingIdentity: slot.workingIdentity,
     });

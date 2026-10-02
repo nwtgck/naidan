@@ -7,7 +7,7 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useRouter } from 'vue-router';
 import {
   useInitialRouteRenderReadinessClaim,
-} from '@/logic/startup/initial-route-render-readiness';
+} from '@/composables/useInitialRouteRenderReadiness';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
@@ -18,7 +18,7 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-vi.mock('../../logic/startup/initial-route-render-readiness', () => ({
+vi.mock('../../composables/useInitialRouteRenderReadiness', () => ({
   useInitialRouteRenderReadinessClaim: vi.fn(),
 }));
 

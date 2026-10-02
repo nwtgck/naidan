@@ -70,16 +70,27 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
 export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRuntimePort {
   return {
     async createRuntime({ backingDirectory, policy }) {
-      const applicationRuntime = await createBrowserHizoFSBenchmarkApplicationRuntime({
-        backingDirectory,
+      const options = {
         backingFileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
         decodedInodeIndexPageCacheEntryLimit: policy.decodedInodeIndexPageCacheEntryLimit,
         metadataRecordCachePolicy: {
           maximumBytes: policy.metadataObjectCacheByteLimit,
           maximumEntries: policy.metadataObjectCacheEntryLimit,
         },
+      };
+      const applicationRuntime = await createBrowserHizoFSBenchmarkApplicationRuntime({
+        backingDirectory,
+        ...options,
       });
       const runtime: HizoFSBenchmarkRuntime = {
+        policyApplication: {
+          type: 'production_options',
+          options,
+          notAppliedConfigurationFields: [
+            'fileChunkSize', 'fileChunkWriteConcurrency', 'fileChunkReadPrefetchConcurrency',
+            'fileChunkCacheByteLimit', 'fileChunkCacheEntryLimit', 'fileChunkCacheAdmission',
+          ],
+        },
         get session() {
           return applicationRuntime.session;
         },

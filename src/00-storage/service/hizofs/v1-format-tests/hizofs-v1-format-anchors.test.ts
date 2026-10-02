@@ -876,6 +876,20 @@ describe("HizoFS V1 exact format anchors", () => {
 
     const fileSystemCommitHex = "00000000000000050102030405060708090a0b0c0d0e0f1000000000000000011111111111111111111111111111111100000000000000400000005810000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000002";
     const fileSystemCommit = fromHex({ value: fileSystemCommitHex });
+    expect(decodeFileSystemCommitPayload({ bytes: fileSystemCommit })).toEqual({
+      commitSequence: 5n,
+      mutationId: fromHex({ value: "0102030405060708090a0b0c0d0e0f10" }),
+      nestedSubvolumeTableRootHomeRef: null,
+      nextInodeNumber: 2n,
+      nextSubvolumeId: 2n,
+      rootDirectoryInodeNumber: 1n,
+      rootInodeTableRootHomeRef: {
+        byteOffset: 64n,
+        frameLength: 88,
+        recordKind: 16,
+        segmentId: fromHex({ value: "11111111111111111111111111111111" }),
+      },
+    });
     expect(toHex({ bytes: encodeFileSystemCommitPayload({ payload: decodeFileSystemCommitPayload({ bytes: fileSystemCommit }) }) })).toBe(fileSystemCommitHex);
 
     const inodeBranchHex = "0100000100000000000000092222222222222222222222222222222200000000000000400000005810000000";
@@ -887,6 +901,21 @@ describe("HizoFS V1 exact format anchors", () => {
 
     const fileExtentLeafHex = "00000001000000000000000000000004000000003333333333333333333333333333333300000000000000400000005822000000";
     const fileExtentLeaf = fromHex({ value: fileExtentLeafHex });
+    expect(decodeFileExtentPage({ bytes: fileExtentLeaf, isRoot: true })).toEqual({
+      entries: [{
+        byteLength: 4,
+        dataOffset: 0,
+        fileDataHomeRef: {
+          byteOffset: 64n,
+          frameLength: 88,
+          recordKind: 34,
+          segmentId: fromHex({ value: "33333333333333333333333333333333" }),
+        },
+        fileOffset: 0n,
+      }],
+      level: 0,
+      type: "leaf",
+    });
     expect(toHex({ bytes: encodeFileExtentPage({
       isRoot: true,
       page: decodeFileExtentPage({ bytes: fileExtentLeaf, isRoot: true }),

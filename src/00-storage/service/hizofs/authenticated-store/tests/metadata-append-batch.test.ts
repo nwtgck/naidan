@@ -61,6 +61,14 @@ describe("authenticated metadata append batch", () => {
     });
     expect([...cachedFirst.plaintext]).toEqual([1]);
     cachedFirst.plaintext.fill(0);
+    mutationCache.clear();
+    const pending = batch.readPendingHomeRecord({ reference: first.homeReference });
+    expect(pending).toEqual({ plaintext: Uint8Array.of(1), recordKind });
+    pending?.plaintext.fill(0);
+    expect(batch.readPendingHomeRecord({ reference: first.homeReference })?.plaintext).toEqual(Uint8Array.of(1));
+    expect(batch.readPendingHomeRecord({
+      reference: { ...first.homeReference, frameLength: first.homeReference.frameLength + 16 },
+    })).toBeUndefined();
 
     const recordsThatExceedBatchByteLimit = Array.from({ length: 16 }, (_, index) => encodedHizoFSRecord({
       plaintext: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes).fill(index + 1),
@@ -95,6 +103,7 @@ describe("authenticated metadata append batch", () => {
     expect([...rejectedOwnedPlaintext]).toEqual([0, 0, 0]);
 
     await batch.flush();
+    expect(() => batch.readPendingHomeRecord({ reference: first.homeReference })).toThrow();
     expect([...ownedPlaintext]).toEqual([0, 0, 0]);
     mutationCache.dispose();
     writer.abandon();

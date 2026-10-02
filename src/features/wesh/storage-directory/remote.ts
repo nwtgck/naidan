@@ -231,11 +231,13 @@ export class OpenStorageFile implements WeshFileHandle {
   private readonly fileHandle: StorageFileHandle;
   private readonly flags: WeshOpenFlags;
   private reader: StorageBinaryObjectReadHandle | undefined;
+  private readerOpening: Promise<StorageBinaryObjectReadHandle> | undefined;
   private writer: StorageWritableFile | undefined;
   private cursor = 0;
   private logicalSize: number | undefined;
   private modifiedAt: number | undefined;
   private settled = false;
+  private terminalCompletion: Promise<void> | undefined;
 
   async initialize(): Promise<void> {
     const initialStat = await this.fileHandle.stat();
@@ -243,10 +245,23 @@ export class OpenStorageFile implements WeshFileHandle {
     this.modifiedAt = initialStat.modifiedAt;
     if (canWrite({ flags: this.flags })) {
       this.writer = await this.fileHandle.createWritable({ keepExistingData: true });
-      if (shouldTruncate({ flags: this.flags })) {
-        await this.writer.truncate({ size: 0 });
-        this.logicalSize = 0;
-        this.modifiedAt = Date.now();
+      try {
+        if (canRead({ flags: this.flags }) && this.writer.read === undefined) {
+          throw new Error('The storage writable does not support reading staged contents');
+        }
+        if (shouldTruncate({ flags: this.flags })) {
+          await this.writer.truncate({ size: 0 });
+          this.logicalSize = 0;
+          this.modifiedAt = Date.now();
+        }
+      } catch (cause: unknown) {
+        this.settled = true;
+        try {
+          await this.writer.abort({ reason: cause });
+        } catch (cleanupCause: unknown) {
+          throw new AggregateError([cause, cleanupCause], 'Storage file initialization and cleanup both failed');
+        }
+        throw cause;
       }
     } else if (shouldTruncate({ flags: this.flags })) {
       throw new Error('A read-only Wesh handle cannot truncate a file');
@@ -282,8 +297,24 @@ export class OpenStorageFile implements WeshFileHandle {
     }
     const boundedLength = Math.min(length, Math.max(0, logicalSize - readPosition));
     if (boundedLength === 0) return { bytesRead: 0 };
-    this.reader ??= await this.fileHandle.openReadable({ mimeType: 'application/octet-stream' });
-    const result = await this.reader.read({
+    let source = this.writer ?? this.reader;
+    if (source === undefined) {
+      this.readerOpening ??= this.fileHandle.openReadable({ mimeType: 'application/octet-stream' }).then(
+        reader => {
+          this.reader = reader;
+          this.readerOpening = undefined;
+          return reader;
+        },
+        cause => {
+          this.readerOpening = undefined;
+          throw cause;
+        },
+      );
+      source = await this.readerOpening;
+      this.assertOpen();
+    }
+    if (source.read === undefined) throw new Error('The storage writable does not support reading staged contents');
+    const result = await source.read({
       buffer,
       offset,
       length: boundedLength,
@@ -392,35 +423,59 @@ export class OpenStorageFile implements WeshFileHandle {
   }
 
   async close(): Promise<void> {
-    if (this.settled) {
-      return;
-    }
-    this.settled = true;
-    let failure: unknown;
-    try {
-      await this.writer?.close();
-    } catch (error) {
-      failure = error;
-    }
-    try {
-      await this.reader?.close();
-    } catch (error) {
-      failure ??= error;
-    }
-    if (failure !== undefined) {
-      throw failure;
-    }
+    await this.settle({ mode: 'close' });
   }
 
   async abort(): Promise<void> {
+    await Promise.allSettled([this.settle({ mode: 'abort' })]);
+  }
+
+  private async settle({ mode }: { mode: 'close' | 'abort' }): Promise<void> {
+    if (this.terminalCompletion !== undefined) {
+      return this.terminalCompletion;
+    }
     if (this.settled) {
       return;
     }
     this.settled = true;
-    await Promise.allSettled([
-      this.writer?.abort({ reason: new Error('Wesh storage directory access was disposed') }),
-      this.reader?.close(),
-    ]);
+    const completion = (async () => {
+      // Acquisition failure belongs to read; only an acquired resource needs cleanup.
+      await this.readerOpening?.catch(() => undefined);
+      switch (mode) {
+      case 'abort':
+        await Promise.allSettled([
+          this.writer?.abort({ reason: new Error('Wesh storage directory access was disposed') }),
+          this.reader?.close(),
+        ]);
+        return;
+      case 'close':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled storage file terminal mode: ${_ex}`);
+      }
+      }
+      let failure: { cause: unknown } | undefined;
+      try {
+        await this.writer?.close();
+      } catch (error) {
+        failure = { cause: error };
+      }
+      try {
+        await this.reader?.close();
+      } catch (error) {
+        failure ??= { cause: error };
+      }
+      if (failure !== undefined) {
+        throw failure.cause;
+      }
+    })();
+    this.terminalCompletion = completion;
+    try {
+      await completion;
+    } finally {
+      this.terminalCompletion = undefined;
+    }
   }
 
   private assertOpen(): void {
@@ -439,8 +494,10 @@ export class StorageDirectoryWeshAccess implements WeshStorageDirectoryRemote {
 
   private readonly mounts: ReadonlyMap<string, StorageDirectoryMount>;
   private readonly openFiles = new Map<string, OpenStorageFile>();
+  private readonly pendingOpens = new Set<Promise<{ handleId: string }>>();
   private nextHandleId = 1;
   private disposed = false;
+  private disposeCompletion: Promise<void> | undefined;
 
   async stat({ mountPath, path, followFinalSymlink }: {
     mountPath: string;
@@ -541,10 +598,21 @@ export class StorageDirectoryWeshAccess implements WeshStorageDirectoryRemote {
     path: string;
     flags: WeshOpenFlags;
   }) {
-    const openFile = await this.openLocal({ mountPath, path, flags });
-    const handleId = String(this.nextHandleId++);
-    this.openFiles.set(handleId, openFile);
-    return { handleId };
+    const opening = this.openLocal({ mountPath, path, flags }).then(async openFile => {
+      if (this.disposed) {
+        await openFile.abort();
+        throw new Error('Wesh storage directory remote is disposed');
+      }
+      const handleId = String(this.nextHandleId++);
+      this.openFiles.set(handleId, openFile);
+      return { handleId };
+    });
+    this.pendingOpens.add(opening);
+    try {
+      return await opening;
+    } finally {
+      this.pendingOpens.delete(opening);
+    }
   }
 
   async read({ handleId, length, position }: {
@@ -573,8 +641,11 @@ export class StorageDirectoryWeshAccess implements WeshStorageDirectoryRemote {
 
   async close({ handleId }: { handleId: string }): Promise<void> {
     const file = this.getOpenFile({ handleId });
-    this.openFiles.delete(handleId);
-    await file.close();
+    try {
+      await file.close();
+    } finally {
+      this.openFiles.delete(handleId);
+    }
   }
 
   async mkdir({ mountPath, path, recursive }: {
@@ -659,13 +730,25 @@ export class StorageDirectoryWeshAccess implements WeshStorageDirectoryRemote {
   }
 
   async dispose(): Promise<void> {
+    if (this.disposeCompletion !== undefined) {
+      return this.disposeCompletion;
+    }
     if (this.disposed) {
       return;
     }
     this.disposed = true;
     const files = [...this.openFiles.values()];
     this.openFiles.clear();
-    await Promise.allSettled(files.map(file => file.abort()));
+    const completion = Promise.allSettled([
+      ...files.map(file => file.abort()),
+      ...this.pendingOpens,
+    ]).then(() => undefined);
+    this.disposeCompletion = completion;
+    try {
+      await completion;
+    } finally {
+      this.disposeCompletion = undefined;
+    }
   }
 
   private getMount({ mountPath }: { mountPath: string }): StorageDirectoryMount {

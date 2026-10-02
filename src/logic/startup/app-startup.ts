@@ -13,7 +13,7 @@ import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
 import {
   createOpfsEncryptionStartupGate,
   type OpfsEncryptionStartupGate,
-} from './opfs-encryption-startup-gate';
+} from '@/composables/opfs-encryption-startup-gate';
 import {
   readFirstQueryValue,
   resolveInitialRoute,

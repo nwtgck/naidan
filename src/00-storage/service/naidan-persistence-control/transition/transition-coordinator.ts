@@ -117,7 +117,7 @@ function validateProgressIdentity({ mode, progress, sourceAuthorityIdentity }: {
 
 
 async function closeTransitionSessions({ operationFailure, sourceSession, targetSession }: {
-  operationFailure: unknown;
+  operationFailure: { cause: unknown } | undefined;
   sourceSession: TransitionSourceEndpointSession;
   targetSession: TransitionTargetEndpointSession;
 }): Promise<void> {
@@ -150,8 +150,8 @@ async function closeTransitionSessions({ operationFailure, sourceSession, target
     }
   }
   if (operationFailure !== undefined) {
-    if (failures.length > 0) throw new AggregateError([operationFailure, ...failures], 'transition operation and endpoint close both failed');
-    throw operationFailure;
+    if (failures.length > 0) throw new AggregateError([operationFailure.cause, ...failures], 'transition operation and endpoint close both failed');
+    throw operationFailure.cause;
   }
   if (failures.length > 0) throw new AggregateError(failures, 'failed to close transition endpoint sessions');
 }
@@ -176,12 +176,12 @@ async function withTransitionSessions<T>({ binding, operation, provider }: {
     }
     throw cause;
   }
-  let operationFailure: unknown;
+  let operationFailure: { cause: unknown } | undefined;
   let value: T | undefined;
   try {
     value = await operation({ sourceSession, targetSession });
   } catch (cause: unknown) {
-    operationFailure = cause;
+    operationFailure = { cause };
   }
   await closeTransitionSessions({ operationFailure, sourceSession, targetSession });
   return value as T;

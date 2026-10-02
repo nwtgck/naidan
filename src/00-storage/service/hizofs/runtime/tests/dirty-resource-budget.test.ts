@@ -261,18 +261,80 @@ describe("DirtyResourceBudget", () => {
     });
   });
 
-  it("refuses a materialization append attempt before I/O when retry headroom would exceed a hard limit", () => {
-    const value = budget({ maximumDirtyMetadataBytes: 9, maximumUnpublishedPhysicalBytes: 9 });
+  it.each([
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached"],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached"],
+  ] as const)("rejects new headroom atomically when %s cannot fund its first append", (dimension, code) => {
+    const value = budget({ [dimension]: 12 });
+    const admission = value.reserveAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 3 });
+    const before = value.snapshot();
+
+    expect(() => admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 }))
+      .toThrowError(expect.objectContaining({ code }));
+    expect(value.snapshot()).toEqual(before);
+    admission.rollback();
+    expect(value.snapshot()).toMatchObject({
+      acceptedMutationCount: 0,
+      dirtyMetadataBytes: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 0,
+    });
+  });
+
+  it.each(["maximumDirtyMetadataBytes", "maximumUnpublishedPhysicalBytes"] as const)(
+    "accepts the exact first-append boundary for %s without charging extra bytes",
+    dimension => {
+      const value = budget({ [dimension]: 13 });
+      const admission = value.reserveAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 3 });
+      admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+      admission.commitAccepted();
+      expect(value.snapshot()).toMatchObject({ dirtyMetadataBytes: 8, unpublishedPhysicalBytes: 8 });
+
+      value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 }).completeReusableCandidate();
+
+      expect(value.snapshot()).toMatchObject({
+        dirtyMetadataBytes: 8,
+        stagedCommitMaterializationHeadroomBytes: 0,
+        unpublishedPhysicalBytes: 8,
+      });
+    },
+  );
+
+  it.each([
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached"],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached"],
+  ] as const)("preserves the previous epoch when a replacement spends %s materialization capacity", (dimension, code) => {
+    const value = budget({ maximumDirtyMetadataBytes: 30, maximumUnpublishedPhysicalBytes: 30, [dimension]: 20 });
+    const first = value.reserveAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 3 });
+    first.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    first.commitAccepted();
+    const accepted = value.snapshot();
+
+    const replacement = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    replacement.replaceReservation({ dirtyMetadataBytes: 8, unpublishedPhysicalBytes: 8 });
+    const before = value.snapshot();
+    expect(() => replacement.reserveStagedCommitMaterializationHeadroom({ bytes: 5 }))
+      .toThrowError(expect.objectContaining({ code }));
+    expect(value.snapshot()).toEqual(before);
+    replacement.rollback();
+    expect(value.snapshot()).toEqual(accepted);
+    expect(() => value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 }).completeReusableCandidate())
+      .not.toThrow();
+  });
+
+  it("refuses a materialization retry before I/O after append failure consumes its remaining budget", () => {
+    const value = budget({ maximumDirtyMetadataBytes: 14, maximumUnpublishedPhysicalBytes: 14 });
     const admission = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
     admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
     admission.commitAccepted();
+    value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 }).fail();
 
     expect(() => value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 }))
       .toThrowError(expect.objectContaining({ code: "dirty_metadata_byte_limit_reached" }));
     expect(value.snapshot()).toMatchObject({
-      dirtyMetadataBytes: 5,
+      dirtyMetadataBytes: 10,
       stagedCommitMaterializationHeadroomBytes: 5,
-      unpublishedPhysicalBytes: 5,
+      unpublishedPhysicalBytes: 10,
     });
   });
 

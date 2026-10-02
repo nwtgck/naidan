@@ -10,15 +10,21 @@ import {
 } from '@/00-storage/service/hizofs/00-format';
 import type {
   HizoFSTransitionImportCandidate,
-  HizoFSTransitionImportStatePort,
 } from '@/00-storage/service/hizofs/api';
 import type { StreamingNamespaceImportCheckpoint } from '@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import';
 import { parseTransitionOperationId } from '@/00-storage/service/naidan-persistence-control/00-format';
-import { createTransitionNamespaceCopyCursor } from '@/00-storage/service/naidan-persistence-control/transition/namespace-copy';
-import { createTransitionNamespaceVerificationCursor } from '@/00-storage/service/naidan-persistence-control/transition/namespace-verification';
+import { createTransitionNamespaceCopyCursor, runTransitionNamespaceCopySlice } from '@/00-storage/service/naidan-persistence-control/transition/namespace-copy';
+import { createTransitionNamespaceVerificationCursor, runTransitionNamespaceVerificationSlice } from '@/00-storage/service/naidan-persistence-control/transition/namespace-verification';
+import { createStorageFileSystemTransitionSource } from '@/00-storage/service/naidan-persistence-control/transition/storage-file-system-transition-source';
 import type { TransitionRuntimeProgress } from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
 import { RuntimeHizoFSTransitionImportState } from '@/00-storage/service/naidan-opfs/runtime-hizofs-transition-import-state';
 import type { RuntimeTransitionBinding } from '@/00-storage/service/naidan-opfs/runtime-transition-binding';
+import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
+import { InMemoryOpfsDirectoryHandle } from '@/00-storage/service/test-support/in-memory-opfs';
+import {
+  createBrowserHizoFSTransitionTargetContainer,
+  openBrowserHizoFSTransitionTargetEndpointSession,
+} from '@/00-storage/service/hizofs/worker/composition-root';
 
 const operationId = parseTransitionOperationId({ value: 'operation000000000001' });
 const targetFileSystemId = parseFileSystemId({ value: 'abcdefghijklmnopqrstu' });
@@ -103,6 +109,92 @@ function runtime(): RuntimeHizoFSTransitionImportState {
 }
 
 describe('HizoFS transition invocation runtime state', () => {
+  it('copies Unicode filenames through a real importer and verifies its reopened sealed candidate', async () => {
+    const plainRoot = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'plain-source' });
+    const sourceSession = createNativeOpfsFileSystemSession({ root: plainRoot as unknown as FileSystemDirectoryHandle });
+    try {
+      for (const [name, bytes] of [
+        ['entry-\u{10400}', Uint8Array.of(3, 4, 5)],
+        ['entry-a', Uint8Array.of(1)],
+        ['entry-\uFF21', Uint8Array.of(2, 3)],
+      ] as const) {
+        const handle = await sourceSession.root.getFileHandle({ create: true, name });
+        const writable = await handle.createWritable({ keepExistingData: false });
+        await writable.write({ data: bytes, position: 0 });
+        await writable.close();
+      }
+      const source = createStorageFileSystemTransitionSource({ session: sourceSession });
+      const targetRoot = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'encrypted-target' });
+      const containerRoot = targetRoot as unknown as FileSystemDirectoryHandle;
+      const passphrase = 'unicode transition test passphrase';
+      const fileSystemId = await createBrowserHizoFSTransitionTargetContainer({
+        passphrases: [passphrase],
+        randomSource: undefined,
+        reserveContainerRoot: async () => ({ cleanup: async () => undefined, containerRoot, type: 'reserved' }),
+      });
+      const state = new RuntimeHizoFSTransitionImportState({ binding: {
+        ...binding, targetEndpoint: { fileSystemId, type: 'hizofs' },
+      } });
+      const open = async () => await openBrowserHizoFSTransitionTargetEndpointSession({
+        authorityIdentity: binding.targetAuthorityIdentity,
+        containerRoot,
+        limits: { directory: { maximumEntryMutationsPerBatch: 2 }, file: { maximumExtentMutationsPerBatch: 2 } },
+        operationIdentity: operationId,
+        passphrase,
+        runtimeStatePort: state.importStatePort,
+        verifyProofAuthority: async ({ fileSystemId: openedId }) => {
+          expect(openedId).toBe(fileSystemId);
+        },
+      });
+      const slicePolicy = {
+        maximumBytesPerSlice: 2, maximumDirectoryEntriesPerRead: 1, maximumOperationsPerSlice: 2, maximumPathComponents: 16,
+      } as const;
+      const first = await open();
+      try {
+        let cursor = createTransitionNamespaceCopyCursor();
+        let slices = 0;
+        while (cursor.state !== 'complete') {
+          cursor = await runTransitionNamespaceCopySlice({
+            cursor, policy: slicePolicy, signal: undefined, source, target: first.target,
+          });
+          await first.stageSliceState();
+          await state.progressPort.save({ progress: cursor.state === 'copying'
+            ? { ...copyingProgress({ completedEntries: cursor.completedEntries }), copyCursor: cursor, target: { fileSystemId, type: 'hizofs' } }
+            : { ...verifyingProgress(), target: { fileSystemId, type: 'hizofs' } },
+          });
+          slices += 1;
+          expect(slices).toBeLessThan(30);
+        }
+        expect(cursor.completedEntries).toBe(3n);
+        expect(cursor.completedBytes).toBe(6n);
+        await expect(state.importStatePort.loadCandidate({ operationIdentity: operationId })).resolves.toMatchObject({ type: 'sealed' });
+      } finally {
+        await first.close();
+      }
+
+      const reopened = await open();
+      try {
+        const progress = await state.progressPort.load({ operationId });
+        if (progress?.stage !== 'verifying') throw new Error('expected sealed verification progress');
+        let cursor = progress.verificationCursor;
+        let slices = 0;
+        while (cursor.state !== 'complete') {
+          cursor = await runTransitionNamespaceVerificationSlice({
+            cursor, policy: slicePolicy, signal: undefined, source, target: reopened.source,
+          });
+          slices += 1;
+          expect(slices).toBeLessThan(30);
+        }
+        expect(cursor.verifiedEntries).toBe(3n);
+        expect(cursor.verifiedBytes).toBe(6n);
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      await sourceSession.close();
+    }
+  });
+
   it('commits one owned active candidate with the portable cursor from the same slice', async () => {
     const state = runtime();
     const candidate = activeCandidate();
@@ -181,22 +273,13 @@ describe('HizoFS transition invocation runtime state', () => {
       .resolves.toBeUndefined();
   });
 
-  it('does not advance progress when provider candidate staging fails', async () => {
+  it('rejects progress without a staged candidate and leaves runtime state empty', async () => {
     const state = runtime();
-    const failingProviderPort: HizoFSTransitionImportStatePort = {
-      ...state.importStatePort,
-      stageCandidate: async (): Promise<void> => {
-        throw new Error('injected provider candidate failure');
-      },
-    };
-
-    await expect(failingProviderPort.stageCandidate({
-      candidate: activeCandidate(),
-      operationIdentity: operationId,
-    })).rejects.toThrow('injected provider candidate failure');
     await expect(state.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) }))
       .rejects.toThrow('same target slice');
     await expect(state.progressPort.load({ operationId })).resolves.toBeUndefined();
+    await expect(state.importStatePort.loadCandidate({ operationIdentity: operationId }))
+      .resolves.toBeUndefined();
   });
 
   it('rejects stale operations, endpoint binding changes, duplicate slices, and sealed regression', async () => {

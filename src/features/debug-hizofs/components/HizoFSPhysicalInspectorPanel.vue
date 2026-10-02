@@ -508,13 +508,23 @@ async function inspectSelectedRecord(): Promise<void> {
 async function inspectSelectedHomeRecord(): Promise<void> {
   const reference = selectedFrame.value?.homeReference;
   if (!canInspect.value || reference === undefined) return;
+  const pageRole = selectedPageRole.value;
+  let pageIsRoot: boolean | undefined;
+  switch (pageRole) {
+  case "root": pageIsRoot = true; break;
+  case "non_root": pageIsRoot = false; break;
+  case "unspecified": pageIsRoot = undefined; break;
+  default: return pageRole satisfies never;
+  }
   traversalOrigin.value = "frame";
   await inspectHomeRecord({
+    namespaceObservation: undefined,
     request: {
       frameLength: reference.frameLength,
       homeOffset: reference.byteOffset,
       homeSegmentId: reference.segmentId,
       recordKind: reference.recordKind,
+      ...(pageIsRoot === undefined ? {} : { pageIsRoot }),
     },
     selectedInodeObservation: undefined,
     title: "Logical Home Record",
@@ -559,6 +569,7 @@ async function inspectNavigationTarget({ sourceColumnIndex, target }: {
   switch (target.targetType) {
   case "home_record":
     await inspectHomeRecord({
+      namespaceObservation: namespaceObservationForRecord({ sourceColumnIndex }),
       request: target.request,
       selectedInodeObservation: undefined,
       sourceColumnIndex,
@@ -617,12 +628,30 @@ async function inspectAuthorityHomeTarget({ target }: {
   await inspectAuthorityNavigationTarget({ target: { label, request, targetType: "home_record" } });
 }
 
-async function inspectNamespaceNavigationTarget({ target }: {
+async function inspectNamespaceNavigationTarget({ namespaceColumn, target }: {
+  namespaceColumn: NamespaceInspectionView;
   target: HizoFSPhysicalRecordNavigationTarget;
 }): Promise<void> {
   traversalOrigin.value = "namespace";
   clearRecordTraversal();
-  await inspectNavigationTarget({ target });
+  switch (target.targetType) {
+  case "home_record":
+    await inspectHomeRecord({
+      namespaceObservation: {
+        authorityMode: namespaceColumn.authorityMode,
+        commitSequence: namespaceColumn.commitSequence,
+        path: namespaceColumn.path,
+        pathComponents: [...namespaceColumn.pathComponents],
+      },
+      request: target.request,
+      selectedInodeObservation: undefined,
+      title: target.label,
+      validationObservation: undefined,
+    });
+    return;
+  case "physical_record": throw new Error("Nested Subvolume Table root exposed a Physical Record target");
+  default: return target satisfies never;
+  }
 }
 
 function selectNamespaceColumn({ columnIndex }: { columnIndex: number }): void {
@@ -649,6 +678,7 @@ async function inspectNamespaceValidationReference({ reference }: {
   traversalOrigin.value = "namespace";
   clearRecordTraversal();
   await inspectHomeRecord({
+    namespaceObservation: namespaceObservationForRecord({ sourceColumnIndex: undefined }),
     request,
     selectedInodeObservation: undefined,
     title: `Validation Home Record ${request.homeSegmentId}:${request.homeOffset}`,
@@ -732,7 +762,8 @@ function navigationTargetTestId({ target }: {
   }
 }
 
-async function inspectHomeRecord({ request, selectedInodeObservation, sourceColumnIndex, title = "Home Record", validationObservation }: {
+async function inspectHomeRecord({ namespaceObservation, request, selectedInodeObservation, sourceColumnIndex, title = "Home Record", validationObservation }: {
+  namespaceObservation: HizoFSPhysicalInspectorRecordTraversalColumn["namespaceObservation"];
   request: Parameters<HizoFSPhysicalInspectionWorker["inspectHomeRecord"]>[0]["request"];
   selectedInodeObservation: HizoFSPhysicalInspectorRecordTraversalColumn["selectedInodeObservation"];
   sourceColumnIndex?: number;
@@ -740,7 +771,6 @@ async function inspectHomeRecord({ request, selectedInodeObservation, sourceColu
   validationObservation: HizoFSPhysicalInspectorRecordTraversalColumn["validationObservation"];
 }): Promise<void> {
   if (!canInspect.value) return;
-  const namespaceObservation = namespaceObservationForRecord({ sourceColumnIndex });
   const requestRevision = ++recordTraversalRevision;
   loading.value = "home_record";
   errorMessage.value = undefined;
@@ -770,11 +800,10 @@ async function inspectHomeRecord({ request, selectedInodeObservation, sourceColu
   }
 }
 
-async function inspectSelectedInodeNavigationTarget({ target }: {
+async function inspectSelectedInodeNavigationTarget({ namespaceColumn, target }: {
+  namespaceColumn: NamespaceInspectionView;
   target: NamespaceInspectionView["selectedInodeEvidence"]["navigationTargets"][number];
 }): Promise<void> {
-  const currentNamespaceView = namespaceView.value;
-  if (currentNamespaceView === undefined) return;
   switch (target.targetType) {
   case "home_record": {
     const { label, relationship, request, targetType: _targetType, ...unhandledTarget } = target;
@@ -782,12 +811,18 @@ async function inspectSelectedInodeNavigationTarget({ target }: {
     traversalOrigin.value = "namespace";
     clearRecordTraversal();
     await inspectHomeRecord({
+      namespaceObservation: {
+        authorityMode: namespaceColumn.authorityMode,
+        commitSequence: namespaceColumn.commitSequence,
+        path: namespaceColumn.path,
+        pathComponents: [...namespaceColumn.pathComponents],
+      },
       request,
       selectedInodeObservation: {
-        commitSequence: currentNamespaceView.commitSequence,
-        entryJson: currentNamespaceView.selectedInodeEvidence.entryJson,
-        inodeNumber: currentNamespaceView.inodeNumber,
-        path: currentNamespaceView.path,
+        commitSequence: namespaceColumn.commitSequence,
+        entryJson: namespaceColumn.selectedInodeEvidence.entryJson,
+        inodeNumber: namespaceColumn.inodeNumber,
+        path: namespaceColumn.path,
         relationship,
       },
       title: label,
@@ -1262,7 +1297,7 @@ defineExpose({
                   data-testid="hizofs-physical-inspector-selected-inode-reference"
                   :disabled="!canInspect"
                   tw-class="block w-full border border-emerald-300 px-2 py-1.5 text-left text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                  @click="inspectSelectedInodeNavigationTarget({ target })"
+                  @click="inspectSelectedInodeNavigationTarget({ namespaceColumn, target })"
                 >
                   <span tw-class="block">{{ target.label }} →</span>
                   <span tw-class="mt-0.5 block break-all font-mono text-[9px] font-normal text-emerald-600/80 dark:text-emerald-400/80">{{ navigationTargetDestinationSummary({ target }) }}</span>
@@ -1301,7 +1336,7 @@ defineExpose({
                 data-testid="hizofs-physical-inspector-nested-subvolume-table-root"
                 :disabled="!canInspect"
                 tw-class="block w-full border-t border-amber-200 px-3 py-2 text-left text-[10px] text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/20"
-                @click="inspectNamespaceNavigationTarget({ target: namespaceColumn.nestedSubvolumeTableRoot })"
+                @click="inspectNamespaceNavigationTarget({ namespaceColumn, target: namespaceColumn.nestedSubvolumeTableRoot })"
               >
                 <span tw-class="block font-medium">nestedSubvolumeTableRootHomeRef →</span>
                 <span tw-class="mt-0.5 block break-all font-mono text-[9px]">{{ navigationTargetDestinationSummary({ target: namespaceColumn.nestedSubvolumeTableRoot }) }}</span>

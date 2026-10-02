@@ -16,7 +16,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { OrdinaryEntryMovePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-move-plan";
-import { promiseAllKeyed } from "@/utils/promise";
+import { inlineDirectoryEntriesFit, promoteInlineDirectoryParent } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-promotion";
 
 export type OrdinaryEntryMoveMutationErrorCode =
   | "destination_changed"
@@ -149,14 +149,14 @@ async function mutateParent({ changes, destinationName, directoryPageStore, oper
     }
     case "tree": {
       const currentRoot = parent.content.directoryTreeRootHomeRef;
-      const { destination, source } = await promiseAllKeyed({
-        destination: destinationName === undefined
-          ? Promise.resolve(undefined)
-          : readDirectoryPageTreeEntry({ name: destinationName, pageStore: directoryPageStore, rootReference: currentRoot }),
-        source: sourceName === undefined
-          ? Promise.resolve(undefined)
-          : readDirectoryPageTreeEntry({ name: sourceName, pageStore: directoryPageStore, rootReference: currentRoot }),
-      });
+      // The shared mutation authority may flush provisional records on read;
+      // it admits only one page operation at a time, including these lookups.
+      const destination = destinationName === undefined
+        ? undefined
+        : await readDirectoryPageTreeEntry({ name: destinationName, pageStore: directoryPageStore, rootReference: currentRoot });
+      const source = sourceName === undefined
+        ? undefined
+        : await readDirectoryPageTreeEntry({ name: sourceName, pageStore: directoryPageStore, rootReference: currentRoot });
       if (sourceName !== undefined) requireSourceBinding({ entry: source, plan });
       if (destinationName !== undefined) requireDestinationBinding({ entry: destination, plan });
       const nextRoot = await applyDirectoryPageTreeMutations({
@@ -178,6 +178,9 @@ async function mutateParent({ changes, destinationName, directoryPageStore, oper
     ...incrementParent({ operationTimestamp, parent }),
     content,
   };
+  if (destinationName !== undefined && content.type === "inline" && !inlineDirectoryEntriesFit({ entries: content.entries })) {
+    return await promoteInlineDirectoryParent({ candidateParent: { ...updated, content }, pageStore: directoryPageStore });
+  }
   assertInodeLeafEntryFitsMetadataPage({ entry: updated });
   return updated;
 }

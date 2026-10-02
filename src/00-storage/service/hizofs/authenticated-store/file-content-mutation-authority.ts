@@ -134,6 +134,18 @@ export class AuthenticatedFileContentMutationAuthority {
     return this.stateValue;
   }
 
+  copyPendingFileDataRange({ destination, destinationOffset, reference, sourceLength, sourceOffset, validatePlaintextLength }: Parameters<AuthenticatedFileDataAppendBatch["copyPendingRange"]>[0]): boolean {
+    this.requireActive({ operation: "read pending File Data" });
+    return this.pendingDataAppendBatch?.copyPendingRange({
+      destination, destinationOffset, reference, sourceLength, sourceOffset, validatePlaintextLength,
+    }) ?? false;
+  }
+
+  readPendingMetadataRecord({ reference }: { reference: HomeRecordReference }): ReturnType<AuthenticatedMetadataMutationAuthority["readPendingHomeRecord"]> {
+    this.requireActive({ operation: "read pending metadata" });
+    return this.metadata.readPendingHomeRecord({ reference });
+  }
+
   resourceUsage(): AuthenticatedMutationResourceUsage {
     const metadata = this.metadata.resourceUsage();
     const unpublishedPhysicalBytes = metadata.unpublishedPhysicalBytes + this.appendedDataFrameBytes;
@@ -613,6 +625,10 @@ export class AuthenticatedFileContentMutationAuthority {
     case "publishing": throw new Error("cannot abandon file content mutation authority during publication");
     default: return this.stateValue satisfies never;
     }
+  }
+
+  async settleWriterCleanup(): Promise<void> {
+    await this.metadata.settleWriterCleanup();
   }
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_V1_FORMAT_CONSTANTS,
@@ -20,6 +20,7 @@ import {
   type AuthenticatedHizoFSPhysicalBytes,
 } from '@/00-storage/service/hizofs/authenticated-store/physical-bytes';
 import type { RandomByteSource } from '@/00-storage/service/hizofs/01-crypto';
+import type { PhysicalEntry } from '@/00-storage/service/hizofs/physical-store/backend';
 import { canonicalContainerPath } from '@/00-storage/service/hizofs/physical-store/paths';
 import { InMemoryCrashDurabilityBackend } from '@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend';
 import {
@@ -216,6 +217,36 @@ async function replaceSuperblockFileSystemId({ backend, path }: {
 }
 
 describe('HizoFS physical container inspection', () => {
+  it.each(['sealed', 'complete_unsealed', 'abandoned_unsealed', 'footer_unusable'] as const)(
+    'preserves the authenticated port SegmentIndexState %s without renaming it',
+    async state => {
+      const basePhysical = createAuthenticatedHizoFSInspectionPort({ backend: await fixture() });
+      const reportedIndexes: Awaited<ReturnType<typeof basePhysical.readSegmentIndex>>[] = [];
+      const physical = {
+        ...basePhysical,
+        readSegmentIndex: async (args: Parameters<typeof basePhysical.readSegmentIndex>[0]) => {
+          // This fixture tests the projection boundary, not byte classification.
+          const index = { ...await basePhysical.readSegmentIndex(args), state };
+          reportedIndexes.push(index);
+          return index;
+        },
+      };
+      const inspection = await inspectHizoFSPhysicalContainer({
+        passphrase: 'correct horse battery staple',
+        physical,
+        supportedFeatureBits,
+      });
+
+      expect(reportedIndexes.length).toBeGreaterThan(0);
+      expect(inspection.segments.map(segment => segment.state)).toEqual(reportedIndexes.map(index => index.state));
+      expect(inspection.segments.map(segment => segment.frames.map(frame => frame.header)))
+        .toEqual(reportedIndexes.map(index => index.frames.map(frame => frame.header)));
+      expect(inspection.segments.map(segment => segment.reason)).toEqual(reportedIndexes.map(() => (
+        state === 'footer_unusable' ? 'Segment Footer is unusable; valid prefix retained' : undefined
+      )));
+    },
+  );
+
   it('reports physical control copies, the root shortcut, and authenticated segments', async () => {
     const inspection = await inspectHizoFSPhysicalContainer({
       physical: createAuthenticatedHizoFSInspectionPort({ backend: await fixture() }),
@@ -235,7 +266,7 @@ describe('HizoFS physical container inspection', () => {
       state: 'available',
     });
     expect(inspection.segments).toEqual(expect.arrayContaining([
-      expect.objectContaining({ segmentClass: 'metadata', state: 'unsealed_complete' }),
+      expect.objectContaining({ segmentClass: 'metadata', state: 'complete_unsealed' }),
     ]));
     expect(inspection.segments.flatMap(segment => segment.frames).length).toBeGreaterThanOrEqual(2);
     expect(inspection.segments.filter(segment => segment.state !== "invalid" && segment.state !== "unknown_physical_entry")
@@ -476,6 +507,60 @@ describe('HizoFS physical container inspection', () => {
       passphrase: 'correct horse battery staple',
       physical: createAuthenticatedHizoFSInspectionPort({ backend: await fixture() }),
     })).rejects.toThrow('physical frame count exceeds the Inspector bound');
+  });
+
+  it.each([
+    { overflow: 'class', path: 'segments/metadata', count: 257, label: 'metadata segment class directory' },
+    { overflow: 'shard', path: 'segments/metadata/ab', count: 3, label: 'metadata segment shard directory' },
+  ])('retains the $overflow entry-bound anomaly with bounded cursor reads', async ({ overflow, path, count, label }) => {
+    const backend = await fixture();
+    const requests: { directory: string; maximumEntries: number }[] = [];
+    const closed: string[] = [];
+    const list = vi.spyOn(backend, 'list');
+    vi.spyOn(backend, 'openDirectoryCursor').mockImplementation(async ({ directory }) => ({
+      close: async () => {
+        closed.push(directory);
+      },
+      read: async ({ maximumEntries }) => {
+        requests.push({ directory, maximumEntries });
+        const entries: PhysicalEntry[] = directory === path
+          ? Array.from({ length: count }, (_, index) => ({ kind: 'directory', name: String(index) }))
+          : directory === 'segments/metadata' ? [{ kind: 'directory', name: 'ab' }] : [];
+        return { done: true, entries };
+      },
+    }));
+
+    const result = await inspectHizoFSPhysicalContainer({
+      maximumSegments: 2,
+      passphrase: 'correct horse battery staple',
+      physical: createAuthenticatedHizoFSInspectionPort({ backend }),
+    });
+    expect(result.physicalAnomalies).toEqual([`${path}: ${label} exceeds the Inspector entry bound`]);
+    expect(result.segments).toEqual([]);
+    expect(requests).toEqual([
+      { directory: 'segments/metadata', maximumEntries: 257 },
+      ...(overflow === 'shard' ? [{ directory: path, maximumEntries: 3 }] : []),
+      { directory: 'segments/data', maximumEntries: 257 },
+    ]);
+    expect(closed).toEqual(requests.map(request => request.directory));
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('retains the total segment bound across individually bounded shards', async () => {
+    const backend = await fixture();
+    vi.spyOn(backend, 'openDirectoryCursor').mockImplementation(async ({ directory }) => ({
+      close: async () => undefined,
+      read: async () => ({
+        done: true,
+        entries: (directory === 'segments/metadata' ? ['aa', 'bb'] : ['unexpected'])
+          .map(name => ({ kind: 'directory' as const, name })),
+      }),
+    }));
+    await expect(inspectHizoFSPhysicalContainer({
+      maximumSegments: 1,
+      passphrase: 'correct horse battery staple',
+      physical: createAuthenticatedHizoFSInspectionPort({ backend }),
+    })).rejects.toThrow('physical segment count exceeds the Inspector bound');
   });
 
   it('rejects an unbounded physical segment inventory before accumulating it', async () => {

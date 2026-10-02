@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MainAppSurface from './MainAppSurface.vue';
 import {
   useInitialRouteRenderReadinessClaim,
-} from '@/logic/startup/initial-route-render-readiness';
+} from '@/composables/useInitialRouteRenderReadiness';
 
 const mountSpy = vi.fn();
 const unmountSpy = vi.fn();

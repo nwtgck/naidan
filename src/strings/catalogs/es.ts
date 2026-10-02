@@ -1847,7 +1847,6 @@ import { opfsEncryption__enable_opfs_encryption } from '@/strings/messages/opfsE
 import { opfsEncryption__encrypt_storage } from '@/strings/messages/opfsEncryption__encrypt_storage/es';
 import { opfsEncryption__encrypted_storage_needs_recovery } from '@/strings/messages/opfsEncryption__encrypted_storage_needs_recovery/es';
 import { opfsEncryption__encryption_control_state_cannot_be_read_safely } from '@/strings/messages/opfsEncryption__encryption_control_state_cannot_be_read_safely/es';
-import { opfsEncryption__encryption_enabled } from '@/strings/messages/opfsEncryption__encryption_enabled/es';
 import { opfsEncryption__encryption_state_is_unreadable } from '@/strings/messages/opfsEncryption__encryption_state_is_unreadable/es';
 import { opfsEncryption__encryption_transition_must_finish_before_changing_this_setting } from '@/strings/messages/opfsEncryption__encryption_transition_must_finish_before_changing_this_setting/es';
 import { opfsEncryption__enter_passphrase_for_opfs_storage } from '@/strings/messages/opfsEncryption__enter_passphrase_for_opfs_storage/es';
@@ -4107,7 +4106,6 @@ export const catalog = {
   opfsEncryption__encrypt_storage,
   opfsEncryption__encrypted_storage_needs_recovery,
   opfsEncryption__encryption_control_state_cannot_be_read_safely,
-  opfsEncryption__encryption_enabled,
   opfsEncryption__encryption_state_is_unreadable,
   opfsEncryption__encryption_transition_must_finish_before_changing_this_setting,
   opfsEncryption__enter_passphrase_for_opfs_storage,

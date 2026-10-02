@@ -312,6 +312,56 @@ describe('StorageService Synchronization Wrapper', () => {
     });
   });
 
+  it.each(['inspect', 'cleanup'] as const)('rejects %s of disable conflicts after external transition preparation', async operation => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener;
+    if (listener === undefined) throw new Error('Expected storage synchronization listener');
+    listener({ event: {
+      type: 'opfs_encryption',
+      status: 'transition_started',
+      operationId: 'external-before-conflict-request',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    } });
+    await vi.waitFor(() => expect(mockSuspendStorageSession).toHaveBeenCalledOnce());
+
+    const request = operation === 'inspect'
+      ? service.inspectOpfsEncryptionDisableConflict()
+      : service.cleanupOpfsEncryptionDisableConflict({ inspectionId: 'old-confirmation' });
+    await expect(request).rejects.toThrow('requires this page to reload');
+    expect(mockProvider.inspectDisableEncryptionConflict).not.toHaveBeenCalled();
+    expect(mockProvider.cleanupDisableEncryptionConflict).not.toHaveBeenCalled();
+  });
+
+  it.each(['inspect', 'cleanup'] as const)('rejects queued %s of disable conflicts if another tab changes authority', async operation => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener;
+    if (listener === undefined) throw new Error('Expected storage synchronization listener');
+    const acquired = Promise.withResolvers<void>();
+    mockWithLock.mockImplementationOnce(async ({ fn }) => {
+      await acquired.promise;
+      return await fn();
+    });
+    const request = operation === 'inspect'
+      ? service.inspectOpfsEncryptionDisableConflict()
+      : service.cleanupOpfsEncryptionDisableConflict({ inspectionId: 'old-confirmation' });
+    const rejected = expect(request).rejects.toThrow('was superseded by another tab');
+    listener({ event: {
+      type: 'opfs_encryption',
+      status: 'transition_started',
+      operationId: 'external-during-conflict-request',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    } });
+    await vi.waitFor(() => expect(mockSuspendStorageSession).toHaveBeenCalledOnce());
+    acquired.resolve();
+    await rejected;
+    expect(mockProvider.inspectDisableEncryptionConflict).not.toHaveBeenCalled();
+    expect(mockProvider.cleanupDisableEncryptionConflict).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       invoke: async ({ service }: { service: StorageService }) => await service.enableOpfsEncryption({

@@ -4,17 +4,21 @@ import {
   validateTransitionNamespaceEntryName,
   validateTransitionSymlinkTarget,
 } from '@/00-storage/service/naidan-persistence-control/transition/namespace-contracts';
-export type TransitionNamespacePath = readonly string[];
+import type {
+  BoundedNamespaceEntry as TransitionNamespaceEntry,
+  BoundedNamespaceMetadata as TransitionNamespaceMetadata,
+  BoundedNamespacePath as TransitionNamespacePath,
+  BoundedNamespaceSourcePort as TransitionNamespaceSourcePort,
+  BoundedNamespaceTargetPort as TransitionNamespaceTargetPort,
+} from '@/00-storage/service/hizofs/api';
 
-export type TransitionNamespaceMetadata = Readonly<{
-  createdAt: bigint | undefined;
-  modifiedAt: bigint | undefined;
-}>;
-
-export type TransitionNamespaceEntry =
-  | Readonly<{ kind: 'directory'; metadata: TransitionNamespaceMetadata; name: string }>
-  | Readonly<{ kind: 'file'; metadata: TransitionNamespaceMetadata; name: string; size: bigint }>
-  | Readonly<{ kind: 'symlink'; metadata: TransitionNamespaceMetadata; name: string }>;
+export type {
+  TransitionNamespaceEntry,
+  TransitionNamespaceMetadata,
+  TransitionNamespacePath,
+  TransitionNamespaceSourcePort,
+  TransitionNamespaceTargetPort,
+};
 
 export type TransitionNamespaceDirectoryFrame = Readonly<{
   afterName: string | undefined;
@@ -42,49 +46,6 @@ export type TransitionNamespaceCopyPolicy = Readonly<{
   maximumOperationsPerSlice: number;
   maximumPathComponents: number;
 }>;
-
-export interface TransitionNamespaceSourcePort {
-  readRootMetadata(): Promise<TransitionNamespaceMetadata>;
-  listDirectory({ afterName, maximumEntries, path }: {
-    afterName: string | undefined;
-    maximumEntries: number;
-    path: TransitionNamespacePath;
-  }): Promise<Readonly<{ entries: readonly TransitionNamespaceEntry[]; state: 'complete' | 'more' }>>;
-  readFileChunk({ maximumBytes, offset, path }: {
-    maximumBytes: number;
-    offset: bigint;
-    path: TransitionNamespacePath;
-  }): Promise<Readonly<{ bytes: Uint8Array; state: 'complete' | 'more' }>>;
-  readSymlink({ path }: { path: TransitionNamespacePath }): Promise<string>;
-}
-
-export interface TransitionNamespaceTargetPort {
-  setRootMetadata({ metadata }: { metadata: TransitionNamespaceMetadata }): Promise<void>;
-  /**
-   * Seals the private namespace after the source traversal reaches its exact end.
-   *
-   * The coordinator may retry this call after a lost response, so target
-   * implementations must resolve the already-sealed outcome idempotently and
-   * must not publish routing authority from this gate.
-   */
-  completeNamespace(): Promise<void>;
-  ensureDirectory({ metadata, path }: { metadata: TransitionNamespaceMetadata; path: TransitionNamespacePath }): Promise<void>;
-  finalizeFile({ metadata, path, size }: {
-    metadata: TransitionNamespaceMetadata;
-    path: TransitionNamespacePath;
-    size: bigint;
-  }): Promise<void>;
-  writeFileChunk({ bytes, offset, path }: {
-    bytes: Uint8Array;
-    offset: bigint;
-    path: TransitionNamespacePath;
-  }): Promise<void>;
-  writeSymlink({ metadata, path, target }: {
-    metadata: TransitionNamespaceMetadata;
-    path: TransitionNamespacePath;
-    target: string;
-  }): Promise<void>;
-}
 
 export class TransitionNamespaceCopyError extends Error {
   public constructor({ code, message }: {

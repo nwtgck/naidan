@@ -1,10 +1,12 @@
 import {
   assertInodeLeafEntryFitsMetadataPage,
+  encodedDirectoryLeafEntryByteLength,
+  HIZOFS_V1_FORMAT_CONSTANTS,
   type DirectoryInodeEntry,
+  type DirectoryLeafEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import type { DirectoryPageTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
-import type { InlineDirectoryCreateCandidateParent } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-create-mutation";
 import type { OrdinaryEntryCreatePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 
 export type InlineDirectoryPromotionCreateMutation = Readonly<{
@@ -12,15 +14,29 @@ export type InlineDirectoryPromotionCreateMutation = Readonly<{
   updatedParent: DirectoryInodeEntry;
 }>;
 
-export async function prepareInlineDirectoryPromotionCreateMutation({
+export type InlineDirectoryCandidateParent = Readonly<
+  Omit<DirectoryInodeEntry, "content"> & {
+    content: Extract<DirectoryInodeEntry["content"], { type: "inline" }>;
+  }
+>;
+
+export function inlineDirectoryEntriesFit({ entries }: {
+  entries: readonly DirectoryLeafEntry[];
+}): boolean {
+  const encodedBytes = entries.reduce(
+    (total, entry) => total + encodedDirectoryLeafEntryByteLength({ entry }),
+    0,
+  );
+  return encodedBytes <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes;
+}
+
+export async function promoteInlineDirectoryParent({
   candidateParent,
   pageStore,
-  plan,
 }: {
-  candidateParent: InlineDirectoryCreateCandidateParent;
+  candidateParent: InlineDirectoryCandidateParent;
   pageStore: DirectoryPageTreePageStore;
-  plan: OrdinaryEntryCreatePlan;
-}): Promise<InlineDirectoryPromotionCreateMutation> {
+}): Promise<DirectoryInodeEntry> {
   // The candidate is at most one entry beyond the 4 KiB inline bound, so the
   // complete promotion set fits in a single 64 KiB Directory Page root. The
   // root remains private until the replacement parent publishes in the Commit.
@@ -38,9 +54,17 @@ export async function prepareInlineDirectoryPromotionCreateMutation({
   };
 
   // Directory Page records are immutable and remain unreachable until the
-  // replacement parent and its new child inode publish in one Commit.
+  // replacement parent is published in one Commit.
   assertInodeLeafEntryFitsMetadataPage({ entry: updatedParent });
+  return updatedParent;
+}
 
+export async function prepareInlineDirectoryPromotionCreateMutation({ candidateParent, pageStore, plan }: {
+  candidateParent: InlineDirectoryCandidateParent;
+  pageStore: DirectoryPageTreePageStore;
+  plan: OrdinaryEntryCreatePlan;
+}): Promise<InlineDirectoryPromotionCreateMutation> {
+  const updatedParent = await promoteInlineDirectoryParent({ candidateParent, pageStore });
   return {
     changes: [
       { entry: updatedParent, type: "set" },

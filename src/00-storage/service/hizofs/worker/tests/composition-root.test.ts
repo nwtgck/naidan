@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import nonemptyContainerPortable from "./test-fixtures/nonempty-container-portable-v1.json";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
@@ -11,6 +9,7 @@ import {
   createSubvolumeId,
   createTimestampMilliseconds,
   createUInt64,
+  decodeRecordFrameHeader,
   parseFileSystemId,
   parseMutationId,
   parsePublicationId,
@@ -35,9 +34,13 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { createInitialUnlockEnvelopeCopies } from "@/00-storage/service/hizofs/authenticated-store/unlock-envelope-store";
+import { ensureAuthenticatedContainerDirectoryHierarchy } from "@/00-storage/service/hizofs/authenticated-store/ensure-container-directory";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
-import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
+import {
+  authenticatedHizoFSPhysicalBytes,
+  type AuthenticatedHizoFSPhysicalBytes,
+} from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
   openSuperblockCopies,
 } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
@@ -54,6 +57,8 @@ import { createLogicalMaintenanceTraversalItem } from "@/00-storage/service/hizo
 import { prepareMaintenanceCandidateSnapshot } from "@/00-storage/service/hizofs/maintenance/prepared-maintenance-candidate-snapshot";
 import type {
   HizoFSDevelopmentWritableBackend,
+  HizoFSDirectoryCursorBackend,
+  HizoFSPhysicalDirectoryCursor,
   HizoFSPhysicalWriteBackend,
   HizoFSWritableFile,
 } from "@/00-storage/service/hizofs/physical-store/backend";
@@ -64,7 +69,6 @@ import {
   CANONICAL_CONTAINER_ROOT,
   canonicalContainerDirectory,
   canonicalContainerPath,
-  type CanonicalContainerDirectory,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { HizoFSRuntimeDiagnosticsAccumulator } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
@@ -99,6 +103,7 @@ import {
   HizoFSApplicationMutationSessionPoisonedError,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
   openAuthenticatedDevelopmentWritableContainerCapability,
+  openAuthenticatedDevelopmentWritableSessionReadObservation,
   openAuthenticatedReadOnlyApplicationSession,
   openAuthenticatedReadOnlyApplicationSessionFromCapability,
   openAuthenticatedReadOnlyContainerAuthority,
@@ -310,61 +315,7 @@ function immediateRuntimeHost(): HizoFSWorkerRuntimeHost {
   });
 }
 
-async function collectPortableContainerFiles({
-  backend,
-  directory,
-}: {
-  backend: InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>;
-  directory: CanonicalContainerDirectory;
-}): Promise<readonly Readonly<{
-  byteLength: number;
-  hex: string;
-  path: string;
-  sha256: string;
-}>[]> {
-  const collected: {
-    byteLength: number;
-    hex: string;
-    path: string;
-    sha256: string;
-  }[] = [];
-  const visit = async ({ current }: { current: CanonicalContainerDirectory }): Promise<void> => {
-    const entries = await backend.list({ directory: current });
-    for (const entry of entries) {
-      const path = current === CANONICAL_CONTAINER_ROOT ? entry.name : `${current}/${entry.name}`;
-      switch (entry.kind) {
-      case "directory":
-        await visit({ current: canonicalContainerDirectory({ value: path }) });
-        break;
-      case "file": {
-        if (entry.byteLength > BigInt(Number.MAX_SAFE_INTEGER)) {
-          throw new RangeError(`portable fixture file is too large: ${path}`);
-        }
-        const byteLength = Number(entry.byteLength);
-        const bytes = await backend.readFileBounded({
-          maximumByteLength: byteLength,
-          path: canonicalContainerPath({ value: path }),
-        });
-        if (bytes === undefined) throw new Error(`portable fixture file disappeared: ${path}`);
-        collected.push({
-          byteLength,
-          hex: Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join(""),
-          path,
-          sha256: createHash("sha256").update(bytes).digest("hex"),
-        });
-        break;
-      }
-      default: return entry satisfies never;
-      }
-    }
-  };
-  await visit({ current: directory });
-  return collected.sort((left, right) => (left.path < right.path ? -1 : left.path === right.path ? 0 : 1));
-}
-
-async function createNonemptyPortableFixtureBackend(): Promise<
-  InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>
-  > {
+async function createNonemptyContainerFixture() {
   const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
   const randomSource = deterministicRandomSource();
   const supportedFeatureBits = createFeatureBits({ value: 0n });
@@ -381,7 +332,7 @@ async function createNonemptyPortableFixtureBackend(): Promise<
     runtimeHost: immediateRuntimeHost(),
     verifyCapturedAuthority: async () => ({
       backend,
-      canonicalBackingLocation: "memory://portable-nonempty.hizofs",
+      canonicalBackingLocation: "memory://nonempty.hizofs",
       explicitBulkLimits: {
         candidate: { maxEntries: 32, maxInlineFileBytesTotal: 4096 },
         directoryImport: { maximumEntryMutationsPerBatch: 16 },
@@ -412,16 +363,22 @@ async function createNonemptyPortableFixtureBackend(): Promise<
   await nestedWritable.write({ data: new TextEncoder().encode("nested\n"), position: 0 });
   await nestedWritable.close();
   await session.close();
-  return backend;
+  return { backend, fileSystemId: opened.fileSystemId };
 }
 
 async function writableSessionFixture({
+  lazyDurability,
+  publicationModeRequest = "immediate",
+  randomSource: suppliedRandomSource,
   registerRuntimeSession,
 }: {
+  lazyDurability?: HizoFSLazyDurabilityPolicy;
+  publicationModeRequest?: HizoFSLazyDurabilityPolicy["publicationModeRequest"];
+  randomSource?: RandomByteSource;
   registerRuntimeSession: Parameters<typeof openAuthenticatedReadWriteApplicationSession>[0]["registerRuntimeSession"];
 }) {
   const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
-  const randomSource = deterministicRandomSource();
+  const randomSource = suppliedRandomSource ?? deterministicRandomSource();
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   const passphrase = "correct horse battery staple";
   const opened = await createEmptyEncryptedContainer({
@@ -430,7 +387,9 @@ async function writableSessionFixture({
     randomSource,
     supportedFeatureBits,
   });
-  const host = immediateRuntimeHost();
+  const host = runtimeHost({
+    lazyDurability: lazyDurability ?? { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, publicationModeRequest },
+  });
   const session = await openAuthenticatedReadWriteApplicationSession({
     captureAuthority: async () => ({ revision: 1 }),
     recheckAuthority: async () => undefined,
@@ -458,6 +417,106 @@ async function writableSessionFixture({
 }
 
 describe("HizoFS worker composition root", () => {
+  it("pages an actual encrypted tree-backed snapshot without full-list materialization or writes", async () => {
+    const { backend, session } = await writableSessionFixture({ registerRuntimeSession: undefined });
+    const names = Array.from({ length: 40 }, (_, index) => `${String(index).padStart(2, "0")}-${"x".repeat(115)}`);
+    expect(names.reduce((total, name) => total + new TextEncoder().encode(name).byteLength, 0))
+      .toBeGreaterThan(HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes);
+    try {
+      for (const name of names) await session.root.getFileHandle({ create: true, name });
+      const capture = vi.spyOn(session.port, "createReadSnapshot");
+      const snapshot = await session.createReadSnapshot();
+      if (!(snapshot instanceof HizoFSStorageFileSystemSession)) throw new Error("expected concrete snapshot");
+      try {
+        const fullList = vi.spyOn(snapshot.port, "listDirectory");
+        const pages = vi.spyOn(snapshot.port, "listDirectoryPage");
+        const write = vi.spyOn(backend, "writeAt");
+        const sync = vi.spyOn(backend, "syncFileData");
+        await snapshot.root.stat();
+        const first = await snapshot.root.listEntriesPage!({ afterName: undefined, maximumEntries: 2 });
+        expect(first.entries.map(([name]) => name)).toEqual(names.slice(0, 2));
+        expect(first.truncated).toBe(true);
+        const partial = await snapshot.root.listEntriesPage!({ afterName: names[0], maximumEntries: 2 });
+        expect(partial.entries.map(([name]) => name)).toEqual(names.slice(1, 3));
+        const between = await snapshot.root.listEntriesPage!({ afterName: "02-y", maximumEntries: 2 });
+        expect(between.entries.map(([name]) => name)).toEqual(names.slice(3, 5));
+        const all = [];
+        for await (const [name] of snapshot.root.entries()) all.push(name);
+        expect(all).toEqual(names);
+        expect(fullList).not.toHaveBeenCalled();
+        expect(capture).toHaveBeenCalledOnce();
+        expect(pages).toHaveBeenCalledTimes(4);
+        for (const [index, result] of pages.mock.results.entries()) {
+          expect((await result.value).entries.length).toBeLessThanOrEqual(pages.mock.calls[index]![0].maximumEntries);
+        }
+        expect(write).not.toHaveBeenCalled();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        await snapshot.close();
+      }
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each(["immediate", "automatic"] as const)("preserves acknowledged %s writes after a failed shard parent confirmation and retry", async publicationModeRequest => {
+    vi.useFakeTimers();
+    try {
+      let forceNewShard = false;
+      const fillRandom = deterministicRandomSource();
+      const randomSource: RandomByteSource = ({ bytes }) => {
+        fillRandom({ bytes });
+        if (forceNewShard && bytes.byteLength === 16) bytes[15] = 255;
+      };
+      const { backend, passphrase, session, supportedFeatureBits } = await writableSessionFixture({
+        publicationModeRequest,
+        randomSource,
+        registerRuntimeSession: undefined,
+      });
+      try {
+        const parent = canonicalContainerDirectory({ value: "segments/metadata" });
+        expect((await backend.list({ directory: parent })).some(entry => entry.name === "ff")).toBe(false);
+        forceNewShard = true;
+        const sync = backend.syncDirectoryEntries.bind(backend);
+        const failure = new Error("new shard parent confirmation failed");
+        let failOnce = true;
+        vi.spyOn(backend, "syncDirectoryEntries").mockImplementation(async request => {
+          if (failOnce && request.parent === parent) {
+            failOnce = false;
+            throw failure;
+          }
+          await sync(request);
+        });
+        await expect(session.root.getFileHandle({ create: true, name: "failed.txt" })).rejects.toBe(failure);
+        expect(failOnce).toBe(false);
+        const file = await session.root.getFileHandle({ create: true, name: "acknowledged.txt" });
+        const writable = await file.createWritable({ keepExistingData: false });
+        const expected = new Uint8Array([1, 2, 3, 4]);
+        await writable.write({ data: expected, position: 0 });
+        await writable.close();
+        await session.sync();
+        const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+        const actual = new Uint8Array(readable.size);
+        await readable.read({ buffer: actual, length: actual.byteLength, offset: 0, position: 0, signal: undefined });
+        await readable.close();
+        expect(actual).toEqual(expected);
+        await session.close();
+        await backend.crashAndRecover();
+        const opened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened });
+        try {
+          expect(await resources.namespace.readFile({ pathComponents: ["acknowledged.txt"] })).toEqual(expected);
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        await session.close();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("projects an authenticated container into namespace-only application resources", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const opened = await createEmptyEncryptedContainer({
@@ -679,7 +738,13 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
-  it("preserves ordinary mutation and writer-dependency cleanup failures in order", async () => {
+  it.each([
+    { operationFailure: { cause: new Error("operation timestamp failed") }, releaseFailure: { cause: new Error("writer dependency release failed") } },
+    { operationFailure: { cause: undefined }, releaseFailure: { cause: new Error("writer dependency release failed") } },
+    { operationFailure: { cause: new Error("operation timestamp failed") }, releaseFailure: { cause: undefined } },
+    { operationFailure: { cause: undefined }, releaseFailure: undefined },
+    { operationFailure: undefined, releaseFailure: { cause: undefined } },
+  ])("preserves ordinary mutation and writer-dependency cleanup failures in order: $operationFailure / $releaseFailure", async ({ operationFailure, releaseFailure }) => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const supportedFeatureBits = createFeatureBits({ value: 0n });
@@ -691,18 +756,16 @@ describe("HizoFS worker composition root", () => {
     });
     const host = runtimeHost();
     const acquireWorkingGenerationDependencyRoot = host.acquireWorkingGenerationDependencyRoot.bind(host);
-    const releaseFailure = new Error("writer dependency release failed");
     vi.spyOn(host, "acquireWorkingGenerationDependencyRoot").mockImplementation(({ commitReference }) => {
       const registration = acquireWorkingGenerationDependencyRoot({ commitReference });
       return {
         ...registration,
         release: () => {
           registration.release();
-          throw releaseFailure;
+          if (releaseFailure !== undefined) throw releaseFailure.cause;
         },
       };
     });
-    const operationFailure = new Error("operation timestamp failed");
     const session = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
       recheckAuthority: async () => undefined,
@@ -714,7 +777,8 @@ describe("HizoFS worker composition root", () => {
         fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
         opened,
         operationTimestamp: () => {
-          throw operationFailure;
+          if (operationFailure !== undefined) throw operationFailure.cause;
+          return createTimestampMilliseconds({ value: 1_700_000_000_000n });
         },
         randomSource,
         removalLimits: { deleteBatchSize: 2 },
@@ -726,10 +790,14 @@ describe("HizoFS worker composition root", () => {
     });
 
     const result = session.root.getDirectoryHandle({ create: true, name: "docs" });
-    await expect(result).rejects.toBeInstanceOf(AggregateError);
-    await expect(result).rejects.toMatchObject({
-      errors: [operationFailure, releaseFailure],
-    });
+    if (operationFailure !== undefined && releaseFailure !== undefined) {
+      await expect(result).rejects.toBeInstanceOf(AggregateError);
+      await expect(result).rejects.toMatchObject({
+        errors: [operationFailure.cause, releaseFailure.cause],
+      });
+    } else {
+      await expect(result).rejects.toBe(operationFailure === undefined ? releaseFailure?.cause : operationFailure.cause);
+    }
     const capture = await host.beginMaintenanceRootCapture();
     expect(capture.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
@@ -882,7 +950,11 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
-  it("preserves prepared writable and writer-dependency release failures in order", async () => {
+  it.each([
+    { operationFailure: new Error("prepared writable staging failed"), priorWrite: false },
+    { operationFailure: undefined, priorWrite: false },
+    { operationFailure: undefined, priorWrite: true },
+  ])("preserves prepared writable and writer-dependency release failures in order: $operationFailure / prior write $priorWrite", async ({ operationFailure, priorWrite }) => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const supportedFeatureBits = createFeatureBits({ value: 0n });
@@ -892,7 +964,6 @@ describe("HizoFS worker composition root", () => {
       randomSource,
       supportedFeatureBits,
     });
-    const operationFailure = new Error("prepared writable staging failed");
     let rejectOperationTimestamp = false;
     const host = immediateRuntimeHost();
     const session = await openAuthenticatedReadWriteApplicationSession({
@@ -932,9 +1003,15 @@ describe("HizoFS worker composition root", () => {
     });
 
     const writable = await file.createWritable({ keepExistingData: true });
+    if (priorWrite) await writable.write({ data: Uint8Array.of(7), position: 0 });
     rejectOperationTimestamp = true;
     await expect(writable.write({ data: Uint8Array.of(1), position: 0 }))
       .rejects.toBe(operationFailure);
+    await expect(writable.write({ data: Uint8Array.of(2), position: 0 }))
+      .rejects.toMatchObject({
+        cause: operationFailure,
+        name: HizoFSApplicationMutationSessionPoisonedError.name,
+      });
     const closing = writable.close();
     await expect(closing).rejects.toBeInstanceOf(AggregateError);
     await expect(closing).rejects.toMatchObject({
@@ -951,8 +1028,81 @@ describe("HizoFS worker composition root", () => {
     capture.release();
     await capture.released;
 
+    const durable = await openSuperblockCopies({
+      backend,
+      fileSystemId: opened.fileSystemId,
+      rootKey: opened.rootKey,
+      supportedFeatureBits,
+    });
+    expect(durable.logicalState.activeCommitSequence).toBe(2n);
+
     await session.close();
     expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
+  it.each(["inline", "tree"] as const)("preserves exact UTF-8 names and symlink targets in %s directories across cold reopen", async directoryType => {
+    const fixture = await writableSessionFixture({ registerRuntimeSession: undefined });
+    const names = ["alpha", "\uFEFFalpha", "\uFEFF"];
+    try {
+      if (directoryType === "tree") {
+        for (let index = 0; index < 20; index += 1) {
+          await fixture.session.root.getFileHandle({
+            create: true,
+            name: `${String(index).padStart(3, "0")}${"x".repeat(220)}`,
+          });
+        }
+      }
+      for (const [index, name] of names.entries()) {
+        const file = await fixture.session.root.getFileHandle({ create: true, name });
+        const writable = await file.createWritable({ keepExistingData: false });
+        await writable.write({ data: Uint8Array.of(index + 1), position: 0 });
+        await writable.close();
+      }
+      const link = await fixture.session.root.createSymlink({ name: "link", target: "\uFEFFalpha" });
+      const bomLink = await fixture.session.root.createSymlink({ name: "bom-link", target: "\uFEFF" });
+      await expect(link.readTarget()).resolves.toBe("\uFEFFalpha");
+      await expect(bomLink.readTarget()).resolves.toBe("\uFEFF");
+      for (const name of names) {
+        await expect(fixture.session.root.getFileHandle({ create: false, name }))
+          .resolves.toMatchObject({ kind: "file", name });
+      }
+    } finally {
+      await fixture.session.close();
+    }
+
+    // Reopen through persisted codecs, without the writer's decoded-page caches.
+    const reopened = await openEmptyEncryptedContainer({
+      backend: fixture.backend,
+      passphrase: fixture.passphrase,
+      supportedFeatureBits: fixture.supportedFeatureBits,
+    });
+    const resources = createAuthenticatedApplicationReadSessionResources({ backend: fixture.backend, opened: reopened });
+    try {
+      const root = await readBootstrapRoot({
+        authority: {
+          commitHomeRef: reopened.superblockLogicalState.activeCommitHomeRef,
+          commitSequence: reopened.commit.commitSequence,
+          mutationId: reopened.commit.mutationId,
+          type: "active",
+        },
+        backend: fixture.backend,
+        fileSystemId: reopened.fileSystemId,
+        relocationIndexRootPhysicalRef: reopened.superblockLogicalState.relocationIndexRootPhysicalRef,
+        rootKey: reopened.rootKey,
+      });
+      expect(root.rootDirectoryInode.content.type).toBe(directoryType);
+      const entries = await resources.namespace.list({ pathComponents: [] });
+      expect(entries.filter(entry => names.includes(entry.name)).map(entry => entry.name))
+        .toEqual(["alpha", "\uFEFF", "\uFEFFalpha"]);
+      for (const [index, name] of names.entries()) {
+        await expect(resources.namespace.readFile({ pathComponents: [name] }))
+          .resolves.toEqual(Uint8Array.of(index + 1));
+      }
+      await expect(resources.namespace.readlink({ pathComponents: ["link"] })).resolves.toBe("\uFEFFalpha");
+      await expect(resources.namespace.readlink({ pathComponents: ["bom-link"] })).resolves.toBe("\uFEFF");
+    } finally {
+      await resources.releaseResources();
+    }
   });
 
   it("binds writable application creates to durable generation updates and reopen", async () => {
@@ -1601,6 +1751,165 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it.each([
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached", 464],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached", 464],
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached", 560],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached", 560],
+  ] as const)("validates first materialization for %s (%s) at %i bytes", async (dimension, code, limit) => {
+    vi.useFakeTimers();
+    try {
+      const { backend, host, passphrase, session, supportedFeatureBits } = await writableSessionFixture({
+        lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, [dimension]: limit },
+        registerRuntimeSession: undefined,
+      });
+      try {
+        const create = session.root.getDirectoryHandle({ create: true, name: "accepted" });
+        if (limit === 464) {
+          await expect(create).rejects.toMatchObject({ code });
+          expect(host.workingCandidatePublicationState()).toBe("empty");
+        } else {
+          await expect(create).resolves.toMatchObject({ name: "accepted" });
+          expect(host.workingCandidatePublicationState()).toBe("installed");
+        }
+        await session.sync();
+      } finally {
+        await session.close();
+      }
+      await backend.crashAndRecover();
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        const stat = resources.namespace.stat({ pathComponents: ["accepted"] });
+        if (limit === 464) await expect(stat).rejects.toMatchObject({ code: "not_found" });
+        else await expect(stat).resolves.toMatchObject({ kind: "directory" });
+      } finally {
+        await resources.releaseResources();
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached"],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached"],
+  ] as const)("can sync the accepted epoch after rejecting a replacement that exhausts %s", async (dimension, code) => {
+    vi.useFakeTimers();
+    try {
+      const { backend, host, passphrase, session, supportedFeatureBits } = await writableSessionFixture({
+        lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, [dimension]: 1_024 },
+        registerRuntimeSession: undefined,
+      });
+      try {
+        await session.root.getDirectoryHandle({ create: true, name: "accepted-0" });
+        await session.root.getDirectoryHandle({ create: true, name: "accepted-1" });
+        await expect(session.root.getDirectoryHandle({ create: true, name: "accepted-2" }))
+          .rejects.toMatchObject({ code });
+        expect(host.workingCandidatePublicationState()).toBe("installed");
+        await session.sync();
+        expect(host.workingCandidatePublicationState()).toBe("empty");
+      } finally {
+        await session.close();
+      }
+      await backend.crashAndRecover();
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        for (const name of ["accepted-0", "accepted-1"]) {
+          await expect(resources.namespace.stat({ pathComponents: [name] }))
+            .resolves.toMatchObject({ kind: "directory" });
+        }
+        await expect(resources.namespace.stat({ pathComponents: ["accepted-2"] }))
+          .rejects.toMatchObject({ code: "not_found" });
+      } finally {
+        await resources.releaseResources();
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached", 560],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached", 560],
+    ["maximumDirtyMetadataBytes", "dirty_metadata_byte_limit_reached", 752],
+    ["maximumUnpublishedPhysicalBytes", "unpublished_physical_byte_limit_reached", 752],
+  ] as const)("retains finite append retry accounting for %s (%s) at %i bytes", async (dimension, code, limit) => {
+    vi.useFakeTimers();
+    try {
+      const { backend, host, passphrase, session, supportedFeatureBits } = await writableSessionFixture({
+        lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, [dimension]: limit },
+        registerRuntimeSession: undefined,
+      });
+      try {
+        await session.root.getDirectoryHandle({ create: true, name: "accepted" });
+        const writeAt = backend.writeAt.bind(backend);
+        const appendFailure = new Error("Commit append persisted only its frame header");
+        let commitAppendAttempts = 0;
+        backend.writeAt = async ({ bytes, file, offset }) => {
+          if (file.path.startsWith("segments/metadata/")
+            && bytes.byteLength === STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES) {
+            const header = decodeRecordFrameHeader({
+              bytes: bytes.subarray(0, HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader),
+            });
+            expect(header.recordKind).toBe(HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit);
+            commitAppendAttempts += 1;
+            if (commitAppendAttempts === 1) {
+              await writeAt({
+                bytes: authenticatedHizoFSPhysicalBytes({
+                  bytes: bytes.subarray(0, HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader),
+                }),
+                file,
+                offset,
+              });
+              throw appendFailure;
+            }
+          }
+          await writeAt({ bytes, file, offset });
+        };
+        await expect(session.sync()).rejects.toMatchObject({
+          code: "durable_publication_failed",
+          retryable: true,
+        });
+        expect(commitAppendAttempts).toBe(1);
+        expect(host.workingCandidatePublicationState()).toBe("installed");
+
+        if (limit === 560) {
+          await expect(session.sync()).rejects.toMatchObject({
+            cause: { code },
+            code: "durable_publication_failed",
+          });
+          expect(commitAppendAttempts).toBe(1);
+        } else {
+          await session.sync();
+          expect(commitAppendAttempts).toBe(2);
+          expect(host.workingCandidatePublicationState()).toBe("empty");
+        }
+      } finally {
+        await session.close();
+      }
+      await backend.crashAndRecover();
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        const stat = resources.namespace.stat({ pathComponents: ["accepted"] });
+        if (limit === 560) await expect(stat).rejects.toMatchObject({ code: "not_found" });
+        else await expect(stat).resolves.toMatchObject({ kind: "directory" });
+      } finally {
+        await resources.releaseResources();
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects exact file-content resource overflow before Superblock publication", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -1784,10 +2093,34 @@ describe("HizoFS worker composition root", () => {
     expect(backend.dataSegmentWriteAtOperations).toBe(writesAfterFirstStage);
     expect(indexOperations).toHaveLength(indexOperationsAfterFirstStage);
 
+    const physicalWrite = vi.spyOn(backend, "writeAt");
+    const physicalSync = vi.spyOn(backend, "syncFileData");
+    const stagedBytes = new Uint8Array(8);
+    expect(await writable.read!({
+      buffer: stagedBytes,
+      length: stagedBytes.byteLength,
+      offset: 0,
+      position: block.byteLength - 4,
+      signal: undefined,
+    })).toEqual({ bytesRead: 8 });
+    expect(stagedBytes).toEqual(new Uint8Array(8).fill(0x5a));
+    expect(physicalWrite).not.toHaveBeenCalled();
+    expect(physicalSync).not.toHaveBeenCalled();
+    expect(backend.dataSegmentWriteAtOperations).toBe(writesAfterFirstStage);
+    expect(await file.stat()).toMatchObject({ size: 0 });
+
     // A non-tail overwrite cannot consume the append-only overlay. Materialize
     // it first so the general overlap-checked write observes the exact root.
     await writable.write({ data: Uint8Array.of(0x33), position: 3 });
     expect(indexOperations.length).toBeGreaterThan(indexOperationsAfterFirstStage);
+    physicalWrite.mockClear();
+    physicalSync.mockClear();
+    await writable.read!({ buffer: stagedBytes, length: 8, offset: 0, position: 0, signal: undefined });
+    expect(stagedBytes).toEqual(Uint8Array.of(0x5a, 0x5a, 0x5a, 0x33, 0x5a, 0x5a, 0x5a, 0x5a));
+    expect(physicalWrite).not.toHaveBeenCalled();
+    expect(physicalSync).not.toHaveBeenCalled();
+    physicalWrite.mockRestore();
+    physicalSync.mockRestore();
 
     await writable.close();
     expect(backend.dataSegmentWriteAtOperations).toBe(writesAfterFirstStage + 1);
@@ -1810,6 +2143,47 @@ describe("HizoFS worker composition root", () => {
     expect(opened.rootKey.isDestroyed()).toBe(true);
   });
 
+  it("reopens repeated tail and adjacent range writes with unchanged surrounding bytes", async () => {
+    const { backend, passphrase, session, supportedFeatureBits } = await writableSessionFixture({ registerRuntimeSession: undefined });
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const expected = new Uint8Array(inlineLimit + 15).fill(1);
+    expected.fill(2, inlineLimit + 1, inlineLimit + 8);
+    expected.fill(3, inlineLimit + 8);
+    expected.set([4, 4, 4, 4, 5, 5, 5, 5], 10);
+    try {
+      const untouched = await session.root.getFileHandle({ create: true, name: "untouched.txt" });
+      const otherWriter = await untouched.createWritable({ keepExistingData: false });
+      await otherWriter.write({ data: Uint8Array.of(9, 8, 7), position: 0 });
+      await otherWriter.close();
+      const file = await session.root.getFileHandle({ create: true, name: "joined.bin" });
+      const writable = await file.createWritable({ keepExistingData: false });
+      await writable.write({ data: new Uint8Array(inlineLimit + 1).fill(1), position: 0 });
+      await writable.write({ data: new Uint8Array(7).fill(2), position: inlineLimit + 1 });
+      await writable.write({ data: new Uint8Array(7).fill(3), position: inlineLimit + 8 });
+      await writable.write({ data: new Uint8Array(4).fill(4), position: 10 });
+      await writable.write({ data: new Uint8Array(4).fill(5), position: 14 });
+      const staged = new Uint8Array(expected.byteLength);
+      expect(await writable.read!({ buffer: staged, length: staged.byteLength, offset: 0, position: 0, signal: undefined }))
+        .toEqual({ bytesRead: staged.byteLength });
+      expect(staged).toEqual(expected);
+      expect(await file.stat()).toMatchObject({ size: 0 });
+      await writable.close();
+      expect(await file.stat()).toMatchObject({ size: expected.byteLength });
+      await session.sync();
+    } finally {
+      await session.close();
+    }
+    const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+    const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+    try {
+      expect(await resources.namespace.stat({ pathComponents: ["joined.bin"] })).toMatchObject({ fileSize: BigInt(expected.byteLength) });
+      expect(await resources.namespace.readFile({ pathComponents: ["joined.bin"] })).toEqual(expected);
+      expect(await resources.namespace.readFile({ pathComponents: ["untouched.txt"] })).toEqual(Uint8Array.of(9, 8, 7));
+    } finally {
+      await resources.releaseResources();
+    }
+  });
+
   it("batches non-tail prepared-writable File Data without materializing each public write", async () => {
     const backend = new DataSegmentWriteCountingBackend({});
     const indexOperations: string[] = [];
@@ -1823,6 +2197,7 @@ describe("HizoFS worker composition root", () => {
     });
     const session = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
+      metadataRecordCachePolicy: { maximumBytes: 0, maximumEntries: 0 },
       recheckAuthority: async () => undefined,
       runtimeHost: runtimeHost(),
       verifyCapturedAuthority: async () => ({
@@ -1854,7 +2229,65 @@ describe("HizoFS worker composition root", () => {
     await writable.write({ data: Uint8Array.of(0x31, 0x32, 0x33, 0x34), position: 10 });
     await writable.write({ data: Uint8Array.of(0x41, 0x42, 0x43, 0x44), position: 300_000 });
     expect(indexOperations).toHaveLength(indexOperationsBeforeWrites);
-    await writable.close();
+    const physicalWrite = vi.spyOn(backend, "writeAt");
+    const physicalSync = vi.spyOn(backend, "syncFileData");
+    const readPhysical = backend.readExact.bind(backend);
+    const physicalRead = vi.spyOn(backend, "readExact");
+    const stagedBytes = new Uint8Array(8);
+    await writable.read!({ buffer: stagedBytes, length: 4, offset: 0, position: 10, signal: undefined });
+    expect(stagedBytes.subarray(0, 4)).toEqual(Uint8Array.of(0x31, 0x32, 0x33, 0x34));
+    expect(physicalRead.mock.calls.some(([request]) => request.path.startsWith("segments/data/"))).toBe(false);
+    const validationOperations = indexOperations.filter(operation => operation === "entries").length;
+    await writable.read!({ buffer: stagedBytes, length: 4, offset: 0, position: 10, signal: undefined });
+    expect(indexOperations.filter(operation => operation === "entries")).toHaveLength(validationOperations);
+    await writable.read!({ buffer: stagedBytes, length: 8, offset: 0, position: 8, signal: undefined });
+    expect(stagedBytes).toEqual(Uint8Array.of(0x5a, 0x5a, 0x31, 0x32, 0x33, 0x34, 0x5a, 0x5a));
+    expect(physicalWrite).not.toHaveBeenCalled();
+    expect(physicalSync).not.toHaveBeenCalled();
+    const cancelled = new AbortController();
+    cancelled.abort(new Error("read cancelled"));
+    await expect(writable.read!({ buffer: stagedBytes, length: 1, offset: 0, position: 0, signal: cancelled.signal }))
+      .rejects.toBe(cancelled.signal.reason);
+    await expect(writable.read!({ buffer: stagedBytes, length: 1, offset: 0, position: initialBytes.byteLength, signal: undefined }))
+      .rejects.toThrow(RangeError);
+    const otherReader = await file.openReadable({ mimeType: "application/octet-stream" });
+    await otherReader.read({ buffer: stagedBytes, length: 4, offset: 0, position: 10, signal: undefined });
+    expect(stagedBytes.subarray(0, 4)).toEqual(new Uint8Array(4).fill(0x5a));
+    await otherReader.close();
+
+    let releaseRead = () => {};
+    let markReadStarted = () => {};
+    const readReleased = new Promise<void>(resolve => {
+      releaseRead = resolve;
+    });
+    const readStarted = new Promise<void>(resolve => {
+      markReadStarted = resolve;
+    });
+    physicalRead.mockImplementationOnce(async request => {
+      markReadStarted();
+      await readReleased;
+      return await readPhysical(request);
+    });
+    const readCancellation = new AbortController();
+    const reading = writable.read!({ buffer: stagedBytes, length: 8, offset: 0, position: 8, signal: readCancellation.signal });
+    const rejectedRead = expect(reading).rejects.toThrow("cancel in-flight read");
+    await readStarted;
+    readCancellation.abort(new Error("cancel in-flight read"));
+    let committed = false;
+    const closing = writable.close().then(() => {
+      committed = true;
+    });
+    await Promise.resolve();
+    expect(committed).toBe(false);
+    expect(physicalWrite).not.toHaveBeenCalled();
+    expect(physicalSync).not.toHaveBeenCalled();
+    releaseRead();
+    await rejectedRead;
+    await closing;
+    expect(committed).toBe(true);
+    physicalRead.mockRestore();
+    physicalWrite.mockRestore();
+    physicalSync.mockRestore();
     expect(indexOperations.length).toBeGreaterThan(indexOperationsBeforeWrites);
 
     const readable = await file.openReadable({ mimeType: "application/octet-stream" });
@@ -1912,6 +2345,9 @@ describe("HizoFS worker composition root", () => {
     const sparseOffset = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes + 10;
     const writable = await file.createWritable({ keepExistingData: false });
     await writable.write({ data: new TextEncoder().encode("abcdef"), position: 0 });
+    const inlineRead = new Uint8Array(6);
+    await writable.read!({ buffer: inlineRead, length: 6, offset: 0, position: 0, signal: undefined });
+    expect(new TextDecoder().decode(inlineRead)).toBe("abcdef");
     await writable.write({ data: new TextEncoder().encode("XY"), position: sparseOffset });
     await writable.write({ data: new TextEncoder().encode("ZZ"), position: 2 });
     // The first exact-tail append re-establishes the proof after the non-tail
@@ -1919,6 +2355,11 @@ describe("HizoFS worker composition root", () => {
     // must materialize that overlay before preserving the first tail byte.
     await writable.write({ data: Uint8Array.of("T".charCodeAt(0)), position: sparseOffset + 2 });
     await writable.write({ data: Uint8Array.of("U".charCodeAt(0)), position: sparseOffset + 3 });
+    await writable.truncate({ size: sparseOffset + 3 });
+    await writable.truncate({ size: sparseOffset + 6 });
+    const expandedRead = new Uint8Array(6);
+    await writable.read!({ buffer: expandedRead, length: 6, offset: 0, position: sparseOffset, signal: undefined });
+    expect(expandedRead).toEqual(Uint8Array.of(88, 89, 84, 0, 0, 0));
     await writable.truncate({ size: sparseOffset + 3 });
     await writable.close();
 
@@ -1941,7 +2382,14 @@ describe("HizoFS worker composition root", () => {
 
     const aborted = await file.createWritable({ keepExistingData: true });
     await aborted.write({ data: Uint8Array.of(255), position: 0 });
+    await aborted.truncate({ size: 2 });
+    await aborted.truncate({ size: 6 });
+    const abortedBytes = new Uint8Array(6);
+    await aborted.read!({ buffer: abortedBytes, length: 6, offset: 0, position: 0, signal: undefined });
+    expect(abortedBytes).toEqual(Uint8Array.of(255, 98, 0, 0, 0, 0));
     await aborted.abort({ reason: "test abort" });
+    await expect(aborted.read!({ buffer: abortedBytes, length: 1, offset: 0, position: 0, signal: undefined }))
+      .rejects.toThrow();
     expect(await file.stat()).toMatchObject({ size: sparseOffset + 3 });
 
     await session.sync();
@@ -1975,6 +2423,87 @@ describe("HizoFS worker composition root", () => {
       if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
     }
   });
+
+  it.each(["immediate", "automatic"] as const)(
+    "keeps an acknowledged %s mutation durable across reopen and a later torn publication",
+    async (publicationModeRequest) => {
+      const { backend, passphrase, session, supportedFeatureBits } = await writableSessionFixture({
+        publicationModeRequest,
+        registerRuntimeSession: undefined,
+      });
+      const syncFileData = backend.syncFileData.bind(backend);
+      const writeAt = backend.writeAt.bind(backend);
+      let superblockSyncs = 0;
+      backend.syncFileData = async ({ file }) => {
+        if (file.path.includes("superblock")) {
+          superblockSyncs += 1;
+          if (superblockSyncs === 2) throw new Error("second Superblock copy was not flushed");
+        }
+        await syncFileData({ file });
+      };
+
+      await session.root.getFileHandle({ create: true, name: "acknowledged.txt" });
+      await session.sync();
+      expect(superblockSyncs).toBe(4);
+      await session.close();
+
+      const opened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const reopenedSession = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: runtimeHost({
+          lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, publicationModeRequest },
+        }),
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://publication-session.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+          randomSource: deterministicRandomSource(),
+          removalLimits: { deleteBatchSize: 2 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+      let tornWriteInjected = false;
+      backend.writeAt = async ({ bytes, file, offset }) => {
+        if (!tornWriteInjected && file.path.includes("superblock")) {
+          tornWriteInjected = true;
+          // Model an allowed failed-write outcome: only this write's prefix
+          // reaches stable storage. This is not a caller-requested flush.
+          await writeAt({
+            bytes: authenticatedHizoFSPhysicalBytes({ bytes: bytes.subarray(0, 64) }),
+            file,
+            offset,
+          });
+          await syncFileData({ file });
+          throw new Error("later Superblock write persisted only a torn prefix");
+        }
+        await writeAt({ bytes, file, offset });
+      };
+      await expect((async () => {
+        await reopenedSession.root.getFileHandle({ create: true, name: "later.txt" });
+        await reopenedSession.sync();
+      })()).rejects.toBeInstanceOf(Error);
+      expect(tornWriteInjected).toBe(true);
+      await backend.crashAndRecover();
+
+      const afterCrash = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: afterCrash });
+      try {
+        await expect(resources.namespace.stat({ pathComponents: ["acknowledged.txt"] }))
+          .resolves.toMatchObject({ kind: "file" });
+        expect(afterCrash.commit.commitSequence).toBe(2n);
+      } finally {
+        await resources.releaseResources();
+        await reopenedSession.close().catch(() => undefined);
+      }
+    },
+  );
 
   it("resolves a lost file-publication response without retrying committed content", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
@@ -2061,6 +2590,94 @@ describe("HizoFS worker composition root", () => {
       if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
     }
   });
+
+  it.each(["inline rename", "inline move", "inline clone", "tree rename"] as const)(
+    "preserves file bytes across directory representation boundaries during %s",
+    async operation => {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const passphrase = "directory representation boundary";
+      const opened = await createEmptyEncryptedContainer({ backend, passphrase, randomSource, supportedFeatureBits });
+      const session = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: runtimeHost(),
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://directory-representation-boundary.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+          randomSource,
+          removalLimits: { deleteBatchSize: 2 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+      const destination = await session.root.getDirectoryHandle({ create: true, name: "destination" });
+      const source = operation === "inline move" || operation === "inline clone"
+        ? await session.root.getDirectoryHandle({ create: true, name: "source" })
+        : destination;
+      const newName = "z".repeat(250);
+      const content = Uint8Array.of(17, 29, 43);
+      const fillerNames = Array.from({ length: 15 }, (_, index) =>
+        `${index.toString().padStart(3, "0")}${"x".repeat(247)}`
+      );
+      try {
+        for (const name of fillerNames) await destination.getFileHandle({ create: true, name });
+        await destination.getFileHandle({ create: true, name: "s" });
+        if (operation === "tree rename") {
+          await destination.getFileHandle({ create: true, name: "promote".repeat(35) });
+        }
+        const file = await source.getFileHandle({ create: true, name: "s" });
+        const writable = await file.createWritable({ keepExistingData: false });
+        await writable.write({ data: content, position: 0 });
+        await writable.close();
+        switch (operation) {
+        case "inline clone":
+          await source.cloneFile({ destination, name: "s", newName, replace: false });
+          expect(await file.stat()).toMatchObject({ size: content.byteLength });
+          break;
+        case "inline rename":
+        case "inline move":
+        case "tree rename":
+          await source.moveEntry({ destination, name: "s", newName, replace: false });
+          await expect(source.getEntryHandle({ name: "s" })).rejects.toThrow();
+          break;
+        default: operation satisfies never;
+        }
+        for (const name of fillerNames) {
+          expect(await destination.getEntryHandle({ name })).toMatchObject({ kind: "file" });
+        }
+        const renamed = await destination.getFileHandle({ create: false, name: newName });
+        const readable = await renamed.openReadable({ mimeType: "application/octet-stream" });
+        try {
+          const bytes = new Uint8Array(content.byteLength);
+          await readable.read({ buffer: bytes, length: bytes.byteLength, offset: 0, position: 0, signal: undefined });
+          expect(bytes).toEqual(content);
+        } finally {
+          await readable.close();
+        }
+        await session.sync();
+      } finally {
+        await session.close();
+      }
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        expect(await resources.namespace.readFile({ pathComponents: ["destination", newName] })).toEqual(content);
+        expect((await resources.namespace.list({ pathComponents: ["destination"] })).map(entry => entry.name))
+          .toEqual(expect.arrayContaining([...fillerNames, newName]));
+      } finally {
+        await resources.releaseResources();
+        reopened.rootKey.destroy();
+      }
+    },
+  );
 
   it("publishes ordinary moves atomically and preserves no-change and cycle semantics", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
@@ -2371,6 +2988,91 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it.each([
+    { kind: "metadata", cause: new Error("accepted metadata notification failed"), cleanup: undefined },
+    { kind: "file", cause: undefined, cleanup: undefined },
+    { kind: "metadata", cause: undefined, cleanup: { cause: new Error("accepted local cleanup failed") } },
+    { kind: "file", cause: new Error("accepted file notification failed"), cleanup: { cause: undefined } },
+  ] as const)("syncs the retained $kind candidate after its accepted notification fails with $cause and $cleanup", async ({ kind, cause, cleanup }) => {
+    const fixture = await writableSessionFixture({
+      lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, maximumDirtyAgeMilliseconds: 60_000 },
+      registerRuntimeSession: undefined,
+    });
+    const { backend, host, passphrase, session, supportedFeatureBits } = fixture;
+    const bytes = Uint8Array.of(4, 8, 15, 16, 23, 42);
+    const file = await session.root.getFileHandle({ create: true, name: "accepted.bin" });
+    await session.sync();
+    const writable = kind === "file" ? await file.createWritable({ keepExistingData: true }) : undefined;
+    if (writable !== undefined) await writable.write({ data: bytes, position: 0 });
+    const metadataModule = await import("@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority");
+    const prototype = metadataModule.AuthenticatedMetadataMutationAuthority.prototype;
+    const complete = prototype.completeWorkingAcceptanceWithoutCandidate;
+    const completed = vi.spyOn(prototype, "completeWorkingAcceptanceWithoutCandidate").mockImplementation(function (this: typeof prototype) {
+      complete.call(this);
+      if (cleanup !== undefined) throw cleanup.cause;
+    });
+    const abandon = vi.spyOn(prototype, "abandon");
+    const schedule = globalThis.setTimeout;
+    let rejectedNotification = false;
+    const scheduleSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((...args) => {
+      if (!rejectedNotification && args[1] === 60_000) {
+        rejectedNotification = true;
+        throw cause;
+      }
+      return schedule(...args);
+    });
+    try {
+      const result = await (writable === undefined
+        ? session.root.getDirectoryHandle({ create: true, name: "accepted-directory" })
+        : writable.close()).then(
+        () => ({ type: "resolved" as const }),
+        failure => ({ type: "rejected" as const, failure }),
+      );
+      expect(rejectedNotification).toBe(true);
+      expect(result.type).toBe("rejected");
+      if (result.type !== "rejected") throw new Error("expected accepted notification failure");
+      if (cleanup === undefined) expect(result.failure).toBe(cause);
+      else expect(result.failure).toMatchObject({ errors: [cause, cleanup.cause] });
+      const foregroundCompletions = completed.mock.calls.length;
+      const foregroundAbandons = abandon.mock.calls.length;
+      expect(host.workingCandidatePublicationState()).toBe("installed");
+      const roots = await host.beginMaintenanceRootCapture();
+      try {
+        expect(roots.workingGenerationDependencyRoots).toEqual([]);
+        expect(roots.workingGenerationPageRoots).toHaveLength(1);
+      } finally {
+        roots.release();
+        await roots.released;
+      }
+      await expect(session.sync()).resolves.toBeUndefined();
+      expect(foregroundCompletions).toBe(1);
+      expect(foregroundAbandons).toBe(0);
+      expect(host.workingCandidatePublicationState()).toBe("empty");
+      await expect(session.root.getFileHandle({ create: true, name: "blocked-after-accept.bin" }))
+        .rejects.toMatchObject({ name: "HizoFSApplicationMutationSessionPoisonedError", cause });
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      try {
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+        try {
+          if (kind === "metadata") {
+            expect(await resources.namespace.stat({ pathComponents: ["accepted-directory"] })).toMatchObject({ kind: "directory" });
+          } else {
+            expect(await resources.namespace.readFile({ pathComponents: ["accepted.bin"] })).toEqual(bytes);
+          }
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        reopened.rootKey.destroy();
+      }
+    } finally {
+      scheduleSpy.mockRestore();
+      completed.mockRestore();
+      abandon.mockRestore();
+      await session.close();
+    }
+  });
+
   it("retries the same automatic candidate after a definitely-not-published sync failure", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -2673,6 +3375,49 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
+  it.each(["metadata", "file"] as const)("awaits local writer close before publishing a staged %s mutation", async (mutation) => {
+    vi.useFakeTimers();
+    const { backend, session } = await writableSessionFixture({
+      publicationModeRequest: "automatic",
+      registerRuntimeSession: undefined,
+    });
+    const allowClose = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    try {
+      const file = await session.root.getFileHandle({ create: true, name: "staged.txt" });
+      if (mutation === "file") {
+        const writable = await file.createWritable({ keepExistingData: false });
+        await writable.write({ data: Uint8Array.of(7, 8, 9), position: 0 });
+        await writable.close();
+      }
+      const closeFile = backend.closeFile.bind(backend);
+      let metadataCloses = 0;
+      const closeSpy = vi.spyOn(backend, "closeFile").mockImplementation(async (input) => {
+        if (input.file.path.startsWith("segments/metadata/")) {
+          metadataCloses += 1;
+          if (metadataCloses === 2) {
+            closeStarted.resolve();
+            await allowClose.promise;
+          }
+        }
+        await closeFile(input);
+      });
+      const writeSpy = vi.spyOn(backend, "writeAt");
+      const syncing = session.sync();
+      await closeStarted.promise;
+      expect(writeSpy.mock.calls.filter(([input]) => input.file.path.startsWith("superblock-"))).toEqual([]);
+      allowClose.resolve();
+      await syncing;
+      expect(writeSpy.mock.calls.filter(([input]) => input.file.path.startsWith("superblock-"))).toHaveLength(2);
+      closeSpy.mockRestore();
+      writeSpy.mockRestore();
+    } finally {
+      allowClose.resolve();
+      await session.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps a staged lazy candidate publishable after its originating session closes", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -2730,12 +3475,14 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
-  it("retains a runtime-owned candidate root after session close when publication outcome resolution fails", async () => {
+  it.each([
+    new Error("Superblock authority reread failed"),
+    undefined,
+  ])("retains a runtime-owned candidate root after session close when publication outcome resolution fails: %s", async resolutionFailure => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const originalSyncFileData = backend.syncFileData.bind(backend);
     const originalReadFileBounded = backend.readFileBounded.bind(backend);
     const publicationFailure = new Error("lost Superblock durability response");
-    const resolutionFailure = new Error("Superblock authority reread failed");
     let failNextSuperblockDurabilityResponse = false;
     let failResolutionReads = false;
     backend.syncFileData = async ({ file }) => {
@@ -2802,6 +3549,52 @@ describe("HizoFS worker composition root", () => {
     retainedAfterSessionClose.release();
     await retainedAfterSessionClose.released;
     expect(host.workingCandidatePublicationState()).toBe("outcome_unknown");
+  });
+
+  it("rejects a concurrent writable opening and closes with the first writable still open", async () => {
+    const { session } = await writableSessionFixture({ registerRuntimeSession: undefined });
+    try {
+      const firstFile = await session.root.getFileHandle({ create: true, name: "first" });
+      const secondFile = await session.root.getFileHandle({ create: true, name: "second" });
+      const firstOpening = firstFile.createWritable({ keepExistingData: false });
+      const rejectedOpening = expect(secondFile.createWritable({ keepExistingData: false }))
+        .rejects.toMatchObject({ code: "operation_in_progress" });
+      await firstOpening;
+      await rejectedOpening;
+
+      await expect(session.close()).resolves.toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each(["immediate", "automatic"] as const)("releases rejected large readables without retaining %s working-generation dependencies", async publicationModeRequest => {
+    const { host, session } = await writableSessionFixture({ publicationModeRequest, registerRuntimeSession: undefined });
+    try {
+      const small = await session.root.getFileHandle({ create: true, name: "small" });
+      const large = await session.root.getFileHandle({ create: true, name: "large" });
+      const writable = await large.createWritable({ keepExistingData: false });
+      await writable.write({ data: Uint8Array.of(7), position: Number.MAX_SAFE_INTEGER });
+      await writable.close();
+      await session.sync();
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await expect(large.openReadable({ mimeType: "application/octet-stream" }))
+          .rejects.toThrow("cannot be represented as a safe non-negative number");
+        const captured = await host.beginMaintenanceRootCapture();
+        try {
+          expect(captured.workingGenerationDependencyRoots).toEqual([]);
+        } finally {
+          captured.release();
+          await captured.released;
+        }
+      }
+      const readable = await small.openReadable({ mimeType: "application/octet-stream" });
+      expect(readable.size).toBe(0);
+      await readable.close();
+    } finally {
+      await session.close();
+    }
   });
 
   it("lets an admitted candidate publish before close while rejecting the late capability return", async () => {
@@ -3073,6 +3866,99 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
+  it.each(["at_open", "per_operation"] as const)("observes accepted %s data without publishing or waiting for a prepared writable", async capture => {
+    vi.useFakeTimers();
+    try {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const created = await createEmptyEncryptedContainer({
+        backend,
+        passphrase: "passphrase",
+        randomSource: deterministicRandomSource(),
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      created.rootKey.destroy();
+      const capability = await openAuthenticatedDevelopmentWritableContainerCapability({
+        backend: developmentBackend({ backend }),
+        passphrase: "passphrase",
+        verifyProofAuthority: async () => undefined,
+      });
+      if (capability.type !== "opened") throw new Error("expected development writable capability");
+      const host = runtimeHost({ lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        publicationModeRequest: "automatic",
+      } });
+      const session = await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
+        authority: capability.authority,
+        canonicalBackingLocation: "memory://read-observation.hizofs",
+        recheckAuthority: async () => undefined,
+        runtimeHost: host,
+      });
+      try {
+        const file = await session.root.getFileHandle({ create: true, name: "accepted.bin" });
+        const before = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes + 32).fill(37);
+        const after = new Uint8Array(before.byteLength).fill(59);
+        const firstWriter = await file.createWritable({ keepExistingData: false });
+        await firstWriter.write({ data: before, position: 0 });
+        await firstWriter.close();
+        const preparedWriter = await file.createWritable({ keepExistingData: false });
+        await preparedWriter.write({ data: after, position: 0 });
+        const writes = vi.spyOn(backend, "writeAt");
+
+        // The open/read/list operations must settle while this writer remains
+        // prepared; the ordinary detached snapshot deliberately waits instead.
+        const observation = await openAuthenticatedDevelopmentWritableSessionReadObservation({ capture, session });
+        const observedFile = await observation.root.getFileHandle({ create: false, name: "accepted.bin" });
+        const oldReader = await observedFile.openReadable({ mimeType: "application/octet-stream" });
+        const observedBefore = new Uint8Array(before.byteLength);
+        await oldReader.read({
+          buffer: observedBefore, length: observedBefore.byteLength, offset: 0, position: 0, signal: undefined,
+        });
+        expect(observedBefore).toEqual(before);
+        const initialNames: string[] = [];
+        for await (const [name] of observation.root.entries()) initialNames.push(name);
+        expect(initialNames).toEqual(["accepted.bin"]);
+        await expect(observation.root.getFileHandle({ create: true, name: "forbidden.bin" })).rejects.toThrow();
+        expect(writes).not.toHaveBeenCalled();
+
+        await preparedWriter.close();
+        await session.root.getDirectoryHandle({ create: true, name: "later" });
+        writes.mockClear();
+        // Even when first enumerated after another acceptance, an at-open
+        // observation and all of its paged children use the captured root.
+        const names: string[] = [];
+        for await (const [name] of observation.root.entries()) names.push(name);
+        expect(names).toEqual(capture === "at_open" ? ["accepted.bin"] : ["accepted.bin", "later"]);
+        const currentReader = await observedFile.openReadable({ mimeType: "application/octet-stream" });
+        const observedCurrent = new Uint8Array(before.byteLength);
+        await currentReader.read({
+          buffer: observedCurrent, length: observedCurrent.byteLength, offset: 0, position: 0, signal: undefined,
+        });
+        expect(observedCurrent).toEqual(capture === "at_open" ? before : after);
+        observedBefore.fill(0);
+        await oldReader.read({
+          buffer: observedBefore, length: observedBefore.byteLength, offset: 0, position: 0, signal: undefined,
+        });
+        expect(observedBefore).toEqual(before);
+        await currentReader.close();
+        await oldReader.close();
+        await observation.close();
+        expect(writes).not.toHaveBeenCalled();
+        await expect(session.root.getFileHandle({ create: false, name: "accepted.bin" })).resolves.toBeDefined();
+
+        const revoked = await openAuthenticatedDevelopmentWritableSessionReadObservation({ capture, session });
+        await session.close();
+        await expect(revoked.root.getFileHandle({ create: false, name: "accepted.bin" })).rejects.toThrow();
+        await revoked.close();
+        await expect(openAuthenticatedDevelopmentWritableSessionReadObservation({ capture, session })).rejects.toThrow();
+      } finally {
+        await session.close();
+        await capability.releaseResources();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("waits for a prepared writable before materializing a staged read snapshot", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -3270,6 +4156,85 @@ describe("HizoFS worker composition root", () => {
 
     await session.close();
     expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
+  it.each([
+    { failCleanup: true, operationFailure: new Error("explicit bulk preparation failed") },
+    { failCleanup: true, operationFailure: undefined },
+    { failCleanup: false, operationFailure: undefined },
+  ])("preserves explicit bulk preparation and cleanup failures: $operationFailure / cleanup $failCleanup", async ({ failCleanup, operationFailure }) => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const host = immediateRuntimeHost();
+    let rejectOperationTimestamp = false;
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://explicit-bulk-failure-test.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => {
+          if (rejectOperationTimestamp) throw operationFailure;
+          return createTimestampMilliseconds({ value: 1_700_000_000_000n });
+        },
+        randomSource,
+        removalLimits: { deleteBatchSize: 2 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+    try {
+      if (!(session instanceof HizoFSStorageFileSystemSession)) throw new Error("expected concrete HizoFS session");
+      const target = await session.root.getDirectoryHandle({ create: true, name: "bulk" });
+      const openExplicitBulk = session.port.openExplicitBulk;
+      if (openExplicitBulk === undefined) throw new Error("expected explicit bulk support");
+      const acquireDependency = host.acquireWorkingGenerationDependencyRoot.bind(host);
+      const releaseFailure = new Error("explicit bulk dependency release failed");
+      const release = vi.fn();
+      const acquisition = vi.spyOn(host, "acquireWorkingGenerationDependencyRoot").mockImplementationOnce(({ commitReference }) => {
+        const registration = acquireDependency({ commitReference });
+        release.mockImplementation(() => {
+          registration.release();
+          if (failCleanup) throw releaseFailure;
+        });
+        return { ...registration, release };
+      });
+      try {
+        const bulk = await openExplicitBulk({ path: ["bulk"] });
+        await bulk.createEmptyFile({ name: "unpublished" });
+        rejectOperationTimestamp = true;
+        const committing = bulk.commit();
+        if (failCleanup) {
+          await expect(committing).rejects.toMatchObject({ errors: [operationFailure, releaseFailure] });
+        } else {
+          await expect(committing).rejects.toBe(operationFailure);
+        }
+        expect(release).toHaveBeenCalledOnce();
+        const capture = await host.beginMaintenanceRootCapture();
+        expect(capture.workingGenerationDependencyRoots).toEqual([]);
+        capture.release();
+        await capture.released;
+        await expect(target.getFileHandle({ create: false, name: "unpublished" }))
+          .rejects.toMatchObject({ name: "NotFoundError" });
+      } finally {
+        acquisition.mockRestore();
+      }
+    } finally {
+      await session.close();
+    }
   });
 
   it("publishes one explicit bulk candidate through the immediate session and converged Superblocks", async () => {
@@ -4313,7 +5278,33 @@ describe("HizoFS worker composition root", () => {
       bytes: Uint8Array.of(1, 2, 3),
       state: "complete",
     });
-    await first.close();
+    const allowClose = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const closeFile = OpfsWritableBackend.prototype.closeFile;
+    const closeSpy = vi.spyOn(OpfsWritableBackend.prototype, "closeFile").mockImplementation(async function (
+      this: OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>, input,
+    ) {
+      closeStarted.resolve();
+      await allowClose.promise;
+      await closeFile.call(this, input);
+    });
+    let settled = 0;
+    const closeResults = [first.close(), first.close()].map(async completion => {
+      await completion;
+      settled += 1;
+    });
+    try {
+      await closeStarted.promise;
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      const settledBeforeClose = settled;
+      allowClose.resolve();
+      await Promise.all(closeResults);
+      expect(settledBeforeClose).toBe(0);
+      expect(closeSpy).toHaveBeenCalledOnce();
+    } finally {
+      allowClose.resolve();
+      closeSpy.mockRestore();
+    }
 
     const reopened = await open();
     await expect(reopened.source.readFileChunk({ maximumBytes: 2, offset: 1n, path: ["data.bin"] })).resolves.toEqual({
@@ -4389,7 +5380,43 @@ describe("HizoFS worker composition root", () => {
         expect(openedId).toBe(fileSystemId);
       },
     });
-    const first = await publish();
+    const allowClose = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const closeFile = OpfsWritableBackend.prototype.closeFile;
+    const closeSpy = vi.spyOn(OpfsWritableBackend.prototype, "closeFile").mockImplementation(async function (
+      this: OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>, input,
+    ) {
+      if (input.file.path.startsWith("segments/metadata/")) {
+        metadataCloses += 1;
+        if (metadataCloses === 2) {
+          closeStarted.resolve();
+          await allowClose.promise;
+        }
+      }
+      await closeFile.call(this, input);
+    });
+    let metadataCloses = 0;
+    const writeAt = OpfsWritableBackend.prototype.writeAt;
+    const authorityWrites: string[] = [];
+    const writeSpy = vi.spyOn(OpfsWritableBackend.prototype, "writeAt").mockImplementation(async function (
+      this: OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>, input,
+    ) {
+      if (input.file.path.startsWith("superblock-")) authorityWrites.push(input.file.path);
+      await writeAt.call(this, input);
+    });
+    const publishing = publish();
+    try {
+      await closeStarted.promise;
+      expect(authorityWrites).toEqual([]);
+      allowClose.resolve();
+      await publishing;
+      expect(authorityWrites).toHaveLength(2);
+    } finally {
+      allowClose.resolve();
+      closeSpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+    const first = await publishing;
     const second = await publish();
     expect(second).toEqual(first);
 
@@ -4490,6 +5517,7 @@ describe("HizoFS worker composition root", () => {
     const closeFailure = new Error("transition target close failed");
     const abandonAuthority = vi.fn();
     const destroyRootKey = vi.fn();
+    const settleWriterCleanup = vi.fn(async () => undefined);
 
     await expect(COMPOSITION_TEST_ONLY.settleTransitionEndpointClose({
       abandonAuthority,
@@ -4497,14 +5525,17 @@ describe("HizoFS worker composition root", () => {
         throw closeFailure;
       },
       destroyRootKey,
+      settleWriterCleanup,
     })).rejects.toBe(closeFailure);
     expect(abandonAuthority).toHaveBeenCalledOnce();
+    expect(settleWriterCleanup).toHaveBeenCalledOnce();
     expect(destroyRootKey).toHaveBeenCalledOnce();
   });
 
   it("preserves transition target and authority cleanup failures in order", async () => {
     const closeFailure = new Error("transition target close failed");
     const abandonFailure = new Error("transition authority abandon failed");
+    const drainFailure = new Error("transition writer close failed");
     const destroyRootKey = vi.fn();
 
     const result = COMPOSITION_TEST_ONLY.settleTransitionEndpointClose({
@@ -4515,30 +5546,76 @@ describe("HizoFS worker composition root", () => {
         throw closeFailure;
       },
       destroyRootKey,
+      settleWriterCleanup: async () => {
+        throw drainFailure;
+      },
     });
     await expect(result).rejects.toMatchObject({
-      errors: [closeFailure, abandonFailure],
+      errors: [closeFailure, abandonFailure, drainFailure],
       message: "transition endpoint resource cleanup failed",
     });
     expect(destroyRootKey).toHaveBeenCalledOnce();
   });
 
-  it("preserves transition endpoint open and authority cleanup failures", () => {
+  it("preserves transition endpoint open and authority cleanup failures", async () => {
     const openFailure = new Error("transition endpoint open failed");
     const abandonFailure = new Error("transition authority abandon failed");
+    const drainFailure = new Error("transition writer close failed");
     const destroyRootKey = vi.fn();
 
-    expect(() => COMPOSITION_TEST_ONLY.abandonTransitionEndpointAfterOpenFailure({
+    await expect(COMPOSITION_TEST_ONLY.abandonTransitionEndpointAfterOpenFailure({
       abandonAuthority: () => {
         throw abandonFailure;
       },
       cause: openFailure,
       destroyRootKey,
-    })).toThrow(expect.objectContaining({
-      errors: [openFailure, abandonFailure],
+      settleWriterCleanup: async () => {
+        throw drainFailure;
+      },
+    })).rejects.toMatchObject({
+      errors: [openFailure, abandonFailure, drainFailure],
       message: "transition endpoint open and resource cleanup failed",
-    }));
+    });
     expect(destroyRootKey).toHaveBeenCalledOnce();
+  });
+
+  it.each(["close", "failed open"] as const)("drains transition writers before destroying the key after %s", async (boundary) => {
+    const gate = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const openFailure = new Error("endpoint open failed");
+    const abandonAuthority = vi.fn();
+    const destroyRootKey = vi.fn();
+    const settleWriterCleanup = async () => {
+      started.resolve();
+      await gate.promise;
+    };
+    const completion = boundary === "close"
+      ? COMPOSITION_TEST_ONLY.settleTransitionEndpointClose({
+        abandonAuthority,
+        closeTarget: async () => undefined,
+        destroyRootKey,
+        settleWriterCleanup,
+      })
+      : COMPOSITION_TEST_ONLY.abandonTransitionEndpointAfterOpenFailure({
+        abandonAuthority,
+        cause: openFailure,
+        destroyRootKey,
+        settleWriterCleanup,
+      });
+    const observed = Promise.allSettled([completion]);
+    try {
+      await started.promise;
+      expect(abandonAuthority).toHaveBeenCalledOnce();
+      expect(destroyRootKey).not.toHaveBeenCalled();
+      gate.resolve();
+      const outcomes = await observed;
+      expect(outcomes).toEqual(boundary === "close"
+        ? [{ status: "fulfilled", value: undefined }]
+        : [{ status: "rejected", reason: openFailure }]);
+      expect(destroyRootKey).toHaveBeenCalledOnce();
+    } finally {
+      gate.resolve();
+    }
   });
 
   it("preserves the benchmark session-open failure when capability cleanup succeeds", async () => {
@@ -4568,6 +5645,22 @@ describe("HizoFS worker composition root", () => {
       message: "benchmark session open and capability cleanup both failed",
     });
     expect(releaseResources).toHaveBeenCalledOnce();
+  });
+
+  it("retains unconfirmed directory entries when a diagnostics wrapper is recreated", async () => {
+    const underlying = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const path = canonicalContainerDirectory({ value: "segments/metadata/ab" });
+    const wrap = () => COMPOSITION_TEST_ONLY.instrumentHizoFSWritableBackend({
+      backend: underlying,
+      diagnostics: new HizoFSRuntimeDiagnosticsAccumulator(),
+    });
+    const failure = new Error("directory entry confirmation failed");
+    const sync = vi.spyOn(underlying, "syncDirectoryEntries").mockRejectedValueOnce(failure);
+    await expect(ensureAuthenticatedContainerDirectoryHierarchy({ backend: wrap(), path })).rejects.toBe(failure);
+    await ensureAuthenticatedContainerDirectoryHierarchy({ backend: wrap(), path });
+    expect(sync.mock.calls.map(([{ parent }]) => parent)).toEqual(["", "", "segments", "segments/metadata"]);
+    await underlying.crashAndRecover();
+    await expect(underlying.list({ directory: path })).resolves.toEqual([]);
   });
 
   it("measures the exact physical-store contract at the composition boundary", async () => {
@@ -4637,6 +5730,7 @@ describe("HizoFS worker composition root", () => {
     await backend.syncDirectoryEntries({ parent: CANONICAL_CONTAINER_ROOT });
     await backend.removeFile({ path });
     await backend.list({ directory: CANONICAL_CONTAINER_ROOT });
+    expect('openDirectoryCursor' in backend).toBe(false);
 
     diagnostics.recordPublicationScopeEvent({ event: "begin" });
     await backend.getFileSize({ path });
@@ -4682,6 +5776,85 @@ describe("HizoFS worker composition root", () => {
     });
   });
 
+
+  it("measures only active directory cursor calls while preserving receivers and page results", async () => {
+    const underlying = developmentBackend({ backend: new InMemoryCrashDurabilityBackend({}) });
+    const list = vi.spyOn(underlying, "list");
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    let now = 0;
+    const page = { done: true, entries: [] };
+    const cursor: HizoFSPhysicalDirectoryCursor = {
+      close: vi.fn(async function (this: HizoFSPhysicalDirectoryCursor) {
+        expect(this).toBe(cursor);
+        now += 5;
+      }),
+      read: vi.fn(async function (this: HizoFSPhysicalDirectoryCursor) {
+        expect(this).toBe(cursor);
+        now += 3;
+        return page;
+      }),
+    };
+    const openDirectoryCursor = vi.fn(async function (this: typeof underlying) {
+      expect(this).toBe(underlying);
+      now += 2;
+      return cursor;
+    });
+    Object.assign(underlying, { openDirectoryCursor });
+    const backend = COMPOSITION_TEST_ONLY.instrumentHizoFSWritableBackend({
+      backend: underlying, clock: () => now, diagnostics,
+    }) as typeof underlying & Partial<HizoFSDirectoryCursorBackend>;
+    if (backend.openDirectoryCursor === undefined) throw new Error("directory cursor capability is missing");
+    const wrapped = await backend.openDirectoryCursor({ directory: CANONICAL_CONTAINER_ROOT });
+    now += 1_000;
+    await expect(wrapped.read({ maximumEntries: 2 })).resolves.toBe(page);
+    now += 1_000;
+    await wrapped.close();
+    expect(openDirectoryCursor).toHaveBeenCalledExactlyOnceWith({ directory: CANONICAL_CONTAINER_ROOT });
+    expect(cursor.read).toHaveBeenCalledExactlyOnceWith({ maximumEntries: 2 });
+    expect(cursor.close).toHaveBeenCalledOnce();
+    expect(list).not.toHaveBeenCalled();
+    expect(diagnostics.snapshot().phases.physical_list).toEqual({ operationCount: 3, totalDurationMs: 10 });
+  });
+
+  it.each(["open", "read", "close"] as const)("measures a failed cursor %s attempt without replacing its error", async (failure) => {
+    const underlying = developmentBackend({ backend: new InMemoryCrashDurabilityBackend({}) });
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    let now = 0;
+    const cursor: HizoFSPhysicalDirectoryCursor = {
+      close: async () => {
+        if (failure === "close") throw undefined;
+      },
+      read: async () => {
+        if (failure === "read") throw undefined;
+        return { done: true, entries: [] };
+      },
+    };
+    Object.assign(underlying, {
+      openDirectoryCursor: async () => {
+        if (failure === "open") throw undefined;
+        return cursor;
+      },
+    });
+    const backend = COMPOSITION_TEST_ONLY.instrumentHizoFSWritableBackend({
+      backend: underlying, clock: () => ++now, diagnostics,
+    }) as typeof underlying & Partial<HizoFSDirectoryCursorBackend>;
+    if (backend.openDirectoryCursor === undefined) throw new Error("directory cursor capability is missing");
+    const open = backend.openDirectoryCursor({ directory: CANONICAL_CONTAINER_ROOT });
+    if (failure === "open") {
+      await expect(open).rejects.toBeUndefined();
+    } else {
+      const wrapped = await open;
+      if (failure === "read") {
+        await expect(wrapped.read({ maximumEntries: 2 })).rejects.toBeUndefined();
+        await wrapped.close();
+      } else {
+        await wrapped.read({ maximumEntries: 2 });
+        await expect(wrapped.close()).rejects.toBeUndefined();
+      }
+    }
+    const count = failure === "open" ? 1 : 3;
+    expect(diagnostics.snapshot().phases.physical_list).toEqual({ operationCount: count, totalDurationMs: count });
+  });
 
   describe("authenticated maintenance root-capture composition", () => {
     it("adopts prepared candidates and current active, fallback, and pinned roots inside the short gate", async () => {
@@ -4913,35 +6086,16 @@ describe("HizoFS worker composition root", () => {
     });
   });
 
-  it("recreates the exact non-empty portable container bytes", async () => {
-    const firstBackend = await createNonemptyPortableFixtureBackend();
-    const secondBackend = await createNonemptyPortableFixtureBackend();
-    const firstFiles = await collectPortableContainerFiles({
-      backend: firstBackend,
-      directory: CANONICAL_CONTAINER_ROOT,
-    });
-    const secondFiles = await collectPortableContainerFiles({
-      backend: secondBackend,
-      directory: CANONICAL_CONTAINER_ROOT,
-    });
-    expect(nonemptyContainerPortable).toMatchObject({
-      fileSystemId: "57XP043891T62-modnaes",
-      passphrase: "correct horse battery staple",
-      schema: "hizofs-v1-nonempty-container-fixture",
-      schemaVersion: 1,
-    });
-    expect(secondFiles).toEqual(firstFiles);
-    expect(firstFiles).toEqual(nonemptyContainerPortable.files);
-  });
-
-  it("reopens the non-empty portable container through normal authenticated reads", async () => {
-    const backend = await createNonemptyPortableFixtureBackend();
+  it("reopens the complete non-empty filesystem after a simulated crash", async () => {
+    const { backend, fileSystemId: expectedFileSystemId } = await createNonemptyContainerFixture();
+    expect(backend.openHandleCount()).toBe(0);
+    await backend.crashAndRecover();
     const authority = await openAuthenticatedReadOnlyContainerAuthority({
       backend,
       passphrase: "correct horse battery staple",
       supportedFeatureBits: createFeatureBits({ value: 0n }),
       verifyProofAuthority: async ({ fileSystemId }) => {
-        expect(fileSystemId).toBe(nonemptyContainerPortable.fileSystemId);
+        expect(fileSystemId).toBe(expectedFileSystemId);
       },
     });
     const session = await openAuthenticatedReadOnlyApplicationSession({
@@ -4951,8 +6105,14 @@ describe("HizoFS worker composition root", () => {
       verifyCapturedAuthority: async () => authority,
     });
     try {
+      const rootNames: string[] = [];
+      for await (const [name] of session.root.entries()) rootNames.push(name);
+      expect(rootNames).toEqual(["docs", "hello.txt"]);
       const hello = await session.root.getFileHandle({ create: false, name: "hello.txt" });
       const docs = await session.root.getDirectoryHandle({ create: false, name: "docs" });
+      const docsNames: string[] = [];
+      for await (const [name] of docs.entries()) docsNames.push(name);
+      expect(docsNames).toEqual(["nested.txt"]);
       const nested = await docs.getFileHandle({ create: false, name: "nested.txt" });
       const helloReadable = await hello.openReadable({ mimeType: "text/plain" });
       const nestedReadable = await nested.openReadable({ mimeType: "text/plain" });
@@ -4974,1009 +6134,1107 @@ describe("HizoFS worker composition root", () => {
     } finally {
       await session.close();
     }
+    expect(backend.openHandleCount()).toBe(0);
   });
 
-  function selectedCandidatePublisherReference() {
-    return createHomeRecordReference({ fields: {
-      byteOffset: createUInt64({ value: 4_096n }),
-      frameLength: 128,
-      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
-      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(9) }),
-    } });
-  }
+  describe("candidate admission and publication contracts", () => {
+    function selectedCandidatePublisherReference() {
+      return createHomeRecordReference({ fields: {
+        byteOffset: createUInt64({ value: 4_096n }),
+        frameLength: 128,
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+        segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(9) }),
+      } });
+    }
 
-  function selectedCandidatePublisherFixture() {
-    const durableAuthority = createTestingAuthenticatedDurableApplicationGenerationAuthority();
-    const base = createAuthenticatedApplicationGenerationDescriptor({
-      commit: durableAuthority.commit,
-      commitReference: durableAuthority.commitReference,
-      durableAuthority,
-      workingIdentity: createWorkingGenerationIdentity({
-        authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-        generationNumber: createWorkingGenerationNumber({ value: 0n }),
-        mutationId: durableAuthority.commit.mutationId,
-      }),
-    });
-    const commitReference = selectedCandidatePublisherReference();
-    const commit = createFileSystemCommitPayload({ payload: {
-      ...base.commit,
-      commitSequence: createCommitSequence({ value: base.commit.commitSequence + 1n }),
-      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
-    } });
-    const successor = createAuthenticatedApplicationGenerationDescriptor({
-      commit,
-      commitReference,
-      durableAuthority,
-      workingIdentity: createSuccessorWorkingGenerationIdentity({
-        mutationId: commit.mutationId,
-        previous: base.workingIdentity,
-      }),
-    });
-    const intendedLogicalState: SuperblockLogicalState = Object.freeze({
-      ...base.superblock.logicalState,
-      activeCommitHomeRef: commitReference,
-      activeCommitSequence: commit.commitSequence,
-      activeMutationId: commit.mutationId,
-      fallbackCommitHomeRef: base.superblock.logicalState.activeCommitHomeRef,
-    });
-    const superblock = ({ copyState }: {
+    function selectedCandidatePublisherFixture() {
+      const durableAuthority = createTestingAuthenticatedDurableApplicationGenerationAuthority();
+      const base = createAuthenticatedApplicationGenerationDescriptor({
+        commit: durableAuthority.commit,
+        commitReference: durableAuthority.commitReference,
+        durableAuthority,
+        workingIdentity: createWorkingGenerationIdentity({
+          authorityEpoch: createWorkingGenerationAuthorityEpoch(),
+          generationNumber: createWorkingGenerationNumber({ value: 0n }),
+          mutationId: durableAuthority.commit.mutationId,
+        }),
+      });
+      const commitReference = selectedCandidatePublisherReference();
+      const commit = createFileSystemCommitPayload({ payload: {
+        ...base.commit,
+        commitSequence: createCommitSequence({ value: base.commit.commitSequence + 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      } });
+      const successor = createAuthenticatedApplicationGenerationDescriptor({
+        commit,
+        commitReference,
+        durableAuthority,
+        workingIdentity: createSuccessorWorkingGenerationIdentity({
+          mutationId: commit.mutationId,
+          previous: base.workingIdentity,
+        }),
+      });
+      const intendedLogicalState: SuperblockLogicalState = Object.freeze({
+        ...base.superblock.logicalState,
+        activeCommitHomeRef: commitReference,
+        activeCommitSequence: commit.commitSequence,
+        activeMutationId: commit.mutationId,
+        fallbackCommitHomeRef: base.superblock.logicalState.activeCommitHomeRef,
+      });
+      const superblock = ({ copyState }: {
     copyState: OpenedSuperblockCopies["copyState"];
   }): OpenedSuperblockCopies => Object.freeze({
-      ...base.superblock,
-      authenticatedLogicalStates: Object.freeze([intendedLogicalState, intendedLogicalState]),
-      copyState,
-      logicalState: intendedLogicalState,
-      maximumStructurallyObservedPublicationSequence: createPublicationSequence({ value: 3n }),
-      selectedPublicationId: parsePublicationId({ bytes: new Uint8Array(16).fill(6) }),
-      selectedPublicationSequence: createPublicationSequence({ value: 3n }),
-    });
-    return { base, commit, commitReference, intendedLogicalState, successor, superblock };
-  }
+        ...base.superblock,
+        authenticatedLogicalStates: Object.freeze([intendedLogicalState, intendedLogicalState]),
+        copyState,
+        logicalState: intendedLogicalState,
+        maximumStructurallyObservedPublicationSequence: createPublicationSequence({ value: 3n }),
+        selectedPublicationId: parsePublicationId({ bytes: new Uint8Array(16).fill(6) }),
+        selectedPublicationSequence: createPublicationSequence({ value: 3n }),
+      });
+      return { base, commit, commitReference, intendedLogicalState, successor, superblock };
+    }
 
-  it("rolls back a partial direct working-page root dependency acquisition", () => {
-    const values = selectedCandidatePublisherFixture();
-    const nestedSubvolumeTableRootHomeRef = createHomeRecordReference({ fields: {
-      byteOffset: createUInt64({ value: 12_288n }),
-      frameLength: 160,
-      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.nested_subvolume_table_page,
-      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(14) }),
-    } });
-    const commit = createFileSystemCommitPayload({ payload: {
-      ...values.commit,
-      nestedSubvolumeTableRootHomeRef,
-    } });
-    const staged = createAuthenticatedStagedApplicationGenerationDescriptor({
-      commit,
-      durableAuthority: values.base.durableAuthority,
-      workingIdentity: values.successor.workingIdentity,
-    });
-    const firstRelease = vi.fn();
-    const secondAcquisitionFailure = new Error("second working-page root acquisition failed");
-    let acquisitionCount = 0;
+    it("rolls back a partial direct working-page root dependency acquisition", () => {
+      const values = selectedCandidatePublisherFixture();
+      const nestedSubvolumeTableRootHomeRef = createHomeRecordReference({ fields: {
+        byteOffset: createUInt64({ value: 12_288n }),
+        frameLength: 160,
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.nested_subvolume_table_page,
+        segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(14) }),
+      } });
+      const commit = createFileSystemCommitPayload({ payload: {
+        ...values.commit,
+        nestedSubvolumeTableRootHomeRef,
+      } });
+      const staged = createAuthenticatedStagedApplicationGenerationDescriptor({
+        commit,
+        durableAuthority: values.base.durableAuthority,
+        workingIdentity: values.successor.workingIdentity,
+      });
+      const firstRelease = vi.fn();
+      const secondAcquisitionFailure = new Error("second working-page root acquisition failed");
+      let acquisitionCount = 0;
 
-    expect(() => COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
-      generation: staged,
-      runtimeHost: {
-        acquireWorkingGenerationDependencyRoot: vi.fn(() => {
-          throw new Error("materialized dependency acquisition is not expected");
-        }),
-        acquireWorkingGenerationPageRoot: vi.fn(({ pageReference }) => {
-          acquisitionCount += 1;
-          if (acquisitionCount === 2) throw secondAcquisitionFailure;
-          return { pageReference, release: firstRelease };
-        }),
-      },
-    })).toThrow(secondAcquisitionFailure);
-    expect(firstRelease).toHaveBeenCalledOnce();
-
-    const rollbackFailure = new Error("partial working-page root rollback failed");
-    let cleanupAcquisitionCount = 0;
-    let thrown: unknown;
-    try {
-      COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
+      expect(() => COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
         generation: staged,
         runtimeHost: {
           acquireWorkingGenerationDependencyRoot: vi.fn(() => {
             throw new Error("materialized dependency acquisition is not expected");
           }),
           acquireWorkingGenerationPageRoot: vi.fn(({ pageReference }) => {
-            cleanupAcquisitionCount += 1;
-            if (cleanupAcquisitionCount === 2) throw secondAcquisitionFailure;
-            return {
-              pageReference,
-              release: () => {
-                throw rollbackFailure;
-              },
-            };
+            acquisitionCount += 1;
+            if (acquisitionCount === 2) throw secondAcquisitionFailure;
+            return { pageReference, release: firstRelease };
           }),
         },
-      });
-    } catch (cause: unknown) {
-      thrown = cause;
-    }
-    expect(thrown).toBeInstanceOf(AggregateError);
-    expect((thrown as AggregateError).errors).toEqual([secondAcquisitionFailure, rollbackFailure]);
-  });
+      })).toThrow(secondAcquisitionFailure);
+      expect(firstRelease).toHaveBeenCalledOnce();
 
-  function selectedCandidatePublisherDeferred({
-    publishCandidate,
-    resolvePublication,
-  }: {
+      const rollbackFailure = new Error("partial working-page root rollback failed");
+      let cleanupAcquisitionCount = 0;
+      let thrown: unknown;
+      try {
+        COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
+          generation: staged,
+          runtimeHost: {
+            acquireWorkingGenerationDependencyRoot: vi.fn(() => {
+              throw new Error("materialized dependency acquisition is not expected");
+            }),
+            acquireWorkingGenerationPageRoot: vi.fn(({ pageReference }) => {
+              cleanupAcquisitionCount += 1;
+              if (cleanupAcquisitionCount === 2) throw secondAcquisitionFailure;
+              return {
+                pageReference,
+                release: () => {
+                  throw rollbackFailure;
+                },
+              };
+            }),
+          },
+        });
+      } catch (cause: unknown) {
+        thrown = cause;
+      }
+      expect(thrown).toBeInstanceOf(AggregateError);
+      expect((thrown as AggregateError).errors).toEqual([secondAcquisitionFailure, rollbackFailure]);
+    });
+
+    function selectedCandidatePublisherDeferred({
+      publishCandidate,
+      resolvePublication,
+    }: {
   publishCandidate: ResolvablePreparedMutationCommitDurablePublicationPort["publishCandidate"];
   resolvePublication: ResolvablePreparedMutationCommitDurablePublicationPort["resolvePublication"];
 }): DeferredPreparedMutationCommitPublication & Readonly<{ abandon: ReturnType<typeof vi.fn> }> {
-    const values = selectedCandidatePublisherFixture();
-    const abandon = vi.fn();
-    return Object.freeze({
-      abandon,
-      candidate: Object.freeze({
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-      }),
-      publicationPort: Object.freeze({
-        abandon,
-        completeWorkingAcceptance: vi.fn(),
-        completeExternallyResolvedPublication: vi.fn(),
-        publishCandidate,
-        resolvePublication,
-      }),
-    });
-  }
-
-  it("anchors every dirty-epoch candidate Sequence to the durable head while preserving working roots", () => {
-    const values = selectedCandidatePublisherFixture();
-    const workingCommit = createFileSystemCommitPayload({ payload: {
-      ...values.successor.commit,
-      commitSequence: createCommitSequence({ value: values.base.commit.commitSequence + 9n }),
-      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(11) }),
-      rootInodeTableRootHomeRef: createHomeRecordReference({ fields: {
-        byteOffset: createUInt64({ value: 8_192n }),
-        frameLength: 160,
-        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-        segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(12) }),
-      } }),
-    } });
-    const working = createAuthenticatedApplicationGenerationDescriptor({
-      commit: workingCommit,
-      commitReference: values.successor.commitReference,
-      durableAuthority: values.base.durableAuthority,
-      workingIdentity: createWorkingGenerationIdentity({
-        authorityEpoch: values.successor.workingIdentity.authorityEpoch,
-        generationNumber: values.successor.workingIdentity.generationNumber,
-        mutationId: workingCommit.mutationId,
-      }),
-    });
-
-    const planningBase = COMPOSITION_TEST_ONLY.createMutationCandidatePlanningBaseCommit({ base: working });
-
-    expect(planningBase.commitSequence).toBe(values.base.durableAuthority.commit.commitSequence);
-    expect(planningBase.mutationId).toEqual(values.base.durableAuthority.commit.mutationId);
-    expect(planningBase.rootInodeTableRootHomeRef).toEqual(working.commit.rootInodeTableRootHomeRef);
-  });
-
-  it("installs one exact detached candidate into runtime accepted ownership", () => {
-    const values = selectedCandidatePublisherFixture();
-    const prepared = selectedCandidatePublisherDeferred({
-      publishCandidate: vi.fn(),
-      resolvePublication: vi.fn(),
-    });
-    const events: string[] = [];
-    const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
-    const replaceResourceReservation = vi.fn(() => events.push("reserved"));
-    const admission = {
-      commitAcceptedStagedSuccessor: vi.fn(),
-      commitAcceptedSuccessor,
-      replaceResourceReservation,
-      reserveStagedCommitMaterializationHeadroom: vi.fn(),
-      rollback: vi.fn(),
-    };
-
-    const publisher = COMPOSITION_TEST_ONLY.installPreparedMutationSelectedCandidate({
-      admission,
-      assertRuntimePublicationAllowed: () => undefined,
-      base: values.base,
-      deferred: prepared,
-      resourceUsage: {
-        appendedMetadataFrameBytes: 4_096,
-        unpublishedPhysicalBytes: 8_192,
-      },
-      successor: values.successor,
-    });
-
-    expect(replaceResourceReservation).toHaveBeenCalledWith({
-      dirtyMetadataBytes: 4_096,
-      unpublishedPhysicalBytes: 8_192,
-    });
-    expect(events).toEqual(["reserved", "accepted"]);
-    expect(commitAcceptedSuccessor).toHaveBeenCalledWith({
-      publisher,
-      successor: values.successor,
-    });
-    publisher.abandon();
-    expect(prepared.abandon).toHaveBeenCalledOnce();
-  });
-
-  it("releases the foreground Segment writer lease before staged accepted visibility", async () => {
-    const values = selectedCandidatePublisherFixture();
-    const events: string[] = [];
-    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
-    const randomSource = deterministicRandomSource();
-    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
-    const rootKey = generateFileSystemRootKey({ randomSource });
-    const writerOwner = new AuthenticatedSegmentWriterOwner({
-      backend,
-      fileSystemId,
-      randomSource,
-      rootKey,
-      segmentClass: "metadata",
-    });
-    const foregroundLease = writerOwner.acquire();
-    const replaceResourceReservation = vi.fn();
-    const reserveStagedCommitMaterializationHeadroom = vi.fn();
-    const prepareWorkingAcceptance = vi.fn(() => {
-      foregroundLease.release({ disposition: "reuse" });
-      events.push("foreground_writer_released");
-    });
-    const commitAcceptedStagedSuccessor = vi.fn(() => {
-      const publicationLease = writerOwner.acquire();
-      publicationLease.release({ disposition: "reuse" });
-      events.push("accepted_visible");
-    });
-    const createMaterializationAuthority = vi.fn(async () => {
-      throw new Error("foreground staging must not open a materialization authority");
-    });
-    const admission = {
-      commitAcceptedStagedSuccessor,
-      commitAcceptedSuccessor: vi.fn(),
-      replaceResourceReservation,
-      reserveStagedCommitMaterializationHeadroom,
-      rollback: vi.fn(),
-    };
-    const resourceUsage = {
-      appendedMetadataFrameBytes: 4_096,
-      unpublishedPhysicalBytes: 8_192,
-    };
-
-    const installed = COMPOSITION_TEST_ONLY.prepareAndInstallStagedMutationSelectedCandidate({
-      admission,
-      assertCandidatePreparationAllowed: vi.fn(),
-      assertRuntimePublicationAllowed: vi.fn(),
-      base: values.base,
-      commitPayload: values.commit,
-      createMaterializationAuthority,
-      prepareWorkingAcceptance,
-      resourceUsage,
-    });
-
-    expect(replaceResourceReservation).toHaveBeenCalledWith({
-      dirtyMetadataBytes: resourceUsage.appendedMetadataFrameBytes,
-      unpublishedPhysicalBytes: resourceUsage.unpublishedPhysicalBytes,
-    });
-    expect(reserveStagedCommitMaterializationHeadroom).toHaveBeenCalledWith({
-      bytes: STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
-    });
-    expect(events).toEqual(["foreground_writer_released", "accepted_visible"]);
-    expect(prepareWorkingAcceptance).toHaveBeenCalledOnce();
-    expect(commitAcceptedStagedSuccessor).toHaveBeenCalledWith({
-      publisher: installed.publisher,
-      successor: installed.successor,
-    });
-    expect(createMaterializationAuthority).not.toHaveBeenCalled();
-    expect("commitReference" in installed.successor).toBe(false);
-    installed.publisher.abandon();
-    await expect(writerOwner.close()).resolves.toBeUndefined();
-    rootKey.destroy();
-  });
-
-  it("prepares and installs deferred runtime ownership without starting Superblock publication", async () => {
-    const values = selectedCandidatePublisherFixture();
-    const events: string[] = [];
-    const detachedPublish = vi.fn();
-    const detachedResolve = vi.fn();
-    const detachedAbandon = vi.fn();
-    const sourcePublish = vi.fn();
-    const candidate = Object.freeze({
-      commitHomeRef: values.commitReference,
-      commitPayload: values.commit,
-    });
-    const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
-    const admission = {
-      commitAcceptedStagedSuccessor: vi.fn(),
-      commitAcceptedSuccessor,
-      replaceResourceReservation: vi.fn(() => events.push("reserved")),
-      reserveStagedCommitMaterializationHeadroom: vi.fn(),
-      rollback: vi.fn(),
-    };
-    let preparationGateChecks = 0;
-
-    const installed = await COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
-      admission,
-      assertCandidatePreparationAllowed: () => {
-        preparationGateChecks += 1;
-        events.push(`gate_${preparationGateChecks}`);
-      },
-      assertRuntimePublicationAllowed: vi.fn(),
-      base: values.base,
-      commitPayload: values.commit,
-      createSuccessor: ({ candidate: preparedCandidate }) => {
-        expect(preparedCandidate).toBe(candidate);
-        events.push("successor");
-        return values.successor;
-      },
-      publicationPort: {
-        appendCandidate: async () => {
-          events.push("append");
-          return candidate;
-        },
-        detachPreparedCandidatePublication: ({ candidate: preparedCandidate }) => {
-          expect(preparedCandidate).toBe(candidate);
-          events.push("detach");
-          return {
-            abandon: detachedAbandon,
-            completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication: vi.fn(),
-            publishCandidate: detachedPublish,
-            resolvePublication: detachedResolve,
-          };
-        },
-        publishCandidate: sourcePublish,
-      },
-      resourceUsage: {
-        appendedMetadataFrameBytes: 1_024,
-        unpublishedPhysicalBytes: 2_048,
-      },
-    });
-
-    expect(installed.successor).toBe(values.successor);
-    expect(commitAcceptedSuccessor).toHaveBeenCalledWith({
-      publisher: installed.publisher,
-      successor: values.successor,
-    });
-    expect(events).toEqual([
-      "gate_1",
-      "append",
-      "gate_2",
-      "detach",
-      "successor",
-      "reserved",
-      "accepted",
-    ]);
-    expect(sourcePublish).not.toHaveBeenCalled();
-    expect(detachedPublish).not.toHaveBeenCalled();
-    expect(detachedResolve).not.toHaveBeenCalled();
-    expect(detachedAbandon).not.toHaveBeenCalled();
-  });
-
-  it("abandons detached authority and rolls back when successor construction fails", async () => {
-    const values = selectedCandidatePublisherFixture();
-    const abandon = vi.fn();
-    const rollback = vi.fn();
-    const failure = new Error("successor construction failed");
-
-    await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
-      admission: {
-        commitAcceptedStagedSuccessor: vi.fn(),
-        commitAcceptedSuccessor: vi.fn(),
-        replaceResourceReservation: vi.fn(),
-        reserveStagedCommitMaterializationHeadroom: vi.fn(),
-        rollback,
-      },
-      assertCandidatePreparationAllowed: vi.fn(),
-      assertRuntimePublicationAllowed: vi.fn(),
-      base: values.base,
-      commitPayload: values.commit,
-      createSuccessor: () => {
-        throw failure;
-      },
-      publicationPort: {
-        appendCandidate: async () => ({
-          commitHomeRef: values.commitReference,
-          commitPayload: values.commit,
-        }),
-        detachPreparedCandidatePublication: () => ({
-          abandon,
-          completeWorkingAcceptance: vi.fn(),
-          completeExternallyResolvedPublication: vi.fn(),
-          publishCandidate: vi.fn(),
-          resolvePublication: vi.fn(),
-        }),
-        publishCandidate: vi.fn(),
-      },
-      resourceUsage: { appendedMetadataFrameBytes: 1, unpublishedPhysicalBytes: 1 },
-    })).rejects.toBe(failure);
-
-    expect(abandon).toHaveBeenCalledOnce();
-    expect(rollback).toHaveBeenCalledOnce();
-  });
-
-  it("abandons detached authority and rolls back when runtime reservation fails", async () => {
-    const values = selectedCandidatePublisherFixture();
-    const abandon = vi.fn();
-    const rollback = vi.fn();
-    const failure = new Error("reservation failed");
-
-    await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
-      admission: {
-        commitAcceptedStagedSuccessor: vi.fn(),
-        commitAcceptedSuccessor: vi.fn(),
-        replaceResourceReservation: () => {
-          throw failure;
-        },
-        reserveStagedCommitMaterializationHeadroom: vi.fn(),
-        rollback,
-      },
-      assertCandidatePreparationAllowed: vi.fn(),
-      assertRuntimePublicationAllowed: vi.fn(),
-      base: values.base,
-      commitPayload: values.commit,
-      createSuccessor: () => values.successor,
-      publicationPort: {
-        appendCandidate: async () => ({
-          commitHomeRef: values.commitReference,
-          commitPayload: values.commit,
-        }),
-        detachPreparedCandidatePublication: () => ({
-          abandon,
-          completeWorkingAcceptance: vi.fn(),
-          completeExternallyResolvedPublication: vi.fn(),
-          publishCandidate: vi.fn(),
-          resolvePublication: vi.fn(),
-        }),
-        publishCandidate: vi.fn(),
-      },
-      resourceUsage: { appendedMetadataFrameBytes: 1, unpublishedPhysicalBytes: 1 },
-    })).rejects.toBe(failure);
-
-    expect(abandon).toHaveBeenCalledOnce();
-    expect(rollback).toHaveBeenCalledOnce();
-  });
-
-  const createMaterializationAttemptReceipt = () => Object.freeze({
-    completeReusableCandidate: vi.fn(),
-    fail: vi.fn(),
-  });
-
-  describe("staged mutation selected-candidate publisher", () => {
-    function stagedPublisherFixture() {
       const values = selectedCandidatePublisherFixture();
-      const stagedSuccessor = createAuthenticatedStagedApplicationGenerationDescriptor({
-        commit: values.commit,
-        durableAuthority: values.base.durableAuthority,
-        workingIdentity: values.successor.workingIdentity,
+      const abandon = vi.fn();
+      return Object.freeze({
+        abandon,
+        candidate: Object.freeze({
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+        }),
+        publicationPort: Object.freeze({
+          abandon,
+          completeWorkingAcceptance: vi.fn(),
+          completeExternallyResolvedPublication: vi.fn(),
+          publishCandidate,
+          resolvePublication,
+        }),
       });
-      return { stagedSuccessor, values };
     }
 
-    it("materializes exactly one Commit at flush before any Superblock authority write", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const events: string[] = [];
-      const appendCandidate = vi.fn(async () => {
-        events.push("append");
-        return Object.freeze({
-          commitHomeRef: values.commitReference,
-          commitPayload: values.commit,
-        });
-      });
-      const detachedAbandon = vi.fn();
-      const completeWorkingAcceptance = vi.fn(() => events.push("materialization-diagnostics-closed"));
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => events.push("gate"),
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority: async () => {
-          events.push("open-materialization-authority");
-          return {
-            abandon: vi.fn(),
-            appendCandidate,
-            detachPreparedCandidatePublication: ({ candidate }) => {
-              events.push("detach");
-              return {
-                abandon: detachedAbandon,
-                completeWorkingAcceptance,
-                completeExternallyResolvedPublication: vi.fn(),
-                publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
-                  beforeFirstAuthorityWrite();
-                  events.push("superblock-write");
-                  return {
-                    commitHomeRef: candidate.commitHomeRef,
-                    superblock: values.superblock({ copyState: "normal" }),
-                  };
-                },
-                resolvePublication: vi.fn(),
-              };
-            },
-            publishCandidate: vi.fn(),
-          };
-        },
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
-
-      expect(appendCandidate).not.toHaveBeenCalled();
-      const onCandidateMaterialized = vi.fn(() => events.push("materialized"));
-      const materializationAttempt = createMaterializationAttemptReceipt();
-      const onMaterializationAppendAttempt = vi.fn(({ frameBytes }: { frameBytes: number }) => {
-        events.push("materialization-resource-attempt");
-        expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
-        return materializationAttempt;
-      });
-      const outcome = await publisher.publish({
-        onCandidateMaterialized,
-        onMaterializationAppendAttempt,
-      });
-
-      expect(outcome.type).toBe("published");
-      expect(appendCandidate).toHaveBeenCalledOnce();
-      expect(onCandidateMaterialized).toHaveBeenCalledWith({
-        candidateDurableIdentity: createDurableGenerationIdentity({
-          commitReference: values.commitReference,
-          commitSequence: values.commit.commitSequence,
-          mutationId: values.commit.mutationId,
+    it("anchors every dirty-epoch candidate Sequence to the durable head while preserving working roots", () => {
+      const values = selectedCandidatePublisherFixture();
+      const workingCommit = createFileSystemCommitPayload({ payload: {
+        ...values.successor.commit,
+        commitSequence: createCommitSequence({ value: values.base.commit.commitSequence + 9n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(11) }),
+        rootInodeTableRootHomeRef: createHomeRecordReference({ fields: {
+          byteOffset: createUInt64({ value: 8_192n }),
+          frameLength: 160,
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+          segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(12) }),
+        } }),
+      } });
+      const working = createAuthenticatedApplicationGenerationDescriptor({
+        commit: workingCommit,
+        commitReference: values.successor.commitReference,
+        durableAuthority: values.base.durableAuthority,
+        workingIdentity: createWorkingGenerationIdentity({
+          authorityEpoch: values.successor.workingIdentity.authorityEpoch,
+          generationNumber: values.successor.workingIdentity.generationNumber,
+          mutationId: workingCommit.mutationId,
         }),
       });
-      expect(onMaterializationAppendAttempt).toHaveBeenCalledOnce();
-      expect(events.indexOf("materialization-resource-attempt")).toBeLessThan(events.indexOf("append"));
-      expect(events.indexOf("append")).toBeLessThan(events.indexOf("materialized"));
-      expect(events.indexOf("materialized")).toBeLessThan(events.indexOf("superblock-write"));
-      expect(materializationAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
-      expect(materializationAttempt.fail).not.toHaveBeenCalled();
-      expect(completeWorkingAcceptance).toHaveBeenCalledOnce();
+
+      const planningBase = COMPOSITION_TEST_ONLY.createMutationCandidatePlanningBaseCommit({ base: working });
+
+      expect(planningBase.commitSequence).toBe(values.base.durableAuthority.commit.commitSequence);
+      expect(planningBase.mutationId).toEqual(values.base.durableAuthority.commit.mutationId);
+      expect(planningBase.rootInodeTableRootHomeRef).toEqual(working.commit.rootInodeTableRootHomeRef);
+    });
+
+    it("installs one exact detached candidate into runtime accepted ownership", () => {
+      const values = selectedCandidatePublisherFixture();
+      const prepared = selectedCandidatePublisherDeferred({
+        publishCandidate: vi.fn(),
+        resolvePublication: vi.fn(),
+      });
+      const events: string[] = [];
+      const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
+      const replaceResourceReservation = vi.fn(() => events.push("reserved"));
+      const admission = {
+        commitAcceptedStagedSuccessor: vi.fn(),
+        commitAcceptedSuccessor,
+        hasAcceptedSuccessor: () => commitAcceptedSuccessor.mock.calls.length > 0,
+        replaceResourceReservation,
+        reserveStagedCommitMaterializationHeadroom: vi.fn(),
+        rollback: vi.fn(),
+      };
+
+      const publisher = COMPOSITION_TEST_ONLY.installPreparedMutationSelectedCandidate({
+        admission,
+        assertRuntimePublicationAllowed: () => undefined,
+        base: values.base,
+        deferred: prepared,
+        resourceUsage: {
+          appendedMetadataFrameBytes: 4_096,
+          unpublishedPhysicalBytes: 8_192,
+        },
+        successor: values.successor,
+      });
+
+      expect(replaceResourceReservation).toHaveBeenCalledWith({
+        dirtyMetadataBytes: 4_096,
+        unpublishedPhysicalBytes: 8_192,
+      });
+      expect(events).toEqual(["reserved", "accepted"]);
+      expect(commitAcceptedSuccessor).toHaveBeenCalledWith({
+        publisher,
+        successor: values.successor,
+      });
+      publisher.abandon();
+      expect(prepared.abandon).toHaveBeenCalledOnce();
+    });
+
+    it("releases the foreground Segment writer lease before staged accepted visibility", async () => {
+      const values = selectedCandidatePublisherFixture();
+      const events: string[] = [];
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+      const rootKey = generateFileSystemRootKey({ randomSource });
+      const writerOwner = new AuthenticatedSegmentWriterOwner({
+        backend,
+        fileSystemId,
+        randomSource,
+        rootKey,
+        segmentClass: "metadata",
+      });
+      const foregroundLease = writerOwner.acquire();
+      const replaceResourceReservation = vi.fn();
+      const reserveStagedCommitMaterializationHeadroom = vi.fn();
+      const prepareWorkingAcceptance = vi.fn(() => {
+        foregroundLease.release({ disposition: "reuse" });
+        events.push("foreground_writer_released");
+      });
+      const commitAcceptedStagedSuccessor = vi.fn(() => {
+        const publicationLease = writerOwner.acquire();
+        publicationLease.release({ disposition: "reuse" });
+        events.push("accepted_visible");
+      });
+      const createMaterializationAuthority = vi.fn(async () => {
+        throw new Error("foreground staging must not open a materialization authority");
+      });
+      const admission = {
+        commitAcceptedStagedSuccessor,
+        commitAcceptedSuccessor: vi.fn(),
+        hasAcceptedSuccessor: () => commitAcceptedStagedSuccessor.mock.calls.length > 0,
+        replaceResourceReservation,
+        reserveStagedCommitMaterializationHeadroom,
+        rollback: vi.fn(),
+      };
+      const resourceUsage = {
+        appendedMetadataFrameBytes: 4_096,
+        unpublishedPhysicalBytes: 8_192,
+      };
+
+      const installed = COMPOSITION_TEST_ONLY.prepareAndInstallStagedMutationSelectedCandidate({
+        admission,
+        assertCandidatePreparationAllowed: vi.fn(),
+        assertRuntimePublicationAllowed: vi.fn(),
+        base: values.base,
+        commitPayload: values.commit,
+        createMaterializationAuthority,
+        prepareWorkingAcceptance,
+        resourceUsage,
+      });
+
+      expect(replaceResourceReservation).toHaveBeenCalledWith({
+        dirtyMetadataBytes: resourceUsage.appendedMetadataFrameBytes,
+        unpublishedPhysicalBytes: resourceUsage.unpublishedPhysicalBytes,
+      });
+      expect(reserveStagedCommitMaterializationHeadroom).toHaveBeenCalledWith({
+        bytes: STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
+      });
+      expect(events).toEqual(["foreground_writer_released", "accepted_visible"]);
+      expect(prepareWorkingAcceptance).toHaveBeenCalledOnce();
+      expect(commitAcceptedStagedSuccessor).toHaveBeenCalledWith({
+        publisher: installed.publisher,
+        successor: installed.successor,
+      });
+      expect(createMaterializationAuthority).not.toHaveBeenCalled();
+      expect("commitReference" in installed.successor).toBe(false);
+      installed.publisher.abandon();
+      await expect(writerOwner.close()).resolves.toBeUndefined();
+      rootKey.destroy();
+    });
+
+    it.each([false, true])("settles a rejected staged preparation according to accepted runtime ownership: %s", accepted => {
+      const values = selectedCandidatePublisherFixture();
+      const releasePublicationResources = vi.fn();
+      const rollback = vi.fn();
+      let failure: { cause: unknown } | undefined;
+      try {
+        COMPOSITION_TEST_ONLY.prepareAndInstallStagedMutationSelectedCandidate({
+          admission: {
+            commitAcceptedStagedSuccessor: () => {
+              throw undefined;
+            },
+            commitAcceptedSuccessor: vi.fn(),
+            hasAcceptedSuccessor: () => accepted,
+            replaceResourceReservation: vi.fn(),
+            reserveStagedCommitMaterializationHeadroom: vi.fn(),
+            rollback,
+          },
+          assertCandidatePreparationAllowed: vi.fn(),
+          assertRuntimePublicationAllowed: vi.fn(),
+          base: values.base,
+          commitPayload: values.commit,
+          createMaterializationAuthority: async () => {
+            throw new Error("unexpected foreground materialization");
+          },
+          prepareWorkingAcceptance: vi.fn(),
+          releasePublicationResources,
+          resourceUsage: { appendedMetadataFrameBytes: 1, unpublishedPhysicalBytes: 1 },
+        });
+      } catch (cause: unknown) {
+        failure = { cause };
+      }
+      expect(failure).toEqual({ cause: undefined });
+      expect(releasePublicationResources).toHaveBeenCalledTimes(accepted ? 0 : 1);
+      expect(rollback).toHaveBeenCalledTimes(accepted ? 0 : 1);
+    });
+
+    it("prepares and installs deferred runtime ownership without starting Superblock publication", async () => {
+      const values = selectedCandidatePublisherFixture();
+      const events: string[] = [];
+      const detachedPublish = vi.fn();
+      const detachedResolve = vi.fn();
+      const detachedAbandon = vi.fn();
+      const sourcePublish = vi.fn();
+      const candidate = Object.freeze({
+        commitHomeRef: values.commitReference,
+        commitPayload: values.commit,
+      });
+      const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
+      const admission = {
+        commitAcceptedStagedSuccessor: vi.fn(),
+        commitAcceptedSuccessor,
+        hasAcceptedSuccessor: () => commitAcceptedSuccessor.mock.calls.length > 0,
+        replaceResourceReservation: vi.fn(() => events.push("reserved")),
+        reserveStagedCommitMaterializationHeadroom: vi.fn(),
+        rollback: vi.fn(),
+      };
+      let preparationGateChecks = 0;
+
+      const installed = await COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
+        admission,
+        assertCandidatePreparationAllowed: () => {
+          preparationGateChecks += 1;
+          events.push(`gate_${preparationGateChecks}`);
+        },
+        assertRuntimePublicationAllowed: vi.fn(),
+        base: values.base,
+        commitPayload: values.commit,
+        createSuccessor: ({ candidate: preparedCandidate }) => {
+          expect(preparedCandidate).toBe(candidate);
+          events.push("successor");
+          return values.successor;
+        },
+        publicationPort: {
+          appendCandidate: async () => {
+            events.push("append");
+            return candidate;
+          },
+          detachPreparedCandidatePublication: ({ candidate: preparedCandidate }) => {
+            expect(preparedCandidate).toBe(candidate);
+            events.push("detach");
+            return {
+              abandon: detachedAbandon,
+              completeWorkingAcceptance: vi.fn(),
+              completeExternallyResolvedPublication: vi.fn(),
+              publishCandidate: detachedPublish,
+              resolvePublication: detachedResolve,
+            };
+          },
+          publishCandidate: sourcePublish,
+        },
+        resourceUsage: {
+          appendedMetadataFrameBytes: 1_024,
+          unpublishedPhysicalBytes: 2_048,
+        },
+      });
+
+      expect(installed.successor).toBe(values.successor);
+      expect(commitAcceptedSuccessor).toHaveBeenCalledWith({
+        publisher: installed.publisher,
+        successor: values.successor,
+      });
+      expect(events).toEqual([
+        "gate_1",
+        "append",
+        "gate_2",
+        "detach",
+        "successor",
+        "reserved",
+        "accepted",
+      ]);
+      expect(sourcePublish).not.toHaveBeenCalled();
+      expect(detachedPublish).not.toHaveBeenCalled();
+      expect(detachedResolve).not.toHaveBeenCalled();
       expect(detachedAbandon).not.toHaveBeenCalled();
     });
 
-    it("releases retained staged publication resources exactly once on terminal cleanup", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const releasePublicationResources = vi.fn();
-      const completeExternallyResolvedPublication = vi.fn();
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority: async () => ({
-          abandon: vi.fn(),
-          appendCandidate: async () => Object.freeze({
+    it("abandons detached authority and rolls back when successor construction fails", async () => {
+      const values = selectedCandidatePublisherFixture();
+      const abandon = vi.fn();
+      const rollback = vi.fn();
+      const failure = new Error("successor construction failed");
+
+      await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
+        admission: {
+          commitAcceptedStagedSuccessor: vi.fn(),
+          commitAcceptedSuccessor: vi.fn(),
+          hasAcceptedSuccessor: () => false,
+          replaceResourceReservation: vi.fn(),
+          reserveStagedCommitMaterializationHeadroom: vi.fn(),
+          rollback,
+        },
+        assertCandidatePreparationAllowed: vi.fn(),
+        assertRuntimePublicationAllowed: vi.fn(),
+        base: values.base,
+        commitPayload: values.commit,
+        createSuccessor: () => {
+          throw failure;
+        },
+        publicationPort: {
+          appendCandidate: async () => ({
             commitHomeRef: values.commitReference,
             commitPayload: values.commit,
           }),
-          detachPreparedCandidatePublication: ({ candidate }) => ({
-            abandon: vi.fn(),
+          detachPreparedCandidatePublication: () => ({
+            abandon,
             completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication,
-            publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
-              beforeFirstAuthorityWrite();
-              return {
-                commitHomeRef: candidate.commitHomeRef,
-                superblock: values.superblock({ copyState: "normal" }),
-              };
-            },
+            completeExternallyResolvedPublication: vi.fn(),
+            publishCandidate: vi.fn(),
             resolvePublication: vi.fn(),
           }),
           publishCandidate: vi.fn(),
-        }),
-        releasePublicationResources,
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
+        },
+        resourceUsage: { appendedMetadataFrameBytes: 1, unpublishedPhysicalBytes: 1 },
+      })).rejects.toBe(failure);
 
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({ type: "published" });
-      expect(releasePublicationResources).not.toHaveBeenCalled();
-
-      publisher.completeOutcomeUnknownResolution({ outcome: "confirmed_published" });
-      publisher.abandon();
-
-      expect(completeExternallyResolvedPublication).toHaveBeenCalledWith({ outcome: "published" });
-      expect(releasePublicationResources).toHaveBeenCalledOnce();
+      expect(abandon).toHaveBeenCalledOnce();
+      expect(rollback).toHaveBeenCalledOnce();
     });
 
-    it("releases retained staged publication resources when abandoned before materialization", () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const releasePublicationResources = vi.fn();
-      const createMaterializationAuthority = vi.fn();
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority,
-        releasePublicationResources,
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
+    it("abandons detached authority and rolls back when runtime reservation fails", async () => {
+      const values = selectedCandidatePublisherFixture();
+      const abandon = vi.fn();
+      const rollback = vi.fn();
+      const failure = new Error("reservation failed");
 
-      publisher.abandon();
-      publisher.abandon();
+      await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
+        admission: {
+          commitAcceptedStagedSuccessor: vi.fn(),
+          commitAcceptedSuccessor: vi.fn(),
+          hasAcceptedSuccessor: () => false,
+          replaceResourceReservation: () => {
+            throw failure;
+          },
+          reserveStagedCommitMaterializationHeadroom: vi.fn(),
+          rollback,
+        },
+        assertCandidatePreparationAllowed: vi.fn(),
+        assertRuntimePublicationAllowed: vi.fn(),
+        base: values.base,
+        commitPayload: values.commit,
+        createSuccessor: () => values.successor,
+        publicationPort: {
+          appendCandidate: async () => ({
+            commitHomeRef: values.commitReference,
+            commitPayload: values.commit,
+          }),
+          detachPreparedCandidatePublication: () => ({
+            abandon,
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication: vi.fn(),
+            publishCandidate: vi.fn(),
+            resolvePublication: vi.fn(),
+          }),
+          publishCandidate: vi.fn(),
+        },
+        resourceUsage: { appendedMetadataFrameBytes: 1, unpublishedPhysicalBytes: 1 },
+      })).rejects.toBe(failure);
 
-      expect(createMaterializationAuthority).not.toHaveBeenCalled();
-      expect(releasePublicationResources).toHaveBeenCalledOnce();
+      expect(abandon).toHaveBeenCalledOnce();
+      expect(rollback).toHaveBeenCalledOnce();
     });
 
-    it("keeps a staged Commit retryable when physical materialization append fails", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const appendFailure = new Error("Commit append failed before candidate materialization");
-      const abandons: ReturnType<typeof vi.fn>[] = [];
-      const appendCandidate = vi.fn()
-        .mockRejectedValueOnce(appendFailure)
-        .mockResolvedValueOnce(Object.freeze({
+    const createMaterializationAttemptReceipt = () => Object.freeze({
+      completeReusableCandidate: vi.fn(),
+      fail: vi.fn(),
+    });
+
+    describe("staged mutation selected-candidate publisher", () => {
+      function stagedPublisherFixture() {
+        const values = selectedCandidatePublisherFixture();
+        const stagedSuccessor = createAuthenticatedStagedApplicationGenerationDescriptor({
+          commit: values.commit,
+          durableAuthority: values.base.durableAuthority,
+          workingIdentity: values.successor.workingIdentity,
+        });
+        return { stagedSuccessor, values };
+      }
+
+
+      it("awaits abandoned materialization cleanup and retains both failures before returning not-published", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const primary = new Error("materialization admission failed");
+        const cleanup = new Error("local writer cleanup failed");
+        const gate = Promise.withResolvers<void>();
+        const started = Promise.withResolvers<void>();
+        const abandon = vi.fn();
+        const appendCandidate = vi.fn();
+        const publishCandidate = vi.fn();
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: vi.fn(),
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority: async () => ({
+            abandon,
+            appendCandidate,
+            detachPreparedCandidatePublication: vi.fn(),
+            publishCandidate,
+            settleWriterCleanup: async () => {
+              started.resolve();
+              await gate.promise;
+              throw cleanup;
+            },
+          }),
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+        const completion = publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => {
+            throw primary;
+          },
+        });
+        try {
+          await started.promise;
+          expect(abandon).toHaveBeenCalledOnce();
+          gate.resolve();
+          await expect(completion).resolves.toMatchObject({
+            cause: { errors: [primary, cleanup] },
+            type: "not_published",
+          });
+          expect(appendCandidate).not.toHaveBeenCalled();
+          expect(publishCandidate).not.toHaveBeenCalled();
+        } finally {
+          gate.resolve();
+        }
+      });
+
+      it("materializes exactly one Commit at flush before any Superblock authority write", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const events: string[] = [];
+        const appendCandidate = vi.fn(async () => {
+          events.push("append");
+          return Object.freeze({
+            commitHomeRef: values.commitReference,
+            commitPayload: values.commit,
+          });
+        });
+        const detachedAbandon = vi.fn();
+        const completeWorkingAcceptance = vi.fn(() => events.push("materialization-diagnostics-closed"));
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => events.push("gate"),
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority: async () => {
+            events.push("open-materialization-authority");
+            return {
+              abandon: vi.fn(),
+              settleWriterCleanup: vi.fn(async () => undefined),
+              appendCandidate,
+              detachPreparedCandidatePublication: ({ candidate }) => {
+                events.push("detach");
+                return {
+                  abandon: detachedAbandon,
+                  completeWorkingAcceptance,
+                  completeExternallyResolvedPublication: vi.fn(),
+                  publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
+                    beforeFirstAuthorityWrite();
+                    events.push("superblock-write");
+                    return {
+                      commitHomeRef: candidate.commitHomeRef,
+                      superblock: values.superblock({ copyState: "normal" }),
+                    };
+                  },
+                  resolvePublication: vi.fn(),
+                };
+              },
+              publishCandidate: vi.fn(),
+            };
+          },
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+
+        expect(appendCandidate).not.toHaveBeenCalled();
+        const onCandidateMaterialized = vi.fn(() => events.push("materialized"));
+        const materializationAttempt = createMaterializationAttemptReceipt();
+        const onMaterializationAppendAttempt = vi.fn(({ frameBytes }: { frameBytes: number }) => {
+          events.push("materialization-resource-attempt");
+          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+          return materializationAttempt;
+        });
+        const outcome = await publisher.publish({
+          onCandidateMaterialized,
+          onMaterializationAppendAttempt,
+        });
+
+        expect(outcome.type).toBe("published");
+        expect(appendCandidate).toHaveBeenCalledOnce();
+        expect(onCandidateMaterialized).toHaveBeenCalledWith({
+          candidateDurableIdentity: createDurableGenerationIdentity({
+            commitReference: values.commitReference,
+            commitSequence: values.commit.commitSequence,
+            mutationId: values.commit.mutationId,
+          }),
+        });
+        expect(onMaterializationAppendAttempt).toHaveBeenCalledOnce();
+        expect(events.indexOf("materialization-resource-attempt")).toBeLessThan(events.indexOf("append"));
+        expect(events.indexOf("append")).toBeLessThan(events.indexOf("materialized"));
+        expect(events.indexOf("materialized")).toBeLessThan(events.indexOf("superblock-write"));
+        expect(materializationAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
+        expect(materializationAttempt.fail).not.toHaveBeenCalled();
+        expect(completeWorkingAcceptance).toHaveBeenCalledOnce();
+        expect(detachedAbandon).not.toHaveBeenCalled();
+      });
+
+      it("releases retained staged publication resources exactly once on terminal cleanup", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const releasePublicationResources = vi.fn();
+        const completeExternallyResolvedPublication = vi.fn();
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority: async () => ({
+            abandon: vi.fn(),
+            settleWriterCleanup: vi.fn(async () => undefined),
+            appendCandidate: async () => Object.freeze({
+              commitHomeRef: values.commitReference,
+              commitPayload: values.commit,
+            }),
+            detachPreparedCandidatePublication: ({ candidate }) => ({
+              abandon: vi.fn(),
+              completeWorkingAcceptance: vi.fn(),
+              completeExternallyResolvedPublication,
+              publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
+                beforeFirstAuthorityWrite();
+                return {
+                  commitHomeRef: candidate.commitHomeRef,
+                  superblock: values.superblock({ copyState: "normal" }),
+                };
+              },
+              resolvePublication: vi.fn(),
+            }),
+            publishCandidate: vi.fn(),
+          }),
+          releasePublicationResources,
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({ type: "published" });
+        expect(releasePublicationResources).not.toHaveBeenCalled();
+
+        publisher.completeOutcomeUnknownResolution({ outcome: "confirmed_published" });
+        publisher.abandon();
+
+        expect(completeExternallyResolvedPublication).toHaveBeenCalledWith({ outcome: "published" });
+        expect(releasePublicationResources).toHaveBeenCalledOnce();
+      });
+
+      it("releases retained staged publication resources when abandoned before materialization", () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const releasePublicationResources = vi.fn();
+        const createMaterializationAuthority = vi.fn();
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority,
+          releasePublicationResources,
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+
+        publisher.abandon();
+        publisher.abandon();
+
+        expect(createMaterializationAuthority).not.toHaveBeenCalled();
+        expect(releasePublicationResources).toHaveBeenCalledOnce();
+      });
+
+      it("keeps a staged Commit retryable when physical materialization append fails", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const appendFailure = new Error("Commit append failed before candidate materialization");
+        const abandons: ReturnType<typeof vi.fn>[] = [];
+        const appendCandidate = vi.fn()
+          .mockRejectedValueOnce(appendFailure)
+          .mockResolvedValueOnce(Object.freeze({
+            commitHomeRef: values.commitReference,
+            commitPayload: values.commit,
+          }));
+        const createMaterializationAuthority = vi.fn(async () => {
+          const abandon = vi.fn();
+          abandons.push(abandon);
+          return {
+            abandon,
+            settleWriterCleanup: vi.fn(async () => undefined),
+            appendCandidate,
+            detachPreparedCandidatePublication: ({ candidate }: {
+            candidate: Readonly<{ commitHomeRef: HomeRecordReference; commitPayload: FileSystemCommitPayload }>;
+          }) => ({
+              abandon: vi.fn(),
+              completeWorkingAcceptance: vi.fn(),
+              completeExternallyResolvedPublication: vi.fn(),
+              publishCandidate: async ({ beforeFirstAuthorityWrite }: { beforeFirstAuthorityWrite: () => void }) => {
+                beforeFirstAuthorityWrite();
+                return {
+                  commitHomeRef: candidate.commitHomeRef,
+                  superblock: values.superblock({ copyState: "normal" }),
+                };
+              },
+              resolvePublication: vi.fn(),
+            }),
+            publishCandidate: vi.fn(),
+          };
+        });
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority,
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+
+        const firstAttempt = createMaterializationAttemptReceipt();
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: ({ frameBytes }) => {
+            expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+            return firstAttempt;
+          },
+        })).resolves.toEqual({
+          cause: appendFailure,
+          refreshedDurableAuthority: values.base.durableAuthority,
+          type: "not_published",
+        });
+        expect(firstAttempt.fail).toHaveBeenCalledOnce();
+        expect(firstAttempt.completeReusableCandidate).not.toHaveBeenCalled();
+        expect(abandons[0]).toHaveBeenCalledOnce();
+
+        const secondAttempt = createMaterializationAttemptReceipt();
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: ({ frameBytes }) => {
+            expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+            return secondAttempt;
+          },
+        })).resolves.toMatchObject({
+          type: "published",
+        });
+        expect(secondAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
+        expect(secondAttempt.fail).not.toHaveBeenCalled();
+        expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
+        expect(appendCandidate).toHaveBeenCalledTimes(2);
+      });
+
+      it("refuses materialization before Commit append when resource risk cannot be reserved", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const appendCandidate = vi.fn(async () => Object.freeze({
           commitHomeRef: values.commitReference,
           commitPayload: values.commit,
         }));
-      const createMaterializationAuthority = vi.fn(async () => {
-        const abandon = vi.fn();
-        abandons.push(abandon);
-        return {
-          abandon,
-          appendCandidate,
-          detachPreparedCandidatePublication: ({ candidate }: {
-            candidate: Readonly<{ commitHomeRef: HomeRecordReference; commitPayload: FileSystemCommitPayload }>;
-          }) => ({
-            abandon: vi.fn(),
-            completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication: vi.fn(),
-            publishCandidate: async ({ beforeFirstAuthorityWrite }: { beforeFirstAuthorityWrite: () => void }) => {
-              beforeFirstAuthorityWrite();
-              return {
-                commitHomeRef: candidate.commitHomeRef,
-                superblock: values.superblock({ copyState: "normal" }),
-              };
-            },
-            resolvePublication: vi.fn(),
+        const materializationAuthorityAbandon = vi.fn();
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority: async () => ({
+            abandon: materializationAuthorityAbandon,
+            settleWriterCleanup: vi.fn(async () => undefined),
+            appendCandidate,
+            detachPreparedCandidatePublication: vi.fn(),
+            publishCandidate: vi.fn(),
           }),
-          publishCandidate: vi.fn(),
-        };
-      });
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority,
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
-
-      const firstAttempt = createMaterializationAttemptReceipt();
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: ({ frameBytes }) => {
-          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
-          return firstAttempt;
-        },
-      })).resolves.toEqual({
-        cause: appendFailure,
-        refreshedDurableAuthority: values.base.durableAuthority,
-        type: "not_published",
-      });
-      expect(firstAttempt.fail).toHaveBeenCalledOnce();
-      expect(firstAttempt.completeReusableCandidate).not.toHaveBeenCalled();
-      expect(abandons[0]).toHaveBeenCalledOnce();
-
-      const secondAttempt = createMaterializationAttemptReceipt();
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: ({ frameBytes }) => {
-          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
-          return secondAttempt;
-        },
-      })).resolves.toMatchObject({
-        type: "published",
-      });
-      expect(secondAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
-      expect(secondAttempt.fail).not.toHaveBeenCalled();
-      expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
-      expect(appendCandidate).toHaveBeenCalledTimes(2);
-    });
-
-    it("refuses materialization before Commit append when resource risk cannot be reserved", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const appendCandidate = vi.fn(async () => Object.freeze({
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-      }));
-      const materializationAuthorityAbandon = vi.fn();
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority: async () => ({
-          abandon: materializationAuthorityAbandon,
-          appendCandidate,
-          detachPreparedCandidatePublication: vi.fn(),
-          publishCandidate: vi.fn(),
-        }),
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
-      const resourceFailure = new Error("materialization risk exceeds dirty resource limit");
-
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: ({ frameBytes }) => {
-          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
-          throw resourceFailure;
-        },
-      })).resolves.toEqual({
-        cause: resourceFailure,
-        refreshedDurableAuthority: values.base.durableAuthority,
-        type: "not_published",
-      });
-      expect(appendCandidate).not.toHaveBeenCalled();
-      expect(materializationAuthorityAbandon).toHaveBeenCalledOnce();
-    });
-
-    it("reuses one materialized Commit across a definitely-not-published retry", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const appendCandidate = vi.fn(async () => Object.freeze({
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-      }));
-      const preAuthorityFailure = new Error("publication gate failed before authority write");
-      const publishCandidate = vi.fn()
-        .mockRejectedValueOnce(preAuthorityFailure)
-        .mockImplementationOnce(async ({ beforeFirstAuthorityWrite, candidate }) => {
-          beforeFirstAuthorityWrite();
-          return {
-            commitHomeRef: candidate.commitHomeRef,
-            superblock: values.superblock({ copyState: "normal" }),
-          };
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
         });
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority: async () => ({
-          abandon: vi.fn(),
-          appendCandidate,
-          detachPreparedCandidatePublication: ({ candidate }) => ({
+        const resourceFailure = new Error("materialization risk exceeds dirty resource limit");
+
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: ({ frameBytes }) => {
+            expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+            throw resourceFailure;
+          },
+        })).resolves.toEqual({
+          cause: resourceFailure,
+          refreshedDurableAuthority: values.base.durableAuthority,
+          type: "not_published",
+        });
+        expect(appendCandidate).not.toHaveBeenCalled();
+        expect(materializationAuthorityAbandon).toHaveBeenCalledOnce();
+      });
+
+      it("reuses one materialized Commit across a definitely-not-published retry", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const appendCandidate = vi.fn(async () => Object.freeze({
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+        }));
+        const preAuthorityFailure = new Error("publication gate failed before authority write");
+        const publishCandidate = vi.fn()
+          .mockRejectedValueOnce(preAuthorityFailure)
+          .mockImplementationOnce(async ({ beforeFirstAuthorityWrite, candidate }) => {
+            beforeFirstAuthorityWrite();
+            return {
+              commitHomeRef: candidate.commitHomeRef,
+              superblock: values.superblock({ copyState: "normal" }),
+            };
+          });
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority: async () => ({
             abandon: vi.fn(),
-            completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication: vi.fn(),
-            publishCandidate: request => publishCandidate({ ...request, candidate }),
-            resolvePublication: vi.fn(),
+            settleWriterCleanup: vi.fn(async () => undefined),
+            appendCandidate,
+            detachPreparedCandidatePublication: ({ candidate }) => ({
+              abandon: vi.fn(),
+              completeWorkingAcceptance: vi.fn(),
+              completeExternallyResolvedPublication: vi.fn(),
+              publishCandidate: request => publishCandidate({ ...request, candidate }),
+              resolvePublication: vi.fn(),
+            }),
+            publishCandidate: vi.fn(),
           }),
-          publishCandidate: vi.fn(),
-        }),
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({
+          cause: preAuthorityFailure,
+          type: "not_published",
+        });
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({
+          type: "published",
+        });
+        expect(appendCandidate).toHaveBeenCalledOnce();
+        expect(publishCandidate).toHaveBeenCalledTimes(2);
       });
 
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({
-        cause: preAuthorityFailure,
-        type: "not_published",
-      });
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({
-        type: "published",
-      });
-      expect(appendCandidate).toHaveBeenCalledOnce();
-      expect(publishCandidate).toHaveBeenCalledTimes(2);
-    });
-
-    it("abandons an unreachable materialized Commit and stays retryable when runtime root binding fails", async () => {
-      const { stagedSuccessor, values } = stagedPublisherFixture();
-      const detachedAbandons: ReturnType<typeof vi.fn>[] = [];
-      const appendCandidate = vi.fn(async () => Object.freeze({
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-      }));
-      const createMaterializationAuthority = vi.fn(async () => {
-        const detachedAbandon = vi.fn();
-        detachedAbandons.push(detachedAbandon);
-        return {
-          abandon: vi.fn(),
-          appendCandidate,
-          detachPreparedCandidatePublication: ({ candidate }: {
+      it("abandons an unreachable materialized Commit and stays retryable when runtime root binding fails", async () => {
+        const { stagedSuccessor, values } = stagedPublisherFixture();
+        const detachedAbandons: ReturnType<typeof vi.fn>[] = [];
+        const appendCandidate = vi.fn(async () => Object.freeze({
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+        }));
+        const createMaterializationAuthority = vi.fn(async () => {
+          const detachedAbandon = vi.fn();
+          detachedAbandons.push(detachedAbandon);
+          return {
+            abandon: vi.fn(),
+            settleWriterCleanup: vi.fn(async () => undefined),
+            appendCandidate,
+            detachPreparedCandidatePublication: ({ candidate }: {
             candidate: Readonly<{ commitHomeRef: HomeRecordReference; commitPayload: FileSystemCommitPayload }>;
           }) => ({
-            abandon: detachedAbandon,
-            completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication: vi.fn(),
-            publishCandidate: async ({ beforeFirstAuthorityWrite }: {
+              abandon: detachedAbandon,
+              completeWorkingAcceptance: vi.fn(),
+              completeExternallyResolvedPublication: vi.fn(),
+              publishCandidate: async ({ beforeFirstAuthorityWrite }: {
               beforeFirstAuthorityWrite: () => void;
             }) => {
-              beforeFirstAuthorityWrite();
-              return {
-                commitHomeRef: candidate.commitHomeRef,
-                superblock: values.superblock({ copyState: "normal" }),
-              };
-            },
-            resolvePublication: vi.fn(),
+                beforeFirstAuthorityWrite();
+                return {
+                  commitHomeRef: candidate.commitHomeRef,
+                  superblock: values.superblock({ copyState: "normal" }),
+                };
+              },
+              resolvePublication: vi.fn(),
+            }),
+            publishCandidate: vi.fn(),
+          };
+        });
+        const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          baseDurableAuthority: values.base.durableAuthority,
+          createMaterializationAuthority,
+          staged: Object.freeze({ commitPayload: values.commit }),
+          stagedSuccessor,
+        });
+        const rootFailure = new Error("maintenance root limit reached");
+
+        await expect(publisher.publish({
+          onCandidateMaterialized: () => {
+            throw rootFailure;
+          },
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toEqual({
+          cause: rootFailure,
+          refreshedDurableAuthority: values.base.durableAuthority,
+          type: "not_published",
+        });
+        expect(detachedAbandons[0]).toHaveBeenCalledOnce();
+
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({ type: "published" });
+        expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
+        expect(appendCandidate).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    describe("prepared mutation selected-candidate publisher", () => {
+      it("publishes the exact detached candidate and returns a durable successor", async () => {
+        const values = selectedCandidatePublisherFixture();
+        const resolvePublication = vi.fn();
+        const prepared = selectedCandidatePublisherDeferred({
+          publishCandidate: async ({ beforeFirstAuthorityWrite, candidate }) => {
+            beforeFirstAuthorityWrite();
+            return { commitHomeRef: candidate.commitHomeRef, superblock: values.superblock({ copyState: "normal" }) };
+          },
+          resolvePublication,
+        });
+        const assertRuntimePublicationAllowed = vi.fn();
+
+        const onCandidateMaterialized = vi.fn();
+        const outcome = await COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed,
+          base: values.base,
+          deferred: prepared,
+          successor: values.successor,
+        }).publish({
+          onCandidateMaterialized,
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        });
+
+        expect(outcome).toMatchObject({ type: "published" });
+        if (outcome.type !== "published") {
+          throw new Error("expected published outcome");
+        }
+        expect(outcome.durableSuccessor.workingIdentity).toBe(values.successor.workingIdentity);
+        expect(outcome.durableSuccessor.durableAuthority.identity.commitSequence).toBe(values.commit.commitSequence);
+        expect(onCandidateMaterialized).toHaveBeenCalledWith({
+          candidateDurableIdentity: createDurableGenerationIdentity({
+            commitReference: values.commitReference,
+            commitSequence: values.commit.commitSequence,
+            mutationId: values.commit.mutationId,
           }),
-          publishCandidate: vi.fn(),
-        };
-      });
-      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        baseDurableAuthority: values.base.durableAuthority,
-        createMaterializationAuthority,
-        staged: Object.freeze({ commitPayload: values.commit }),
-        stagedSuccessor,
-      });
-      const rootFailure = new Error("maintenance root limit reached");
-
-      await expect(publisher.publish({
-        onCandidateMaterialized: () => {
-          throw rootFailure;
-        },
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toEqual({
-        cause: rootFailure,
-        refreshedDurableAuthority: values.base.durableAuthority,
-        type: "not_published",
-      });
-      expect(detachedAbandons[0]).toHaveBeenCalledOnce();
-
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({ type: "published" });
-      expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
-      expect(appendCandidate).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("prepared mutation selected-candidate publisher", () => {
-    it("publishes the exact detached candidate and returns a durable successor", async () => {
-      const values = selectedCandidatePublisherFixture();
-      const resolvePublication = vi.fn();
-      const prepared = selectedCandidatePublisherDeferred({
-        publishCandidate: async ({ beforeFirstAuthorityWrite, candidate }) => {
-          beforeFirstAuthorityWrite();
-          return { commitHomeRef: candidate.commitHomeRef, superblock: values.superblock({ copyState: "normal" }) };
-        },
-        resolvePublication,
-      });
-      const assertRuntimePublicationAllowed = vi.fn();
-
-      const onCandidateMaterialized = vi.fn();
-      const outcome = await COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed,
-        base: values.base,
-        deferred: prepared,
-        successor: values.successor,
-      }).publish({
-        onCandidateMaterialized,
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        });
+        expect(assertRuntimePublicationAllowed).toHaveBeenCalledTimes(2);
+        expect(resolvePublication).not.toHaveBeenCalled();
       });
 
-      expect(outcome).toMatchObject({ type: "published" });
-      if (outcome.type !== "published") {
-        throw new Error("expected published outcome");
-      }
-      expect(outcome.durableSuccessor.workingIdentity).toBe(values.successor.workingIdentity);
-      expect(outcome.durableSuccessor.durableAuthority.identity.commitSequence).toBe(values.commit.commitSequence);
-      expect(onCandidateMaterialized).toHaveBeenCalledWith({
-        candidateDurableIdentity: createDurableGenerationIdentity({
-          commitReference: values.commitReference,
-          commitSequence: values.commit.commitSequence,
-          mutationId: values.commit.mutationId,
-        }),
-      });
-      expect(assertRuntimePublicationAllowed).toHaveBeenCalledTimes(2);
-      expect(resolvePublication).not.toHaveBeenCalled();
-    });
+      it("classifies a final runtime gate rejection as definitely not published", async () => {
+        const values = selectedCandidatePublisherFixture();
+        const gateFailure = new Error("runtime authority changed");
+        const prepared = selectedCandidatePublisherDeferred({
+          publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
+            beforeFirstAuthorityWrite();
+            throw new Error("unreachable");
+          },
+          resolvePublication: vi.fn(),
+        });
+        let gateCount = 0;
+        const outcome = await COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => {
+            gateCount += 1;
+            if (gateCount === 2) {
+              throw gateFailure;
+            }
+          },
+          base: values.base,
+          deferred: prepared,
+          successor: values.successor,
+        }).publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        });
 
-    it("classifies a final runtime gate rejection as definitely not published", async () => {
-      const values = selectedCandidatePublisherFixture();
-      const gateFailure = new Error("runtime authority changed");
-      const prepared = selectedCandidatePublisherDeferred({
-        publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
-          beforeFirstAuthorityWrite();
-          throw new Error("unreachable");
-        },
-        resolvePublication: vi.fn(),
-      });
-      let gateCount = 0;
-      const outcome = await COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => {
-          gateCount += 1;
-          if (gateCount === 2) {
-            throw gateFailure;
-          }
-        },
-        base: values.base,
-        deferred: prepared,
-        successor: values.successor,
-      }).publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        expect(outcome).toEqual({
+          cause: gateFailure,
+          refreshedDurableAuthority: values.base.durableAuthority,
+          type: "not_published",
+        });
+        expect(prepared.abandon).not.toHaveBeenCalled();
       });
 
-      expect(outcome).toEqual({
-        cause: gateFailure,
-        refreshedDurableAuthority: values.base.durableAuthority,
-        type: "not_published",
-      });
-      expect(prepared.abandon).not.toHaveBeenCalled();
-    });
+      it("rereads authority and keeps the working candidate on a not-published failure", async () => {
+        const values = selectedCandidatePublisherFixture();
+        const publicationFailure = new PreparedMutationCommitPublicationError({
+          cause: new Error("write failed"),
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+          intendedLogicalState: values.intendedLogicalState,
+        });
+        const publishCandidate = vi.fn().mockRejectedValueOnce(publicationFailure).mockResolvedValueOnce({
+          commitHomeRef: values.commitReference,
+          superblock: values.superblock({ copyState: "normal" }),
+        });
+        const prepared = selectedCandidatePublisherDeferred({
+          publishCandidate,
+          resolvePublication: async () => ({ superblock: values.base.superblock, type: "not_published" }),
+        });
+        const publisher = COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          base: values.base,
+          deferred: prepared,
+          successor: values.successor,
+        });
 
-    it("rereads authority and keeps the working candidate on a not-published failure", async () => {
-      const values = selectedCandidatePublisherFixture();
-      const publicationFailure = new PreparedMutationCommitPublicationError({
-        cause: new Error("write failed"),
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-        intendedLogicalState: values.intendedLogicalState,
-      });
-      const publishCandidate = vi.fn().mockRejectedValueOnce(publicationFailure).mockResolvedValueOnce({
-        commitHomeRef: values.commitReference,
-        superblock: values.superblock({ copyState: "normal" }),
-      });
-      const prepared = selectedCandidatePublisherDeferred({
-        publishCandidate,
-        resolvePublication: async () => ({ superblock: values.base.superblock, type: "not_published" }),
-      });
-      const publisher = COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        base: values.base,
-        deferred: prepared,
-        successor: values.successor,
-      });
-
-      const outcome = await publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      });
-      expect(outcome).toMatchObject({ cause: publicationFailure, type: "not_published" });
-      await expect(publisher.publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({ type: "published" });
-      expect(publishCandidate).toHaveBeenCalledTimes(2);
-    });
-
-    it("reports a conflicting authority as outcome unknown", async () => {
-      const values = selectedCandidatePublisherFixture();
-      const publicationFailure = new PreparedMutationCommitPublicationError({
-        cause: new Error("write failed"),
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-        intendedLogicalState: values.intendedLogicalState,
-      });
-      const prepared = selectedCandidatePublisherDeferred({
-        publishCandidate: async () => {
-          throw publicationFailure;
-        },
-        resolvePublication: async () => ({ superblock: values.base.superblock, type: "publication_conflict" }),
+        const outcome = await publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        });
+        expect(outcome).toMatchObject({ cause: publicationFailure, type: "not_published" });
+        await expect(publisher.publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({ type: "published" });
+        expect(publishCandidate).toHaveBeenCalledTimes(2);
       });
 
-      await expect(COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        base: values.base,
-        deferred: prepared,
-        successor: values.successor,
-      }).publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({ type: "outcome_unknown" });
-    });
+      it("reports a conflicting authority as outcome unknown", async () => {
+        const values = selectedCandidatePublisherFixture();
+        const publicationFailure = new PreparedMutationCommitPublicationError({
+          cause: new Error("write failed"),
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+          intendedLogicalState: values.intendedLogicalState,
+        });
+        const prepared = selectedCandidatePublisherDeferred({
+          publishCandidate: async () => {
+            throw publicationFailure;
+          },
+          resolvePublication: async () => ({ superblock: values.base.superblock, type: "publication_conflict" }),
+        });
 
-    it("does not acknowledge a published authority until both Superblock copies converge", async () => {
-      const values = selectedCandidatePublisherFixture();
-      const publicationFailure = new PreparedMutationCommitPublicationError({
-        cause: new Error("second copy failed"),
-        commitHomeRef: values.commitReference,
-        commitPayload: values.commit,
-        intendedLogicalState: values.intendedLogicalState,
-      });
-      const prepared = selectedCandidatePublisherDeferred({
-        publishCandidate: async () => {
-          throw publicationFailure;
-        },
-        resolvePublication: async () => ({
-          superblock: values.superblock({ copyState: "superblock_redundancy_degraded" }),
-          type: "published",
-        }),
+        await expect(COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          base: values.base,
+          deferred: prepared,
+          successor: values.successor,
+        }).publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({ type: "outcome_unknown" });
       });
 
-      await expect(COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
-        assertRuntimePublicationAllowed: () => undefined,
-        base: values.base,
-        deferred: prepared,
-        successor: values.successor,
-      }).publish({
-        onCandidateMaterialized: vi.fn(),
-        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
-      })).resolves.toMatchObject({ type: "outcome_unknown" });
+      it("does not acknowledge a published authority until both Superblock copies converge", async () => {
+        const values = selectedCandidatePublisherFixture();
+        const publicationFailure = new PreparedMutationCommitPublicationError({
+          cause: new Error("second copy failed"),
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+          intendedLogicalState: values.intendedLogicalState,
+        });
+        const prepared = selectedCandidatePublisherDeferred({
+          publishCandidate: async () => {
+            throw publicationFailure;
+          },
+          resolvePublication: async () => ({
+            superblock: values.superblock({ copyState: "superblock_redundancy_degraded" }),
+            type: "published",
+          }),
+        });
+
+        await expect(COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
+          assertRuntimePublicationAllowed: () => undefined,
+          base: values.base,
+          deferred: prepared,
+          successor: values.successor,
+        }).publish({
+          onCandidateMaterialized: vi.fn(),
+          onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+        })).resolves.toMatchObject({ type: "outcome_unknown" });
+      });
     });
   });
 });

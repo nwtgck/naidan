@@ -80,6 +80,7 @@ function port({
   openType?: 'credential_rejected' | 'opened';
 } = {}): RuntimePort {
   return {
+    runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
     captureAuthority: vi.fn(async () => captured),
     changeSessionPassphrase: vi.fn(async ({ fileSystemSession }) => fileSystemSession),
     createBackend: vi.fn(async () => {

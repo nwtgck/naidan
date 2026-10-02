@@ -98,7 +98,6 @@ export class GarbageCollectionMarkCursor {
   private candidateBatch: CandidateSegmentBatch;
   private completedMemo: BoundedCompletedReferenceMemo;
   private currentPath = new Set<string>();
-  private observedRoles = new Map<string, MaintenanceTraversalItem["pageRole"]>();
   private phase: "aborted_without_deletion" | "batch_complete" | "marking" = "marking";
   private policy: HizoFSMaintenancePolicy;
   private reader: MaintenanceRecordReader;
@@ -118,7 +117,6 @@ export class GarbageCollectionMarkCursor {
     this.completedMemo = new BoundedCompletedReferenceMemo({ maxEntries: policy.maxCompletedMemoEntries });
     this.policy = policy;
     this.reader = reader;
-    for (const item of roots) this.recordRoleOrThrow({ item });
     this.stack = roots.slice().reverse().map(item => ({
       childItems: undefined,
       depth: 0,
@@ -127,24 +125,11 @@ export class GarbageCollectionMarkCursor {
     }));
   }
 
-  private recordRoleOrThrow({ item }: { item: MaintenanceTraversalItem }): void {
-    const identity = maintenanceTraversalReferenceIdentity({ item });
-    const previous = this.observedRoles.get(identity);
-    if (previous !== undefined && previous !== item.pageRole) {
-      throw new TypeError("maintenance traversal assigns conflicting page roles to one reference");
-    }
-    if (previous === undefined && this.observedRoles.size >= this.policy.maxCompletedMemoEntries) {
-      throw new RangeError("maintenance traversal role memo exceeds its explicit bound");
-    }
-    this.observedRoles.set(identity, item.pageRole);
-  }
-
   private abort({ reason }: { reason: GarbageCollectionMarkAbortReason }): GarbageCollectionMarkSliceResult {
     this.abortReason = reason;
     this.phase = "aborted_without_deletion";
     this.stack = [];
     this.currentPath.clear();
-    this.observedRoles.clear();
     return Object.freeze({ phase: "aborted_without_deletion", reason });
   }
 
@@ -200,6 +185,8 @@ export class GarbageCollectionMarkCursor {
       const identity = maintenanceTraversalReferenceIdentity({ item: frame.item });
 
       if (frame.childItems === undefined) {
+        // Root collapse can reuse a retained tree's child as another root.
+        // Memoize by reference and role; each new role still reaches its codec.
         if (this.completedMemo.has({ item: frame.item })) {
           try {
             this.budget.consumeRevisitEncounter();
@@ -225,7 +212,6 @@ export class GarbageCollectionMarkCursor {
           });
           this.budget.consumeDecodedRecord({ bytesRead: resolved.bytesRead });
           this.candidateBatch.markLive({ physicalReference: resolved.physicalReference });
-          for (const child of resolved.childItems) this.recordRoleOrThrow({ item: child });
         } catch (cause: unknown) {
           if (cause instanceof TypeError) return this.abort({ reason: "invalid_record_result" });
           if (cause instanceof RangeError) return this.abort({ reason: "hard_budget_exceeded" });

@@ -237,6 +237,114 @@ async function createCandidateAuthorityFixture({ diagnostics }: {
 }
 
 describe("authenticated metadata mutation authority", () => {
+  it.each(["candidate", "publication"] as const)("drains the local writer before successful %s completion", async (boundary) => {
+    const value = await createCandidateAuthorityFixture({ diagnostics: new AuthenticatedStoreDiagnosticsProbe() });
+    const allowClose = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const closeFile = value.backend.closeFile.bind(value.backend);
+    let closes = 0;
+    vi.spyOn(value.backend, "closeFile").mockImplementation(async (input) => {
+      closes += 1;
+      if (closes === 2) {
+        closeStarted.resolve();
+        await allowClose.promise;
+      }
+      await closeFile(input);
+    });
+    const beforeFirstAuthorityWrite = vi.fn();
+    let settled = false;
+    const completion = (boundary === "candidate"
+      ? value.authority.appendCandidate({ commitPayload: value.commitPayload })
+      : value.authority.publish({
+        base: value.base,
+        beforeFirstAuthorityWrite,
+        commitPayload: value.commitPayload,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+      })).then(() => {
+      settled = true;
+    });
+    try {
+      await closeStarted.promise;
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      const completedBeforeClose = settled;
+      const publicationsBeforeClose = beforeFirstAuthorityWrite.mock.calls.length;
+      expect(value.backend.openHandleCount()).toBe(1);
+      allowClose.resolve();
+      await completion;
+      expect(completedBeforeClose).toBe(false);
+      expect(publicationsBeforeClose).toBe(0);
+      expect(beforeFirstAuthorityWrite).toHaveBeenCalledTimes(boundary === "publication" ? 1 : 0);
+      expect(value.backend.openHandleCount()).toBe(0);
+    } finally {
+      allowClose.resolve();
+      await completion;
+      value.authority.abandon();
+      value.rootKey.destroy();
+    }
+  });
+
+  it("preserves both candidate append and local writer cleanup failures", async () => {
+    const value = await createCandidateAuthorityFixture({ diagnostics: new AuthenticatedStoreDiagnosticsProbe() });
+    const appendFailure = new Error("candidate append response lost");
+    const cleanupFailure = new Error("local writer close failed");
+    const writeAt = value.backend.writeAt.bind(value.backend);
+    const closeFile = value.backend.closeFile.bind(value.backend);
+    let writes = 0;
+    let closes = 0;
+    vi.spyOn(value.backend, "writeAt").mockImplementation(async (input) => {
+      await writeAt(input);
+      writes += 1;
+      if (writes === 2) throw appendFailure;
+    });
+    vi.spyOn(value.backend, "closeFile").mockImplementation(async (input) => {
+      closes += 1;
+      if (closes === 2 || closes === 3) throw cleanupFailure;
+      await closeFile(input);
+    });
+    try {
+      await expect(value.authority.appendCandidate({ commitPayload: value.commitPayload })).rejects.toMatchObject({
+        errors: [appendFailure, expect.objectContaining({ errors: [cleanupFailure, cleanupFailure] })],
+      });
+      expect(value.authority.state()).toBe("closed");
+      expect(value.backend.openHandleCount()).toBe(1);
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
+  it("does not publish when local writer cleanup fails", async () => {
+    const value = await createCandidateAuthorityFixture({ diagnostics: new AuthenticatedStoreDiagnosticsProbe() });
+    const closeFile = value.backend.closeFile.bind(value.backend);
+    const cleanupFailure = new Error("local writer close failed");
+    let closes = 0;
+    vi.spyOn(value.backend, "closeFile").mockImplementation(async (input) => {
+      closes += 1;
+      if (closes === 2 || closes === 3) throw cleanupFailure;
+      await closeFile(input);
+    });
+    const beforeFirstAuthorityWrite = vi.fn();
+    try {
+      await expect(value.authority.publish({
+        base: value.base,
+        beforeFirstAuthorityWrite,
+        commitPayload: value.commitPayload,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+      })).rejects.toMatchObject({ errors: [cleanupFailure, cleanupFailure] });
+      expect(beforeFirstAuthorityWrite).not.toHaveBeenCalled();
+      const reopened = await openSuperblockCopies({
+        backend: value.backend,
+        fileSystemId: value.fileSystemId,
+        rootKey: value.rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(reopened.logicalState).toEqual(value.base.logicalState);
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
   it("reuses authenticated immutable metadata only within the active mutation and clears it on abandon", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const diagnostics = new AuthenticatedStoreDiagnosticsProbe();

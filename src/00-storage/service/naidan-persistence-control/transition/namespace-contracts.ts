@@ -1,4 +1,5 @@
 import {
+  comparePortableFilenameComponentBytes,
   encodePortableFilenameComponent,
   encodePortableSymlinkTarget,
 } from '@/00-storage/service/hizofs/compatibility';
@@ -17,15 +18,23 @@ export class TransitionNamespaceContractError extends Error {
   public readonly code: 'invalid_directory_page' | 'invalid_entry_name' | 'invalid_symlink_target';
 }
 
-export function validateTransitionNamespaceEntryName({ name }: { name: string }): void {
+export function validateTransitionNamespaceEntryName({ name }: { name: string }): Uint8Array {
   try {
-    encodePortableFilenameComponent({ value: name });
+    return encodePortableFilenameComponent({ value: name });
   } catch (cause: unknown) {
     throw new TransitionNamespaceContractError({
       code: 'invalid_entry_name',
       message: `namespace entry name is not a portable canonical filename component: ${cause instanceof Error ? cause.message : String(cause)}`,
     });
   }
+}
+
+/** Compares already encoded entry names in the transition's canonical order. */
+export function compareTransitionNamespaceEntryNameBytes({ left, right }: {
+  left: Uint8Array;
+  right: Uint8Array;
+}): number {
+  return comparePortableFilenameComponentBytes({ left, right });
 }
 
 export function validateTransitionNamespaceDirectoryPage({ afterName, entries, maximumEntries, state }: {
@@ -37,13 +46,13 @@ export function validateTransitionNamespaceDirectoryPage({ afterName, entries, m
   if (entries.length > maximumEntries || (state === 'more' && entries.length === 0)) {
     throw new TransitionNamespaceContractError({ code: 'invalid_directory_page', message: 'namespace source returned an invalid bounded directory page' });
   }
-  let previous = afterName;
+  let previous = afterName === undefined ? undefined : validateTransitionNamespaceEntryName({ name: afterName });
   for (const entry of entries) {
-    validateTransitionNamespaceEntryName({ name: entry.name });
-    if (previous !== undefined && previous >= entry.name) {
+    const nameBytes = validateTransitionNamespaceEntryName({ name: entry.name });
+    if (previous !== undefined && compareTransitionNamespaceEntryNameBytes({ left: previous, right: nameBytes }) >= 0) {
       throw new TransitionNamespaceContractError({ code: 'invalid_directory_page', message: 'namespace directory page is not strict canonical ascending order' });
     }
-    previous = entry.name;
+    previous = nameBytes;
   }
 }
 

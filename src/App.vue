@@ -10,7 +10,14 @@ import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
 const OpfsEncryptionUnlockView = defineAsyncComponent(
-  () => import('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue'),
+  async () => {
+    try {
+      return await import('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue');
+    } catch (error) {
+      opfsEncryptionStartupGate.value?.reportUnlockPresentationFailure({ error });
+      throw error;
+    }
+  },
 );
 
 const props = defineProps<{

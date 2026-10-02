@@ -7,6 +7,8 @@ import { iterateAttachmentParts } from "@/00-storage/service/message-attachments
 import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
 } from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
+import { createInstalledOpfsPersistenceRuntime } from "@/00-storage/service/naidan-opfs/persistence-runtime-registry";
+import { TEST_ONLY as CONTROL_GATE_TEST_ONLY } from "@/00-storage/service/naidan-opfs/persistence-control-exclusive-gate";
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
 import { getNaidanOpfsSpecialFileSystemDirectoryName } from "@/00-storage/service/opfs/naidan-opfs-root-directory-registry";
 import { HIZOFS_TRIAL_DEBUG_MARKER } from "@/00-storage/service/naidan-opfs/trial-debug";
@@ -164,6 +166,101 @@ afterEach(() => {
 });
 
 describe("browserless production HizoFS disable system", () => {
+  it("holds authenticated encrypted authority throughout maintenance and rejects a changed plain authority", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: "window", name: "opfs-root" });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", { locks, storage: createInMemoryOpfsStorageManager({ root }) });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({ lockManager: locks });
+    const plain = new OPFSStorageProvider();
+    try {
+      await plain.init();
+      await plain.enableEncryption({ passphrase: PASSPHRASE, signal: undefined });
+      const storageRoot = await (root as unknown as FileSystemDirectoryHandle)
+        .getDirectoryHandle(NAIDAN_OPFS_STORAGE_DIRECTORY_NAME, { create: false });
+      const runtime = await createInstalledOpfsPersistenceRuntime();
+      const initiator = await runtime.unlockWithPassphrase({ passphrase: PASSPHRASE, storageRoot });
+      const staleSession = await runtime.unlockWithPassphrase({ passphrase: PASSPHRASE, storageRoot });
+      try {
+        await expect(runtime.runWithStableEncryptedAuthority({
+          operation: async () => await locks.request(
+            CONTROL_GATE_TEST_ONLY.persistenceControlAuthorityLockName,
+            { ifAvailable: true, mode: "exclusive" },
+            lock => lock === null ? "authority held" : "authority unprotected",
+          ),
+          session: staleSession,
+          storageRoot,
+        })).resolves.toBe("authority held");
+
+        await runtime.runTransition({
+          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+          onProgress: undefined,
+          request: { operation: "disable", session: initiator },
+          signal: undefined,
+          storageRoot,
+        });
+        const operation = vi.fn(async () => undefined);
+        await expect(runtime.runWithStableEncryptedAuthority({ operation, session: staleSession, storageRoot }))
+          .rejects.toThrow();
+        expect(operation).not.toHaveBeenCalled();
+        await expect(runtime.inspect({ storageRoot })).resolves.toEqual({ type: "plain" });
+      } finally {
+        await staleSession.close();
+        await initiator.close();
+      }
+    } finally {
+      await plain.dispose();
+      uninstallRuntime();
+    }
+  }, 60_000);
+
+  it("rejects stale conflict cleanup after another provider makes plain storage authoritative", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: "window", name: "opfs-root" });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", { locks, storage: createInMemoryOpfsStorageManager({ root }) });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({ lockManager: locks });
+    const plain = new OPFSStorageProvider();
+    const initiator = new OPFSStorageProvider();
+    const follower = new OPFSStorageProvider();
+    try {
+      await plain.init();
+      const storageRoot = await (root as unknown as FileSystemDirectoryHandle)
+        .getDirectoryHandle(NAIDAN_OPFS_STORAGE_DIRECTORY_NAME, { create: false });
+      const bytes = Uint8Array.of(7, 8, 9);
+      await writeFileBytes({ bytes, directory: storageRoot, name: "important.bin" });
+      await plain.enableEncryption({ passphrase: PASSPHRASE, signal: undefined });
+      await initiator.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await follower.unlockWithPassphrase({ passphrase: PASSPHRASE });
+
+      // A previous attempt left the same paths that a successful disable will restore.
+      await writeFileBytes({ bytes: Uint8Array.of(1), directory: storageRoot, name: "important.bin" });
+      await writeFileBytes({ bytes: Uint8Array.of(2), directory: storageRoot, name: "migration-state.json" });
+      for (const { type } of MANAGED_SPECIAL_FILE_CASES) {
+        await root.getDirectoryHandle(getNaidanOpfsSpecialFileSystemDirectoryName({ type }), { create: true });
+      }
+      const staleConflict = await follower.inspectDisableEncryptionConflict();
+      expect(staleConflict.type).toBe("conflict");
+      if (staleConflict.type !== "conflict") throw new Error("Expected a native plain target conflict");
+      const currentConflict = await initiator.inspectDisableEncryptionConflict();
+      if (currentConflict.type !== "conflict") throw new Error("Expected a native plain target conflict");
+      await expect(initiator.cleanupDisableEncryptionConflict({ inspectionId: currentConflict.inspectionId }))
+        .resolves.toEqual({ type: "clear" });
+
+      await follower.suspendStorageSession();
+      await initiator.disableEncryption({ signal: undefined });
+      await expect(initiator.inspectEncryption()).resolves.toEqual({ type: "plain" });
+      await expect(readFileBytes({ directory: storageRoot, name: "important.bin" })).resolves.toEqual(bytes);
+      await expect(follower.cleanupDisableEncryptionConflict({ inspectionId: staleConflict.inspectionId }))
+        .rejects.toThrow();
+      await expect(follower.inspectDisableEncryptionConflict()).rejects.toThrow();
+      await expect(readFileBytes({ directory: storageRoot, name: "important.bin" })).resolves.toEqual(bytes);
+    } finally {
+      await follower.dispose();
+      await initiator.dispose();
+      await plain.dispose();
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it("preserves nested message parts and binary metadata through encrypted writes and plain reopen", async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: "window", name: "opfs-root" });
     const locks = new InMemoryWebLockManager();

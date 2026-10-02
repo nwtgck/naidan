@@ -45,9 +45,9 @@ export class AuthenticatedSegmentWriterOwner {
   private readonly segmentClass: SegmentClass;
   private activeLease: symbol | undefined;
   private activeLeaseAppendedEncryptedFrameBytes = 0;
-  private closeFailure: unknown | undefined;
+  private closeCompletion: Promise<void> | undefined;
   private pendingWriterCleanup: Promise<void> | undefined;
-  private pendingWriterCleanupFailure: unknown | undefined;
+  private pendingWriterCleanupFailure: Readonly<{ cause: unknown }> | undefined;
   private stateValue: AuthenticatedSegmentWriterOwnerState = "open";
   private writer: AuthenticatedSegmentWriter | undefined;
 
@@ -98,7 +98,7 @@ export class AuthenticatedSegmentWriterOwner {
     const cleanup = writer.settleAbandonment().then(
       () => undefined,
       (cause: unknown) => {
-        this.pendingWriterCleanupFailure = cause;
+        this.pendingWriterCleanupFailure = { cause };
       },
     );
     this.pendingWriterCleanup = cleanup;
@@ -112,7 +112,7 @@ export class AuthenticatedSegmentWriterOwner {
     }
     const failure = this.pendingWriterCleanupFailure;
     if (failure !== undefined) {
-      throw failure;
+      throw failure.cause;
     }
   }
 
@@ -167,19 +167,22 @@ export class AuthenticatedSegmentWriterOwner {
       recordUsage();
       return result;
     };
-    const writer = await this.writerForAppend();
+    let writer = await this.writerForAppend();
     try {
-      return await measuredAppend({ writer });
-    } catch (cause: unknown) {
-      if (cause instanceof AuthenticatedSegmentCapacityError && writer.hasRecords()) {
+      try {
+        return await measuredAppend({ writer });
+      } catch (cause: unknown) {
+        if (!(cause instanceof AuthenticatedSegmentCapacityError) || !writer.hasRecords()) throw cause;
         await writer.seal();
         this.writer = undefined;
         this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
           event: "rollover",
           segmentClass: this.segmentClass,
         } });
-        return await measuredAppend({ writer: await this.writerForAppend() });
+        writer = await this.writerForAppend();
+        return await measuredAppend({ writer });
       }
+    } catch (cause: unknown) {
       switch (writer.state) {
       case "active": break;
       case "abandoned":
@@ -242,8 +245,7 @@ export class AuthenticatedSegmentWriterOwner {
   async close(): Promise<void> {
     switch (this.stateValue) {
     case "closed":
-      if (this.closeFailure !== undefined) throw this.closeFailure;
-      return;
+      return await this.closeCompletion;
     case "open": break;
     default: return this.stateValue satisfies never;
     }
@@ -251,26 +253,27 @@ export class AuthenticatedSegmentWriterOwner {
       throw new Error("cannot close active Segment writer owner while a mutation lease is active");
     }
     this.stateValue = "closed";
-    try {
-      await this.awaitWriterCleanup();
-      const writer = this.writer;
-      this.writer = undefined;
-      if (writer === undefined) return;
-      switch (writer.state) {
-      case "abandoned":
-      case "sealed": return;
-      case "active":
-        if (writer.hasRecords()) {
-          await writer.seal();
-        } else {
-          writer.abandon();
-        }
-        return;
-      default: return writer.state satisfies never;
+    this.closeCompletion = this.finishClose();
+    return await this.closeCompletion;
+  }
+
+  private async finishClose(): Promise<void> {
+    await this.awaitWriterCleanup();
+    const writer = this.writer;
+    this.writer = undefined;
+    if (writer === undefined) return;
+    switch (writer.state) {
+    case "abandoned":
+    case "sealed": return;
+    case "active":
+      if (writer.hasRecords()) {
+        await writer.seal();
+      } else {
+        writer.abandon();
+        await writer.settleAbandonment();
       }
-    } catch (cause: unknown) {
-      this.closeFailure = cause;
-      throw cause;
+      return;
+    default: return writer.state satisfies never;
     }
   }
 }

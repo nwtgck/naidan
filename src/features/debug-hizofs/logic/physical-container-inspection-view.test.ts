@@ -63,7 +63,7 @@ function inspection(): HizoFSPhysicalContainerInspection {
       physicalSegmentId: "00000000000000000000000000000001",
       reason: "Segment Footer is unusable; valid prefix retained",
       segmentClass: "metadata",
-      state: "unsealed_incomplete",
+      state: "footer_unusable",
     }],
     superblockCopies: [{
       activeCommit: undefined,
@@ -107,6 +107,19 @@ function inspection(): HizoFSPhysicalContainerInspection {
 }
 
 describe("HizoFS physical container inspection view", () => {
+  it.each(["sealed", "complete_unsealed", "abandoned_unsealed", "footer_unusable"] as const)(
+    "preserves the canonical SegmentIndexState %s in the segment row",
+    state => {
+      const source = inspection();
+      const view = createHizoFSPhysicalContainerInspectionView({
+        inspection: { ...source, segments: source.segments.map(segment => ({ ...segment, state })) },
+      });
+
+      expect(view.segmentRows.map(segment => segment.state)).toEqual([state]);
+      expect(view.segmentRows[0]?.reason).toBe(source.segments[0]?.reason);
+    },
+  );
+
   it("preserves rejected authority, corruption reasons, and physical anomalies", () => {
     const view = createHizoFSPhysicalContainerInspectionView({ inspection: inspection() });
     expect(view.unlockSelectionSummary).toBe("copy 1, sequence 4, degraded");
@@ -383,7 +396,7 @@ describe("HizoFS physical container inspection view", () => {
       physicalSegmentId: "00000000000000000000000000000001",
       reason: "Segment Footer is unusable; valid prefix retained",
       segmentClass: "metadata",
-      state: "unsealed_incomplete",
+      state: "footer_unusable",
     }]);
   });
 });

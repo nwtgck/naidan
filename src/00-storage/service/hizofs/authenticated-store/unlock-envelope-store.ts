@@ -47,6 +47,7 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import { PhysicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
 import {
@@ -215,11 +216,19 @@ async function readStructuralCopies({ backend, diagnostics }: {
 }): Promise<readonly ParsedEnvelopeCopy[]> {
   const copies: ParsedEnvelopeCopy[] = [];
   for (const physicalCopy of [0, 1] as const) {
-    const bytes = await readAuthenticatedWholeFile({
-      backend,
-      maximumByteLength: HIZOFS_V1_FORMAT_CONSTANTS.limits.unlockEnvelopeJsonBytes,
-      path: unlockPath({ copy: physicalCopy }),
-    });
+    const path = unlockPath({ copy: physicalCopy });
+    let bytes: Uint8Array | undefined;
+    try {
+      bytes = await readAuthenticatedWholeFile({
+        backend,
+        maximumByteLength: HIZOFS_V1_FORMAT_CONSTANTS.limits.unlockEnvelopeJsonBytes,
+        path,
+      });
+    } catch (cause: unknown) {
+      // This copy is structurally invalid; unrelated I/O failures remain fatal.
+      if (cause instanceof PhysicalStoreError && cause.code === "is_directory" && cause.path === path) continue;
+      throw cause;
+    }
     if (bytes === undefined) continue;
     try {
       const envelope = decodeMeasuredUnlockEnvelope({ bytes, diagnostics });

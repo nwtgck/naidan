@@ -1,15 +1,14 @@
 import {
   compareFilenameComponentsByUtf8,
   createInodeRevision,
-  encodedDirectoryLeafEntryByteLength,
   assertInodeLeafEntryFitsMetadataPage,
-  HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { OrdinaryEntryCreatePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
+import type { InlineDirectoryCandidateParent } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-promotion";
 
 export type InlineDirectoryCreateMutationErrorCode =
   | "destination_exists"
@@ -26,12 +25,6 @@ export class InlineDirectoryCreateMutationError extends Error {
     this.code = code;
   }
 }
-
-export type InlineDirectoryCreateCandidateParent = Readonly<
-  Omit<DirectoryInodeEntry, "content"> & {
-    content: Extract<DirectoryInodeEntry["content"], { type: "inline" }>;
-  }
->;
 
 export type InlineDirectoryCreateMutation = Readonly<{
   changes: readonly RootInodeTableMutation[];
@@ -51,7 +44,7 @@ export function prepareInlineDirectoryCreateCandidateParent({
 }: {
   parent: DirectoryInodeEntry;
   plan: OrdinaryEntryCreatePlan;
-}): InlineDirectoryCreateCandidateParent {
+}): InlineDirectoryCandidateParent {
   if (parent.inodeNumber !== plan.parentDirectoryInodeNumber) {
     throw new InlineDirectoryCreateMutationError({
       code: "parent_identity_mismatch",
@@ -99,21 +92,11 @@ export function prepareInlineDirectoryCreateCandidateParent({
   };
 }
 
-export function inlineDirectoryCreateCandidateFits({ candidateParent }: {
-  candidateParent: InlineDirectoryCreateCandidateParent;
-}): boolean {
-  const encodedBytes = candidateParent.content.entries.reduce(
-    (total, entry) => total + encodedDirectoryLeafEntryByteLength({ entry }),
-    0,
-  );
-  return encodedBytes <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes;
-}
-
 export function prepareInlineDirectoryCreateMutationFromCandidate({
   candidateParent,
   plan,
 }: {
-  candidateParent: InlineDirectoryCreateCandidateParent;
+  candidateParent: InlineDirectoryCandidateParent;
   plan: OrdinaryEntryCreatePlan;
 }): InlineDirectoryCreateMutation {
   // The authoritative inode codec enforces the inline-directory byte bound and

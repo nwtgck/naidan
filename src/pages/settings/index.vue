@@ -2,7 +2,7 @@
 import { useRouter } from 'vue-router';
 import {
   useInitialRouteRenderReadinessClaim,
-} from '@/logic/startup/initial-route-render-readiness';
+} from '@/composables/useInitialRouteRenderReadiness';
 import { onMounted, onUnmounted } from 'vue';
 const router = useRouter();
 const initialRouteRenderReadiness = useInitialRouteRenderReadinessClaim();

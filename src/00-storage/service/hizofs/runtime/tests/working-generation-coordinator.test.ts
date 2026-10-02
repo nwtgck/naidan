@@ -119,15 +119,22 @@ describe("WorkingGenerationCoordinator", () => {
       .accept({ workingGeneration: first });
     const target = value.captureSyncTarget();
     let resolved = false;
+    const observedSnapshots: ReturnType<WorkingGenerationCoordinator["snapshot"]>[] = [];
     const waiter = value.waitForSyncTarget({ target }).then(() => {
+      observedSnapshots.push(value.snapshot());
       resolved = true;
     });
     expect(resolved).toBe(false);
 
     value.openFlush().complete({ durableGeneration: first });
+    expect(resolved).toBe(false);
+    const completedSnapshot = value.snapshot();
+    expect(completedSnapshot.durableGeneration).toBe(first);
     await waiter;
 
     expect(resolved).toBe(true);
+    expect(observedSnapshots).toEqual([completedSnapshot]);
+    expect(observedSnapshots[0]?.durableGeneration).toBe(first);
     expect(value.snapshot()).toEqual({
       dirtyResources: {
         acceptedMutationCount: 0,

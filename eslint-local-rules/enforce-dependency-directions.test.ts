@@ -69,16 +69,96 @@ describe('enforce-dependency-directions rule', () => {
     await expectAllowed({ code: `import type { Chat } from '@/01-models/types';`, filePath });
   });
 
-  it('allows only the exact Naidan provider restart composition test to use deep HizoFS owners', async () => {
+  it.each([
+    'src/00-storage/service/naidan-opfs/tests/naidan-provider-restart.test.ts',
+    'src/00-storage/service/naidan-opfs/tests/runtime-transition-import-state.test.ts',
+  ])('allows deep HizoFS fixtures only for the exact integration test %s', async (filePath) => {
     const code = `import { backend } from '@/00-storage/service/hizofs/physical-store/backend';`;
     await expectAllowed({
       code,
-      filePath: 'src/00-storage/service/hizofs/worker/tests/naidan-provider-restart.test.ts',
+      filePath,
+    });
+    await expectForbidden({
+      code: `import { feature } from '@/features/example/example';`,
+      filePath,
+    });
+  });
+
+  it.each([
+    'src/00-storage/service/hizofs/worker/tests/naidan-provider-restart.test.ts',
+    'src/00-storage/service/hizofs/worker/tests/future-provider-restart.test.ts',
+    'src/00-storage/service/naidan-opfs/tests/future-provider-restart.test.ts',
+    'src/00-storage/service/naidan-opfs/tests/future-transition-import-state.test.ts',
+    'src/00-storage/service/naidan-opfs/naidan-provider-restart.ts',
+    'src/00-storage/service/naidan-opfs/runtime-transition-import-state.ts',
+  ])('rejects deep HizoFS fixtures outside the exact integration test paths: %s', async (filePath) => {
+    await expectForbidden({
+      code: `import { backend } from '@/00-storage/service/hizofs/physical-store/backend';`,
+      filePath,
+    });
+  });
+
+  it.each([
+    'src/00-storage/service/hizofs/inspection/tests/namespace-inspection.integration.test.ts',
+    'src/00-storage/service/hizofs/inspection/tests/physical-container-inspection.integration.test.ts',
+  ])('allows real core fixtures for the exact inspection integration test %s', async (filePath) => {
+    for (const importPath of [
+      '@/00-storage/service/hizofs/inspection',
+      '@/00-storage/service/hizofs/authenticated-store/inspection-port',
+      '@/00-storage/service/hizofs/00-format',
+      '@/00-storage/service/hizofs/01-crypto',
+      '@/00-storage/service/hizofs/physical-store/paths',
+      '@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend',
+      '@/00-storage/service/hizofs/worker/composition-root',
+      '@/00-storage/service/hizofs/worker/runtime-host',
+      '@/00-storage/service/hizofs/runtime/container-coordination-scope',
+      '@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port',
+      '@/00-storage/service/hizofs/runtime/runtime-policy',
+    ]) {
+      await expectAllowed({ code: `import { value } from '${importPath}';`, filePath });
+    }
+    for (const importPath of [
+      '@/00-storage/service/hizofs/00-format/v1/constants',
+      '@/00-storage/service/hizofs/01-crypto/record',
+      '@/00-storage/service/hizofs/v1-format-tests/support/other-environment',
+      '@/00-storage/service/hizofs/v1-format-tests/fixtures/container.json',
+      '@/features/debug-hizofs/logic/namespace-inspection-view',
+    ]) {
+      await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
+    }
+  });
+
+  it.each([
+    '@/00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment',
+    '@/00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment.ts',
+    '../../v1-format-tests/support/hizofs-test-environment',
+  ])('allows only the namespace integration test to use the shared scenario fixture: %s', async (importPath) => {
+    const code = `import { createWritableScenarioSession } from '${importPath}';`;
+    await expectAllowed({
+      code,
+      filePath: 'src/00-storage/service/hizofs/inspection/tests/namespace-inspection.integration.test.ts',
     });
     await expectForbidden({
       code,
-      filePath: 'src/00-storage/service/hizofs/worker/tests/future-provider-restart.test.ts',
+      filePath: 'src/00-storage/service/hizofs/inspection/tests/physical-container-inspection.integration.test.ts',
     });
+  });
+
+  it.each([
+    'src/00-storage/service/hizofs/inspection/namespace-inspection.ts',
+    'src/00-storage/service/hizofs/inspection/tests/namespace-inspection.test.ts',
+    'src/00-storage/service/hizofs/inspection/tests/future-inspection.integration.test.ts',
+    'src/00-storage/service/hizofs/inspection/tests/nested/namespace-inspection.integration.test.ts',
+  ])('keeps ordinary inspection dependencies narrow outside the exact integration paths: %s', async (filePath) => {
+    for (const importPath of [
+      '@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend',
+      '@/00-storage/service/hizofs/worker/composition-root',
+      '@/00-storage/service/hizofs/worker/runtime-host',
+      '@/00-storage/service/hizofs/runtime/runtime-policy',
+      '@/00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment',
+    ]) {
+      await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
+    }
   });
 
   it('allows application code to depend on storage service', async () => {
@@ -418,6 +498,58 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
     });
   });
   describe('HizoFS internal dependency graph', () => {
+    it.each([
+      ['src/00-storage/service/hizofs/runtime/example.ts', '@/features/debug-hizofs/logic/namespace-inspection-view'],
+      ['src/00-storage/service/hizofs/runtime/example.ts', '@/logic/startup/app-startup'],
+      ['src/00-storage/service/hizofs/00-format/v1/example.ts', '@/strings/lazy-strings'],
+      ['src/00-storage/service/naidan-persistence-control/crypto/example.ts', '@/components/Example.vue'],
+      ['src/00-storage/service/naidan-opfs/backend.ts', '@/strings/lazy-strings'],
+    ])('preserves storage service restrictions on upper layers: %s -> %s', async (filePath, importPath) => {
+      await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/01-models/example.ts', '@/00-storage/service/naidan-opfs/backend'],
+      ['src/01-models/example.ts', '@/00-storage/service/naidan-opfs/production-persistence-runtime.ts'],
+      ['src/utils/example.ts', '@/00-storage/service/naidan-persistence-control/transition/namespace-copy'],
+      ['src/constants.ts', '@/00-storage/service/naidan-persistence-control/crypto/example'],
+      ['src/00-storage/mapper/example.ts', '@/00-storage/service/naidan-persistence-control/00-format/container-path'],
+      ['src/00-storage/00-dto/example.ts', '@/00-storage/service/naidan-opfs/tests/naidan-provider-restart.test.ts'],
+      ['src/utils/example.ts', '@/00-storage/service/hizofs/api'],
+    ])('rejects lower-layer access to specialized storage services: %s -> %s', async (filePath, importPath) => {
+      await expectForbidden({ code: `import type { Port } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/00-storage/service/hizofs/runtime/example.ts', '@/utils/exact-object'],
+      ['src/00-storage/service/hizofs/api/storage-file-system-session.ts', '@/00-storage/service/storage-file-system/types'],
+      ['src/00-storage/service/naidan-opfs/backend.ts', '@/00-storage/service/hizofs/api'],
+    ])('preserves allowed coarse and specialized directions: %s -> %s', async (filePath, importPath) => {
+      await expectAllowed({ code: `import type { Port } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/00-storage/service/hizofs/api/transition-namespace-source.ts', '@/00-storage/service/naidan-persistence-control/transition/namespace-copy'],
+      ['src/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session.ts', '../../../naidan-persistence-control/transition/namespace-copy'],
+      ['src/00-storage/service/hizofs/worker/composition-root.ts', '@/00-storage/service/naidan-persistence-control/transition/transition-provider-adapter'],
+      ['src/00-storage/service/hizofs/runtime/example.ts', '@/00-storage/service/naidan-persistence-control/00-format'],
+      ['src/00-storage/service/hizofs/01-crypto/example.ts', '@/00-storage/service/naidan-persistence-control/crypto/example'],
+    ])('rejects production HizoFS dependencies on Naidan Control: %s -> %s', async (filePath, importPath) => {
+      await expectForbidden({ code: `import type { Port } from '${importPath}';`, filePath });
+      await expectForbidden({ code: `export type { Port } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/00-storage/service/hizofs/api/transition-namespace-source.ts', '@/00-storage/service/hizofs/filesystem/bulk/bounded-namespace-ports'],
+      ['src/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session.ts', '@/00-storage/service/hizofs/filesystem/bulk/bounded-namespace-ports'],
+      ['src/00-storage/service/naidan-persistence-control/transition/namespace-copy.ts', '@/00-storage/service/hizofs/api'],
+      ['src/00-storage/service/hizofs/00-format/v1/tests/identifier-path-contracts.test.ts', '@/00-storage/service/naidan-persistence-control/00-format/container-path'],
+      ['src/00-storage/service/naidan-opfs/tests/runtime-transition-import-state.test.ts', '@/00-storage/service/naidan-persistence-control/transition/namespace-copy'],
+      ['src/00-storage/service/hizofs/api/storage-file-system-session.ts', '@/00-storage/service/storage-file-system'],
+    ])('preserves generic namespace and integration test dependency directions: %s -> %s', async (filePath, importPath) => {
+      await expectAllowed({ code: `import type { Port } from '${importPath}';`, filePath });
+    });
+
     it.each([
       ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/physical-store/backend'],
       ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm'],

@@ -26,6 +26,7 @@ import {
 } from '@/00-storage/service/naidan-opfs/production-persistence-runtime';
 import { capturePersistenceControlAuthority } from '@/00-storage/service/naidan-persistence-control/store/persistence-control-authority-handshake';
 import type { StorageDirectoryHandle, StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 import type { TransitionEndpointDriver } from '@/00-storage/service/naidan-persistence-control/transition/transition-provider-adapter';
 import {
   convergeInterruptedPersistenceTransition,
@@ -335,6 +336,50 @@ describe('createNativeHizoFSEnableTransitionTarget', () => {
 });
 
 describe('native disable source driver', () => {
+  it.each([
+    { mode: 'disable', closeFailure: undefined },
+    { mode: 'reencrypt', closeFailure: new Error('snapshot close failed') },
+  ] as const)('keeps bounded pages and invalidates virtual paths when the $mode endpoint closes', async ({ mode, closeFailure }) => {
+    const root = createInMemoryStorageRoot({ name: 'root' });
+    const rawPage = vi.fn<NonNullable<StorageDirectoryHandle['listEntriesPage']>>(async () => ({ entries: [], truncated: false }));
+    root.listEntriesPage = rawPage;
+    const enumerate = vi.spyOn(root, 'entries');
+    const snapshotClose = vi.fn(async () => {
+      if (closeFailure !== undefined) throw closeFailure;
+    });
+    const snapshot = { ...testFileSystemSession({ close: snapshotClose }), root };
+    const session = { ...testFileSystemSession(), createReadSnapshot: vi.fn(async () => snapshot) };
+    const binding = {
+      operationId: 'sourcePagingOp000001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
+      source: { fileSystemId: testFileSystemId({ value: 'sourcePaging00000001' }), type: 'hizofs' as const },
+      target: mode === 'disable'
+        ? { type: 'plain' as const }
+        : { fileSystemId: testFileSystemId({ value: 'targetPaging00000001' }), type: 'hizofs' as const },
+    };
+    const args = {
+      binding,
+      exclusiveGate: { runExclusive: async <Value>({ operation }: { operation: () => Promise<Value> }) => await operation() },
+      nativeNamespaceRoot: {} as FileSystemDirectoryHandle,
+      session,
+    };
+    const driver = mode === 'disable'
+      ? PRODUCTION_RUNTIME_TEST_ONLY.createNativeHizoFSDisableSourceDriver(args)
+      : PRODUCTION_RUNTIME_TEST_ONLY.createNativeHizoFSReencryptSourceDriver(args);
+    const endpoint = await driver.driver.openSourceEndpoint({ endpoint: binding.source });
+    expect(rawPage).not.toHaveBeenCalled();
+    const page = await endpoint.source.listDirectory({ afterName: undefined, maximumEntries: 2, path: [] });
+    expect(page.entries.map(entry => entry.name)).toEqual(['naidan-chat-wesh', 'naidan-debug-wesh']);
+    expect(page.state).toBe('more');
+    expect(rawPage).toHaveBeenCalledExactlyOnceWith({ afterName: undefined, maximumEntries: 2 });
+    expect(enumerate).not.toHaveBeenCalled();
+    await expect(endpoint.source.listDirectory({ afterName: undefined, maximumEntries: 2, path: ['naidan-chat-wesh'] }))
+      .resolves.toEqual({ entries: [], state: 'complete' });
+    if (closeFailure === undefined) await endpoint.close();
+    else await expect(endpoint.close()).rejects.toBe(closeFailure);
+    expect(snapshotClose).toHaveBeenCalledOnce();
+    await expect(endpoint.source.listDirectory({ afterName: undefined, maximumEntries: 2, path: ['naidan-chat-wesh'] })).rejects.toThrow('closed');
+  });
+
   it('uses immutable read snapshots and narrows source readiness after the authority switch', async () => {
     const fileSystemId = testFileSystemId({ value: 'disableSource0000001' });
     const snapshotClose = vi.fn(async () => undefined);
@@ -932,6 +977,30 @@ describe('inspectCredentialAwarePersistenceRuntime', () => {
     expect(next).toHaveBeenCalledOnce();
     expect(closeIterator).toHaveBeenCalledOnce();
   });
+
+  it.each(['success', 'traversal', 'cleanup', 'both'] as const)('preserves undefined directory iterator failures: %s', async failure => {
+    const cleanupCause = failure === 'both' ? new Error('iterator cleanup failed') : undefined;
+    const next = vi.fn(async () => {
+      if (failure === 'traversal' || failure === 'both') throw undefined;
+      return { done: true as const, value: undefined };
+    });
+    const closeIterator = vi.fn(async () => {
+      if (failure === 'cleanup' || failure === 'both') throw cleanupCause;
+      return { done: true as const, value: undefined };
+    });
+    const result = PRODUCTION_RUNTIME_TEST_ONLY.consumeOneNativePlainDirectoryKey({
+      iterator: { next, return: closeIterator },
+    });
+    if (failure === 'success') await expect(result).resolves.toBeUndefined();
+    else if (failure === 'both') await expect(result).rejects.toMatchObject({
+      errors: [undefined, cleanupCause],
+      message: 'native plain endpoint traversal and iterator cleanup both failed',
+      name: 'AggregateError',
+    });
+    else await expect(result).rejects.toBeUndefined();
+    expect(next).toHaveBeenCalledOnce();
+    expect(closeIterator).toHaveBeenCalledOnce();
+  });
 });
 
 
@@ -957,32 +1026,6 @@ describe('native enable start-failure target ownership', () => {
       fileSystemId: control.mode.phase.target.fileSystemId,
     } as const;
   }
-
-  it('emits a grep-stable development trace without secret material', () => {
-    const expected = transitionBinding();
-    const failure = new TypeError('directory.stat is not a function');
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    PRODUCTION_RUNTIME_TEST_ONLY.reportNativeEnableTrialFailure({
-      cause: failure,
-      fileSystemId: expected.fileSystemId,
-      operationId: expected.binding.operationId,
-      stage: 'advance_transition',
-    });
-
-    expect(warn).toHaveBeenCalledWith('[HIZOFS_TRIAL_DEBUG_001]', {
-      event: 'native_enable_failure',
-      failure: {
-        errorCode: undefined,
-        errorMessage: 'directory.stat is not a function',
-        errorName: 'TypeError',
-        errorPath: undefined,
-      },
-      fileSystemId: expected.fileSystemId,
-      operationId: expected.binding.operationId,
-      stage: 'advance_transition',
-    });
-  });
 
   it('retains the exact target when authenticated read-back proves transition start committed', async () => {
     const expected = transitionBinding();
@@ -1622,6 +1665,27 @@ describe('native transition convergence authority', () => {
       message: 'proof operation and release both failed',
       name: 'AggregateError',
     });
+    expect(releaseResources).toHaveBeenCalledOnce();
+  });
+
+  it.each(['success', 'operation', 'release', 'both'] as const)('preserves undefined callback failures during resource release: %s', async failure => {
+    const releaseCause = failure === 'both' ? new Error('resource release failed') : undefined;
+    const operation = vi.fn(async () => {
+      if (failure === 'operation' || failure === 'both') throw undefined;
+      return undefined;
+    });
+    const releaseResources = vi.fn(async () => {
+      if (failure === 'release' || failure === 'both') throw releaseCause;
+    });
+    const result = PRODUCTION_RUNTIME_TEST_ONLY.runWithCredentialAuthorityRelease({
+      failureMessage: 'operation and release both failed', operation, releaseResources,
+    });
+    if (failure === 'success') await expect(result).resolves.toBeUndefined();
+    else if (failure === 'both') await expect(result).rejects.toMatchObject({
+      errors: [undefined, releaseCause], message: 'operation and release both failed', name: 'AggregateError',
+    });
+    else await expect(result).rejects.toBeUndefined();
+    expect(operation).toHaveBeenCalledOnce();
     expect(releaseResources).toHaveBeenCalledOnce();
   });
 

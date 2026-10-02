@@ -119,6 +119,71 @@ async function ignoreMissingStorageEntry({ operation }: {
   }
 }
 
+async function writeLayoutText({ fileHandle, value }: {
+  fileHandle: NaidanOpfsLayoutFileHandle;
+  value: string;
+}): Promise<void> {
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(value);
+    await writable.close();
+  } catch (cause: unknown) {
+    try {
+      await writable.abort({ reason: cause });
+    } catch (cleanupCause: unknown) {
+      throw new AggregateError([cause, cleanupCause], 'layout text write and cleanup both failed');
+    }
+    throw cause;
+  }
+}
+
+function blobSlicePosition({ position, size }: { position: number; size: number }): number {
+  const integer = Number.isNaN(position) ? 0 : Math.trunc(position);
+  return integer < 0 ? Math.max(size + integer, 0) : Math.min(integer, size);
+}
+
+function binaryObjectReader({ handle, mimeType }: {
+  handle: StorageBinaryObjectReadHandle;
+  mimeType: string;
+}): StorageBinaryObjectReadHandle {
+  const close = () => handle.close();
+  switch (handle.backing.type) {
+  case 'direct_blob':
+    return { ...createBlobStorageBinaryObjectReadHandle({ blob: handle.backing.blob, mimeType }), close };
+  case 'reader_only': break;
+  default: {
+    const _ex: never = handle.backing;
+    throw new Error(`Unhandled binary object read backing: ${String(_ex)}`);
+  }
+  }
+
+  // Preserve this adapter's Blob ranges without changing the filesystem's exact-range reads.
+  const size = handle.size;
+  return {
+    backing: { type: 'reader_only' }, size, mimeType, close,
+    async read({ buffer, offset, length, position, signal }) {
+      signal?.throwIfAborted();
+      const end = Math.min(position + length, size);
+      if (end <= position || length <= 0) return { bytesRead: 0 };
+      const start = blobSlicePosition({ position, size });
+      const sliceEnd = blobSlicePosition({ position: end, size });
+      const destinationOffset = Math.trunc(offset);
+      if (destinationOffset < 0 || destinationOffset > buffer.byteLength) {
+        throw new RangeError('read destination offset exceeds the supplied buffer');
+      }
+      const boundedLength = Math.max(0, Math.min(sliceEnd - start, buffer.byteLength - destinationOffset));
+      if (boundedLength === 0) return { bytesRead: 0 };
+      return await handle.read({ buffer, offset: destinationOffset, length: boundedLength, position: start, signal });
+    },
+    stream({ start, end, signal }) {
+      signal?.throwIfAborted();
+      const sliceStart = blobSlicePosition({ position: start, size });
+      const sliceEnd = end === undefined ? size : blobSlicePosition({ position: end, size });
+      return handle.stream({ start: sliceStart, end: Math.max(sliceStart, sliceEnd), signal });
+    },
+  };
+}
+
 export class NaidanOpfsStorageBackend extends IStorageProvider {
   constructor({ namespaceRoot, hostVolumeDB }: {
     namespaceRoot: StorageDirectoryHandle;
@@ -188,9 +253,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
 
   private async saveMigrationState({ state }: { state: MigrationStateDto }): Promise<void> {
     const fileHandle = await this.root!.getFileHandle('migration-state.json', { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(state));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(state) });
   }
 
   private async runMigrations(): Promise<void> {
@@ -418,9 +481,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
     const dir = await this.getShardDir({ shard: shard });
     const fileHandle = await dir.getFileHandle('index.json', { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(index) });
   }
 
   private async hydrateAttachments({ nodes }: { nodes: MessageNode[] }): Promise<void> {
@@ -532,9 +593,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
     await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('hierarchy.json', { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(hierarchy));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(hierarchy) });
   }
 
   // --- Persistence Implementation ---
@@ -544,9 +603,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     ChatMetaSchemaDto.parse(dto);
     const dir = await this.getDir({ name: 'chat-metas' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(dto) });
   }
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
@@ -554,9 +611,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     ChatContentSchemaDto.parse(dto);
     const dir = await this.getDir({ name: 'chat-contents' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`, { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(dto) });
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
@@ -625,9 +680,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     ChatGroupSchemaDto.parse(dto);
     const dir = await this.getDir({ name: 'chat-groups' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(dto) });
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
@@ -718,6 +771,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   async openBinaryObject({ binaryObjectId }: {
     binaryObjectId: BinaryObjectId,
   }): Promise<StorageBinaryObjectReadHandle | null> {
+    let readable: StorageBinaryObjectReadHandle | undefined;
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
       const dir = await this.getShardDir({ shard });
@@ -726,15 +780,20 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
       await dir.getFileHandle(`.${fileName}.complete`);
 
       const fileHandle = await dir.getFileHandle(fileName);
-      const { file, index } = await promiseAllKeyed({
-        file: fileHandle.getFile(),
-        index: this.loadShardIndex({ shard }),
-      });
-      const indexedMimeType = index.objects[rawId]?.mimeType;
-      const mimeType = indexedMimeType ?? (file.type || 'application/octet-stream');
-      return createBlobStorageBinaryObjectReadHandle({ blob: file, mimeType });
+      // Resolve metadata before acquiring a live reader so an index failure cannot orphan it.
+      const index = await this.loadShardIndex({ shard });
+      readable = await fileHandle.handle.openReadable({ mimeType: 'application/octet-stream' });
+      return binaryObjectReader({ handle: readable, mimeType: index.objects[rawId]?.mimeType ?? readable.mimeType });
     } catch (error) {
-      console.error('Failed to open file from OPFS storage:', error);
+      let failure: unknown = error;
+      if (readable !== undefined) {
+        try {
+          await readable.close();
+        } catch (closeFailure: unknown) {
+          failure = new AggregateError([error, closeFailure], 'Binary object open and reader cleanup both failed');
+        }
+      }
+      console.error('Failed to open file from OPFS storage:', failure);
       return null;
     }
   }
@@ -831,9 +890,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     const dto = settingsToDto({ domain: settings });
     const validated = SettingsSchemaDto.parse(dto);
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(validated));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(validated) });
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -1027,9 +1084,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   private async saveVolumeShardIndex({ shard, index }: { shard: string, index: VolumeIndexDto }): Promise<void> {
     const dir = await this.getVolumeShardDir({ shard });
     const fileHandle = await dir.getFileHandle('index.json', { create: true }) as NaidanOpfsLayoutFileHandle;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
+    await writeLayoutText({ fileHandle, value: JSON.stringify(index) });
   }
 
   private async copyDirectory({ source, destination }: {

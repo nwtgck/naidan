@@ -367,6 +367,7 @@ export class AuthenticatedMetadataMutationAuthority {
   private readonly fileSystemId: FileSystemId;
   private readonly metadataRecordCache: AuthenticatedMetadataRecordCache;
   private readonly mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
+  private readonly ownedWriterOwner: AuthenticatedSegmentWriterOwner | undefined;
   private readonly randomSource: RandomByteSource | undefined;
   private readonly relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   private readonly rootKey: FileSystemRootKey;
@@ -397,6 +398,7 @@ export class AuthenticatedMetadataMutationAuthority {
     fileSystemId,
     metadataRecordCache,
     mutationScopeDiagnostics,
+    ownedWriterOwner,
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
@@ -412,6 +414,7 @@ export class AuthenticatedMetadataMutationAuthority {
     fileSystemId: FileSystemId;
     metadataRecordCache: AuthenticatedMetadataRecordCache;
     mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
+    ownedWriterOwner: AuthenticatedSegmentWriterOwner | undefined;
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
@@ -427,6 +430,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.fileSystemId = fileSystemId;
     this.metadataRecordCache = metadataRecordCache;
     this.mutationScopeDiagnostics = mutationScopeDiagnostics;
+    this.ownedWriterOwner = ownedWriterOwner;
     this.mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
     this.randomSource = randomSource;
     this.relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
@@ -490,6 +494,7 @@ export class AuthenticatedMetadataMutationAuthority {
         fileSystemId,
         metadataRecordCache,
         mutationScopeDiagnostics,
+        ownedWriterOwner: writerOwner === undefined ? mutationLocalWriterOwner : undefined,
         randomSource,
         relocationIndexRootPhysicalRef,
         rootKey,
@@ -581,6 +586,31 @@ export class AuthenticatedMetadataMutationAuthority {
     this.releasedWriterUsage = this.writerLease.usage();
     this.writerLeaseReleased = true;
     this.writerLease.release({ disposition: this.writerReleaseDisposition });
+  }
+
+  /** Await only this mutation's native handle cleanup, never close a shared runtime owner. */
+  async settleWriterCleanup(): Promise<void> {
+    if (this.ownedWriterOwner === undefined) return;
+    if (!this.writerLeaseReleased) throw new Error("cannot settle metadata writer cleanup before releasing its lease");
+    await this.ownedWriterOwner.close();
+  }
+
+  private async releaseWriterAfterFailure({ cause }: { cause: unknown }): Promise<never> {
+    const failures = [cause];
+    try {
+      this.releaseWriterLease();
+    } catch (cleanupCause: unknown) {
+      if (cleanupCause !== cause) failures.push(cleanupCause);
+    }
+    try {
+      await this.settleWriterCleanup();
+    } catch (cleanupCause: unknown) {
+      if (cleanupCause !== cause) failures.push(cleanupCause);
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "metadata mutation and writer cleanup both failed");
+    }
+    throw cause;
   }
 
   private async flushPendingAppendBatch(): Promise<void> {
@@ -684,6 +714,11 @@ export class AuthenticatedMetadataMutationAuthority {
     // Mutation-local caches may accelerate read-your-writes, but cache
     // retention must never decide whether a valid reference is readable.
     await this.flushPendingAppendBatch();
+  }
+
+  readPendingHomeRecord({ reference }: { reference: HomeRecordReference }): ReturnType<AuthenticatedMetadataAppendBatch["readPendingHomeRecord"]> {
+    this.requireActive({ operation: "read pending metadata" });
+    return this.pendingAppendBatch?.readPendingHomeRecord({ reference });
   }
 
   private async appendMetadataRecordWithRollover<Result>({ append }: {
@@ -952,13 +987,13 @@ export class AuthenticatedMetadataMutationAuthority {
       });
       this.preparedCandidate = candidate;
       this.releaseWriterLease();
+      if (this.ownedWriterOwner !== undefined) await this.settleWriterCleanup();
       this.stateValue = "candidate_prepared";
       return candidate;
     } catch (cause: unknown) {
-      this.releaseWriterLease();
       this.stateValue = "closed";
       this.closeMutationDiagnostics({ outcome: "failed" });
-      throw cause;
+      return await this.releaseWriterAfterFailure({ cause });
     } finally {
       this.operationInProgress = false;
     }
@@ -1073,7 +1108,11 @@ export class AuthenticatedMetadataMutationAuthority {
                 writer,
               }),
             });
-            return await publishPreparedMutationCommitCandidate({
+            if (this.ownedWriterOwner !== undefined) {
+              this.releaseWriterLease();
+              await this.settleWriterCleanup();
+            }
+            const published = await publishPreparedMutationCommitCandidate({
               backend: this.backend,
               base,
               beforeFirstAuthorityWrite,
@@ -1086,8 +1125,10 @@ export class AuthenticatedMetadataMutationAuthority {
               secondPublicationSequence,
               supportedFeatureBits: this.supportedFeatureBits,
             });
-          } finally {
             this.releaseWriterLease();
+            return published;
+          } catch (cause: unknown) {
+            return await this.releaseWriterAfterFailure({ cause });
           }
         },
       });

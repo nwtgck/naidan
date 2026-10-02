@@ -1,6 +1,5 @@
 import type {
   StorageDirectoryHandle,
-  StorageFileSystemSession,
 } from '@/00-storage/service/storage-file-system/types';
 import { NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { HizoFSAuthenticatedInspectionSession } from '@/features/debug-hizofs/worker/authenticated-inspection-session';
@@ -16,7 +15,7 @@ const DEBUG_WORKSPACE_NAME_PREFIX = 'runtime-';
 export type HizoFSDebugWorkspaceProduct = {
   readonly authenticatedInspectionSession: HizoFSAuthenticatedInspectionSession;
   readonly fileSystemId: string;
-  readonly fileSystemSession: StorageFileSystemSession;
+  readonly decryptedRoot: StorageDirectoryHandle;
 
   generateComprehensiveFixture({ onProgress }: {
     onProgress: ({ progress }: { progress: HizoFSComprehensiveFixtureProgress }) => void;
@@ -45,7 +44,7 @@ type LiveHizoFSDebugWorkspace = {
   readonly workspaceId: string;
   readonly createdAt: number;
   readonly fileSystemId: string;
-  readonly fileSystemSession: StorageFileSystemSession;
+  readonly decryptedRoot: StorageDirectoryHandle;
   readonly generateComprehensiveFixture: HizoFSDebugWorkspaceProduct['generateComprehensiveFixture'];
   readonly disposeProduct: () => Promise<void>;
 };
@@ -91,7 +90,7 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
     const {
       authenticatedInspectionSession,
       fileSystemId,
-      fileSystemSession,
+      decryptedRoot,
       generateComprehensiveFixture,
       dispose,
       ...unhandledProduct
@@ -103,7 +102,7 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
       workspaceId,
       createdAt,
       fileSystemId,
-      fileSystemSession,
+      decryptedRoot,
       generateComprehensiveFixture,
       disposeProduct: dispose,
     }));
@@ -176,7 +175,7 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
     workspaceId: liveWorkspaceId,
     createdAt,
     fileSystemId,
-    fileSystemSession,
+    decryptedRoot,
     generateComprehensiveFixture: _generateComprehensiveFixture,
     disposeProduct: _disposeProduct,
     ...unhandledWorkspace
@@ -191,7 +190,7 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
       createdAt,
       fileSystemId,
     }),
-    decryptedRoot: fileSystemSession.root,
+    decryptedRoot,
     async dispose() {},
   });
 }
@@ -302,7 +301,7 @@ function createLiveSummaryFromLiveWorkspace({ workspace }: {
     workspaceId,
     createdAt,
     fileSystemId,
-    fileSystemSession: _fileSystemSession,
+    decryptedRoot: _decryptedRoot,
     generateComprehensiveFixture: _generateComprehensiveFixture,
     disposeProduct: _disposeProduct,
     ...unhandledWorkspace

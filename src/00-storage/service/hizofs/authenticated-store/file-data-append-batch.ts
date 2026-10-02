@@ -11,6 +11,7 @@ import {
   type AuthenticatedSegmentWriter,
   type TransferredPlaintextRecord,
 } from "./record-appender";
+import type { AuthenticatedNamespaceRecordSource } from "./namespace-record-source";
 
 const MAXIMUM_PENDING_RECORDS = 128;
 const MAXIMUM_PENDING_PLAINTEXT_BYTES = 16 * 1024 * 1024;
@@ -86,6 +87,25 @@ export class AuthenticatedFileDataAppendBatch {
 
   private requireOpen(): void {
     if (this.closed) throw new Error("File Data append batch is closed");
+  }
+
+  copyPendingRange({ destination, destinationOffset, reference, sourceLength, sourceOffset, validatePlaintextLength }: Parameters<AuthenticatedNamespaceRecordSource["copyFileDataRange"]>[0]): boolean {
+    this.requireOpen();
+    const index = this.plannedResults.findIndex(result => result.type === "home"
+      && sameRecordReferenceFields({ left: result.homeReference, right: reference }));
+    if (index < 0) return false;
+    const record = this.records[index];
+    if (record === undefined) throw new Error("pending File Data payload is missing");
+    validatePlaintextLength({ plaintextLength: record.plaintext.byteLength });
+    if (!Number.isSafeInteger(sourceOffset) || sourceOffset < 0
+      || !Number.isSafeInteger(sourceLength) || sourceLength < 0
+      || sourceOffset > record.plaintext.byteLength || sourceLength > record.plaintext.byteLength - sourceOffset
+      || !Number.isSafeInteger(destinationOffset) || destinationOffset < 0
+      || destinationOffset > destination.byteLength || sourceLength > destination.byteLength - destinationOffset) {
+      throw new RangeError("pending File Data copy range is invalid");
+    }
+    destination.set(record.plaintext.subarray(sourceOffset, sourceOffset + sourceLength), destinationOffset);
+    return true;
   }
 
   stage({ bytes }: { bytes: Uint8Array }): HomeRecordReference {

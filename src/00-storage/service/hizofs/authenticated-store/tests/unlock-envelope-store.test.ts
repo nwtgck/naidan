@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createUnlockSequence,
   decodeBase64UrlUnpadded,
@@ -14,7 +14,8 @@ import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
+import { physicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
+import { canonicalContainerDirectory, canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import {
   createInitialUnlockEnvelopeCopies,
@@ -171,27 +172,53 @@ describe("HizoFS Unlock Envelope store", () => {
     opened.rootKey.destroy();
   });
 
-  it("opens as credential-redundancy-degraded when one copy is missing", async () => {
+  it.each(["missing", "directory", "invalid"] as const)("opens as credential-redundancy-degraded when one copy is %s", async sibling => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const created = await createInitialUnlockEnvelopeCopies({
       backend,
       passphrase: "passphrase",
       randomSource: deterministicRandomSource(),
     });
-    created.rootKey.destroy();
-    await backend.removeFile({ path: canonicalContainerPath({ value: HIZOFS_UNLOCK_ENVELOPE_FILES[1] }) });
+    const path = canonicalContainerPath({ value: HIZOFS_UNLOCK_ENVELOPE_FILES[1] });
+    await backend.removeFile({ path });
+    if (sibling === "directory") await backend.createDirectoryExclusive({ path: canonicalContainerDirectory({ value: path }) });
+    if (sibling === "invalid") {
+      const file = await backend.createFileExclusive({ path });
+      await backend.closeFile({ file });
+    }
+    const writes = ["createFileExclusive", "openFileForUpdate", "removeFile"] as const;
+    const spies = writes.map(method => vi.spyOn(backend, method));
 
-    const opened = await openUnlockEnvelopeCopies({
-      backend,
-      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
-      passphrase: "passphrase",
-    });
-    expect(opened.copyState).toBe("credential_redundancy_degraded");
-    opened.rootKey.destroy();
+    try {
+      const opened = await openUnlockEnvelopeCopies({
+        backend,
+        minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+        passphrase: "passphrase",
+      });
+      expect(opened.copyState).toBe("credential_redundancy_degraded");
+      opened.rootKey.destroy();
+      await expect(openAuthenticatedUnlockEnvelopeAuthority({
+        backend,
+        fileSystemId: created.fileSystemId,
+        minimumUnlockSequence: created.unlockSequence,
+        rootKey: created.rootKey,
+      })).resolves.toMatchObject({ copyState: "credential_redundancy_degraded" });
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      expect(backend.openHandleCount()).toBe(0);
+    } finally {
+      created.rootKey.destroy();
+    }
   });
 
-  it("fails closed when both copies are unavailable", async () => {
+  it.each(["missing", "directory", "invalid"] as const)("fails closed with the existing classification when both copies are %s", async entry => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    for (const value of HIZOFS_UNLOCK_ENVELOPE_FILES) {
+      if (entry === "directory") await backend.createDirectoryExclusive({ path: canonicalContainerDirectory({ value }) });
+      if (entry === "invalid") {
+        const file = await backend.createFileExclusive({ path: canonicalContainerPath({ value }) });
+        await backend.closeFile({ file });
+      }
+    }
     await expect(openUnlockEnvelopeCopies({
       backend,
       minimumUnlockSequence: createUnlockSequence({ value: 1n }),
@@ -199,6 +226,21 @@ describe("HizoFS Unlock Envelope store", () => {
     })).rejects.toMatchObject({
       code: "incomplete_container",
     });
+  });
+
+  it.each([
+    new Error("backend read failed"),
+    physicalStoreError({ code: "file_too_large", message: "bounded read failed", path: HIZOFS_UNLOCK_ENVELOPE_FILES[0] }),
+    physicalStoreError({ code: "is_directory", message: "different entry is a directory", path: "unrelated" }),
+    Object.assign(new Error("untyped directory failure"), { code: "is_directory", path: HIZOFS_UNLOCK_ENVELOPE_FILES[0] }),
+  ])("propagates read failures that do not prove the exact copy is a directory: %s", async failure => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    vi.spyOn(backend, "readFileBounded").mockRejectedValue(failure);
+    await expect(openUnlockEnvelopeCopies({
+      backend,
+      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+      passphrase: "passphrase",
+    })).rejects.toBe(failure);
   });
 
   it("publishes one complete initial credential set and proves retained source slots", async () => {

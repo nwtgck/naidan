@@ -76,6 +76,14 @@ describe('HizoFS V1 Unlock Envelope canonical JSON', () => {
     expect(() => decodeUnlockEnvelope({ bytes: replaceAscii({ bytes: encoded, from: ',"copy"', to: ', "copy"' }) })).toThrow('expected');
   });
 
+  it('rejects a UTF-8 BOM before otherwise canonical JSON', () => {
+    const encoded = encodeUnlockEnvelope({ envelope: createEnvelope() });
+    const prefixed = new Uint8Array(encoded.byteLength + 3);
+    prefixed.set([0xef, 0xbb, 0xbf]);
+    prefixed.set(encoded, 3);
+    expect(() => decodeUnlockEnvelope({ bytes: prefixed })).toThrow();
+  });
+
   it('rejects noncanonical integer, missing LF, excessive bytes, and excessive depth before semantic use', () => {
     const encoded = encodeUnlockEnvelope({ envelope: createEnvelope() });
     expect(() => decodeUnlockEnvelope({ bytes: replaceAscii({ bytes: encoded, from: '"sequence":1', to: '"sequence":01' }) })).toThrow('leading zero');

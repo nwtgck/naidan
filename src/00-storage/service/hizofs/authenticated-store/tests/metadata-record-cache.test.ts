@@ -86,6 +86,23 @@ function loadedRecord({ bytes, reference }: {
   };
 }
 
+function startEvictedFollower({ cache, load, reference }: {
+  cache: AuthenticatedMetadataRecordCache;
+  load: () => Promise<AuthenticatedMetadataRecord>;
+  reference: HomeRecordReference;
+}) {
+  const leaderLoad = Promise.withResolvers<AuthenticatedMetadataRecord>();
+  const competingLoad = Promise.withResolvers<AuthenticatedMetadataRecord>();
+  const competingReference = metadataReference({ seed: 254 });
+  const leader = cache.read({ load: () => leaderLoad.promise, reference });
+  const follower = cache.read({ load, reference });
+  const competing = cache.read({ load: () => competingLoad.promise, reference: competingReference });
+  const completed = Promise.allSettled([leader, follower, competing]);
+  leaderLoad.resolve(loadedRecord({ bytes: [1, 2, 3], reference }));
+  competingLoad.resolve(loadedRecord({ bytes: [9], reference: competingReference }));
+  return { completed, follower };
+}
+
 describe("AuthenticatedMetadataRecordCache", () => {
 
   it("uses complete collision-free Record Reference fields for runtime cache identity", () => {
@@ -361,6 +378,127 @@ describe("AuthenticatedMetadataRecordCache", () => {
       hits: 1,
       misses: 2,
     });
+  });
+
+  it.each([
+    { label: "one-entry budget", maximumBytes: 1024, maximumEntries: 1, plaintextBytes: 8, recordCount: 2 },
+    { label: "application byte budget", maximumBytes: 8 * 1024 * 1024, maximumEntries: 16 * 1024, plaintextBytes: 65536, recordCount: 129 },
+  ])("reloads an evicted follower within the $label", async ({ maximumBytes, maximumEntries, plaintextBytes, recordCount }) => {
+    const { diagnostics, state } = createMetadataDiagnostics();
+    const cache = new AuthenticatedMetadataRecordCache({ diagnostics, policy: { maximumBytes, maximumEntries } });
+    const records = Array.from({ length: recordCount }, (_, index) => ({
+      gate: Promise.withResolvers<AuthenticatedMetadataRecord>(),
+      loads: 0,
+      reference: createHomeRecordReference({ fields: {
+        ...metadataReference({ seed: index + 1 }),
+        frameLength: plaintextBytes + 88,
+      } }),
+    }));
+    const load = (record: typeof records[number]): Promise<AuthenticatedMetadataRecord> => {
+      record.loads += 1;
+      return record.loads === 1 ? record.gate.promise : Promise.resolve({
+        plaintext: new Uint8Array(plaintextBytes).fill(7),
+        recordKind: record.reference.recordKind,
+      });
+    };
+    const leaders = records.map(record => cache.read({ load: () => load(record), reference: record.reference }));
+    const first = records[0];
+    if (first === undefined) throw new Error("expected metadata cache load fixture");
+    const follower = cache.read({ load: () => load(first), reference: first.reference });
+    const completed = Promise.all([...leaders, follower]);
+    for (const record of records) record.gate.resolve({
+      plaintext: new Uint8Array(plaintextBytes).fill(7),
+      recordKind: record.reference.recordKind,
+    });
+    const results = await completed;
+    expect(first.loads).toBe(2);
+    expect(records.slice(1).every(record => record.loads === 1)).toBe(true);
+    expect(state.currentBytes).toBeLessThanOrEqual(maximumBytes);
+    expect(state.currentEntries).toBeLessThanOrEqual(maximumEntries);
+    const leaderResult = results[0];
+    const followerResult = results.at(-1);
+    if (leaderResult === undefined || followerResult === undefined) throw new Error("expected metadata cache read results");
+    leaderResult.plaintext.fill(0);
+    expect(followerResult.plaintext).toEqual(new Uint8Array(plaintextBytes).fill(7));
+    followerResult.plaintext.fill(0);
+    const hit = await cache.read({ load: () => load(first), reference: first.reference });
+    expect(hit.plaintext).toEqual(new Uint8Array(plaintextBytes).fill(7));
+    expect(first.loads).toBe(2);
+    cache.dispose();
+    expect(state).toMatchObject({ currentBytes: 0, currentEntries: 0 });
+    expect(hit.plaintext).toEqual(new Uint8Array(plaintextBytes).fill(7));
+  });
+
+  it("finishes an evicted follower with one fresh load while newer shared work and evictions continue", async () => {
+    const cache = new AuthenticatedMetadataRecordCache({ diagnostics: undefined, policy: { maximumBytes: 128, maximumEntries: 1 } });
+    const reference = metadataReference();
+    const freshStarted = Promise.withResolvers<"fresh">();
+    const fresh = Promise.withResolvers<AuthenticatedMetadataRecord>();
+    let freshLoads = 0;
+    const { completed, follower } = startEvictedFollower({ cache, reference, load: () => {
+      freshLoads += 1;
+      freshStarted.resolve("fresh");
+      return fresh.promise;
+    } });
+    expect(await Promise.race([freshStarted.promise, completed.then(() => "finished")])).toBe("fresh");
+    const newer = Promise.withResolvers<AuthenticatedMetadataRecord>();
+    let newerLoads = 0;
+    const loadNewer = (): Promise<AuthenticatedMetadataRecord> => {
+      newerLoads += 1;
+      return newer.promise;
+    };
+    const newerLeader = cache.read({ load: loadNewer, reference });
+    const newerFollower = cache.read({ load: loadNewer, reference });
+    expect(newerLoads).toBe(1);
+    for (let seed = 2; seed < 6; seed += 1) {
+      const competingReference = metadataReference({ seed });
+      cache.admitAuthenticatedWrite({ plaintext: new Uint8Array([seed]), recordKind: competingReference.recordKind, reference: competingReference });
+    }
+    fresh.resolve(loadedRecord({ bytes: [1, 2, 3], reference }));
+    const result = await follower;
+    expect([...result.plaintext]).toEqual([1, 2, 3]);
+    expect(freshLoads).toBe(1);
+    newer.resolve(loadedRecord({ bytes: [1, 2, 3], reference }));
+    const newerResults = await Promise.all([newerLeader, newerFollower]);
+    expect(newerLoads).toBe(1);
+    expect(newerResults.map(record => [...record.plaintext])).toEqual([[1, 2, 3], [1, 2, 3]]);
+    await completed;
+    cache.dispose();
+  });
+
+  it.each(["disposed", "load failure", "wrong kind"] as const)("preserves %s rejection during an evicted follower's fresh load", async (failure) => {
+    const cache = new AuthenticatedMetadataRecordCache({ diagnostics: undefined, policy: { maximumBytes: 128, maximumEntries: 1 } });
+    const reference = metadataReference();
+    const freshStarted = Promise.withResolvers<"fresh">();
+    const fresh = Promise.withResolvers<AuthenticatedMetadataRecord>();
+    const { completed, follower } = startEvictedFollower({ cache, reference, load: () => {
+      freshStarted.resolve("fresh");
+      return fresh.promise;
+    } });
+    expect(await Promise.race([freshStarted.promise, completed.then(() => "finished")])).toBe("fresh");
+    const plaintext = new Uint8Array([1, 2, 3]);
+    switch (failure) {
+    case "disposed":
+      cache.dispose();
+      fresh.resolve({ plaintext, recordKind: reference.recordKind });
+      await expect(follower).rejects.toThrow("disposed while loading");
+      expect([...plaintext]).toEqual([0, 0, 0]);
+      break;
+    case "load failure": {
+      const cause = new Error("fresh authenticated read failed");
+      fresh.reject(cause);
+      await expect(follower).rejects.toBe(cause);
+      break;
+    }
+    case "wrong kind":
+      fresh.resolve({ plaintext, recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page });
+      await expect(follower).rejects.toThrow("wrong Record Kind");
+      expect([...plaintext]).toEqual([0, 0, 0]);
+      break;
+    default: return failure satisfies never;
+    }
+    await completed;
+    cache.dispose();
   });
 
   it("does not single-flight a frame outside the cache byte budget", async () => {

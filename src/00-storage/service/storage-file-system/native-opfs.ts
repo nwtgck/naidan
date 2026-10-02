@@ -36,6 +36,8 @@ function assertNonNegativeSafeInteger({ value, fieldName }: {
 }
 
 class NativeStorageWritableFile implements StorageWritableFile {
+  readonly read = undefined;
+
   constructor({ writable }: {
     writable: FileSystemWritableFileStream;
   }) {

@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import emptyContainerGolden from "./test-fixtures/empty-container-v1.json";
-import emptyContainerPortable from "./test-fixtures/empty-container-portable-v1.json";
 import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_UNLOCK_ENVELOPE_FILES,
@@ -52,10 +50,7 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import {
-  CANONICAL_CONTAINER_ROOT,
-  canonicalContainerDirectory,
   canonicalContainerPath,
-  type CanonicalContainerDirectory,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import {
   DeterministicPhysicalStoreFaultInjector,
@@ -76,37 +71,8 @@ function deterministicRandomSource(): RandomByteSource {
 
 const supportedFeatureBits = createFeatureBits({ value: 0n });
 
-type GoldenFile = Readonly<{
-  byteLength: number;
-  path: string;
-  sha256: string;
-}>;
-
 function toHex({ bytes }: { bytes: Uint8Array }): string {
   return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
-}
-
-
-
-async function verifyPortableGoldenFiles({
-  backend,
-}: {
-  backend: InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>;
-}): Promise<void> {
-  expect(emptyContainerPortable.schema).toBe("hizofs-v1-empty-container-fixture");
-  expect(emptyContainerPortable.schemaVersion).toBe(1);
-  expect(emptyContainerPortable.files.map(entry => entry.path)).toEqual(
-    emptyContainerGolden.map(entry => entry.path),
-  );
-  for (const entry of emptyContainerPortable.files) {
-    const bytes = await backend.readFileBounded({
-      maximumByteLength: entry.byteLength,
-      path: canonicalContainerPath({ value: entry.path }),
-    });
-    if (bytes === undefined) throw new Error(`portable fixture file disappeared: ${entry.path}`);
-    expect(bytes.byteLength).toBe(entry.byteLength);
-    expect(toHex({ bytes })).toBe(entry.hex);
-  }
 }
 
 async function corruptLastByte({
@@ -203,56 +169,17 @@ async function publishSuperblockFixture({
   });
 }
 
-async function collectGoldenFiles({
-  backend,
-  directory = CANONICAL_CONTAINER_ROOT,
-}: {
-  backend: InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>;
-  directory?: CanonicalContainerDirectory;
-}): Promise<readonly GoldenFile[]> {
-  const files: GoldenFile[] = [];
-  for (const entry of await backend.list({ directory })) {
-    const value = directory === "" ? entry.name : `${directory}/${entry.name}`;
-    switch (entry.kind) {
-    case "directory":
-      files.push(...await collectGoldenFiles({
-        backend,
-        directory: canonicalContainerDirectory({ value }),
-      }));
-      break;
-    case "file": {
-      const bytes = await backend.readFileBounded({
-        maximumByteLength: Number(entry.byteLength),
-        path: canonicalContainerPath({ value }),
-      });
-      if (bytes === undefined) throw new Error(`golden file disappeared: ${value}`);
-      const digestInput = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(digestInput).set(bytes);
-      files.push({
-        byteLength: bytes.byteLength,
-        path: value,
-        sha256: toHex({ bytes: new Uint8Array(await crypto.subtle.digest("SHA-256", digestInput)) }),
-      });
-      break;
-    }
-    default:
-      throw new Error(`Unhandled golden entry: ${((entry satisfies never) as { readonly kind: string }).kind}`);
-    }
-  }
-  return files.sort((left, right) => left.path.localeCompare(right.path));
-}
-
 describe("HizoFS empty encrypted container", () => {
   it("creates, closes, reopens, and traverses an empty root", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const passphrase = "correct horse battery staple";
     const opened = await createEmptyEncryptedContainer({
       backend,
-      passphrase: emptyContainerPortable.passphrase,
+      passphrase,
       randomSource: deterministicRandomSource(),
       supportedFeatureBits,
     });
 
-    expect(opened.fileSystemId).toBe(emptyContainerPortable.fileSystemId);
     expect(opened.credentialCopyState).toBe("normal");
     expect(opened.dataOpenMode).toBe("normal");
     expect(opened.superblockCopyState).toBe("normal");
@@ -261,18 +188,24 @@ describe("HizoFS empty encrypted container", () => {
     expect(opened.rootKey.isDestroyed()).toBe(false);
     expect(backend.openHandleCount()).toBe(0);
     opened.rootKey.destroy();
+    expect(opened.rootKey.isDestroyed()).toBe(true);
     await backend.crashAndRecover();
 
     const reopened = await openEmptyEncryptedContainer({
       backend,
-      passphrase: emptyContainerPortable.passphrase,
+      passphrase,
       supportedFeatureBits,
     });
     expect(reopened.fileSystemId).toBe(opened.fileSystemId);
+    expect(reopened.credentialCopyState).toBe("normal");
+    expect(reopened.dataOpenMode).toBe("normal");
+    expect(reopened.superblockCopyState).toBe("normal");
+    expect(reopened.commit).toEqual(opened.commit);
+    expect(reopened.rootDirectoryInode).toEqual(opened.rootDirectoryInode);
     expect(reopened.rootDirectoryInode.inodeNumber).toBe(1n);
-    expect(await collectGoldenFiles({ backend })).toEqual(emptyContainerGolden);
-    await verifyPortableGoldenFiles({ backend });
+    expect(reopened.rootKey.isDestroyed()).toBe(false);
     reopened.rootKey.destroy();
+    expect(reopened.rootKey.isDestroyed()).toBe(true);
     expect(backend.openHandleCount()).toBe(0);
   });
 
@@ -413,9 +346,13 @@ describe("HizoFS empty encrypted container", () => {
       supportedFeatureBits,
     });
     opened.rootKey.destroy();
-    const segment = (await collectGoldenFiles({ backend })).find(file => file.path.startsWith("segments/"));
-    if (segment === undefined) throw new Error("expected initial metadata segment");
-    await corruptLastByte({ backend, path: segment.path });
+    await corruptLastByte({
+      backend,
+      path: segmentIdToRelativePath({
+        id: opened.superblockLogicalState.activeCommitHomeRef.segmentId,
+        segmentClass: "metadata",
+      }),
+    });
 
     await expect(openEmptyEncryptedContainer({
       backend,

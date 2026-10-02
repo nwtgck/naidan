@@ -9,6 +9,7 @@ import {
 
 function runtime({ label }: { label: string }): OpfsPersistenceRuntime {
   return {
+    runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
     writableProfile: 'development-unverified',
     runUnlockedMaintenance: async () => ({
       remainingEntryCount: 0,

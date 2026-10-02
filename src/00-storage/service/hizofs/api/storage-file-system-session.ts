@@ -54,6 +54,7 @@ export interface HizoFSApplicationExplicitBulkBuilder {
 export interface HizoFSApplicationWritableFile {
   abort({ reason }: { reason: unknown }): Promise<void>;
   commit(): Promise<void>;
+  read: HizoFSApplicationReadableFile['read'];
   truncate({ size }: { size: bigint }): Promise<void>;
   write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void>;
 }
@@ -181,23 +182,39 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
   async openReadable({ mimeType }: { mimeType: string }): Promise<StorageBinaryObjectReadHandle> {
     const owner = this.owner;
     let closed = false;
+    let closePromise: Promise<void> | undefined;
     let releaseResource: () => void = () => undefined;
     const resource = await owner.runOperation({ operation: async () => {
       const readable = await owner.port.openReadable({ path: [...this.path] });
-      const close = async () => {
-        if (closed) return;
+      const close = () => {
+        if (closePromise !== undefined) return closePromise;
         closed = true;
-        try {
-          await readable.close();
-        } finally {
-          releaseResource();
-        }
+        const completion = Promise.withResolvers<void>();
+        closePromise = completion.promise;
+        // Revoke underlying read admission before a queued stream pull can run.
+        void (async () => {
+          try {
+            await readable.close();
+          } finally {
+            releaseResource();
+          }
+        })().then(completion.resolve, completion.reject);
+        return closePromise;
       };
       releaseResource = owner.registerAdmittedResource({ dispose: close });
-      return { close, readable };
+      try {
+        const size = safeNumber({ label: "file size", value: readable.size });
+        return { close, readable, size };
+      } catch (cause: unknown) {
+        try {
+          await close();
+        } catch (closeCause: unknown) {
+          throw new AggregateError([cause, closeCause], "readable initialization and cleanup both failed");
+        }
+        throw cause;
+      }
     }});
-    const { close: closeReadable, readable } = resource;
-    const size = safeNumber({ label: "file size", value: readable.size });
+    const { close: closeReadable, readable, size } = resource;
     const ensureOpen = () => {
       if (closed) throw new Error("HizoFS readable handle is closed");
       owner.assertOpen();
@@ -346,16 +363,36 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
           await writable.truncate({ size: safeBigInt({ label: "truncate size", value: size }) });
         }});
       },
+      async read({ buffer, length, offset, position, signal }) {
+        requireOpen();
+        signal?.throwIfAborted();
+        if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0) {
+          throw new RangeError("buffer offset and length must be safe non-negative integers");
+        }
+        if (offset > buffer.byteLength || length > buffer.byteLength - offset) {
+          throw new RangeError("read destination range exceeds the supplied buffer");
+        }
+        const bytes = await owner.runOperation({ operation: async () => await writable.read({
+          length: safeBigInt({ label: "read length", value: length }),
+          offset: safeBigInt({ label: "read position", value: position }),
+          signal,
+        }) });
+        signal?.throwIfAborted();
+        const bytesRead = Math.min(length, bytes.byteLength);
+        buffer.set(bytes.subarray(0, bytesRead), offset);
+        return { bytesRead };
+      },
       async write({ data, position }) {
         requireOpen();
         const captured = captureFileWriteBytes({ bytes: data });
         let ownershipTransferred = false;
         try {
           await owner.runOperation({ operation: async () => {
+            const writePosition = safeBigInt({ label: "write position", value: position });
             ownershipTransferred = true;
             await writable.write({
               data: captured,
-              position: safeBigInt({ label: "write position", value: position }),
+              position: writePosition,
             });
           }});
         } finally {
@@ -438,69 +475,93 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     return await this.owner.entryHandle({ name, path: childPath({ name, path: this.path }) });
   }
 
+  get listEntriesPage(): StorageDirectoryHandle["listEntriesPage"] {
+    return this.owner.isReadSnapshot && this.owner.port.listDirectoryPage !== undefined
+      ? this.readSnapshotPage
+      : undefined;
+  }
+
+  private async readSnapshotPage({ afterName, maximumEntries }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+  }) {
+    return await this.readEntriesPage({ afterName, maximumEntries, port: this.owner.port });
+  }
+
+  private async readEntriesPage({ afterName, maximumEntries, port }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+    port: HizoFSApplicationSessionPort;
+  }) {
+    return await this.owner.runOperation({ operation: async () => {
+      if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 1) {
+        throw new TypeError("HizoFS maximum directory entries must be a positive safe integer");
+      }
+      if (port.listDirectoryPage === undefined) {
+        throw new Error("HizoFS snapshot lost paged directory capability");
+      }
+      const { entries: pageEntries, truncated, ...unhandledPage } = await port.listDirectoryPage({ afterName, maximumEntries, path: [...this.path] });
+      unhandledPage satisfies Record<PropertyKey, never>;
+      const entries = await Promise.all(pageEntries.map(async entry => {
+        const { kind, name, ...unhandled } = entry;
+        unhandled satisfies Record<PropertyKey, never>;
+        return [name, await this.owner.entryHandle({
+          expectedKind: kind,
+          name,
+          path: childPath({ name, path: this.path }),
+        })] as const;
+      }));
+      this.owner.assertOpen();
+      return { entries, truncated };
+    }});
+  }
+
   async *entries(): AsyncIterable<readonly [name: string, handle: StorageEntryHandle]> {
-    const pagedSnapshot = await this.owner.runOperation({ operation: async () => {
+    const ownedSnapshot = await this.owner.runOperation({ operation: async () => {
+      if (this.owner.isReadSnapshot) return undefined;
       const createReadSnapshot = this.owner.port.createReadSnapshot;
       if (createReadSnapshot === undefined) return undefined;
-      const port = await createReadSnapshot();
-      if (port.listDirectoryPage === undefined) {
-        await port.close();
-        return undefined;
-      }
+      const port = await createReadSnapshot.call(this.owner.port);
       const unregister = this.owner.registerAdmittedResource({
         dispose: async () => await port.close(),
       });
       return { port, unregister };
     }});
-    if (pagedSnapshot !== undefined) {
-      try {
+    const port = ownedSnapshot?.port ?? this.owner.port;
+    try {
+      if ((this.owner.isReadSnapshot || ownedSnapshot !== undefined) && port.listDirectoryPage !== undefined) {
         let afterName: string | undefined;
         for (;;) {
-          const page = await this.owner.runOperation({ operation: async () => {
-            if (pagedSnapshot.port.listDirectoryPage === undefined) {
-              throw new Error("HizoFS snapshot lost paged directory capability");
-            }
-            return await pagedSnapshot.port.listDirectoryPage({
-              afterName,
-              maximumEntries: DIRECTORY_ITERATOR_PAGE_ENTRIES,
-              path: [...this.path],
-            });
-          }});
+          const page = await this.readEntriesPage({ afterName, maximumEntries: DIRECTORY_ITERATOR_PAGE_ENTRIES, port });
           for (const entry of page.entries) {
             this.owner.assertOpen();
-            const { kind, name, ...unhandled } = entry;
-            unhandled satisfies Record<PropertyKey, never>;
-            yield [name, await this.owner.entryHandle({
-              expectedKind: kind,
-              name,
-              path: childPath({ name, path: this.path }),
-            })] as const;
+            yield entry;
           }
           if (!page.truncated) return;
           const last = page.entries.at(-1);
-          if (last === undefined || last.name === afterName) {
+          if (last === undefined || last[0] === afterName) {
             throw new Error("HizoFS paged directory listing did not advance its cursor");
           }
-          afterName = last.name;
+          afterName = last[0];
         }
-      } finally {
-        pagedSnapshot.unregister();
-        await pagedSnapshot.port.close();
       }
-    }
 
-    const entries = await this.owner.runOperation({ operation: async () => {
-      return await this.owner.port.listDirectory({ path: [...this.path] });
-    }});
-    for (const entry of entries) {
-      this.owner.assertOpen();
-      const { kind, name, ...unhandled } = entry;
-      unhandled satisfies Record<PropertyKey, never>;
-      yield [name, await this.owner.entryHandle({
-        expectedKind: kind,
-        name,
-        path: childPath({ name, path: this.path }),
-      })] as const;
+      const entries = await this.owner.runOperation({ operation: async () => {
+        return await port.listDirectory({ path: [...this.path] });
+      }});
+      for (const entry of entries) {
+        this.owner.assertOpen();
+        const { kind, name, ...unhandled } = entry;
+        unhandled satisfies Record<PropertyKey, never>;
+        const handle = await this.owner.entryHandle({ expectedKind: kind, name, path: childPath({ name, path: this.path }) });
+        this.owner.assertOpen();
+        yield [name, handle] as const;
+      }
+    } finally {
+      if (ownedSnapshot !== undefined) {
+        ownedSnapshot.unregister();
+        await ownedSnapshot.port.close();
+      }
     }
   }
 
@@ -589,6 +650,11 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
   private closePromise: Promise<void> | undefined;
   private inFlightOperations = 0;
   private state: "closed" | "closing" | "open" = "open";
+  private readSnapshot = false;
+
+  get isReadSnapshot(): boolean {
+    return this.readSnapshot;
+  }
 
   constructor({ port, rootName = "", rootPath = [], workerMountGrantIssuer }: {
     port: HizoFSApplicationSessionPort;
@@ -630,11 +696,13 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     }});
     if (port === undefined) throw new Error("HizoFS application session does not support stable read snapshots");
     const root = this.requireOwnedDirectory({ directory: this.root });
-    return new HizoFSStorageFileSystemSession({
+    const snapshot = new HizoFSStorageFileSystemSession({
       port,
       rootName: this.root.name,
       rootPath: root.path,
     });
+    snapshot.readSnapshot = true;
+    return snapshot;
   }
 
   assertOpen(): void {

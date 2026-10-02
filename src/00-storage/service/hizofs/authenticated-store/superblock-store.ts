@@ -50,6 +50,7 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import { PhysicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
 import { promiseAllKeyed } from "@/utils/promise";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
@@ -102,11 +103,21 @@ async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, ro
   fileSystemId: FileSystemId;
   rootKey: FileSystemRootKey;
 }): Promise<SuperblockCopyReadResult> {
-  const bytes = await readAuthenticatedWholeFile({
-    backend,
-    maximumByteLength: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.superblockFile,
-    path: superblockPath({ copy }),
-  });
+  const path = superblockPath({ copy });
+  let bytes: Uint8Array | undefined;
+  try {
+    bytes = await readAuthenticatedWholeFile({
+      backend,
+      maximumByteLength: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.superblockFile,
+      path,
+    });
+  } catch (cause: unknown) {
+    // An exact-path directory cannot contain a competing file authority.
+    if (cause instanceof PhysicalStoreError && cause.code === "is_directory" && cause.path === path) {
+      return { kind: "invalid" };
+    }
+    throw cause;
+  }
   if (bytes === undefined) return { kind: "missing" };
   if (bytes.byteLength !== HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.superblockFile) return { kind: "invalid" };
 
@@ -527,7 +538,7 @@ export type MutationSuperblockPublicationResolution =
   | Readonly<{ superblock: OpenedSuperblockCopies; type: "published" }>
   | Readonly<{ superblock: OpenedSuperblockCopies; type: "publication_conflict" }>;
 
-export async function resolveMutationSuperblockPublication({
+async function resolveSuperblockPublicationWithDurability({
   backend,
   base,
   diagnostics,
@@ -551,10 +562,60 @@ export async function resolveMutationSuperblockPublication({
     rootKey,
     supportedFeatureBits,
   });
-  return {
-    superblock: current,
-    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
-  };
+  const type = resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState });
+  switch (type) {
+  case "not_published":
+  case "publication_conflict": return { superblock: current, type };
+  case "published": break;
+  default: return type satisfies never;
+  }
+
+  // A failed flush can leave new authority readable but not durable. Confirm
+  // the selected copy, and both copies before reporting normal redundancy,
+  // so the next publication cannot overwrite the sole durable new copy.
+  // The normal publication path does not use this recovery-only confirmation.
+  const copies = (() => {
+    switch (current.copyState) {
+    case "normal": return [0, 1] as const;
+    case "superblock_redundancy_degraded": return [current.selectedCopy];
+    default: return current.copyState satisfies never;
+    }
+  })();
+  for (const copy of copies) {
+    const path = superblockPath({ copy });
+    const file = await backend.openFileForUpdate({ path });
+    await runAndCloseAuthenticatedFile({
+      backend,
+      file,
+      operation: async () => await backend.syncFileData({ file }),
+      operationLabel: "Superblock publication durability confirmation",
+    });
+    await syncCreatedFileEntry({ backend, path });
+  }
+  const confirmed = await openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
+  if (
+    confirmed.copyState !== current.copyState
+    || !superblockOpenedAuthoritiesSemanticallyEqual({ left: current, right: confirmed })
+  ) {
+    throw new SuperblockPublicationConflictError();
+  }
+  return { superblock: confirmed, type };
+}
+
+export async function resolveMutationSuperblockPublication({
+  backend, base, diagnostics, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+}: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  base: OpenedSuperblockCopies;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  intendedLogicalState: SuperblockLogicalState;
+  rootKey: FileSystemRootKey;
+  supportedFeatureBits: FeatureBits;
+}): Promise<MutationSuperblockPublicationResolution> {
+  return await resolveSuperblockPublicationWithDurability({
+    backend, base, diagnostics, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+  });
 }
 
 async function publishSuperblockCopiesWithTransition({
@@ -720,11 +781,9 @@ export async function resolveRelocationSuperblockPublication({
   rootKey: FileSystemRootKey;
   supportedFeatureBits: FeatureBits;
 }): Promise<RelocationSuperblockPublicationResolution> {
-  const current = await openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
-  return {
-    superblock: current,
-    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
-  };
+  return await resolveSuperblockPublicationWithDurability({
+    backend, base, diagnostics, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+  });
 }
 
 export async function publishRelocationSuperblockCopies({ backend, base, beforeFirstAuthorityWrite, diagnostics, fileSystemId, firstPublicationSequence, logicalState, randomSource, rootKey, secondPublicationSequence, supportedFeatureBits }: {
@@ -794,11 +853,9 @@ export async function resolveUnlockFloorSuperblockPublication({
   rootKey: FileSystemRootKey;
   supportedFeatureBits: FeatureBits;
 }): Promise<UnlockFloorSuperblockPublicationResolution> {
-  const current = await openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
-  return {
-    superblock: current,
-    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
-  };
+  return await resolveSuperblockPublicationWithDurability({
+    backend, base, diagnostics, fileSystemId, intendedLogicalState, rootKey, supportedFeatureBits,
+  });
 }
 
 export async function publishUnlockFloorSuperblockCopies({

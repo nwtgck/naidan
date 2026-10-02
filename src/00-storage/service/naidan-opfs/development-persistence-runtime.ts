@@ -26,6 +26,7 @@ import {
   runNativeHizoFSReturnToPlainTransition,
   runNativeStableHizoFSRetiredContainerCleanup,
   runNativeStablePlainRetiredCleanup,
+  runWithNativeStableHizoFSAuthority,
   type CredentialBoundApplicationSessionOpenResult,
 } from '@/00-storage/service/naidan-opfs/production-persistence-runtime';
 import { reportHizoFSTrialDebug } from '@/00-storage/service/naidan-opfs/trial-debug';
@@ -42,6 +43,7 @@ export class OpfsDevelopmentCredentialRejectedError extends Error {
 }
 
 type DevelopmentRuntimePort = Readonly<{
+  runWithStableEncryptedAuthority: typeof runWithNativeStableHizoFSAuthority;
   captureAuthority: ({ physical }: {
     physical: PersistenceControlReadablePhysicalPort;
   }) => Promise<CapturedPersistenceControlAuthority>;
@@ -137,6 +139,7 @@ const DEFAULT_DEVELOPMENT_RUNTIME_POLICY: DevelopmentRuntimePolicy = Object.free
 });
 
 const browserPort: DevelopmentRuntimePort = Object.freeze({
+  runWithStableEncryptedAuthority: runWithNativeStableHizoFSAuthority,
   captureAuthority: captureNativePersistenceControlAuthority,
   changeSessionPassphrase: async ({ fileSystemSession, recheckAuthority, replacementPassphrase }) => (
     await replaceNativeAuthenticatedDevelopmentWritableSessionPassphrase({
@@ -359,6 +362,12 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
 }): OpfsPersistenceRuntime {
   return {
     writableProfile: 'development-unverified',
+    runWithStableEncryptedAuthority: async ({ operation, session, storageRoot }) => await port.runWithStableEncryptedAuthority({
+      lockManager,
+      operation,
+      session,
+      storageRoot,
+    }),
     inspect: async ({ storageRoot }) => {
       const nativeNamespaceRoot = await port.getNativeNamespaceRoot();
       const physical = port.createPhysical({ storageRoot });

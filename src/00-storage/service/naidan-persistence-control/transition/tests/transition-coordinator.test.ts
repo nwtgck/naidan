@@ -106,18 +106,20 @@ function provider() {
   const discardStagedSliceState = vi.fn(async () => undefined);
   const finalized = vi.fn(async () => undefined);
   const stageSliceState = vi.fn(async () => undefined);
+  const closeSource = vi.fn(async () => undefined);
+  const closeTarget = vi.fn(async () => undefined);
   const driver = ({ isTarget }: { isTarget: boolean }): TransitionEndpointDriver => ({
     cleanupEndpoint: cleanup,
     finalizeTarget: finalized,
     inspectEndpoint: async () => 'fully_verified',
     openSourceEndpoint: async (): Promise<TransitionSourceEndpointSession> => ({
       authorityIdentity: sourceIdentity,
-      close: async () => undefined,
+      close: closeSource,
       source: ports.source,
     }),
     openTargetEndpoint: async (): Promise<TransitionTargetEndpointSession> => ({
       authorityIdentity: 'target-v1',
-      close: async () => undefined,
+      close: closeTarget,
       discardStagedSliceState,
       source: ports.targetRead,
       stageSliceState,
@@ -129,6 +131,8 @@ function provider() {
   return {
     adapter: new TransitionProviderAdapter({ hizofs: driver({ isTarget: true }), plain: driver({ isTarget: false }) }),
     cleanup,
+    closeSource,
+    closeTarget,
     discardStagedSliceState,
     finalized,
     ports,
@@ -210,14 +214,14 @@ describe('persisted transition coordinator', () => {
     expect(p.get()).toBeUndefined();
   });
 
-  it('discards staged target state when portable progress publication fails', async () => {
+  it.each([new Error('simulated progress publication failure'), undefined])('discards staged target state when portable progress publication fails with %s', async (cause) => {
     const state = control({ initial: { mode: { activeFileSystemId: SOURCE_ID, type: 'hizofs' }, retiredFileSystemIds: [] } });
     const endpoints = provider();
     const progress: TransitionProgressPort = {
       clear: async () => undefined,
       load: async () => undefined,
       save: async () => {
-        throw new Error('simulated progress publication failure');
+        throw cause;
       },
     };
     await startPersistenceTransition({ control: state.port, operationId: OPERATION, source: sourceEndpoint, target: targetEndpoint });
@@ -228,10 +232,37 @@ describe('persisted transition coordinator', () => {
       progressPort: progress,
       provider: endpoints.adapter,
       signal: undefined,
-    })).rejects.toThrow('simulated progress publication failure');
+    })).rejects.toBe(cause);
 
     expect(endpoints.stageSliceState).toHaveBeenCalledTimes(1);
     expect(endpoints.discardStagedSliceState).toHaveBeenCalledTimes(1);
+    expect(endpoints.closeSource).toHaveBeenCalledOnce();
+    expect(endpoints.closeTarget).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an undefined operation failure before both endpoint close failures', async () => {
+    const state = control({ initial: { mode: { activeFileSystemId: SOURCE_ID, type: 'hizofs' }, retiredFileSystemIds: [] } });
+    const endpoints = provider();
+    const sourceFailure = new Error('source close failed');
+    const targetFailure = new Error('target close failed');
+    endpoints.closeSource.mockRejectedValue(sourceFailure);
+    endpoints.closeTarget.mockRejectedValue(targetFailure);
+    const progress = progressPort();
+    vi.spyOn(progress, 'save').mockRejectedValue(undefined);
+    await startPersistenceTransition({ control: state.port, operationId: OPERATION, source: sourceEndpoint, target: targetEndpoint });
+
+    await expect(advancePersistenceTransition({
+      control: state.port, policy, progressPort: progress, provider: endpoints.adapter, signal: undefined,
+    })).rejects.toMatchObject({
+      name: 'AggregateError',
+      errors: [undefined, sourceFailure, targetFailure],
+    });
+    expect(endpoints.stageSliceState).toHaveBeenCalledOnce();
+    expect(endpoints.discardStagedSliceState).toHaveBeenCalledOnce();
+    expect(endpoints.closeSource).toHaveBeenCalledOnce();
+    expect(endpoints.closeTarget).toHaveBeenCalledOnce();
+    expect(endpoints.discardStagedSliceState.mock.invocationCallOrder[0])
+      .toBeLessThan(endpoints.closeTarget.mock.invocationCallOrder[0]!);
   });
 
   it('continues bounded copy slices with invocation-local progress', async () => {

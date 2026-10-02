@@ -97,16 +97,18 @@ function classifyPath({ rootDir, filePath }) {
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/filesystem` })) return 'hizofs-filesystem';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/runtime` })) return 'hizofs-runtime';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/maintenance` })) return 'hizofs-maintenance';
+  // These exact reader integration tests compose real encrypted containers.
+  // Ordinary inspection code and unit tests retain the narrower read boundary.
+  if ([
+    `${hizofsRoot}/inspection/tests/namespace-inspection.integration.test.ts`,
+    `${hizofsRoot}/inspection/tests/physical-container-inspection.integration.test.ts`,
+  ].includes(relativePath)) return 'hizofs-inspection-integration-test';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/inspection` })) return 'hizofs-inspection';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/api` }) || relativePath === `${hizofsRoot}/index.ts`) return 'hizofs-api';
   if (
     relativePath === `${hizofsRoot}/worker/composition-root`
     || relativePath === `${hizofsRoot}/worker/composition-root.ts`
     || relativePath === `${hizofsRoot}/worker/tests/composition-root.test.ts`
-    // This exact integration test composes real HizoFS authorities with the
-    // ordinary Naidan provider. Keep the exception path explicit so sibling
-    // worker tests cannot acquire the same deep dependency authority.
-    || relativePath === `${hizofsRoot}/worker/tests/naidan-provider-restart.test.ts`
     // This exact integration test exercises encrypted, scope-bound Worker
     // grants through the real format, crypto, authenticated-store, and OPFS
     // composition boundary.
@@ -121,6 +123,12 @@ function classifyPath({ rootDir, filePath }) {
   if (hasPathPrefix({ relativePath, prefix: `${controlRoot}/00-format` })) return 'naidan-control-format';
   if (hasPathPrefix({ relativePath, prefix: `${controlRoot}/crypto` })) return 'naidan-control-crypto';
   if (hasPathPrefix({ relativePath, prefix: controlRoot })) return 'naidan-control-service';
+  // These Naidan integration tests compose real HizoFS fixtures outside the
+  // portable core. Other adapter tests retain their narrower dependencies.
+  if ([
+    '00-storage/service/naidan-opfs/tests/naidan-provider-restart.test.ts',
+    '00-storage/service/naidan-opfs/tests/runtime-transition-import-state.test.ts',
+  ].includes(relativePath)) return 'naidan-opfs-integration-test';
   if ([
     '00-storage/service/naidan-opfs/production-persistence-runtime.ts',
     '00-storage/service/naidan-opfs/worker-mount-runtime.ts',
@@ -149,6 +157,13 @@ function isHizoFSCategory({ category }) {
 }
 
 function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
+  if (sourceCategory === 'hizofs-inspection-integration-test') {
+    return [
+      'hizofs-inspection', 'hizofs-api', 'hizofs-authenticated-store',
+      'hizofs-format-public', 'hizofs-crypto-public', 'hizofs-physical-store',
+      'hizofs-runtime', 'hizofs-worker', 'hizofs-composition',
+    ].includes(targetCategory);
+  }
   if (!isHizoFSCategory({ category: targetCategory })) return true;
 
   if (sourceCategory === 'hizofs-format-internal') {
@@ -186,7 +201,7 @@ function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
       || targetCategory === 'hizofs-format-public'
       || HIZOFS_LOGICAL_CATEGORIES.has(targetCategory);
   }
-  if (sourceCategory === 'hizofs-composition') {
+  if (sourceCategory === 'hizofs-composition' || sourceCategory === 'naidan-opfs-integration-test') {
     return targetCategory === 'hizofs-composition'
       || targetCategory === 'hizofs-worker'
       || targetCategory === 'hizofs-api'
@@ -309,7 +324,39 @@ function isForbiddenWeshCommandDependency({ sourceOwner, targetOwner }) {
   return true;
 }
 
+function getNaidanCategory({ category }) {
+  if (isHizoFSCategory({ category })
+    || category.startsWith('naidan-control-')
+    || category === 'naidan-opfs'
+    || category.startsWith('naidan-opfs-')) {
+    return 'storage-service';
+  }
+  return category;
+}
+
+function isForbiddenNaidanDependency({ sourceCategory, targetCategory }) {
+  if (sourceCategory === 'application') return ['storage-mapper', 'storage-dto'].includes(targetCategory);
+  if (sourceCategory === '01-models') {
+    return ['application', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
+  }
+  if (sourceCategory === 'storage-service') return targetCategory === 'application' || targetCategory === 'strings';
+  if (sourceCategory === 'storage-mapper') return ['application', 'storage-service', 'strings'].includes(targetCategory);
+  if (sourceCategory === 'storage-dto') return ['application', 'storage-service', 'storage-mapper', 'strings'].includes(targetCategory);
+  if (sourceCategory === 'constants' || sourceCategory === 'utils') {
+    return ['application', '01-models', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
+  }
+  return false;
+}
+
 function isForbiddenDependency({ sourceCategory, targetCategory }) {
+  // Specialized storage boundaries add restrictions; they cannot relax the outer layers.
+  if (isForbiddenNaidanDependency({
+    sourceCategory: getNaidanCategory({ category: sourceCategory }),
+    targetCategory: getNaidanCategory({ category: targetCategory }),
+  })) {
+    return true;
+  }
+
   if (isHizoFSCategory({ category: sourceCategory }) || isHizoFSCategory({ category: targetCategory })) {
     return !isAllowedHizoFSDependency({ sourceCategory, targetCategory });
   }
@@ -320,21 +367,12 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
   if (sourceCategory === 'naidan-control-crypto') {
     return ['application', 'strings', 'storage-dto', 'storage-mapper'].includes(targetCategory);
   }
-  if (['naidan-control-service', 'naidan-opfs-composition', 'naidan-opfs'].includes(sourceCategory)) {
+  if (['naidan-control-service', 'naidan-opfs-composition', 'naidan-opfs-integration-test', 'naidan-opfs'].includes(sourceCategory)) {
     return targetCategory === 'application' || targetCategory === 'strings';
   }
 
   if (sourceCategory === 'application') {
-    return ['storage-mapper', 'storage-dto', 'hizofs-format-internal', 'hizofs-format-public', 'naidan-control-format'].includes(targetCategory);
-  }
-  if (sourceCategory === '01-models') {
-    return ['application', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
-  }
-  if (sourceCategory === 'storage-service') return targetCategory === 'application' || targetCategory === 'strings';
-  if (sourceCategory === 'storage-mapper') return ['application', 'storage-service', 'strings'].includes(targetCategory);
-  if (sourceCategory === 'storage-dto') return ['application', 'storage-service', 'storage-mapper', 'strings'].includes(targetCategory);
-  if (sourceCategory === 'constants' || sourceCategory === 'utils') {
-    return ['application', '01-models', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
+    return ['hizofs-format-internal', 'hizofs-format-public', 'naidan-control-format'].includes(targetCategory);
   }
   return false;
 }
@@ -415,7 +453,23 @@ function createImportPathReporter({ context }) {
 
     const sourceCategory = classifyPath({ rootDir: resolved.rootDir, filePath: resolved.sourcePath });
     const targetCategory = classifyPath({ rootDir: resolved.rootDir, filePath: resolved.targetPath });
-    if (!isForbiddenDependency({ sourceCategory, targetCategory })) {
+    if (sourceCategory === 'hizofs-inspection-integration-test') {
+      const sourcePath = normalizePath({ filePath: path.relative(resolved.rootDir, resolved.sourcePath) });
+      const targetPath = normalizePath({ filePath: path.relative(resolved.rootDir, resolved.targetPath) });
+      if (
+        sourcePath === '00-storage/service/hizofs/inspection/tests/namespace-inspection.integration.test.ts'
+        && [
+          '00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment',
+          '00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment.ts',
+        ].includes(targetPath)
+      ) {
+        return;
+      }
+    }
+    const isProductionHizoFSControlDependency = isHizoFSCategory({ category: sourceCategory })
+      && targetCategory.startsWith('naidan-control-')
+      && !isTestSourceFile({ filePath: resolved.sourcePath });
+    if (!isProductionHizoFSControlDependency && !isForbiddenDependency({ sourceCategory, targetCategory })) {
       return;
     }
 

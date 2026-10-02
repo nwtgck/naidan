@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createHomeRecordReference,
+  createInodeNumber,
   createPhysicalRecordReference,
   createUInt64,
+  encodeDirectoryPage,
   parseSegmentId,
+  type DirectoryPage,
   type HomeRecordReference,
   type PhysicalRecordReference,
   type SegmentId,
@@ -16,6 +19,7 @@ import {
   type ResolvedMaintenanceRecord,
 } from "@/00-storage/service/hizofs/maintenance/garbage-collection-mark-cursor";
 import { createMaintenancePolicy } from "@/00-storage/service/hizofs/maintenance/maintenance-policy";
+import { projectMaintenanceRecordChildren } from "@/00-storage/service/hizofs/maintenance/maintenance-record-child-projection";
 import {
   createLogicalMaintenanceTraversalItem,
   createPhysicalRelocationMaintenanceTraversalItem,
@@ -127,6 +131,73 @@ function setup({
 const noForeground = () => false;
 const constantNow = () => 0;
 
+function directoryRecordGraph() {
+  const references: HomeRecordReference[] = [];
+  const records = new Map<string, Uint8Array>();
+  const reads: { reference: HomeRecordReference; pageRole: MaintenanceTraversalItem["pageRole"] }[] = [];
+  const id = segmentId({ seed: 50 });
+  const addPage = ({ isRoot, page }: { isRoot: boolean; page: DirectoryPage }): HomeRecordReference => {
+    const reference = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 64n + BigInt(references.length) * 256n }),
+      frameLength: 256,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      segmentId: id,
+    } });
+    references.push(reference);
+    records.set(reference.byteOffset.toString(), encodeDirectoryPage({ isRoot, page }));
+    return reference;
+  };
+  const addLeaf = ({ name }: { name: string }): HomeRecordReference => addPage({
+    isRoot: false,
+    page: { entries: [{
+      inodeKind: "file",
+      inodeNumber: createInodeNumber({ value: 2n }),
+      name,
+      targetType: "inode",
+    }], level: 0, type: "leaf" },
+  });
+  const createCursor = ({ policy, roots }: {
+    policy: ReturnType<typeof createMaintenancePolicy>;
+    roots: readonly MaintenanceTraversalItem[];
+  }) => new GarbageCollectionMarkCursor({
+    candidateBatch: new CandidateSegmentBatch({
+      candidates: [{
+        frameCount: references.length,
+        frameOrdinalAuthority: createCandidateFrameOrdinalAuthority({
+          frames: references.map(reference => ({
+            frameLength: reference.frameLength,
+            physicalOffset: reference.byteOffset,
+            recordKind: reference.recordKind,
+          })),
+          segmentId: id,
+        }),
+        ownership: "sealed",
+        segmentId: id,
+        totalFrameBytes: references.length * 256,
+      }],
+      policy,
+    }),
+    policy,
+    reader: { readRecord: async ({ item }) => {
+      if (item.kind !== "logical_home") throw new Error("directory graph contains only logical records");
+      const plaintext = records.get(item.reference.byteOffset.toString());
+      if (plaintext === undefined) throw new Error("directory graph record is missing");
+      reads.push({ pageRole: item.pageRole, reference: item.reference });
+      return {
+        bytesRead: item.reference.frameLength,
+        childItems: projectMaintenanceRecordChildren({ item, plaintext }),
+        physicalReference: createPhysicalRecordReference({ fields: item.reference }),
+      };
+    } },
+    roots,
+  });
+  return { addLeaf, addPage, createCursor, reads };
+}
+
+function directoryRoot({ reference }: { reference: HomeRecordReference }): MaintenanceTraversalItem {
+  return createLogicalMaintenanceTraversalItem({ pageRole: "root", reference });
+}
+
 describe("resumable garbage collection mark cursor", () => {
   it("traverses typed logical references and marks only the candidate batch", async () => {
     const root = logicalItem({ offset: 1n });
@@ -170,10 +241,114 @@ describe("resumable garbage collection mark cursor", () => {
     expect(cursor.diagnostics().budget).toMatchObject({ decodedRecords: 2, followedEdges: 1 });
   });
 
-  it("fails closed when one reference is assigned conflicting page roles", () => {
-    const root = relocationItem({ offset: 0n, pageRole: "root" });
-    const nonRoot = relocationItem({ offset: 0n, pageRole: "non_root" });
-    expect(() => setup({ graph: new Map(), roots: [root, nonRoot] })).toThrowError(TypeError);
+  it.each(["old_then_new", "new_then_old"] as const)("retains shared pages after root collapse in %s order", async order => {
+    const graph = directoryRecordGraph();
+    const promotedLeaf = graph.addLeaf({ name: "a" });
+    const removedLeaf = graph.addLeaf({ name: "z" });
+    const oldRoot = graph.addPage({ isRoot: true, page: {
+      entries: [
+        { childPageHomeRef: promotedLeaf, upperBoundName: "a" },
+        { childPageHomeRef: removedLeaf, upperBoundName: "z" },
+      ],
+      level: 1,
+      type: "branch",
+    } });
+    // Root collapse reuses the surviving child while a retained older tree still points to it as a non-root page.
+    const roots = order === "old_then_new" ? [oldRoot, promotedLeaf] : [promotedLeaf, oldRoot];
+    const cursor = graph.createCursor({ policy: createMaintenancePolicy(), roots: roots.map(reference => directoryRoot({ reference })) });
+    const result = await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined });
+    expect(result).toMatchObject({ phase: "batch_complete", plan: [{ disposition: "retain", liveFrameCount: 3 }] });
+    expect(graph.reads.filter(read => read.reference.byteOffset === promotedLeaf.byteOffset).map(read => read.pageRole).sort())
+      .toEqual(["non_root", "root"]);
+  });
+
+  it("revisits evicted pages instead of limiting the graph to the completed memo size", async () => {
+    const graph = directoryRecordGraph();
+    const first = graph.addLeaf({ name: "a" });
+    const second = graph.addLeaf({ name: "z" });
+    const root = graph.addPage({ isRoot: true, page: {
+      entries: [{ childPageHomeRef: first, upperBoundName: "a" }, { childPageHomeRef: second, upperBoundName: "z" }],
+      level: 1,
+      type: "branch",
+    } });
+    const cursor = graph.createCursor({
+      policy: createMaintenancePolicy({ maxCompletedMemoEntries: 1 }),
+      roots: [directoryRoot({ reference: root }), directoryRoot({ reference: first }), directoryRoot({ reference: root })],
+    });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toMatchObject({ phase: "batch_complete", plan: [{ disposition: "retain", liveFrameCount: 3 }] });
+    expect(cursor.diagnostics().completedMemoSize).toBe(1);
+    expect(graph.reads.filter(read => read.reference.byteOffset === root.byteOffset)).toHaveLength(2);
+  });
+
+  it("rejects an empty non-root leaf even after the same page was memoized as a valid root", async () => {
+    const graph = directoryRecordGraph();
+    const empty = graph.addPage({ isRoot: true, page: { entries: [], level: 0, type: "leaf" } });
+    const parent = graph.addPage({ isRoot: true, page: {
+      entries: [{ childPageHomeRef: empty, upperBoundName: "a" }], level: 1, type: "branch",
+    } });
+    const cursor = graph.createCursor({
+      policy: createMaintenancePolicy(),
+      roots: [directoryRoot({ reference: empty }), directoryRoot({ reference: parent })],
+    });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toEqual({ phase: "aborted_without_deletion", reason: "invalid_record_result" });
+    expect(graph.reads.filter(read => read.reference.byteOffset === empty.byteOffset).map(read => read.pageRole))
+      .toEqual(["root", "non_root"]);
+  });
+
+  it("rejects a page reached with a non-page role at the codec boundary", async () => {
+    const graph = directoryRecordGraph();
+    const leaf = graph.addLeaf({ name: "a" });
+    const cursor = graph.createCursor({
+      policy: createMaintenancePolicy(),
+      roots: [createLogicalMaintenanceTraversalItem({ pageRole: "not_page", reference: leaf })],
+    });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toEqual({ phase: "aborted_without_deletion", reason: "invalid_record_result" });
+  });
+
+  it("rejects a cycle that changes a root page's traversal role", async () => {
+    const graph = directoryRecordGraph();
+    const self = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 64n }),
+      frameLength: 256,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      segmentId: segmentId({ seed: 50 }),
+    } });
+    const root = graph.addPage({ isRoot: true, page: {
+      entries: [{ childPageHomeRef: self, upperBoundName: "a" }], level: 1, type: "branch",
+    } });
+    const cursor = graph.createCursor({ policy: createMaintenancePolicy(), roots: [directoryRoot({ reference: root })] });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toEqual({ phase: "aborted_without_deletion", reason: "cycle_detected" });
+  });
+
+  it("keeps the traversal depth limit for codec-projected children", async () => {
+    const graph = directoryRecordGraph();
+    const leaf = graph.addLeaf({ name: "a" });
+    const root = graph.addPage({ isRoot: true, page: {
+      entries: [{ childPageHomeRef: leaf, upperBoundName: "a" }], level: 1, type: "branch",
+    } });
+    const cursor = graph.createCursor({
+      policy: createMaintenancePolicy({ maxTraversalDepth: 1 }),
+      roots: [directoryRoot({ reference: root })],
+    });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toEqual({ phase: "aborted_without_deletion", reason: "traversal_depth_exceeded" });
+  });
+
+  it("keeps the cycle hard budget when the completed memo evicts records", async () => {
+    const graph = directoryRecordGraph();
+    const first = graph.addLeaf({ name: "a" });
+    const second = graph.addLeaf({ name: "z" });
+    const cursor = graph.createCursor({
+      policy: createMaintenancePolicy({ maxCompletedMemoEntries: 1, maxDecodedRecordsPerCycle: 2 }),
+      roots: [directoryRoot({ reference: first }), directoryRoot({ reference: second }), directoryRoot({ reference: first })],
+    });
+    expect(await cursor.runSlice({ hasForegroundWaiter: noForeground, now: constantNow, signal: undefined }))
+      .toEqual({ phase: "aborted_without_deletion", reason: "hard_budget_exceeded" });
+    expect(graph.reads).toHaveLength(3);
   });
 
   it("fails closed when a physical item resolves a different physical record", async () => {

@@ -7,10 +7,11 @@ import {
   createBrowserHizoFSWorkerRuntimeHost,
   DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
+  openAuthenticatedDevelopmentWritableSessionReadObservation,
   openBrowserAuthenticatedDevelopmentWritableContainerCapability,
   withAuthenticatedDevelopmentWritableSessionReadAuthority,
 } from "@/00-storage/service/hizofs/worker/composition-root";
-import type { StorageFileSystemSession } from "@/00-storage/service/storage-file-system/types";
+import type { StorageDirectoryHandle, StorageFileSystemSession } from "@/00-storage/service/storage-file-system/types";
 import type {
   HizoFSDebugWorkspaceAuthority,
   HizoFSDebugWorkspaceProduct,
@@ -29,6 +30,7 @@ const TEMPORARY_WORKSPACE_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
 });
 
 type TemporaryWorkspaceRuntime = Readonly<{
+  decryptedRoot: StorageDirectoryHandle;
   fileSystemId: string;
   fileSystemSession: StorageFileSystemSession;
   dispose(): Promise<void>;
@@ -172,7 +174,22 @@ async function createBrowserTemporaryWorkspaceRuntime({ backingDirectory }: {
         },
       }),
     });
+    let observation: Awaited<ReturnType<typeof openAuthenticatedDevelopmentWritableSessionReadObservation>>;
+    try {
+      observation = await openAuthenticatedDevelopmentWritableSessionReadObservation({
+        capture: "per_operation",
+        session: fileSystemSession,
+      });
+    } catch (cause: unknown) {
+      try {
+        await dispose();
+      } catch (cleanupFailure: unknown) {
+        throw new AggregateError([cause, cleanupFailure], "temporary HizoFS read surface and cleanup both failed");
+      }
+      throw cause;
+    }
     return Object.freeze({
+      decryptedRoot: observation.root,
       fileSystemId,
       fileSystemSession,
       dispose,
@@ -198,8 +215,8 @@ function createHizoFSDebugWorkspaceAuthorityWith({ createRuntime }: {
           },
         }),
         dispose: runtime.dispose,
+        decryptedRoot: runtime.decryptedRoot,
         fileSystemId: runtime.fileSystemId,
-        fileSystemSession: runtime.fileSystemSession,
         generateComprehensiveFixture: async ({ onProgress }: Parameters<HizoFSDebugWorkspaceProduct['generateComprehensiveFixture']>[0]) => await generateHizoFSComprehensiveFixture({
           onProgress,
           root: runtime.fileSystemSession.root,

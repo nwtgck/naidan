@@ -1,14 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { useRouter } from 'vue-router';
-import { useInitialRouteRenderReadinessClaim } from '@/logic/startup/initial-route-render-readiness';
+import { useInitialRouteRenderReadinessClaim } from '@/composables/useInitialRouteRenderReadiness';
 import SettingsIndexPage from './index.vue';
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-vi.mock('@/logic/startup/initial-route-render-readiness', () => ({
+vi.mock('@/composables/useInitialRouteRenderReadiness', () => ({
   useInitialRouteRenderReadinessClaim: vi.fn(),
 }));
 

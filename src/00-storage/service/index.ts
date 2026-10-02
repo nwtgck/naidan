@@ -8,7 +8,7 @@ import { OPFSStorageProvider } from './opfs-storage';
 import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
 import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
-import type { StorageVolumeAccess } from './volume-access';
+import { exposeStorageVolumeAccess, type StorageVolumeAccess } from './volume-access';
 import type {
   OpfsEncryptionInspection,
   OpfsEncryptionSettingsInspection,
@@ -448,15 +448,7 @@ export class StorageService {
     const externalTransitionEpochAtRequest = this.externalOpfsTransitionEpoch;
     return await this.synchronizer.withLock({
       fn: async () => {
-        if (externalTransitionEpochAtRequest !== this.externalOpfsTransitionEpoch) {
-          // This request waited behind a transition started by another tab.
-          // Do not begin a second transition from stale UI state after the
-          // winner settles; the caller will re-inspect the stable backend.
-          throw new Error('OPFS encryption transition was superseded by another tab');
-        }
-        if (this.externalOpfsTransitionReloadRequired) {
-          throw new Error('OPFS encryption transition requires this page to reload');
-        }
+        this.assertOpfsEncryptionOperationCurrent({ externalTransitionEpochAtRequest });
 
         const preflightFailures: unknown[] = [];
         try {
@@ -575,6 +567,19 @@ export class StorageService {
         custom: { notifyLockWaitAfterMs: 5000 },
       }),
     });
+  }
+
+  private assertOpfsEncryptionOperationCurrent({ externalTransitionEpochAtRequest }: {
+    externalTransitionEpochAtRequest: number;
+  }): void {
+    if (externalTransitionEpochAtRequest !== this.externalOpfsTransitionEpoch) {
+      // A queued request must not act on its old UI state after another tab
+      // changes authority, including destructive plain-conflict cleanup.
+      throw new Error('OPFS encryption transition was superseded by another tab');
+    }
+    if (this.externalOpfsTransitionReloadRequired) {
+      throw new Error('OPFS encryption transition requires this page to reload');
+    }
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
@@ -720,8 +725,12 @@ export class StorageService {
   }
 
   async inspectOpfsEncryptionDisableConflict(): Promise<OpfsEncryptionDisablePreflight> {
+    const externalTransitionEpochAtRequest = this.externalOpfsTransitionEpoch;
     return await this.synchronizer.withLock({
-      fn: async () => await this.getOpfsProvider().inspectDisableEncryptionConflict(),
+      fn: async () => {
+        this.assertOpfsEncryptionOperationCurrent({ externalTransitionEpochAtRequest });
+        return await this.getOpfsProvider().inspectDisableEncryptionConflict();
+      },
       lockKey: SYNC_LOCK_KEY,
       ...this.getLockOptions({ source: 'inspectOpfsEncryptionDisableConflict' }),
     });
@@ -730,8 +739,12 @@ export class StorageService {
   async cleanupOpfsEncryptionDisableConflict({ inspectionId }: {
     inspectionId: string;
   }): Promise<OpfsEncryptionDisablePreflight> {
+    const externalTransitionEpochAtRequest = this.externalOpfsTransitionEpoch;
     return await this.synchronizer.withLock({
-      fn: async () => await this.getOpfsProvider().cleanupDisableEncryptionConflict({ inspectionId }),
+      fn: async () => {
+        this.assertOpfsEncryptionOperationCurrent({ externalTransitionEpochAtRequest });
+        return await this.getOpfsProvider().cleanupDisableEncryptionConflict({ inspectionId });
+      },
       lockKey: SYNC_LOCK_KEY,
       ...this.getLockOptions({ source: 'cleanupOpfsEncryptionDisableConflict' }),
     });
@@ -1039,7 +1052,9 @@ export class StorageService {
       return await provider.openSpecialFileSystemDirectory({ type, path, create });
     }
     const backend = await this.createNativeNaidanOpfsBackend();
-    return await backend.openSpecialFileSystemDirectory({ type, path, create });
+    return exposeStorageVolumeAccess({
+      access: await backend.openSpecialFileSystemDirectory({ type, path, create }),
+    });
   }
 
   async removeOpfsSpecialFileSystemEntry({

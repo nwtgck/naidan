@@ -89,9 +89,11 @@ describe("cross-realm lock coordinator", () => {
     expect(copiedBacking).not.toBe(first);
   });
 
-  it("preserves authority-read and lease-cleanup failures in order", async () => {
-    const operationFailure = new Error("authority read failed");
-    const releaseFailure = new Error("authority lease release failed");
+  it.each([
+    [new Error("authority read failed"), new Error("authority lease release failed")],
+    [undefined, new Error("authority lease release failed")],
+    [new Error("authority read failed"), undefined],
+  ])("preserves authority-read and lease-cleanup failures in order: %s / %s", async (operationFailure, releaseFailure) => {
     const coordinator = new CrossRealmLockCoordinator({
       lockPort: {
         acquire: async () => ({
@@ -175,9 +177,11 @@ describe("cross-realm lock coordinator", () => {
     expect(pinRelease).toHaveBeenCalledOnce();
   });
 
-  it("preserves publication and publication-lease cleanup failures in order", async () => {
-    const operationFailure = new Error("publication operation failed");
-    const releaseFailure = new Error("publication lease release failed");
+  it.each([
+    [new Error("publication operation failed"), new Error("publication lease release failed")],
+    [undefined, new Error("publication lease release failed")],
+    [new Error("publication operation failed"), undefined],
+  ])("preserves publication and publication-lease cleanup failures in order: %s / %s", async (operationFailure, releaseFailure) => {
     const authorityRelease = vi.fn();
     let acquisitions = 0;
     const coordinator = new CrossRealmLockCoordinator({
@@ -206,6 +210,31 @@ describe("cross-realm lock coordinator", () => {
     }));
     writer.release();
     expect(authorityRelease).toHaveBeenCalledOnce();
+  });
+
+  it.each(["authority_read", "publication"] as const)("preserves an undefined %s failure after successful cleanup", async operation => {
+    const port = new RecordingLockPort();
+    const coordinator = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
+    const reject = async (): Promise<never> => {
+      throw undefined;
+    };
+    switch (operation) {
+    case "authority_read":
+      await expect(coordinator.runAuthorityRead({ operation: reject })).rejects.toBeUndefined();
+      break;
+    case "publication": {
+      const writer = await coordinator.acquireWriter();
+      try {
+        await expect(writer.runPublication({ operation: reject })).rejects.toBeUndefined();
+      } finally {
+        writer.release();
+        await writer.released;
+      }
+      break;
+    }
+    default: operation satisfies never;
+    }
+    expect(port.held.size).toBe(0);
   });
 
   it("registers a reader pin before releasing the shared registration gate", async () => {

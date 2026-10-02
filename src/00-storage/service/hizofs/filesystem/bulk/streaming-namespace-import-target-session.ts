@@ -13,9 +13,9 @@ import {
   type StreamingNamespaceImportRuntimeStatePort,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-runtime-state";
 import type {
-  TransitionNamespaceMetadata,
-  TransitionNamespaceTargetPort,
-} from "@/00-storage/service/naidan-persistence-control/transition/namespace-copy";
+  BoundedNamespaceMetadata,
+  BoundedNamespaceTargetPort,
+} from "@/00-storage/service/hizofs/filesystem/bulk/bounded-namespace-ports";
 
 export type StreamingNamespaceImportTargetSessionErrorCode =
   | "already_closed"
@@ -45,18 +45,18 @@ type StreamingNamespaceImportActor = Pick<StreamingNamespaceImport,
 
 type StreamingNamespaceImportTargetSessionState = "active" | "awaiting_root" | "closed" | "sealed" | "sealing";
 
-function cloneMetadata({ metadata }: { metadata: TransitionNamespaceMetadata }): TransitionNamespaceMetadata {
+function cloneMetadata({ metadata }: { metadata: BoundedNamespaceMetadata }): BoundedNamespaceMetadata {
   return { createdAt: metadata.createdAt, modifiedAt: metadata.modifiedAt };
 }
 
 function sameMetadata({ left, right }: {
-  left: TransitionNamespaceMetadata;
-  right: TransitionNamespaceMetadata;
+  left: BoundedNamespaceMetadata;
+  right: BoundedNamespaceMetadata;
 }): boolean {
   return left.createdAt === right.createdAt && left.modifiedAt === right.modifiedAt;
 }
 
-function metadataFromTimestamps({ value }: { value: InodeTimestamps }): TransitionNamespaceMetadata {
+function metadataFromTimestamps({ value }: { value: InodeTimestamps }): BoundedNamespaceMetadata {
   return {
     createdAt: value.createdAt === null ? undefined : BigInt(value.createdAt),
     modifiedAt: value.modifiedAt === null ? undefined : BigInt(value.modifiedAt),
@@ -65,7 +65,7 @@ function metadataFromTimestamps({ value }: { value: InodeTimestamps }): Transiti
 
 function rootMetadataFromCheckpoint({ checkpoint }: {
   checkpoint: StreamingNamespaceImportCheckpoint;
-}): TransitionNamespaceMetadata {
+}): BoundedNamespaceMetadata {
   const root = checkpoint.directories[0];
   if (root === undefined || root.path.length !== 0) {
     throw new TypeError("transition import checkpoint lost its root directory metadata");
@@ -82,12 +82,12 @@ function rootMetadataFromCheckpoint({ checkpoint }: {
 export class StreamingNamespaceImportTargetSession {
   private readonly beforeCandidateStage: (() => Promise<void>) | undefined;
   private readonly createImport: ({ rootMetadata }: {
-    rootMetadata: TransitionNamespaceMetadata;
+    rootMetadata: BoundedNamespaceMetadata;
   }) => StreamingNamespaceImportActor;
   private readonly operationIdentity: string;
   private readonly runtimeStatePort: StreamingNamespaceImportRuntimeStatePort;
   private actor: StreamingNamespaceImportActor | undefined;
-  private rootMetadata: TransitionNamespaceMetadata | undefined;
+  private rootMetadata: BoundedNamespaceMetadata | undefined;
   private sealed: SealedStreamingNamespaceImport | undefined;
   private state: StreamingNamespaceImportTargetSessionState;
 
@@ -95,10 +95,10 @@ export class StreamingNamespaceImportTargetSession {
     actor: StreamingNamespaceImportActor | undefined;
     beforeCandidateStage: (() => Promise<void>) | undefined;
     createImport: ({ rootMetadata }: {
-      rootMetadata: TransitionNamespaceMetadata;
+      rootMetadata: BoundedNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
     operationIdentity: string;
-    rootMetadata: TransitionNamespaceMetadata | undefined;
+    rootMetadata: BoundedNamespaceMetadata | undefined;
     runtimeStatePort: StreamingNamespaceImportRuntimeStatePort;
     sealed: SealedStreamingNamespaceImport | undefined;
   }) {
@@ -115,7 +115,7 @@ export class StreamingNamespaceImportTargetSession {
   static async open({ beforeCandidateStage, createImport, operationIdentity, restoreImport, runtimeStatePort }: {
     beforeCandidateStage?: () => Promise<void>;
     createImport: ({ rootMetadata }: {
-      rootMetadata: TransitionNamespaceMetadata;
+      rootMetadata: BoundedNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
     operationIdentity: string;
     restoreImport: ({ checkpoint }: {
@@ -187,7 +187,7 @@ export class StreamingNamespaceImportTargetSession {
     }
   }
 
-  readonly target: TransitionNamespaceTargetPort = {
+  readonly target: BoundedNamespaceTargetPort = {
     setRootMetadata: async ({ metadata }) => {
       switch (this.state) {
       case "awaiting_root": {
@@ -357,7 +357,7 @@ export class StreamingNamespaceImportTargetSession {
 }
 
 function timestamps({ metadata }: {
-  metadata: TransitionNamespaceMetadata;
+  metadata: BoundedNamespaceMetadata;
 }): InodeTimestamps {
   return {
     createdAt: metadata.createdAt === undefined ? null : createTimestampMilliseconds({ value: metadata.createdAt }),

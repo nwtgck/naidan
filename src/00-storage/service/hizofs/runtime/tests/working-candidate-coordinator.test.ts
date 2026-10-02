@@ -177,10 +177,9 @@ describe("working candidate coordinator", () => {
     expect(releaseSecondCandidate).toHaveBeenCalledOnce();
   });
 
-  it("poisons the coordinator without rolling back the new candidate when replaced-root release fails", () => {
+  it.each([new Error("replaced candidate root release failed"), undefined])("poisons the coordinator without rolling back the new candidate when replaced-root release fails: %s", (failure) => {
     const releases: number[] = [];
     let registrationIndex = 0;
-    const failure = new Error("replaced candidate root release failed");
     const value = new WorkingCandidateCoordinator({
       acquireWorkingGenerationDependencyRoot: ({ commitReference }) => {
         const index = registrationIndex;
@@ -270,7 +269,7 @@ describe("working candidate coordinator", () => {
     expect(value.publicationState()).toBe("installed");
   });
 
-  it("retains an outcome-unknown candidate root and poisons later admissions", () => {
+  it.each([new Error("publication outcome unknown"), undefined])("retains an outcome-unknown candidate root and poisons later admissions: %s", (cause) => {
     const { releases, value } = coordinator();
     const { candidateDurable, durable, successor } = identities();
     const admission = value.openAdmission({
@@ -283,7 +282,6 @@ describe("working candidate coordinator", () => {
       releaseCandidate: () => undefined,
       workingIdentity: successor,
     });
-    const cause = new Error("publication outcome unknown");
     admission.retainOutcomeUnknown({ cause });
 
     expect(value.publicationState()).toBe("outcome_unknown");

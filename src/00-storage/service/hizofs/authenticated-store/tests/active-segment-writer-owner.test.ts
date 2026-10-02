@@ -17,9 +17,9 @@ import {
   encodedHizoFSRecord,
   type AuthenticatedSegmentWriter,
 } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
-import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
+import { DeterministicPhysicalStoreFaultInjector, InjectedPhysicalStoreFault } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 class CountingInMemoryBackend
   extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
@@ -226,6 +226,97 @@ describe("authenticated active Segment writer owner", () => {
     }
   });
 
+  it.each(["initial", "rollover"] as const)("awaits every close caller after a failed %s append", async (attempt) => {
+    const injector = new DeterministicPhysicalStoreFaultInjector({
+      schedule: [{ occurrence: attempt === "rollover" ? 5 : 2, operation: "writeAt", timing: "after" }],
+    });
+    const value = fixture({ faultInjector: injector });
+    const allowClose = Promise.withResolvers<void>();
+    const closeStarted = Promise.withResolvers<void>();
+    const originalClose = value.backend.closeFile.bind(value.backend);
+    let closeCalls = 0;
+    value.backend.closeFile = async (input) => {
+      closeCalls += 1;
+      if (closeCalls === (attempt === "rollover" ? 5 : 2)) {
+        closeStarted.resolve();
+        await allowClose.promise;
+      }
+      await originalClose(input);
+    };
+    const payload = encodedHizoFSRecord({
+      plaintext: new Uint8Array(64 * 1024),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+    });
+    try {
+      const lease = value.owner.acquire();
+      if (attempt === "rollover") {
+        await lease.append({ append: ({ writer }) => writer.append({ records: Array.from({ length: 63 }, () => payload) }) });
+      }
+      let attempts = 0;
+      await expect(lease.append({ append: ({ writer }) => {
+        attempts += 1;
+        return writer.append({ records: [payload] });
+      } })).rejects.toThrow("injected");
+      expect(attempts).toBe(attempt === "rollover" ? 2 : 1);
+      lease.release({ disposition: "discard" });
+      await closeStarted.promise;
+
+      const settled: number[] = [];
+      const firstClose = value.owner.close().then(() => {
+        settled.push(1);
+      });
+      const secondClose = value.owner.close().then(() => {
+        settled.push(2);
+      });
+      expect(value.owner.state()).toBe("closed");
+      expect(() => value.owner.acquire()).toThrow("owner is closed");
+      // Drain promise continuations, not elapsed time; the physical close is gated.
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      const settledBeforePhysicalClose = [...settled];
+      expect(value.backend.openHandleCount()).toBe(1);
+      allowClose.resolve();
+      await Promise.all([firstClose, secondClose]);
+      expect(settledBeforePhysicalClose).toEqual([]);
+      expect(settled).toEqual([1, 2]);
+      await value.owner.close();
+      injector.assertExhausted();
+      expect(value.backend.openHandleCount()).toBe(0);
+    } finally {
+      allowClose.resolve();
+      value.rootKey.destroy();
+    }
+  });
+
+  it("retains rollover retry cleanup failure for every close caller", async () => {
+    const injector = new DeterministicPhysicalStoreFaultInjector({ schedule: [
+      { occurrence: 5, operation: "writeAt", timing: "after" },
+      { occurrence: 5, operation: "closeFile", timing: "before" },
+      { occurrence: 6, operation: "closeFile", timing: "before" },
+    ] });
+    const value = fixture({ faultInjector: injector });
+    try {
+      const payload = encodedHizoFSRecord({
+        plaintext: new Uint8Array(64 * 1024),
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+      });
+      const lease = value.owner.acquire();
+      await lease.append({ append: ({ writer }) => writer.append({ records: Array.from({ length: 63 }, () => payload) }) });
+      await expect(lease.append({ append: ({ writer }) => writer.append({ records: [payload] }) })).rejects.toThrow("injected");
+      lease.release({ disposition: "discard" });
+      const outcomes = await Promise.allSettled([value.owner.close(), value.owner.close()]);
+      expect(outcomes[0]?.status).toBe("rejected");
+      expect(outcomes[1]).toEqual(outcomes[0]);
+      const firstOutcome = outcomes[0];
+      if (firstOutcome?.status !== "rejected") throw new Error("close failure was not retained");
+      expect(firstOutcome.reason).toBeInstanceOf(AggregateError);
+      await expect(value.owner.close()).rejects.toBe(firstOutcome.reason);
+      injector.assertExhausted();
+      expect(value.backend.openHandleCount()).toBe(1);
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
   it("does not close while a mutation lease is active", async () => {
     const value = fixture();
     try {
@@ -234,6 +325,93 @@ describe("authenticated active Segment writer owner", () => {
       lease.release({ disposition: "discard" });
       await value.owner.close();
       expect(value.owner.state()).toBe("closed");
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
+  it.each([false, true])("settles an empty writer's retained handle when cleanup fails=%s", async (cleanupFails) => {
+    const injector = new DeterministicPhysicalStoreFaultInjector({ schedule: [
+      { occurrence: 1, operation: "getOpenFileSize", timing: "before" },
+      ...(cleanupFails ? [
+        { occurrence: 2, operation: "closeFile" as const, timing: "before" as const },
+        { occurrence: 3, operation: "closeFile" as const, timing: "before" as const },
+      ] : []),
+    ] });
+    const value = fixture({ faultInjector: injector });
+    const closeStarted = Promise.withResolvers<void>();
+    const allowClose = Promise.withResolvers<void>();
+    const originalClose = value.backend.closeFile.bind(value.backend);
+    let closeCalls = 0;
+    value.backend.closeFile = async (input) => {
+      closeCalls += 1;
+      if (closeCalls === 2) {
+        closeStarted.resolve();
+        await allowClose.promise;
+      }
+      await originalClose(input);
+    };
+    try {
+      const lease = value.owner.acquire();
+      let observedWriter: AuthenticatedSegmentWriter | undefined;
+      await expect(lease.append({ append: async ({ writer }) => {
+        observedWriter = writer;
+        return await writer.append({ records: [record({ value: 1 })] });
+      } })).rejects.toThrow("injected");
+      expect(observedWriter?.state).toBe("active");
+      expect(observedWriter?.hasRecords()).toBe(false);
+      expect(value.backend.openHandleCount()).toBe(1);
+      lease.release({ disposition: "reuse" });
+
+      const settled: number[] = [];
+      const close = ({ index }: { index: number }) => value.owner.close().then(
+        () => {
+          settled.push(index);
+          return { status: "fulfilled" as const };
+        },
+        (reason: unknown) => {
+          settled.push(index);
+          return { status: "rejected" as const, reason };
+        },
+      );
+      const firstClose = close({ index: 1 });
+      const secondClose = close({ index: 2 });
+      await closeStarted.promise;
+      for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+      const settledBeforePhysicalClose = [...settled];
+      allowClose.resolve();
+      const first = await firstClose;
+      const second = await secondClose;
+      expect(settledBeforePhysicalClose).toEqual([]);
+      expect(first.status).toBe(cleanupFails ? "rejected" : "fulfilled");
+      expect(second).toEqual(first);
+      if (first.status === "rejected") {
+        expect(first.reason).toBeInstanceOf(AggregateError);
+        await expect(value.owner.close()).rejects.toBe(first.reason);
+      } else {
+        await value.owner.close();
+      }
+      injector.assertExhausted();
+      expect(value.backend.openHandleCount()).toBe(cleanupFails ? 1 : 0);
+    } finally {
+      allowClose.resolve();
+      value.rootKey.destroy();
+    }
+  });
+
+  it("closes an empty writer without opening an append handle", async () => {
+    const value = fixture();
+    try {
+      const lease = value.owner.acquire();
+      await lease.append({ append: async ({ writer }) => {
+        expect(writer.hasRecords()).toBe(false);
+      } });
+      lease.release({ disposition: "reuse" });
+      expect(value.backend.closeFileOperations).toBe(1);
+      await value.owner.close();
+      expect(value.backend.openFileForUpdateOperations).toBe(0);
+      expect(value.backend.closeFileOperations).toBe(1);
+      expect(value.backend.openHandleCount()).toBe(0);
     } finally {
       value.rootKey.destroy();
     }
@@ -261,25 +439,42 @@ describe("authenticated active Segment writer owner", () => {
     }
   });
 
-  it("fails closed when retained-handle cleanup is outcome-unknown", async () => {
+  it.each([
+    new InjectedPhysicalStoreFault({ occurrence: 2, operation: "closeFile", timing: "after" }),
+    undefined,
+  ])("fails closed when retained-handle cleanup is outcome-unknown (%s)", async failure => {
     const injector = new DeterministicPhysicalStoreFaultInjector({
       schedule: [{ occurrence: 2, operation: "closeFile", timing: "after" }],
     });
     const value = fixture({ faultInjector: injector });
+    const originalClose = value.backend.closeFile.bind(value.backend);
+    const close = vi.spyOn(value.backend, "closeFile").mockImplementation(async input => {
+      try {
+        await originalClose(input);
+      } catch (cause: unknown) {
+        if (cause instanceof InjectedPhysicalStoreFault
+          && cause.operation === "closeFile" && cause.timing === "after" && cause.occurrence === 2) {
+          throw failure;
+        }
+        throw cause;
+      }
+    });
     try {
       const firstLease = value.owner.acquire();
       await appendOne({ lease: firstLease, value: 1 });
       firstLease.release({ disposition: "discard" });
 
       const secondLease = value.owner.acquire();
-      await expect(appendOne({ lease: secondLease, value: 2 })).rejects.toThrow("injected");
-      await expect(appendOne({ lease: secondLease, value: 3 })).rejects.toThrow("injected");
+      await expect(appendOne({ lease: secondLease, value: 2 }).then(() => undefined)).rejects.toBe(failure);
+      await expect(appendOne({ lease: secondLease, value: 3 }).then(() => undefined)).rejects.toBe(failure);
       secondLease.release({ disposition: "discard" });
-      await expect(value.owner.close()).rejects.toThrow("injected");
-      await expect(value.owner.close()).rejects.toThrow("injected");
+      await expect(value.owner.close()).rejects.toBe(failure);
+      await expect(value.owner.close()).rejects.toBe(failure);
       injector.assertExhausted();
+      expect(value.backend.closeFileOperations).toBe(3);
       expect(value.backend.openHandleCount()).toBe(0);
     } finally {
+      close.mockRestore();
       value.rootKey.destroy();
     }
   });

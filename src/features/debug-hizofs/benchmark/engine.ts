@@ -50,7 +50,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 111 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 112 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -136,7 +136,7 @@ type CaseSample = {
   readonly label: string;
   readonly parameters: Readonly<Record<string, string | number | boolean>>;
   readonly backend: BackendKind;
-  readonly sample: HizoFSBenchmarkSample;
+  readonly sample: Omit<HizoFSBenchmarkSample, 'parameters'>;
 };
 
 type ProgressCallback = ({ progress }: { progress: HizoFSBenchmarkProgress }) => void;
@@ -197,6 +197,10 @@ async function runHizoFSBenchmarkWithLockHeld({
   const samples: CaseSample[] = [];
   const lifecycleEvents: HizoFSBenchmarkLifecycleEvent[] = [];
   const executionOrder: HizoFSBenchmarkReport['executionOrder'] = [];
+  let policyApplication: HizoFSBenchmarkRuntime['policyApplication'] = {
+    type: 'unavailable',
+    reason: 'no HizoFS runtime policy was reported',
+  };
   let failure: HizoFSBenchmarkReport['failure'];
   let status: HizoFSBenchmarkReport['status'] = 'completed';
   let currentWorkload: HizoFSBenchmarkWorkload | undefined;
@@ -240,8 +244,10 @@ async function runHizoFSBenchmarkWithLockHeld({
         hizoFSPolicy,
         runtimePort,
       });
+      policyApplication = sharedContexts.get('hizofs')?.hizoFSRuntime?.policyApplication
+        ?? policyApplication;
     }
-    let benchmarkOperationFailure: unknown;
+    let benchmarkOperationFailure: { cause: unknown } | undefined;
     try {
       for (let iteration = 0; iteration < totalIterations; iteration += 1) {
         assertActive();
@@ -278,7 +284,12 @@ async function runHizoFSBenchmarkWithLockHeld({
           })
           : sharedContexts;
         if (contexts === undefined) throw new Error('Benchmark contexts are unavailable');
+        // All contexts use the same request; only a created runtime can report
+        // which production options it actually passed to the storage owner.
+        policyApplication = contexts.get('hizofs')?.hizoFSRuntime?.policyApplication
+          ?? policyApplication;
 
+        let iterationFailure: { cause: unknown } | undefined;
         try {
           for (const workload of configuration.workloads) {
             currentWorkload = workload;
@@ -312,11 +323,23 @@ async function runHizoFSBenchmarkWithLockHeld({
               reportProgress({ message: `Completed ${workload} on ${backend}` });
             }
           }
-        } finally {
-          if (freshPerIteration) {
+        } catch (cause: unknown) {
+          iterationFailure = { cause };
+        }
+        if (freshPerIteration) {
+          try {
             await closeBenchmarkContexts({ contexts });
+          } catch (cause: unknown) {
+            if (iterationFailure !== undefined) {
+              throw new AggregateError(
+                [iterationFailure.cause, cause],
+                'benchmark operation and context close both failed',
+              );
+            }
+            throw cause;
           }
         }
+        if (iterationFailure !== undefined) throw iterationFailure.cause;
 
         if (
           !freshPerIteration
@@ -334,26 +357,26 @@ async function runHizoFSBenchmarkWithLockHeld({
         }
       }
     } catch (cause: unknown) {
-      benchmarkOperationFailure = cause;
+      benchmarkOperationFailure = { cause };
     }
-    let benchmarkCloseFailure: unknown;
+    let benchmarkCloseFailure: { cause: unknown } | undefined;
     if (sharedContexts !== undefined) {
       try {
         await closeBenchmarkContexts({ contexts: sharedContexts });
       } catch (cause: unknown) {
-        benchmarkCloseFailure = cause;
+        benchmarkCloseFailure = { cause };
       }
     }
     if (benchmarkOperationFailure !== undefined) {
       if (benchmarkCloseFailure !== undefined) {
         throw new AggregateError(
-          [benchmarkOperationFailure, benchmarkCloseFailure],
+          [benchmarkOperationFailure.cause, benchmarkCloseFailure.cause],
           'benchmark operation and context close both failed',
         );
       }
-      throw benchmarkOperationFailure;
+      throw benchmarkOperationFailure.cause;
     }
-    if (benchmarkCloseFailure !== undefined) throw benchmarkCloseFailure;
+    if (benchmarkCloseFailure !== undefined) throw benchmarkCloseFailure.cause;
   } catch (error) {
     status = isAbortError({ error }) ? 'cancelled' : 'failed';
     failure = {
@@ -382,7 +405,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 37,
+    schemaVersion: 38,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -415,20 +438,10 @@ async function runHizoFSBenchmarkWithLockHeld({
       backingStorePathAttributionScope: 'canonical_container_path_kind',
       backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
       physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
+      caseParameterScope: 'common_to_recorded_measured_samples',
+      sampleParameterScope: 'each_recorded_iteration_including_warmup',
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
-        maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
-        fileChunkWriteConcurrencyPerWriter:
-          hizoFSPolicy.fileChunkWriteConcurrency,
-        fileChunkReadPrefetchConcurrencyPerReader:
-          hizoFSPolicy.fileChunkReadPrefetchConcurrency,
-        backingFileHandleCacheEntryLimitPerRuntime:
-          hizoFSPolicy.backingFileHandleCacheEntryLimit,
-        backingFileSnapshotCacheEntryLimitPerRuntime:
-          hizoFSPolicy.backingFileSnapshotCacheEntryLimit,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter:
-          hizoFSPolicy.fileChunkSize
-          * hizoFSPolicy.fileChunkWriteConcurrency,
+        application: policyApplication,
         fileDataAppendBatchFrameByteLimitPerWriter:
           HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingFrameBytes,
         fileDataAppendBatchPlaintextByteLimitPerWriter:
@@ -439,26 +452,6 @@ async function runHizoFSBenchmarkWithLockHeld({
           DEFAULT_FILE_CONTENT_MUTATION_LIMITS.maximumExtentMutationsPerBatch,
         fileExtentTailAppendBatchPlaintextByteLimitPerWriter:
           HIZOFS_FILE_EXTENT_TAIL_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingPlaintextBytes,
-        maximumPlaintextChunkReadBytesInFlightPerReader:
-          hizoFSPolicy.fileChunkSize
-          * hizoFSPolicy.fileChunkReadPrefetchConcurrency,
-        metadataObjectCacheByteLimitPerRuntime:
-          hizoFSPolicy.metadataObjectCacheByteLimit,
-        metadataObjectCacheEntryLimitPerRuntime:
-          hizoFSPolicy.metadataObjectCacheEntryLimit,
-        decodedInodeIndexPageCacheEntryLimitPerRuntime:
-          hizoFSPolicy.decodedInodeIndexPageCacheEntryLimit,
-        inodeIndexLeafEntryLimitPerRuntime:
-          hizoFSPolicy.inodeIndexLeafEntryLimit,
-        directoryIndexLeafEntryLimitPerRuntime:
-          hizoFSPolicy.directoryIndexLeafEntryLimit,
-        fileExtentIndexLeafEntryLimitPerRuntime:
-          hizoFSPolicy.fileExtentIndexLeafEntryLimit,
-        fileChunkCacheByteLimitPerRuntime:
-          hizoFSPolicy.fileChunkCacheByteLimit,
-        fileChunkCacheEntryLimitPerRuntime:
-          hizoFSPolicy.fileChunkCacheEntryLimit,
-        fileChunkCacheAdmission: hizoFSPolicy.fileChunkCacheAdmission,
       },
     },
     configuration,
@@ -786,15 +779,15 @@ async function closeBenchmarkContexts({
 }: {
   contexts: ReadonlyMap<BackendKind, BenchmarkContext>;
 }): Promise<void> {
-  let firstError: unknown;
+  let firstError: { cause: unknown } | undefined;
   for (const context of contexts.values()) {
     try {
       await closeBenchmarkContext({ context });
     } catch (error) {
-      firstError ??= error;
+      firstError ??= { cause: error };
     }
   }
-  if (firstError !== undefined) throw firstError;
+  if (firstError !== undefined) throw firstError.cause;
 }
 
 async function closeBenchmarkContext({
@@ -1245,12 +1238,6 @@ async function runRandomAccessWorkload({
     operationCount: configuration.randomAccess.operationCount,
     blockSizeBytes: configuration.randomAccess.blockSizeBytes,
     uniqueBlockPositions: new Set(positions).size,
-    hizoFSChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
-    uniqueHizoFSChunks: new Set(
-      positions.map(position => Math.floor(
-        position / configuration.hizoFSRuntimePolicy.fileChunkSize,
-      )),
-    ).size,
   };
   const samples: CaseSample[] = [];
 
@@ -2295,7 +2282,6 @@ function aggregateSamples({
     workload: HizoFSBenchmarkWorkload;
     caseId: string;
     label: string;
-    parameters: Readonly<Record<string, string | number | boolean>>;
     rawOpfs: HizoFSBenchmarkSample[];
     hizofs: HizoFSBenchmarkSample[];
   }>();
@@ -2307,7 +2293,6 @@ function aggregateSamples({
         workload: sample.workload,
         caseId: sample.caseId,
         label: sample.label,
-        parameters: sample.parameters,
         rawOpfs: [],
         hizofs: [],
       };
@@ -2315,10 +2300,10 @@ function aggregateSamples({
     }
     switch (sample.backend) {
     case 'raw_opfs':
-      entry.rawOpfs.push(sample.sample);
+      entry.rawOpfs.push({ ...sample.sample, parameters: sample.parameters });
       break;
     case 'hizofs':
-      entry.hizofs.push(sample.sample);
+      entry.hizofs.push({ ...sample.sample, parameters: sample.parameters });
       break;
     default: {
       const _ex: never = sample.backend;
@@ -2330,13 +2315,25 @@ function aggregateSamples({
   return [...cases.values()].map(entry => {
     const rawOpfs = summarizeBackendSamples({ samples: entry.rawOpfs });
     const hizofs = summarizeBackendSamples({ samples: entry.hizofs });
+    const rawOpfsMeasured = entry.rawOpfs.filter(sample => sample.includedInAggregates);
+    const hizofsMeasured = entry.hizofs.filter(sample => sample.includedInAggregates);
+    const rawOpfsIterations = rawOpfsMeasured.map(sample => sample.iteration).sort((left, right) => left - right);
+    const hizofsIterations = hizofsMeasured.map(sample => sample.iteration).sort((left, right) => left - right);
+    const hasMatchingMeasuredIterations = rawOpfsIterations.length === hizofsIterations.length
+      && rawOpfsIterations.every((iteration, index) => iteration === hizofsIterations[index]);
+    const measured = [...rawOpfsMeasured, ...hizofsMeasured];
+    const parameters = Object.fromEntries(
+      Object.entries(measured[0]?.parameters ?? {}).filter(([key, value]) => (
+        measured.every(sample => sample.parameters[key] === value)
+      )),
+    );
     return {
       workload: entry.workload,
       caseId: entry.caseId,
       label: entry.label,
-      parameters: entry.parameters,
+      parameters,
       backends: { rawOpfs, hizofs },
-      comparison: rawOpfs === undefined || hizofs === undefined
+      comparison: !hasMatchingMeasuredIterations || rawOpfs?.durationMs === undefined || hizofs?.durationMs === undefined
         ? undefined
         : {
           durationRatio: ratioOptional({
@@ -2363,7 +2360,6 @@ function summarizeBackendSamples({
 }): HizoFSBenchmarkCaseResult['backends']['rawOpfs'] {
   if (samples.length === 0) return undefined;
   const measured = samples.filter(sample => sample.includedInAggregates);
-  if (measured.length === 0) return undefined;
   const durations = measured.map(sample => sample.durationMs).sort((left, right) => left - right);
   const operationRates = measured
     .filter(sample => sample.operationCount > 0 && sample.durationMs > 0)
@@ -2373,7 +2369,7 @@ function summarizeBackendSamples({
     .map(sample => sample.bytesProcessed / (sample.durationMs / 1000));
   return {
     sampleCount: measured.length,
-    durationMs: {
+    durationMs: measured.length === 0 ? undefined : {
       median: median({ values: durations }),
       p95: percentile({ sortedValues: durations, percentile: 0.95 }),
       minimum: durations[0] ?? 0,

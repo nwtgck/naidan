@@ -74,6 +74,10 @@ export function createInMemoryBenchmarkRuntimePort(): InMemoryBenchmarkRuntimePo
         });
 
         const runtime: HizoFSBenchmarkRuntime = {
+          policyApplication: {
+            type: "unavailable",
+            reason: "in-memory test runtime does not apply production policy",
+          },
           get session() {
             return session;
           },
@@ -275,7 +279,9 @@ function createMutationPublishingWritable({ writable, recordMutation }: {
   readonly recordMutation: () => Promise<void>;
 }): StorageWritableFile {
   let completed = false;
+  const read = writable.read;
   return {
+    read: read?.bind(writable),
     write: ({ position, data }) => writable.write({ position, data }),
     truncate: ({ size }) => writable.truncate({ size }),
     async close() {

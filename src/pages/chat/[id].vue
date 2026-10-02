@@ -6,7 +6,7 @@ import CurrentChatPane from '@/components/CurrentChatPane.vue';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import {
   useInitialRouteRenderReadinessClaim,
-} from '@/logic/startup/initial-route-render-readiness';
+} from '@/composables/useInitialRouteRenderReadiness';
 import { lazyStrings } from '@/strings';
 
 const router = useRouter();

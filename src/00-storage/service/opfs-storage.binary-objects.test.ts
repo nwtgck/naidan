@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { MessageNode } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
+import { createBlobStorageBinaryObjectReadHandle, type StorageBinaryObjectReadHandle } from './binary-object-io';
+import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
+import { OpfsStorageSessionLock } from './opfs/opfs-storage-session-lock';
 
 // --- Reusable Mocks ---
 class MockFileSystemFileHandle {
@@ -89,6 +92,114 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     mockRoot.entries.clear();
     provider = new OPFSStorageProvider();
   });
+
+  it.each(['success', 'failure', 'undefined failure', 'synchronous failure'] as const)(
+    'shares binary close settlement and releases once after %s',
+    async (outcome) => {
+      await provider.init();
+      const finishClose = Promise.withResolvers<void>();
+      const closeFailure = outcome === 'undefined failure' ? undefined : new Error('reader close failed');
+      const readClosed = new Error('reader is closing');
+      const blobHandle = createBlobStorageBinaryObjectReadHandle({
+        blob: new Blob(['body']),
+        mimeType: 'text/plain',
+      });
+      let closing = false;
+      let wrapped: StorageBinaryObjectReadHandle | undefined;
+      let reentrantClose: Promise<void> | undefined;
+      const close = vi.fn(() => {
+        closing = true;
+        reentrantClose = wrapped!.close();
+        if (outcome === 'synchronous failure') throw closeFailure;
+        return finishClose.promise.then(() => {
+          if (outcome !== 'success') throw closeFailure;
+        });
+      });
+      const lower: StorageBinaryObjectReadHandle = {
+        ...blobHandle,
+        async read(args) {
+          if (closing) throw readClosed;
+          return await blobHandle.read(args);
+        },
+        stream(args) {
+          if (closing) throw readClosed;
+          return blobHandle.stream(args);
+        },
+        close,
+      };
+      const open = vi.spyOn(NaidanOpfsStorageBackend.prototype, 'openBinaryObject').mockResolvedValue(lower);
+      const originalAcquire = OpfsStorageSessionLock.prototype.acquireOperation;
+      let release = vi.fn<() => void>();
+      const acquire = vi.spyOn(OpfsStorageSessionLock.prototype, 'acquireOperation').mockImplementation(function (this: OpfsStorageSessionLock) {
+        release = vi.fn(originalAcquire.call(this));
+        return release;
+      });
+      const settlements: ({ status: 'fulfilled' } | { status: 'rejected'; reason: unknown })[] = [];
+      const observed: Promise<void>[] = [];
+      let suspended = false;
+      let suspend: Promise<void> | undefined;
+      try {
+        const opened = await provider.openBinaryObject({
+          binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-4466554400a1' }),
+        });
+        expect(opened).not.toBeNull();
+        wrapped = opened!;
+        const first = wrapped.close();
+        const second = wrapped.close();
+        expect(reentrantClose).toBeDefined();
+        for (const completion of [first, second, reentrantClose!]) {
+          observed.push(completion.then(
+            () => {
+              settlements.push({ status: 'fulfilled' });
+            },
+            (reason: unknown) => {
+              settlements.push({ status: 'rejected', reason });
+            },
+          ));
+        }
+        expect(close).toHaveBeenCalledOnce();
+        expect(() => wrapped!.stream({ start: 0, end: undefined, signal: undefined })).toThrow(readClosed);
+        await expect(wrapped.read({
+          buffer: new Uint8Array(1), offset: 0, length: 1, position: 0, signal: undefined,
+        })).rejects.toBe(readClosed);
+
+        suspend = provider.suspendStorageSession().then(() => {
+          suspended = true;
+        });
+        await Promise.resolve();
+        if (outcome !== 'synchronous failure') {
+          expect(settlements).toEqual([]);
+          expect(release).not.toHaveBeenCalled();
+          expect(suspended).toBe(false);
+        }
+        finishClose.resolve();
+        await Promise.all(observed);
+        await suspend;
+
+        const expected = outcome === 'success'
+          ? { status: 'fulfilled' }
+          : { status: 'rejected', reason: closeFailure };
+        expect(settlements).toEqual([expected, expected, expected]);
+        expect(close).toHaveBeenCalledOnce();
+        expect(release).toHaveBeenCalledOnce();
+        expect(suspended).toBe(true);
+        if (outcome === 'success') {
+          await expect(wrapped.close()).resolves.toBeUndefined();
+        } else {
+          await expect(wrapped.close()).rejects.toBe(closeFailure);
+        }
+        expect(close).toHaveBeenCalledOnce();
+        expect(release).toHaveBeenCalledOnce();
+      } finally {
+        finishClose.resolve();
+        await Promise.allSettled(observed);
+        await suspend;
+        acquire.mockRestore();
+        open.mockRestore();
+        await provider.dispose();
+      }
+    },
+  );
 
   it('should save a file with shard directory, atomic marker, and index entry', async () => {
     await provider.init();

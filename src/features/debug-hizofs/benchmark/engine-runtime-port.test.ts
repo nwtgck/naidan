@@ -316,29 +316,15 @@ describe('HizoFS benchmark engine', () => {
       backingStorePathAttributionScope: 'canonical_container_path_kind',
       backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
       physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
+      caseParameterScope: "common_to_recorded_measured_samples",
+      sampleParameterScope: "each_recorded_iteration_including_warmup",
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: 256 * 1024,
-        maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 2,
-        fileChunkReadPrefetchConcurrencyPerReader: 4,
-        backingFileHandleCacheEntryLimitPerRuntime: 1024,
-        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 512 * 1024,
+        application: { type: "unavailable", reason: "in-memory test runtime does not apply production policy" },
         fileDataAppendBatchFrameByteLimitPerWriter: 16 * 1024 * 1024 + 128 * (64 + 16 + 7),
         fileDataAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
         fileDataAppendBatchRecordLimitPerWriter: 128,
         fileExtentMutationBatchEntryLimitPerWriter: 64,
         fileExtentTailAppendBatchPlaintextByteLimitPerWriter: 16 * 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
-        metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
-        metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
-        inodeIndexLeafEntryLimitPerRuntime: 10,
-        directoryIndexLeafEntryLimitPerRuntime: 64,
-        fileExtentIndexLeafEntryLimitPerRuntime: 32,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
-        fileChunkCacheEntryLimitPerRuntime: 2048,
-        fileChunkCacheAdmission: 'read',
       },
     });
     expect(report.results.map(result => result.caseId)).toEqual([
@@ -575,6 +561,74 @@ describe('HizoFS benchmark engine', () => {
       errorName: 'AbortError',
     });
     expect(report.cleanup.completed).toBe(true);
+  });
+
+  it.each([
+    { lifecycle: 'reuse_without_gc', label: 'operation Error', operationFailure: { cause: new Error('operation failed') }, closeFailure: undefined, status: 'failed', errorName: 'Error', errorMessage: 'operation failed' },
+    { lifecycle: 'reuse_without_gc', label: 'operation undefined', operationFailure: { cause: undefined }, closeFailure: undefined, status: 'failed', errorName: 'UnknownError', errorMessage: 'undefined' },
+    { lifecycle: 'reuse_without_gc', label: 'close undefined', operationFailure: undefined, closeFailure: { cause: undefined }, status: 'failed', errorName: 'UnknownError', errorMessage: 'undefined' },
+    { lifecycle: 'reuse_without_gc', label: 'undefined and close Error', operationFailure: { cause: undefined }, closeFailure: { cause: new Error('close failed') }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: undefined; close failed' },
+    { lifecycle: 'fresh_per_iteration', label: 'success', operationFailure: undefined, closeFailure: undefined, status: 'completed', errorName: undefined, errorMessage: undefined },
+    { lifecycle: 'fresh_per_iteration', label: 'operation Error', operationFailure: { cause: new Error('operation failed') }, closeFailure: undefined, status: 'failed', errorName: 'Error', errorMessage: 'operation failed' },
+    { lifecycle: 'fresh_per_iteration', label: 'operation AbortError', operationFailure: { cause: new DOMException('operation cancelled', 'AbortError') }, closeFailure: undefined, status: 'cancelled', errorName: 'AbortError', errorMessage: 'operation cancelled' },
+    { lifecycle: 'fresh_per_iteration', label: 'close Error', operationFailure: undefined, closeFailure: { cause: new Error('close failed') }, status: 'failed', errorName: 'Error', errorMessage: 'close failed' },
+    { lifecycle: 'fresh_per_iteration', label: 'close AbortError', operationFailure: undefined, closeFailure: { cause: new DOMException('close cancelled', 'AbortError') }, status: 'cancelled', errorName: 'AbortError', errorMessage: 'close cancelled' },
+    { lifecycle: 'fresh_per_iteration', label: 'Error and close Error', operationFailure: { cause: new Error('operation failed') }, closeFailure: { cause: new Error('close failed') }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: operation failed; close failed' },
+    { lifecycle: 'fresh_per_iteration', label: 'AbortError and close Error', operationFailure: { cause: new DOMException('operation cancelled', 'AbortError') }, closeFailure: { cause: new Error('close failed') }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: operation cancelled; close failed' },
+    { lifecycle: 'fresh_per_iteration', label: 'Error and close AbortError', operationFailure: { cause: new Error('operation failed') }, closeFailure: { cause: new DOMException('close cancelled', 'AbortError') }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: operation failed; close cancelled' },
+    { lifecycle: 'fresh_per_iteration', label: 'AbortError and close AbortError', operationFailure: { cause: new DOMException('operation cancelled', 'AbortError') }, closeFailure: { cause: new DOMException('close cancelled', 'AbortError') }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: operation cancelled; close cancelled' },
+    { lifecycle: 'fresh_per_iteration', label: 'undefined and close undefined', operationFailure: { cause: undefined }, closeFailure: { cause: undefined }, status: 'failed', errorName: 'AggregateError', errorMessage: 'benchmark operation and context close both failed: undefined; undefined' },
+  ] as const)('retains $lifecycle $label while closing the context exactly once', async ({ lifecycle, operationFailure, closeFailure, status, errorName, errorMessage }) => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createTinyConfiguration(), backendMode: 'hizofs_only', storeLifecycle: lifecycle,
+    };
+    const originalConfiguration = structuredClone(configuration);
+    const { port, observations } = createInMemoryBenchmarkRuntimePort();
+    let workloadStarted = false;
+    let closeAttempts = 0;
+    const report = await runHizoFSBenchmark({
+      configuration,
+      nativeOpfsRoot: root,
+      runtimePort: {
+        createRuntime: async request => {
+          const runtime = await port.createRuntime(request);
+          const close = runtime.close.bind(runtime);
+          runtime.close = async () => {
+            closeAttempts += 1;
+            await close();
+            if (closeFailure !== undefined) throw closeFailure.cause;
+          };
+          if (lifecycle === 'reuse_without_gc' && operationFailure !== undefined) {
+            runtime.settleAcceptedGeneration = async () => {
+              throw operationFailure.cause;
+            };
+          }
+          return runtime;
+        },
+      },
+      onProgress: ({ progress }) => {
+        if (progress.caseId === 'small_files_create_empty') workloadStarted = true;
+      },
+      assertActive: () => {
+        if (lifecycle === 'fresh_per_iteration' && workloadStarted && operationFailure !== undefined) {
+          throw operationFailure.cause;
+        }
+      },
+    });
+
+    expect(report.status).toBe(status);
+    if (errorName === undefined) expect(report.failure).toBeUndefined();
+    else expect(report.failure).toMatchObject({ errorName, errorMessage });
+    expect(closeAttempts).toBe(1);
+    expect(observations.closeCalls).toBe(1);
+    expect(observations.createRuntimeCalls).toBe(1);
+    expect(report.cleanup).toMatchObject({ attempted: true, completed: true });
+    expect(report.configuration).toEqual(originalConfiguration);
+    expect(configuration).toEqual(originalConfiguration);
+    expect(report.results).toHaveLength(operationFailure === undefined ? 4 : 0);
+    const benchmarkRoot = await root.getDirectoryHandle('naidan-debug-benchmark');
+    expect(await collectNames({ directory: benchmarkRoot })).toEqual([]);
   });
 
   it('creates fresh stores per iteration without carrying object growth forward', async () => {

@@ -116,8 +116,7 @@ export function prepareSubvolumeDeletePlan({
     });
   }
 
-  const visiting = new Set<SubvolumeId>();
-  const visited = new Set<SubvolumeId>();
+  // The locally validated tree only needs child-first ordering here.
   const rowsToRemove: NestedSubvolumeLeafEntry[] = [];
   const stack: Array<Readonly<{ entry: NestedSubvolumeLeafEntry; phase: "enter" | "exit" }>> = [
     { entry: authoritativeTarget, phase: "enter" },
@@ -127,24 +126,12 @@ export function prepareSubvolumeDeletePlan({
     if (frame === undefined) throw new Error("Subvolume deletion traversal stack became inconsistent");
     switch (frame.phase) {
     case "exit": {
-      visiting.delete(frame.entry.subvolumeId);
-      if (!visited.has(frame.entry.subvolumeId)) {
-        visited.add(frame.entry.subvolumeId);
-        rowsToRemove.push(frame.entry);
-      }
+      rowsToRemove.push(frame.entry);
       continue;
     }
     case "enter": break;
     default: frame.phase satisfies never;
     }
-    if (visiting.has(frame.entry.subvolumeId)) {
-      throw new SubvolumeDeletePlanError({
-        code: "topology_cycle",
-        message: "Subvolume deletion topology contains a reachable cycle",
-      });
-    }
-    if (visited.has(frame.entry.subvolumeId)) continue;
-    visiting.add(frame.entry.subvolumeId);
     stack.push({ entry: frame.entry, phase: "exit" });
     const children = topology.childrenOf({ parentSubvolumeId: frame.entry.subvolumeId });
     for (let index = children.length - 1; index >= 0; index -= 1) {

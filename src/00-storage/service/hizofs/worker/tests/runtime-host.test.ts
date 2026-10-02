@@ -7,6 +7,7 @@ import { createTestingWorkingCandidateIdentities } from "@/00-storage/service/hi
 import {
   createBrowserHizoFSWorkerRuntimeHost,
   HizoFSWorkerRuntimeHost,
+  type HizoFSReadObservationFactory,
   TEST_ONLY,
 } from "@/00-storage/service/hizofs/worker/runtime-host";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
@@ -98,7 +99,238 @@ function browserRequest(): LockManager["request"] {
   return request as LockManager["request"];
 }
 
+async function readObservationFixture({ captureStableReadNamespace, namespace }: {
+  captureStableReadNamespace: () => {
+    namespace: HizoFSApplicationSessionNamespace;
+    release: () => void;
+  };
+  namespace: HizoFSApplicationSessionNamespace;
+}) {
+  const releaseResources = vi.fn(async () => undefined);
+  const createReadSnapshotResources = vi.fn(() => {
+    throw new Error("normal snapshot must not open");
+  });
+  let openReadObservation: HizoFSReadObservationFactory | undefined;
+  const session = await host().openApplicationSession({
+    captureAuthority: async () => undefined,
+    createApplicationSessionResources: () => ({
+      ...minimalApplicationResources({ releaseResources }),
+      captureStableReadNamespace,
+      createReadSnapshotResources,
+      namespace,
+      readOnlyMutationPort: {} as HizoFSApplicationMutationPort,
+    }),
+    recheckAuthority: async () => undefined,
+    registerRuntimeSession: ({ openReadObservation: factory }) => {
+      openReadObservation = factory;
+    },
+    rootName: "scoped-root",
+    rootPath: ["scope"],
+    verifyCapturedAuthority: async () => undefined,
+  });
+  if (openReadObservation === undefined) throw new Error("read observation factory was not registered");
+  return { createReadSnapshotResources, openReadObservation, releaseResources, session };
+}
+
 describe("HizoFS worker runtime host", () => {
+  it.each([0, 1, 257])("keeps nonpublishing directory observation pages bounded for %i entries", async count => {
+    const entries = Array.from({ length: count }, (_, index) => ({
+      inodeKind: "file" as const,
+      inodeNumber: BigInt(index + 2) as never,
+      name: `file-${String(index).padStart(3, "0")}`,
+      targetType: "inode" as const,
+    }));
+    const list = vi.fn(async () => {
+      throw new Error("unbounded directory listing must not run");
+    });
+    const listAfterBounded = vi.fn<NonNullable<HizoFSApplicationSessionNamespace["listAfterBounded"]>>(
+      async ({ afterName, maximumEntries, pathComponents }) => {
+        expect(pathComponents).toEqual(["scope"]);
+        expect(maximumEntries).toBe(128);
+        const remaining = entries.filter(entry => afterName === undefined || entry.name > afterName);
+        return { entries: remaining.slice(0, maximumEntries), truncated: remaining.length > maximumEntries };
+      },
+    );
+    const namespace = { ...minimalApplicationResources().namespace, list, listAfterBounded };
+    const release = vi.fn();
+    const fixture = await readObservationFixture({
+      captureStableReadNamespace: () => ({ namespace, release }), namespace,
+    });
+    const observation = await fixture.openReadObservation({ capture: "per_operation" });
+    expect(observation.root.name).toBe("scoped-root");
+    const names: string[] = [];
+    for await (const [name] of observation.root.entries()) names.push(name);
+    expect(names).toEqual(entries.map(entry => entry.name));
+    expect(listAfterBounded).toHaveBeenCalledTimes(Math.max(1, Math.ceil(count / 128)));
+    expect(release).toHaveBeenCalledOnce();
+    expect(list).not.toHaveBeenCalled();
+    expect(fixture.createReadSnapshotResources).not.toHaveBeenCalled();
+    await observation.close();
+    await fixture.session.close();
+  });
+
+  it.each(["at_open", "per_operation"] as const)("preserves %s capture across iterator continuation and later reads", async capture => {
+    const generation = ({ names }: { names: readonly string[] }): HizoFSApplicationSessionNamespace => ({
+      ...minimalApplicationResources().namespace,
+      listAfterBounded: async ({ afterName, maximumEntries }) => {
+        const remaining = names.filter(name => afterName === undefined || name > afterName);
+        return {
+          entries: remaining.slice(0, maximumEntries).map(name => ({
+            inodeKind: "file", inodeNumber: 2n as never, name, targetType: "inode",
+          })),
+          truncated: remaining.length > maximumEntries,
+        };
+      },
+    });
+    let current = generation({ names: ["first", "second"] });
+    const releases: ReturnType<typeof vi.fn>[] = [];
+    const fixture = await readObservationFixture({
+      captureStableReadNamespace: () => {
+        const release = vi.fn();
+        releases.push(release);
+        return { namespace: current, release };
+      },
+      namespace: current,
+    });
+    const observation = await fixture.openReadObservation({ capture });
+    if (capture === "at_open") current = generation({ names: ["newer"] });
+    const iterator = observation.root.entries()[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.[0]).toBe("first");
+    current = generation({ names: ["newest"] });
+    expect((await iterator.next()).value?.[0]).toBe("second");
+    await iterator.return?.();
+    const nextNames: string[] = [];
+    for await (const [name] of observation.root.entries()) nextNames.push(name);
+    expect(nextNames).toEqual(capture === "at_open" ? ["first", "second"] : ["newest"]);
+    expect(fixture.createReadSnapshotResources).not.toHaveBeenCalled();
+    await observation.close();
+    expect(releases.every(release => release.mock.calls.length === 1)).toBe(true);
+    await expect(fixture.session.root.stat()).resolves.toBeDefined();
+    expect(fixture.releaseResources).not.toHaveBeenCalled();
+    await fixture.session.close();
+  });
+
+  it.each(["observation", "parent"] as const)("drains an admitted file read before %s close releases its capture", async closingOwner => {
+    const entered = Promise.withResolvers<void>();
+    const pendingRead = Promise.withResolvers<Uint8Array>();
+    const namespace: HizoFSApplicationSessionNamespace = {
+      ...minimalApplicationResources().namespace,
+      readFile: async () => {
+        entered.resolve();
+        return await pendingRead.promise;
+      },
+      stat: async () => ({
+        createdAt: null, fileSize: 1n as never, inodeNumber: 2n as never,
+        inodeRevision: 1n as never, kind: "file", modifiedAt: null,
+      }),
+    };
+    const release = vi.fn();
+    const fixture = await readObservationFixture({
+      captureStableReadNamespace: () => ({ namespace, release }), namespace,
+    });
+    const observation = await fixture.openReadObservation({ capture: "per_operation" });
+    const file = await observation.root.getFileHandle({ create: false, name: "file" });
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    const buffer = new Uint8Array(1);
+    const reading = readable.read({ buffer, length: 1, offset: 0, position: 0, signal: undefined });
+    await entered.promise;
+    let closed = false;
+    const closing = (closingOwner === "parent" ? fixture.session.close() : observation.close())
+      .then(() => {
+        closed = true;
+      });
+    await expect(observation.root.getFileHandle({ create: false, name: "later" })).rejects.toThrow();
+    expect(closed).toBe(false);
+    expect(release).not.toHaveBeenCalled();
+    expect(fixture.releaseResources).not.toHaveBeenCalled();
+    pendingRead.resolve(new Uint8Array([7]));
+    await expect(reading).resolves.toEqual({ bytesRead: 1 });
+    await closing;
+    expect(buffer).toEqual(new Uint8Array([7]));
+    expect(release).toHaveBeenCalledOnce();
+    await observation.close();
+    await readable.close();
+    expect(release).toHaveBeenCalledOnce();
+    if (closingOwner === "observation") expect(fixture.releaseResources).not.toHaveBeenCalled();
+    await fixture.session.close();
+    expect(fixture.releaseResources).toHaveBeenCalledOnce();
+  });
+
+  it("rejects observation reads as soon as the parent storage owner starts draining", async () => {
+    const entered = Promise.withResolvers<void>();
+    const pendingStat = Promise.withResolvers<void>();
+    const namespace: HizoFSApplicationSessionNamespace = {
+      ...minimalApplicationResources().namespace,
+      stat: async ({ pathComponents }) => {
+        if (pathComponents.at(-1) === "busy") {
+          entered.resolve();
+          await pendingStat.promise;
+        }
+        return {
+          createdAt: null, fileSize: 1n as never, inodeNumber: 2n as never,
+          inodeRevision: 1n as never, kind: "file", modifiedAt: null,
+        };
+      },
+    };
+    const release = vi.fn();
+    const fixture = await readObservationFixture({
+      captureStableReadNamespace: () => ({ namespace, release }), namespace,
+    });
+    const observation = await fixture.openReadObservation({ capture: "at_open" });
+    const parentRead = fixture.session.root.getFileHandle({ create: false, name: "busy" });
+    await entered.promise;
+    const closing = fixture.session.close();
+    try {
+      await expect(observation.root.getFileHandle({ create: false, name: "later" })).rejects.toThrow();
+      await expect(fixture.openReadObservation({ capture: "at_open" })).rejects.toThrow();
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      pendingStat.resolve();
+      await parentRead;
+      await closing;
+      await observation.close();
+    }
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the parent usable when read capture admission fails", async () => {
+    const namespace = minimalApplicationResources().namespace;
+    const failure = new Error("read dependency budget exhausted");
+    const release = vi.fn();
+    const captureStableReadNamespace = vi.fn()
+      .mockImplementationOnce(() => {
+        throw failure;
+      })
+      .mockImplementation(() => ({ namespace, release }));
+    const fixture = await readObservationFixture({ captureStableReadNamespace, namespace });
+    await expect(fixture.openReadObservation({ capture: "at_open" })).rejects.toBe(failure);
+    await expect(fixture.session.root.stat()).resolves.toBeDefined();
+    expect(fixture.releaseResources).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    const observation = await fixture.openReadObservation({ capture: "at_open" });
+    await observation.close();
+    expect(release).toHaveBeenCalledOnce();
+    await fixture.session.close();
+  });
+
+  it("rolls back a capture when parent close wins before the observation is returned", async () => {
+    const namespace = minimalApplicationResources().namespace;
+    const release = vi.fn();
+    let closeParent: () => Promise<void> = async () => undefined;
+    let closing: Promise<void> | undefined;
+    const fixture = await readObservationFixture({
+      captureStableReadNamespace: () => {
+        closing = closeParent();
+        return { namespace, release };
+      }, namespace,
+    });
+    closeParent = async () => await fixture.session.close();
+    await expect(fixture.openReadObservation({ capture: "at_open" })).rejects.toThrow();
+    await closing;
+    expect(release).toHaveBeenCalledOnce();
+    expect(fixture.releaseResources).toHaveBeenCalledOnce();
+  });
+
   it("owns an opened runtime session without importing lower storage owners", async () => {
     const releaseResources = vi.fn(async () => undefined);
     const value = host();
@@ -424,6 +656,9 @@ describe("HizoFS worker runtime host", () => {
       },
       async openWritable() {
         return {
+          async read() {
+            throw new Error("Unexpected staged read");
+          },
           async abort() {
             mutations.push("abort");
           },
@@ -491,6 +726,12 @@ describe("HizoFS worker runtime host", () => {
 
   it("pins one immutable generation for a read snapshot and releases it on snapshot close", async () => {
     const releaseResources = vi.fn(async () => undefined);
+    const list = vi.fn(async () => []);
+    type NamespaceInodeNumber = Awaited<ReturnType<HizoFSApplicationSessionNamespace["stat"]>>["inodeNumber"];
+    const listAfterBounded = vi.fn<NonNullable<HizoFSApplicationSessionNamespace["listAfterBounded"]>>(async () => ({
+      entries: [{ name: "entry", targetType: "inode", inodeKind: "file", inodeNumber: 2n as NamespaceInodeNumber }],
+      truncated: false,
+    }));
     const mutationPort = {} as HizoFSApplicationMutationPort;
     const value = host();
     const session = await value.openApplicationSession({
@@ -500,7 +741,8 @@ describe("HizoFS worker runtime host", () => {
           commitReference: createTestingHomeRecordReference(),
           mutationPort,
           namespace: {
-            list: async () => [],
+            list,
+            listAfterBounded,
             listBounded: async () => ({ entries: [], truncated: false }),
             readFile: async () => new Uint8Array([7]),
             readlink: async () => "snapshot-target",
@@ -538,6 +780,17 @@ describe("HizoFS worker runtime host", () => {
     const snapshot = await session.createReadSnapshot?.();
     expect(snapshot).toBeDefined();
     if (snapshot === undefined) throw new Error("read snapshot was not created");
+    await expect(snapshot.root.listEntriesPage!({ afterName: "before", maximumEntries: 2 }))
+      .resolves.toMatchObject({ entries: [["entry", { kind: "file" }]], truncated: false });
+    for await (const [name] of snapshot.root.entries()) {
+      expect(name).toBe("entry");
+      break;
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(listAfterBounded.mock.calls.map(([request]) => request)).toEqual([
+      { afterName: "before", maximumEntries: 2, pathComponents: [] },
+      { afterName: undefined, maximumEntries: 128, pathComponents: [] },
+    ]);
     const whilePinned = await value.beginMaintenanceRootCapture();
     expect(whilePinned.readerPinnedRoots).toHaveLength(1);
     whilePinned.release();

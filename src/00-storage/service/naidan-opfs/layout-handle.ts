@@ -43,7 +43,11 @@ export class NaidanOpfsLayoutFileHandle {
         if (isFileLike(blob) && blob.name === this.name) {
           return blob;
         }
-        return new File([await blob.arrayBuffer()], this.name, {
+        // Foreign Blob implementations may not be accepted as native File parts.
+        const part = typeof Blob === 'function' && blob instanceof Blob
+          ? blob
+          : await blob.arrayBuffer();
+        return new File([part], this.name, {
           type: blob.type,
           lastModified: stat.modifiedAt ?? Date.now(),
         });

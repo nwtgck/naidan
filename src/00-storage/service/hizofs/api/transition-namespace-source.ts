@@ -8,19 +8,19 @@ import type {
   ReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type {
-  TransitionNamespaceEntry,
-  TransitionNamespaceMetadata,
-  TransitionNamespaceSourcePort,
-} from "@/00-storage/service/naidan-persistence-control/transition/namespace-copy";
+  BoundedNamespaceEntry,
+  BoundedNamespaceMetadata,
+  BoundedNamespaceSourcePort,
+} from "@/00-storage/service/hizofs/filesystem/bulk/bounded-namespace-ports";
 
-function metadataFromStat({ stat }: { stat: ReadOnlyInodeStat }): TransitionNamespaceMetadata {
+function metadataFromStat({ stat }: { stat: ReadOnlyInodeStat }): BoundedNamespaceMetadata {
   return {
     createdAt: stat.createdAt === null ? undefined : BigInt(stat.createdAt),
     modifiedAt: stat.modifiedAt === null ? undefined : BigInt(stat.modifiedAt),
   };
 }
 
-function metadataFromInode({ inode }: { inode: InodeLeafEntry }): TransitionNamespaceMetadata {
+function metadataFromInode({ inode }: { inode: InodeLeafEntry }): BoundedNamespaceMetadata {
   return {
     createdAt: inode.timestamps.createdAt === null ? undefined : BigInt(inode.timestamps.createdAt),
     modifiedAt: inode.timestamps.modifiedAt === null ? undefined : BigInt(inode.timestamps.modifiedAt),
@@ -39,7 +39,7 @@ function requireDirectory({ inode }: { inode: InodeLeafEntry }): DirectoryInodeE
 async function projectEntry({ entry, resolver }: {
   entry: DirectoryLeafEntry;
   resolver: ReadOnlyNamespaceResolver;
-}): Promise<TransitionNamespaceEntry> {
+}): Promise<BoundedNamespaceEntry> {
   switch (entry.targetType) {
   case "subvolume": throw new TypeError("HizoFS transition source cannot flatten a nested Subvolume boundary");
   case "inode": break;
@@ -66,7 +66,7 @@ async function projectEntry({ entry, resolver }: {
  */
 export function createHizoFSTransitionNamespaceSource({ resolver }: {
   resolver: ReadOnlyNamespaceResolver;
-}): TransitionNamespaceSourcePort {
+}): BoundedNamespaceSourcePort {
   return {
     readRootMetadata: async () => metadataFromStat({ stat: await resolver.stat({ pathComponents: [] }) }),
     listDirectory: async ({ afterName, maximumEntries, path }) => {

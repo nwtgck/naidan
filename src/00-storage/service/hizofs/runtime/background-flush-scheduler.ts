@@ -43,7 +43,9 @@ export class HizoFSBackgroundFlushScheduler {
   private deferredTrigger: HizoFSBackgroundFlushTrigger | undefined;
   private deferredUntilForegroundIdle = false;
   private dirty = false;
+  private nextEpochDelivery: "after_current_flush" | "after_foreground_yield" | undefined;
   private readonly maximumDirtyAgeMilliseconds: number;
+  private readonly onDeferredDeliveryFailure: (({ cause }: { cause: unknown }) => void) | undefined;
   private readonly requestFlush: ({ trigger }: {
     trigger: HizoFSBackgroundFlushTrigger;
   }) => Promise<void>;
@@ -53,8 +55,9 @@ export class HizoFSBackgroundFlushScheduler {
   }> | undefined;
   private readonly timerPort: HizoFSBackgroundFlushTimerPort;
 
-  constructor({ maximumDirtyAgeMilliseconds, requestFlush, timerPort = DEFAULT_BACKGROUND_FLUSH_TIMER_PORT }: {
+  constructor({ maximumDirtyAgeMilliseconds, onDeferredDeliveryFailure, requestFlush, timerPort = DEFAULT_BACKGROUND_FLUSH_TIMER_PORT }: {
     maximumDirtyAgeMilliseconds: number;
+    onDeferredDeliveryFailure?: ({ cause }: { cause: unknown }) => void;
     requestFlush: ({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }) => Promise<void>;
     timerPort?: HizoFSBackgroundFlushTimerPort;
   }) {
@@ -62,6 +65,7 @@ export class HizoFSBackgroundFlushScheduler {
       throw new TypeError("maximum dirty age must be a positive safe integer");
     }
     this.maximumDirtyAgeMilliseconds = maximumDirtyAgeMilliseconds;
+    this.onDeferredDeliveryFailure = onDeferredDeliveryFailure;
     this.requestFlush = requestFlush;
     this.timerPort = timerPort;
   }
@@ -78,7 +82,30 @@ export class HizoFSBackgroundFlushScheduler {
     this.backgroundFlushInFlight = true;
     void this.requestFlush({ trigger }).catch(() => undefined).finally(() => {
       this.backgroundFlushInFlight = false;
-      this.scheduleDeferredIfReady();
+      const delivery = this.nextEpochDelivery;
+      this.nextEpochDelivery = undefined;
+      if (
+        delivery === "after_current_flush"
+        && this.deferredTrigger === "resource_pressure"
+        && this.dirty
+        && !this.automaticRetryBlocked
+        && !this.deferredUntilForegroundIdle
+      ) {
+        this.deferredTrigger = undefined;
+        this.startFlush({ trigger: "resource_pressure" });
+        return;
+      }
+      try {
+        this.scheduleDeferredIfReady();
+      } catch (cause: unknown) {
+        this.markStalled();
+        try {
+          this.onDeferredDeliveryFailure?.({ cause });
+        } catch {
+          // This fire-and-forget boundary owns termination, not retention of
+          // a secondary sink failure. The scheduler remains fail-stopped.
+        }
+      }
     });
   }
 
@@ -91,6 +118,10 @@ export class HizoFSBackgroundFlushScheduler {
         callback: () => {
           if (this.scheduled !== scheduled) return;
           this.scheduled = undefined;
+          if (this.backgroundFlushInFlight) {
+            this.deferTrigger({ trigger });
+            return;
+          }
           this.startFlush({ trigger });
         },
         delayMilliseconds,
@@ -131,6 +162,10 @@ export class HizoFSBackgroundFlushScheduler {
 
   deferAfterForegroundBusy({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }): void {
     if (!this.dirty || this.automaticRetryBlocked) return;
+    if (this.nextEpochDelivery !== undefined) {
+      this.nextEpochDelivery = "after_foreground_yield";
+      this.cancelScheduled();
+    }
     this.deferredUntilForegroundIdle = true;
     this.deferTrigger({ trigger });
   }
@@ -141,8 +176,22 @@ export class HizoFSBackgroundFlushScheduler {
   }
 
   markDirty({ resourcePressure }: { resourcePressure: boolean }): void {
+    const startsNewEpoch = !this.dirty;
     this.dirty = true;
-    if (this.automaticRetryBlocked || this.backgroundFlushInFlight) return;
+    if (this.automaticRetryBlocked) return;
+    if (this.backgroundFlushInFlight) {
+      // markDurable can precede the old request's final ownership cleanup.
+      // Keep the new epoch's deadline or pressure delivery across that window.
+      if (startsNewEpoch) this.nextEpochDelivery = "after_current_flush";
+      if (this.nextEpochDelivery === undefined) return;
+      if (resourcePressure) {
+        this.cancelScheduled();
+        this.deferTrigger({ trigger: "resource_pressure" });
+      } else if (this.scheduled === undefined && this.deferredTrigger === undefined) {
+        this.schedule({ delayMilliseconds: this.maximumDirtyAgeMilliseconds, trigger: "dirty_age" });
+      }
+      return;
+    }
     const scheduled = this.scheduled;
     if (resourcePressure) {
       this.cancelScheduled();
@@ -164,6 +213,7 @@ export class HizoFSBackgroundFlushScheduler {
 
   markDurable(): void {
     this.cancelScheduled();
+    this.nextEpochDelivery = undefined;
     this.deferredTrigger = undefined;
     this.deferredUntilForegroundIdle = false;
     this.automaticRetryBlocked = false;
@@ -172,6 +222,7 @@ export class HizoFSBackgroundFlushScheduler {
 
   markStalled(): void {
     this.cancelScheduled();
+    this.nextEpochDelivery = undefined;
     this.deferredTrigger = undefined;
     this.deferredUntilForegroundIdle = false;
     this.automaticRetryBlocked = true;
@@ -180,6 +231,7 @@ export class HizoFSBackgroundFlushScheduler {
 
   prepareExplicitFlush(): void {
     this.cancelScheduled();
+    this.nextEpochDelivery = undefined;
     this.deferredTrigger = undefined;
     this.deferredUntilForegroundIdle = false;
   }

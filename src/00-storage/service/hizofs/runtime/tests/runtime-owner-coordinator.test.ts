@@ -63,6 +63,59 @@ describe("runtime owner coordinator", () => {
     expect(coordinator.state()).toBe("idle");
   });
 
+  it("registers a concurrent attachment before the last existing attachment can release its lease", async () => {
+    const acquired = lease();
+    const acquireLease = vi.fn(async () => acquired.value);
+    const coordinator = new RuntimeOwnerCoordinator({
+      acquireLease,
+      isReleaseSafe: () => true,
+    });
+
+    const first = await coordinator.attach();
+    const secondPending = coordinator.attach();
+    // Let the new attachment observe the existing lease before closing its owner.
+    await Promise.resolve();
+    const firstRelease = first.release();
+    const second = await secondPending;
+    await firstRelease;
+
+    expect(coordinator.attachmentCount()).toBe(1);
+    expect(coordinator.state()).toBe("owned");
+    expect(acquired.value.release).not.toHaveBeenCalled();
+    expect(acquireLease).toHaveBeenCalledOnce();
+
+    await second.release();
+    expect(coordinator.attachmentCount()).toBe(0);
+    expect(acquired.value.release).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a shared non-blocking acquisition owned when its first attachment closes", async () => {
+    const acquired = lease();
+    const pending = Promise.withResolvers<CrossRealmRuntimeOwnerLease | undefined>();
+    const acquireLease = vi.fn(async () => acquired.value);
+    const coordinator = new RuntimeOwnerCoordinator({
+      acquireLease,
+      isReleaseSafe: () => true,
+      tryAcquireLease: async () => await pending.promise,
+    });
+
+    const firstPending = coordinator.tryAttach();
+    const secondPending = coordinator.attach();
+    pending.resolve(acquired.value);
+    const first = await firstPending;
+    expect(first).toBeDefined();
+    await first?.release();
+    const second = await secondPending;
+
+    expect(coordinator.attachmentCount()).toBe(1);
+    expect(coordinator.state()).toBe("owned");
+    expect(acquired.value.release).not.toHaveBeenCalled();
+    expect(acquireLease).not.toHaveBeenCalled();
+
+    await second.release();
+    expect(acquired.value.release).toHaveBeenCalledOnce();
+  });
+
   it("poisons future attachments when lease release fails", async () => {
     const releaseFailure = new Error("release failed");
     const value: CrossRealmRuntimeOwnerLease = {

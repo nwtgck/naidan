@@ -179,22 +179,22 @@ async function runWithCrossRealmLeaseCleanup<T>({ failureMessage, leases, operat
   leases: readonly CrossRealmLockLease[];
   operation: () => Promise<T>;
 }): Promise<T> {
-  let operationFailure: unknown;
+  let operationFailure: { cause: unknown } | undefined;
   let value: T | undefined;
   try {
     value = await operation();
   } catch (cause: unknown) {
-    operationFailure = cause;
+    operationFailure = { cause };
   }
   try {
     await releaseLeasesAndWait({ leases });
   } catch (cleanupFailure: unknown) {
     if (operationFailure !== undefined) {
-      throw new AggregateError([operationFailure, cleanupFailure], failureMessage);
+      throw new AggregateError([operationFailure.cause, cleanupFailure], failureMessage);
     }
     throw cleanupFailure;
   }
-  if (operationFailure !== undefined) throw operationFailure;
+  if (operationFailure !== undefined) throw operationFailure.cause;
   return value as T;
 }
 

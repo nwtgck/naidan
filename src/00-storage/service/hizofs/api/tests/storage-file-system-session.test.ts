@@ -5,6 +5,7 @@ import {
   type HizoFSApplicationSessionPort,
   type HizoFSApplicationStat,
 } from "@/00-storage/service/hizofs/api/storage-file-system-session";
+import * as fileWriteInput from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
 
 function key({ path }: { path: readonly string[] }): string {
   return path.join("/");
@@ -107,6 +108,11 @@ function createPort(): HizoFSApplicationSessionPort & {
     async openWritable(request) {
       calls.push(["openWritable", request]);
       return {
+        async read({ length, offset, signal }) {
+          signal?.throwIfAborted();
+          calls.push(["readWritable", { length, offset }]);
+          return bytes.slice(Number(offset), Number(offset + length));
+        },
         async abort({ reason }) {
           calls.push(["abortWritable", reason]);
         },
@@ -228,6 +234,128 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     expect(snapshotCloseCount).toBe(1);
   });
 
+  it("borrows an actual snapshot for pages and partial iteration without recapturing or closing it", async () => {
+    const snapshotPort = createPort();
+    const closeSnapshot = vi.spyOn(snapshotPort, "close");
+    const recapture = vi.spyOn(snapshotPort, "createReadSnapshot");
+    const fullList = vi.spyOn(snapshotPort, "listDirectory");
+    const listDirectoryPage = vi.fn<NonNullable<HizoFSApplicationSessionPort["listDirectoryPage"]>>(async ({ afterName, maximumEntries }) => {
+      const entries = [
+        { kind: "directory", name: "directory" },
+        { kind: "file", name: "file" },
+        { kind: "symlink", name: "link" },
+      ] as const;
+      const remaining = entries.filter(entry => afterName === undefined || entry.name > afterName);
+      return { entries: remaining.slice(0, maximumEntries), truncated: remaining.length > maximumEntries };
+    });
+    snapshotPort.listDirectoryPage = listDirectoryPage;
+    const livePort = createPort();
+    livePort.createReadSnapshot = async () => snapshotPort;
+    const session = createHizoFSStorageFileSystemSession({ port: livePort });
+    expect(session.root.listEntriesPage).toBeUndefined();
+    const snapshot = await session.createReadSnapshot!();
+    const page = await snapshot.root.listEntriesPage!({ afterName: undefined, maximumEntries: 2 });
+    expect(page.entries.map(([name]) => name)).toEqual(["directory", "file"]);
+    expect(page.truncated).toBe(true);
+    const partial = await snapshot.root.listEntriesPage!({ afterName: "directory", maximumEntries: 2 });
+    expect(partial.entries.map(([name]) => name)).toEqual(["file", "link"]);
+    for await (const [name] of snapshot.root.entries()) {
+      expect(name).toBe("directory");
+      break;
+    }
+    expect(closeSnapshot).not.toHaveBeenCalled();
+    expect(recapture).not.toHaveBeenCalled();
+    expect(fullList).not.toHaveBeenCalled();
+    await session.close();
+    await expect(snapshot.root.listEntriesPage!({ afterName: "file", maximumEntries: 1 }))
+      .resolves.toMatchObject({ entries: [["link", { kind: "symlink" }]], truncated: false });
+    await snapshot.close();
+    expect(closeSnapshot).toHaveBeenCalledOnce();
+    await expect(snapshot.root.listEntriesPage!({ afterName: undefined, maximumEntries: 1 })).rejects.toThrow("closed");
+  });
+
+  it("keeps an acquired unpaged snapshot for the stable full-list fallback", async () => {
+    const snapshotPort = createPort();
+    const snapshotList = vi.spyOn(snapshotPort, "listDirectory").mockResolvedValue([{ kind: "file", name: "file" }]);
+    const snapshotClose = vi.spyOn(snapshotPort, "close");
+    const livePort = createPort();
+    livePort.createReadSnapshot = async () => snapshotPort;
+    const liveList = vi.spyOn(livePort, "listDirectory");
+    const session = createHizoFSStorageFileSystemSession({ port: livePort });
+    const entries = [];
+    for await (const [name, handle] of session.root.entries()) entries.push([name, handle]);
+    expect(entries.map(([name]) => name)).toEqual(["file"]);
+    expect(snapshotList).toHaveBeenCalledOnce();
+    expect(snapshotClose).toHaveBeenCalledOnce();
+    expect(liveList).not.toHaveBeenCalled();
+    await session.close();
+    const file = entries[0]?.[1];
+    if (typeof file === "string" || file === undefined) throw new Error("expected file handle");
+    await expect(file.stat()).rejects.toThrow("closed");
+  });
+
+  it("does not infer a snapshot from a port without a snapshot factory", async () => {
+    const { createReadSnapshot: _createReadSnapshot, ...port } = createPort();
+    const listDirectoryPage = vi.fn(async () => ({ entries: [], truncated: false }));
+    const session = createHizoFSStorageFileSystemSession({ port: { ...port, listDirectoryPage } });
+    expect(session.root.listEntriesPage).toBeUndefined();
+    const names = [];
+    for await (const [name] of session.root.entries()) names.push(name);
+    expect(names).toEqual(["directory", "file", "link"]);
+    expect(listDirectoryPage).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it("keeps bounded borrowed iteration across the 128 entry boundary", async () => {
+    const names = Array.from({ length: 129 }, (_, index) => String(index).padStart(3, "0"));
+    const snapshotPort = createPort();
+    snapshotPort.listDirectoryPage = vi.fn(async ({ afterName, maximumEntries }) => {
+      const remaining = names.filter(name => afterName === undefined || name > afterName);
+      return { entries: remaining.slice(0, maximumEntries).map(name => ({ name, kind: "file" as const })), truncated: remaining.length > maximumEntries };
+    });
+    const close = vi.spyOn(snapshotPort, "close");
+    const live = createPort();
+    live.createReadSnapshot = async () => snapshotPort;
+    const session = createHizoFSStorageFileSystemSession({ port: live });
+    const snapshot = await session.createReadSnapshot!();
+    const received = [];
+    for await (const [name] of snapshot.root.entries()) received.push(name);
+    expect(received).toEqual(names);
+    expect(vi.mocked(snapshotPort.listDirectoryPage).mock.calls.map(([request]) => request)).toEqual([
+      { afterName: undefined, maximumEntries: 128, path: [] },
+      { afterName: "127", maximumEntries: 128, path: [] },
+    ]);
+    expect(close).not.toHaveBeenCalled();
+    await snapshot.close();
+    await session.close();
+  });
+
+  it("drains a borrowed page before close and refuses to return new handles after closing starts", async () => {
+    const started = deferred<void>();
+    const finish = deferred<void>();
+    const snapshotPort = createPort();
+    snapshotPort.listDirectoryPage = async () => {
+      started.resolve();
+      await finish.promise;
+      return { entries: [{ name: "file", kind: "file" }], truncated: false };
+    };
+    const close = vi.spyOn(snapshotPort, "close");
+    const live = createPort();
+    live.createReadSnapshot = async () => snapshotPort;
+    const session = createHizoFSStorageFileSystemSession({ port: live });
+    const snapshot = await session.createReadSnapshot!();
+    const read = snapshot.root.listEntriesPage!({ afterName: undefined, maximumEntries: 1 });
+    const rejected = expect(read).rejects.toThrow("closed");
+    await started.promise;
+    const closing = snapshot.close();
+    expect(close).not.toHaveBeenCalled();
+    finish.resolve();
+    await rejected;
+    await closing;
+    expect(close).toHaveBeenCalledOnce();
+    await session.close();
+  });
+
   it("returns existing entries for create-if-missing requests without mutating", async () => {
     const port = createPort();
     const session = createHizoFSStorageFileSystemSession({ port });
@@ -294,6 +422,95 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     await readable.close();
   });
 
+  it("releases every readable rejected by size conversion before returning the failure", async () => {
+    const port = createPort();
+    const openReadable = port.openReadable.bind(port);
+    port.openReadable = async request => ({
+      ...await openReadable(request),
+      size: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+    });
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(file.openReadable({ mimeType: "application/octet-stream" }))
+        .rejects.toThrow("cannot be represented as a safe non-negative number");
+      expect(port.calls.filter(([name]) => name === "closeReadable")).toHaveLength(attempt + 1);
+    }
+    port.openReadable = openReadable;
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    expect(readable.size).toBe(4);
+    await readable.close();
+    await session.close();
+    expect(port.calls.filter(([name]) => name === "closeReadable")).toHaveLength(4);
+  });
+
+  it.each(["success", "failure"] as const)("shares readable close completion across concurrent callers on %s", async outcome => {
+    const port = createPort();
+    const closeEntered = Promise.withResolvers<void>();
+    const closeCompletion = Promise.withResolvers<void>();
+    const failure = new Error("readable release failed");
+    const close = vi.fn(async () => {
+      closeEntered.resolve();
+      await closeCompletion.promise;
+    });
+    const read = vi.fn(async () => Uint8Array.of(1));
+    port.openReadable = async () => ({ close, read, size: 1n });
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    let releaseSettled = false;
+    const observeClose = () => readable.close().then(
+      () => ({ releaseSettled, type: "success" }),
+      cause => ({ cause, releaseSettled, type: "failure" }),
+    );
+    const first = observeClose();
+    const second = observeClose();
+    await closeEntered.promise;
+    await expect(readable.read({ buffer: new Uint8Array(1), length: 1, offset: 0, position: 0, signal: undefined }))
+      .rejects.toThrow("readable handle is closed");
+    expect(() => readable.stream({ end: undefined, signal: undefined, start: 0 }))
+      .toThrow("readable handle is closed");
+    expect(read).not.toHaveBeenCalled();
+
+    releaseSettled = true;
+    switch (outcome) {
+    case "success": closeCompletion.resolve(); break;
+    case "failure": closeCompletion.reject(failure); break;
+    default: outcome satisfies never;
+    }
+    const expected = outcome === "success"
+      ? { releaseSettled: true, type: "success" }
+      : { cause: failure, releaseSettled: true, type: "failure" };
+    await expect(first).resolves.toEqual(expected);
+    await expect(second).resolves.toEqual(expected);
+    await expect(observeClose()).resolves.toEqual(expected);
+    await session.close();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("retains size conversion and cleanup failures without retaining the failed readable", async () => {
+    const port = createPort();
+    const cleanupFailure = new Error("readable cleanup failed");
+    const close = vi.fn(async () => {
+      throw cleanupFailure;
+    });
+    port.openReadable = async () => ({
+      close,
+      read: async () => new Uint8Array(),
+      size: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+    });
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const failure = await file.openReadable({ mimeType: "application/octet-stream" }).catch(cause => cause);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors[0]).toBeInstanceOf(RangeError);
+    expect(failure.errors[1]).toBe(cleanupFailure);
+    await session.close();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("does not materialize an explicit read snapshot for an ordinary readable", async () => {
     const port = createPort();
     port.createReadSnapshot = async () => {
@@ -322,11 +539,69 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     data.fill(0);
     await write;
     await writable.truncate({ size: 9 });
+    const readBuffer = new Uint8Array(4).fill(0xff);
+    await expect(writable.read!({ buffer: readBuffer, length: 2, offset: 1, position: 1, signal: undefined }))
+      .resolves.toEqual({ bytesRead: 2 });
+    expect(readBuffer).toEqual(Uint8Array.of(0xff, 2, 3, 0xff));
     await writable.close();
 
     expect(port.calls).toContainEqual(["writeWritable", { data: [7, 8], position: 2n }]);
     expect(port.calls).toContainEqual(["truncateWritable", 9n]);
     await expect(writable.abort({ reason: "late" })).rejects.toThrow("already committed");
+    await expect(writable.read!({ buffer: readBuffer, length: 0, offset: 0, position: 0, signal: undefined }))
+      .rejects.toThrow();
+  });
+
+  it("erases the captured copy when write position validation rejects before transfer", async () => {
+    const port = createPort();
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const writable = await file.createWritable({ keepExistingData: true });
+    const data = new Uint8Array([7, 8]);
+    const capture = vi.spyOn(fileWriteInput, "captureFileWriteBytes");
+    try {
+      await expect(writable.write({ data, position: -1 }))
+        .rejects.toThrow("write position must be a safe non-negative integer");
+
+      expect(capture).toHaveBeenCalledExactlyOnceWith({ bytes: data });
+      const result = capture.mock.results[0];
+      if (result?.type !== "return") throw new Error("Expected a real captured write copy");
+      expect(result.value.buffer).not.toBe(data.buffer);
+      expect([...result.value]).toEqual([0, 0]);
+      expect([...data]).toEqual([7, 8]);
+      expect(port.calls.some(([name]) => name === "writeWritable")).toBe(false);
+    } finally {
+      capture.mockRestore();
+      await session.close();
+    }
+  });
+
+  it("leaves captured write bytes with the lower owner after a valid transfer", async () => {
+    const port = createPort();
+    const lower = await port.openWritable({ keepExistingData: true, path: ["file"] });
+    const write = vi.spyOn(lower, "write");
+    port.openWritable = async () => lower;
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const writable = await file.createWritable({ keepExistingData: true });
+    const data = new Uint8Array([7, 8]);
+    const capture = vi.spyOn(fileWriteInput, "captureFileWriteBytes");
+    try {
+      await writable.write({ data, position: 2 });
+
+      expect(capture).toHaveBeenCalledExactlyOnceWith({ bytes: data });
+      const result = capture.mock.results[0];
+      if (result?.type !== "return") throw new Error("Expected a real captured write copy");
+      expect(write).toHaveBeenCalledExactlyOnceWith({ data: result.value, position: 2n });
+      expect(write.mock.calls[0]![0].data).toBe(result.value);
+      expect(result.value.buffer).not.toBe(data.buffer);
+      expect([...result.value]).toEqual([7, 8]);
+      expect([...data]).toEqual([7, 8]);
+    } finally {
+      capture.mockRestore();
+      write.mockRestore();
+      await session.close();
+    }
   });
 
   it("routes mutations but rejects cross-session destination handles", async () => {
@@ -434,6 +709,9 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     const closing = session.close();
     const calls: string[] = [];
     pendingWritable.resolve({
+      async read() {
+        throw new Error("delayed writer must not read");
+      },
       async abort() {
         calls.push("abort");
       },
@@ -465,6 +743,9 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     });
     port.openWritable = async () => ({
       abort,
+      async read() {
+        throw new Error("unexpected read");
+      },
       async commit() {
         throw new Error("unexpected commit");
       },

@@ -6,6 +6,7 @@ import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizo
 import type { RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { inspectHizoFSNamespacePath } from "@/00-storage/service/hizofs/inspection";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
+import { createWritableScenarioSession } from "@/00-storage/service/hizofs/v1-format-tests/support/hizofs-test-environment";
 
 const passphrase = "correct horse battery staple";
 
@@ -96,5 +97,26 @@ describe("HizoFS namespace inspection", () => {
       pathComponents: [],
       physical: await physical(),
     })).rejects.toBeDefined();
+  });
+
+  it("does not resurrect a deleted path from the preceding Commit", async () => {
+    const { backend, passphrase, session } = await createWritableScenarioSession();
+    try {
+      await session.root.getFileHandle({ create: true, name: "removed.txt" });
+      await session.sync();
+      await session.root.removeEntry({ name: "removed.txt", recursive: false });
+      await session.sync();
+      const physical = createAuthenticatedHizoFSInspectionPort({ backend });
+
+      await expect(inspectHizoFSNamespacePath({ passphrase, pathComponents: [], physical })).resolves.toMatchObject({
+        authorityMode: "active",
+        commitSequence: "3",
+        directory: { entries: [] },
+      });
+      await expect(inspectHizoFSNamespacePath({ passphrase, pathComponents: ["removed.txt"], physical }))
+        .rejects.toMatchObject({ code: "not_found" });
+    } finally {
+      await session.close();
+    }
   });
 });

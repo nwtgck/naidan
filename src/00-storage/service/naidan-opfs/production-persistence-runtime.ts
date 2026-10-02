@@ -33,6 +33,7 @@ import {
   createBrowserHizoFSWorkerRuntimeHost,
   HizoFSRuntimeHostRegistry,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
+  openAuthenticatedDevelopmentWritableSessionReadObservation,
   openBrowserAuthenticatedDevelopmentWritableContainerCapability,
   openAuthenticatedReadOnlyApplicationSessionFromCapability,
   replaceAuthenticatedDevelopmentWritableSessionPassphrase,
@@ -143,18 +144,6 @@ interface NativeHizoFSRootKeyProofScope {
       rootKey: PersistenceControlRootKeyDerivationCapability;
     }) => Promise<T>;
   }): Promise<T>;
-}
-
-function reportNativeEnableTrialFailure({ cause, fileSystemId, operationId, stage }: {
-  cause: unknown;
-  fileSystemId: FileSystemId;
-  operationId: TransitionOperationId;
-  stage: NativeEnableTrialStage;
-}): void {
-  reportHizoFSTrialFailure({
-    cause,
-    detail: { event: 'native_enable_failure', fileSystemId, operationId, stage },
-  });
 }
 
 export type CredentialCandidateOpenProfile = 'normal_read' | 'root_key_proof';
@@ -673,14 +662,19 @@ function createNativeHizoFSSourceTransitionDriver({ authorityIdentity, binding, 
           throw new TypeError('native HizoFS source transition requires immutable read snapshots');
         }
         const snapshot = await session.createReadSnapshot();
+        const projected = projectCanonicalNaidanApplicationNamespaceSession({ session: snapshot });
+        let source = createStorageFileSystemTransitionSource({
+          session: projected,
+        });
+        switch (targetType) {
+        case 'plain': source = projectNativePlainTransitionSource({ source }); break;
+        case 'hizofs': break;
+        default: return targetType satisfies never;
+        }
         return {
           authorityIdentity,
-          close: async () => await snapshot.close(),
-          source: projectNativePlainTransitionSource({
-            source: createStorageFileSystemTransitionSource({
-              session: projectCanonicalNaidanApplicationNamespaceSession({ session: snapshot }),
-            }),
-          }),
+          close: async () => await projected.close(),
+          source,
         };
       },
       openTargetEndpoint: async ({ binding: actual }) => {
@@ -1487,22 +1481,22 @@ async function runWithCredentialAuthorityRelease<T>({ failureMessage, operation,
   operation: () => Promise<T>;
   releaseResources: () => Promise<void>;
 }): Promise<T> {
-  let operationFailure: unknown;
+  let operationFailure: { cause: unknown } | undefined;
   let value: T | undefined;
   try {
     value = await operation();
   } catch (cause: unknown) {
-    operationFailure = cause;
+    operationFailure = { cause };
   }
   try {
     await releaseResources();
   } catch (releaseFailure: unknown) {
     if (operationFailure !== undefined) {
-      throw new AggregateError([operationFailure, releaseFailure], failureMessage);
+      throw new AggregateError([operationFailure.cause, releaseFailure], failureMessage);
     }
     throw releaseFailure;
   }
-  if (operationFailure !== undefined) throw operationFailure;
+  if (operationFailure !== undefined) throw operationFailure.cause;
   return value as T;
 }
 
@@ -2670,7 +2664,8 @@ export async function runNativeHizoFSEnableTransition({
         });
       }
       switch (result.state) {
-      case 'stable': {
+      case 'stable':
+      case 'retired_cleanup': {
         await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
         return fileSystemId;
       }
@@ -2687,7 +2682,6 @@ export async function runNativeHizoFSEnableTransition({
         });
         break;
       case 'copying':
-      case 'retired_cleanup':
       case 'verifying': break;
       default: return result satisfies never;
       }
@@ -3335,28 +3329,28 @@ function isNotFoundError({ cause }: { cause: unknown }): boolean {
 async function consumeOneNativePlainDirectoryKey({ iterator }: {
   iterator: AsyncIterator<string>;
 }): Promise<void> {
-  let traversalFailure: unknown;
+  let traversalFailure: { cause: unknown } | undefined;
   try {
     await iterator.next();
   } catch (cause: unknown) {
-    traversalFailure = cause;
+    traversalFailure = { cause };
   }
 
-  let cleanupFailure: unknown;
+  let cleanupFailure: { cause: unknown } | undefined;
   try {
     await iterator.return?.();
   } catch (cause: unknown) {
-    cleanupFailure = cause;
+    cleanupFailure = { cause };
   }
 
   if (traversalFailure !== undefined && cleanupFailure !== undefined) {
     throw new AggregateError(
-      [traversalFailure, cleanupFailure],
+      [traversalFailure.cause, cleanupFailure.cause],
       'native plain endpoint traversal and iterator cleanup both failed',
     );
   }
-  if (traversalFailure !== undefined) throw traversalFailure;
-  if (cleanupFailure !== undefined) throw cleanupFailure;
+  if (traversalFailure !== undefined) throw traversalFailure.cause;
+  if (cleanupFailure !== undefined) throw cleanupFailure.cause;
 }
 
 async function inspectNativePlainEndpoint({ nativeNamespaceRoot }: {
@@ -3677,6 +3671,12 @@ async function openNativeCredentialRequiredApplicationSessionWith({
   });
 }
 
+export async function openProviderHizoFSReadObservation({ session }: {
+  session: StorageFileSystemSession;
+}): Promise<Pick<StorageFileSystemSession, 'root' | 'close'>> {
+  return await openAuthenticatedDevelopmentWritableSessionReadObservation({ capture: 'at_open', session });
+}
+
 export async function openNativeCredentialRequiredApplicationSession({
   captured,
   lockManager,
@@ -3867,6 +3867,55 @@ export async function runNativeStableHizoFSRetiredContainerCleanup({
   });
 }
 
+/** Keeps destructive plain-namespace maintenance bound to authenticated HizoFS authority. */
+export async function runWithNativeStableHizoFSAuthority<T>({
+  lockManager,
+  operation,
+  session,
+  storageRoot,
+}: {
+  lockManager: Pick<LockManager, 'request'>;
+  operation: () => Promise<T>;
+  session: OpfsPersistenceUnlockedSession;
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<T> {
+  return await withAuthenticatedDevelopmentWritableSessionRootKeyProof({
+    operation: async ({ fileSystemId, rootKeyProof }) => {
+      if (fileSystemId !== session.fileSystemId) {
+        throw new TypeError('plain namespace maintenance session proof belongs to another File System ID');
+      }
+      const proofAuthority: PersistenceControlProofAuthority = {
+        resolveRootKey: async ({ fileSystemId: requestedFileSystemId }) => requestedFileSystemId === fileSystemId
+          ? { rootKey: rootKeyProof, state: 'resolved' }
+          : { state: 'unresolved' },
+        validateEndpointReadiness: async ({ control }) => {
+          switch (control.mode.type) {
+          case 'hizofs': return control.mode.activeFileSystemId === fileSystemId ? 'valid' : 'invalid';
+          case 'plain':
+          case 'transitioning': return 'invalid';
+          default: return control.mode satisfies never;
+          }
+        },
+      };
+      const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
+      return await exclusiveGate.runExclusive({
+        operation: async () => {
+          const selected = await openPersistenceControl({
+            physical: createOpfsPersistenceControlPhysicalPort({ exclusiveGate: alreadyExclusivePersistenceControlGate(), storageRoot }),
+            proofAuthority,
+          });
+          if (selected.control.mode.type !== 'hizofs'
+            || selected.control.mode.activeFileSystemId !== fileSystemId) {
+            throw new TypeError('plain namespace maintenance requires the current stable HizoFS authority');
+          }
+          return await operation();
+        },
+      });
+    },
+    session: session.fileSystemSession,
+  });
+}
+
 type NativeStablePlainRetiredCleanupRuntime = Readonly<{
   createControlPhysical: typeof createOpfsPersistenceControlPhysicalPort;
   inspectPlainEndpoint: typeof inspectNativePlainEndpoint;
@@ -4015,7 +4064,6 @@ export async function inspectCredentialAwarePersistenceRuntime({
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   acceptGracefulRuntimeShutdownResult,
-  reportNativeEnableTrialFailure,
   completeNativeHizoFSReturnToPlainWith,
   consumeOneNativePlainDirectoryKey,
   createCallbackScopedPersistenceControlTransitionPort,

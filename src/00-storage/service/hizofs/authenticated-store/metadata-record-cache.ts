@@ -240,28 +240,30 @@ export class AuthenticatedMetadataRecordCache {
       }
       if (this.disposed) throw new TypeError("authenticated metadata cache is disposed");
       const coalesced = this.entries.get(identity);
-      if (coalesced === undefined) {
-        throw new Error("coalesced authenticated metadata load completed without a retained entry");
+      if (coalesced !== undefined) {
+        this.pendingReadAdmissions.delete(identity);
+        this.entries.delete(identity);
+        this.entries.set(identity, coalesced);
+        this.diagnostics?.recordMetadataCacheEvent?.({
+          event: "hit",
+          recordKind: coalesced.recordKind,
+          scope: this.diagnosticScope,
+        });
+        return {
+          plaintext: coalesced.plaintext.slice(),
+          recordKind: coalesced.recordKind,
+        };
       }
-      this.pendingReadAdmissions.delete(identity);
-      this.entries.delete(identity);
-      this.entries.set(identity, coalesced);
-      this.diagnostics?.recordMetadataCacheEvent?.({
-        event: "hit",
-        recordKind: coalesced.recordKind,
-        scope: this.diagnosticScope,
-      });
-      return {
-        plaintext: coalesced.plaintext.slice(),
-        recordKind: coalesced.recordKind,
-      };
+      // Eviction can win before this follower resumes. Finish with one fresh
+      // load rather than rejoining shared work under repeated cache pressure.
     }
 
     // WHY: only references whose complete frame fits the cache byte budget may
     // single-flight. That lets concurrent callers rendezvous through a retained
     // authenticated copy without creating an unbounded transient plaintext pool.
     const pendingLoad = (
-      this.policy.maximumBytes > 0
+      sharedLoad === undefined
+      && this.policy.maximumBytes > 0
       && this.policy.maximumEntries > 0
       && reference.frameLength <= this.policy.maximumBytes
       && this.pendingReadLoadFrameBytes + reference.frameLength <= this.policy.maximumBytes

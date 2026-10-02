@@ -6,7 +6,8 @@ import type {
   OnboardingPresentation,
 } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
-import type { OpfsEncryptionStartupGate } from '@/logic/startup/opfs-encryption-startup-gate';
+import { createOpfsEncryptionStartupGate, type OpfsEncryptionStartupGate } from '@/composables/opfs-encryption-startup-gate';
+import { resolveStartupFailureState } from '@/logic/startup/startup-failure-state';
 import App from './App.vue';
 
 const onboardingPresentation = ref<OnboardingPresentation>('visible');
@@ -57,6 +58,7 @@ function createStartupGate(): OpfsEncryptionStartupGate {
     returnInterruptedEncryptionToPlain: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
+    reportUnlockPresentationFailure: vi.fn(),
     reportUnlockPresentationReady: vi.fn(),
     wait: vi.fn(async () => {}),
     waitForUnlockPresentation: vi.fn(async () => {}),
@@ -274,5 +276,39 @@ describe('App', () => {
 
     expect(wrapper.find('[data-testid="startup-error"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+  });
+
+  it('routes a failed unlock view import into the existing startup failure presentation', async () => {
+    const failure = new Error('unlock view chunk unavailable');
+    vi.doMock('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue', () => {
+      throw failure;
+    });
+    const gate = createOpfsEncryptionStartupGate({
+      inspection: { type: 'recovery_required', error: new Error('locked storage') },
+    });
+    const startupState = shallowRef<StartupState>({ kind: 'opfs-encryption-required', gate });
+    const startupCompletion = gate.wait().catch(error => {
+      startupState.value = resolveStartupFailureState({ state: startupState.value, error });
+    });
+    const vueError = vi.fn();
+    onboardingPresentation.value = 'hidden';
+    appInteraction.value = 'blocked-by-startup';
+    const wrapper = mount(App, {
+      props: { startupState },
+      global: { config: { errorHandler: vueError } },
+    });
+    try {
+      await vi.dynamicImportSettled();
+      await flushPromises();
+
+      expect(startupState.value).toMatchObject({ kind: 'foundation-failed' });
+      if (startupState.value.kind !== 'foundation-failed') throw new Error('expected startup failure');
+      expect(wrapper.get('[data-testid="startup-error"]').text()).toContain(String(startupState.value.error));
+      expect(wrapper.find('[data-testid="startup-background"]').exists()).toBe(false);
+      await startupCompletion;
+    } finally {
+      wrapper.unmount();
+      vi.doUnmock('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue');
+    }
   });
 });

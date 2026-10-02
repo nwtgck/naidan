@@ -2,11 +2,11 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, shallowRef } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
-import { ensureStrings } from '@/strings';
+import { currentLocale, ensureStrings, setLocale } from '@/strings';
 import type {
   OpfsEncryptionStartupGate,
   OpfsEncryptionStartupPhase,
-} from '@/logic/startup/opfs-encryption-startup-gate';
+} from '@/composables/opfs-encryption-startup-gate';
 import OpfsEncryptionUnlockView from './OpfsEncryptionUnlockView.vue';
 
 const openFileExplorer = vi.hoisted(() => vi.fn());
@@ -36,6 +36,7 @@ function createGate({
     returnInterruptedEncryptionToPlain: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
+    reportUnlockPresentationFailure: vi.fn(),
     reportUnlockPresentationReady: vi.fn(),
     wait: vi.fn(async () => {}),
     waitForUnlockPresentation: vi.fn(async () => {}),
@@ -282,33 +283,52 @@ second line`,
   });
 
 
-  it('requires the passphrase before returning a building encrypt operation to plain', async () => {
-    const gate = createGate({
-      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
-        operation: 'encrypt',
-        phase: 'building_target',
-        sourceFileSystemId: undefined,
-        targetFileSystemId: 'target-store',
-      }),
-    });
-    const wrapper = mount(OpfsEncryptionUnlockView, {
-      props: { gate },
-    });
-    const returnButton = wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]');
+  it.each([
+    {
+      locale: 'en',
+      message: 'Enter the passphrase to authenticate the interrupted operation and return to plain storage.',
+    },
+    {
+      locale: 'ja',
+      message: '中断中の処理を認証して平文ストレージに戻すには、パスフレーズを入力してください。',
+    },
+  ] as const)('requires the passphrase before returning a building encrypt operation to plain ($locale)', async ({ locale, message }) => {
+    const previousLocale = currentLocale.value;
+    try {
+      await setLocale({ locale });
+      const gate = createGate({
+        inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+          operation: 'encrypt',
+          phase: 'building_target',
+          sourceFileSystemId: undefined,
+          targetFileSystemId: 'target-store',
+        }),
+      });
+      const wrapper = mount(OpfsEncryptionUnlockView, {
+        props: { gate },
+      });
+      try {
+        const returnButton = wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]');
 
-    expect(returnButton.attributes('disabled')).toBeDefined();
-    expect(wrapper.text()).toContain('Enter the passphrase to authenticate the interrupted operation. Naidan will finish the protected transition state, then rebuild and verify plain storage before removing encryption.');
-    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
-      .setValue('existing passphrase');
-    expect(returnButton.attributes('disabled')).toBeUndefined();
+        expect(returnButton.attributes('disabled')).toBeDefined();
+        expect(wrapper.text()).toContain(message);
+        await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+          .setValue('existing passphrase');
+        expect(returnButton.attributes('disabled')).toBeUndefined();
 
-    await returnButton.trigger('click');
-    await flushPromises();
+        await returnButton.trigger('click');
+        await flushPromises();
 
-    expect(gate.returnInterruptedEncryptionToPlain).toHaveBeenCalledWith({
-      passphrase: 'existing passphrase',
-    });
-    expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
+        expect(gate.returnInterruptedEncryptionToPlain).toHaveBeenCalledWith({
+          passphrase: 'existing passphrase',
+        });
+        expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
+      } finally {
+        wrapper.unmount();
+      }
+    } finally {
+      await setLocale({ locale: previousLocale });
+    }
   });
 
   it('requires the passphrase when encrypted storage is already authoritative', async () => {

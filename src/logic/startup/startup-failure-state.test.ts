@@ -1,6 +1,6 @@
 import { defineComponent, shallowRef } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import type { OpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
+import type { OpfsEncryptionStartupGate } from '@/composables/opfs-encryption-startup-gate';
 import { resolveStartupFailureState } from './startup-failure-state';
 
 function createGate({
@@ -20,6 +20,7 @@ function createGate({
     returnInterruptedEncryptionToPlain: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
+    reportUnlockPresentationFailure: vi.fn(),
     reportUnlockPresentationReady: vi.fn(),
     wait: vi.fn(async () => {}),
     waitForUnlockPresentation: vi.fn(async () => {}),

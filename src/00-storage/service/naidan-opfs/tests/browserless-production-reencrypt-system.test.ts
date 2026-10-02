@@ -181,6 +181,38 @@ afterEach(() => {
 });
 
 describe('browserless production HizoFS re-encrypt system', () => {
+  it('preserves file and directory timestamps when rotating the container', async () => {
+    const { root, uninstallRuntime } = installBrowserlessSystem({ capabilityProfile: 'window', faultHooks: undefined });
+    const source = await createEncryptedProvider({ endpointUrl: 'http://metadata-before-reencrypt', root });
+    const reopened = new OPFSStorageProvider();
+    try {
+      const sourceRoot = await openEncryptedManagedRoot({ create: true, provider: source, type: 'debug_wesh' });
+      const sourceDirectory = await sourceRoot.getDirectoryHandle({ create: true, name: 'timestamped' });
+      const sourceFile = await sourceDirectory.getFileHandle({ create: true, name: 'transition-value.bin' });
+      const writable = await sourceFile.createWritable({ keepExistingData: false });
+      await writable.write({ data: Uint8Array.of(5, 6, 7), position: 0 });
+      await writable.close();
+      const fileStat = await sourceFile.stat();
+      const directoryStat = await sourceDirectory.stat();
+      expect(fileStat.createdAt).toEqual(expect.any(Number));
+      expect(fileStat.modifiedAt).toEqual(expect.any(Number));
+      expect(directoryStat.createdAt).toEqual(expect.any(Number));
+      expect(directoryStat.modifiedAt).toEqual(expect.any(Number));
+
+      await source.reencrypt({ retainedCredentials: [{ passphrase: PASSPHRASE }], signal: undefined });
+      await reopened.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      const targetRoot = await openEncryptedManagedRoot({ create: false, provider: reopened, type: 'debug_wesh' });
+      const targetDirectory = await targetRoot.getDirectoryHandle({ create: false, name: 'timestamped' });
+      const targetFile = await targetDirectory.getFileHandle({ create: false, name: 'transition-value.bin' });
+      await expect(targetFile.stat()).resolves.toEqual(fileStat);
+      await expect(targetDirectory.stat()).resolves.toEqual(directoryStat);
+    } finally {
+      await reopened.dispose();
+      await source.dispose();
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it('rotates to a fresh container, retains the credential, writes, reopens, and removes the source', async () => {
     const { root, uninstallRuntime } = installBrowserlessSystem({
       capabilityProfile: 'window',

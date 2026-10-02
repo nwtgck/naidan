@@ -8,6 +8,7 @@ import {
   type PhysicalRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import type { AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
+import { AuthenticatedStoreError } from "@/00-storage/service/hizofs/authenticated-store/errors";
 import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 
 export type HizoFSInspectionAuthorityMode = "active" | "fallback_read_only";
@@ -54,8 +55,10 @@ export async function withBorrowedHizoFSInspectionAuthority<T>({
     relocationIndexRootPhysicalRef: openedSuperblock.logicalState.relocationIndexRootPhysicalRef,
     rootKey,
   };
+  let opened: Awaited<ReturnType<AuthenticatedHizoFSInspectionPort["readBootstrapRoot"]>>;
+  let mode: HizoFSInspectionAuthorityMode = "active";
   try {
-    const opened = await physical.readBootstrapRoot({
+    opened = await physical.readBootstrapRoot({
       authority: {
         commitHomeRef: openedSuperblock.logicalState.activeCommitHomeRef,
         commitSequence: openedSuperblock.logicalState.activeCommitSequence,
@@ -64,17 +67,14 @@ export async function withBorrowedHizoFSInspectionAuthority<T>({
       },
       ...common,
     });
-    return await operation({
-      authority: {
-        ...common,
-        commit: opened.commit,
-        mode: "active",
-      },
-    });
   } catch (activeCause: unknown) {
     const fallback = openedSuperblock.logicalState.fallbackCommitHomeRef;
-    if (fallback === null) throw activeCause;
-    const opened = await physical.readBootstrapRoot({
+    if (!(activeCause instanceof AuthenticatedStoreError)
+      || activeCause.code !== "control_plane_corrupt"
+      || fallback === null) {
+      throw activeCause;
+    }
+    opened = await physical.readBootstrapRoot({
       authority: {
         commitHomeRef: fallback,
         commitSequence: createCommitSequence({
@@ -84,14 +84,16 @@ export async function withBorrowedHizoFSInspectionAuthority<T>({
       },
       ...common,
     });
-    return await operation({
-      authority: {
-        ...common,
-        commit: opened.commit,
-        mode: "fallback_read_only",
-      },
-    });
+    mode = "fallback_read_only";
   }
+  // Query failures must not replay against an older Commit after authority selection.
+  return await operation({
+    authority: {
+      ...common,
+      commit: opened.commit,
+      mode,
+    },
+  });
 }
 
 /**

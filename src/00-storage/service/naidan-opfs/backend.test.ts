@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { Settings } from '@/01-models/types';
+import { SettingsSchemaDto } from '@/00-storage/00-dto/dto';
+import { settingsToDto } from '@/00-storage/mapper/mappers';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
 import type {
@@ -8,8 +10,13 @@ import type {
   StorageEntryHandle,
   StorageFileHandle,
   StorageFileSystemSession,
+  StorageWritableFile,
 } from '@/00-storage/service/storage-file-system/types';
 import { HostVolumeDB } from '@/00-storage/service/opfs/host-volume-db';
+import {
+  createBlobStorageBinaryObjectReadHandle,
+  type StorageBinaryObjectReadHandle,
+} from '@/00-storage/service/binary-object-io';
 import { NaidanOpfsStorageBackend } from './backend';
 import { NaidanOpfsLayoutDirectoryHandle, NaidanOpfsLayoutFileHandle } from './layout-handle';
 
@@ -170,7 +177,280 @@ async function collectAsyncIterable<T>({ values }: {
   return result;
 }
 
+async function readerOnlyBinaryFixture({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
+  const root = new MockFileSystemDirectoryHandle({ name: 'reader-only-binary' });
+  const session = createNativeOpfsFileSystemSession({ root });
+  const backend = new NaidanOpfsStorageBackend({ namespaceRoot: session.root, hostVolumeDB: new HostVolumeDB() });
+  await backend.init();
+  await backend.saveFile({
+    binaryObjectId: BINARY_OBJECT_ID, blob: new Blob([bytes]), name: 'value.bin', mimeType: 'application/x-indexed',
+  });
+  const direct = createBlobStorageBinaryObjectReadHandle({ blob: new Blob([bytes]), mimeType: 'application/octet-stream' });
+  const read = vi.fn<StorageBinaryObjectReadHandle['read']>(async request => {
+    if (request.position < 0 || request.position + request.length > bytes.length) throw new RangeError('exact range required');
+    return await direct.read(request);
+  });
+  const stream = vi.fn<StorageBinaryObjectReadHandle['stream']>(request => {
+    if (request.start < 0 || request.start > bytes.length || (request.end !== undefined && request.end > bytes.length)) {
+      throw new RangeError('exact stream range required');
+    }
+    return direct.stream(request);
+  });
+  const close = vi.fn(async () => {});
+  const openReadable = vi.fn<StorageFileHandle['openReadable']>(async () => ({
+    backing: { type: 'reader_only' }, size: bytes.length, mimeType: 'application/octet-stream', read, stream, close,
+  }));
+  const originalLookup = NaidanOpfsLayoutDirectoryHandle.prototype.getFileHandle;
+  const lookup = vi.spyOn(NaidanOpfsLayoutDirectoryHandle.prototype, 'getFileHandle')
+    .mockImplementation(async function(this: NaidanOpfsLayoutDirectoryHandle, name, options) {
+      if (name === '00000000-0000-4000-a000-0000000000a1.bin') {
+        return new NaidanOpfsLayoutFileHandle({ handle: {
+          kind: 'file', name, openReadable,
+          async stat() {
+            return { size: bytes.length, createdAt: undefined, modifiedAt: undefined };
+          },
+          async createWritable() {
+            throw new Error('Unexpected body write');
+          },
+        } });
+      }
+      return await originalLookup.call(this, name, options);
+    });
+  return {
+    backend, root, read, stream, close, openReadable,
+    async dispose() {
+      lookup.mockRestore(); await session.close();
+    },
+  };
+}
+
 describe('Naidan OPFS layout backend', () => {
+  describe('single settings save writer ownership', () => {
+    async function fixture() {
+      const session = createNativeOpfsFileSystemSession({
+        root: new MockFileSystemDirectoryHandle({ name: 'settings-write-root' }),
+      });
+      const backend = new NaidanOpfsStorageBackend({ namespaceRoot: session.root, hostVolumeDB: new HostVolumeDB() });
+      await backend.init();
+      const writable = {
+        read: undefined,
+        write: vi.fn<StorageWritableFile['write']>(async () => {}),
+        truncate: vi.fn<StorageWritableFile['truncate']>(async () => {}),
+        close: vi.fn<StorageWritableFile['close']>(async () => {}),
+        abort: vi.fn<StorageWritableFile['abort']>(async () => {}),
+      };
+      const createWritable = vi.fn<StorageFileHandle['createWritable']>(async () => writable);
+      const originalLookup = NaidanOpfsLayoutDirectoryHandle.prototype.getFileHandle;
+      const lookup = vi.spyOn(NaidanOpfsLayoutDirectoryHandle.prototype, 'getFileHandle')
+        .mockImplementation(async function(this: NaidanOpfsLayoutDirectoryHandle, name, options) {
+          const file = await originalLookup.call(this, name, options);
+          if (name === 'settings.json') vi.spyOn(file.handle, 'createWritable').mockImplementation(createWritable);
+          return file;
+        });
+      return {
+        backend, writable, createWritable,
+        async dispose() {
+          lookup.mockRestore();
+          await session.close();
+        },
+      };
+    }
+
+    it('writes the same JSON with replacement semantics before closing', async () => {
+      const { backend, writable, createWritable, dispose } = await fixture();
+      try {
+        await backend.saveSettings({ settings: SETTINGS });
+        expect(createWritable).toHaveBeenCalledExactlyOnceWith({ keepExistingData: false });
+        expect(writable.write).toHaveBeenCalledExactlyOnceWith({
+          position: 0,
+          data: new TextEncoder().encode(JSON.stringify(SettingsSchemaDto.parse(settingsToDto({ domain: SETTINGS })))),
+        });
+        expect(writable.close).toHaveBeenCalledOnce();
+        expect(writable.write.mock.invocationCallOrder[0]).toBeLessThan(writable.close.mock.invocationCallOrder[0]!);
+        expect(writable.abort).not.toHaveBeenCalled();
+        expect(writable.truncate).not.toHaveBeenCalled();
+      } finally {
+        await dispose();
+      }
+    });
+
+    it.each([new Error('settings write failed'), undefined])('aborts a failed write while retaining its cause (%s)', async cause => {
+      const { backend, writable, dispose } = await fixture();
+      writable.write.mockRejectedValueOnce(cause);
+      try {
+        await expect(backend.saveSettings({ settings: SETTINGS })).rejects.toBe(cause);
+        expect(writable.abort).toHaveBeenCalledExactlyOnceWith({ reason: cause });
+        expect(writable.close).not.toHaveBeenCalled();
+      } finally {
+        await dispose();
+      }
+    });
+
+    it.each([
+      { primary: new Error('settings write failed'), cleanup: new Error('settings abort failed') },
+      { primary: undefined, cleanup: new Error('settings abort failed') },
+      { primary: new Error('settings write failed'), cleanup: undefined },
+    ])('keeps write and abort failures in operation order ($primary, $cleanup)', async ({ primary, cleanup }) => {
+      const { backend, writable, dispose } = await fixture();
+      writable.write.mockRejectedValueOnce(primary);
+      writable.abort.mockRejectedValueOnce(cleanup);
+      try {
+        await expect(backend.saveSettings({ settings: SETTINGS })).rejects.toMatchObject({
+          name: 'AggregateError',
+          errors: [primary, cleanup],
+        });
+        expect(writable.abort).toHaveBeenCalledExactlyOnceWith({ reason: primary });
+        expect(writable.close).not.toHaveBeenCalled();
+      } finally {
+        await dispose();
+      }
+    });
+
+    it('does not abort the lower writer after layout close has settled', async () => {
+      const { backend, writable, dispose } = await fixture();
+      const cause = new Error('settings close failed');
+      writable.close.mockRejectedValueOnce(cause);
+      try {
+        await expect(backend.saveSettings({ settings: SETTINGS })).rejects.toBe(cause);
+        expect(writable.write).toHaveBeenCalledOnce();
+        expect(writable.close).toHaveBeenCalledOnce();
+        expect(writable.abort).not.toHaveBeenCalled();
+      } finally {
+        await dispose();
+      }
+    });
+
+    it('does not create a writable when serialization fails', async () => {
+      const { backend, writable, createWritable, dispose } = await fixture();
+      const cause = new Error('settings serialization failed');
+      const stringify = vi.spyOn(JSON, 'stringify').mockImplementationOnce(() => {
+        throw cause;
+      });
+      try {
+        await expect(backend.saveSettings({ settings: SETTINGS })).rejects.toBe(cause);
+        expect(createWritable).not.toHaveBeenCalled();
+        expect(writable.write).not.toHaveBeenCalled();
+        expect(writable.close).not.toHaveBeenCalled();
+        expect(writable.abort).not.toHaveBeenCalled();
+      } finally {
+        stringify.mockRestore();
+        await dispose();
+      }
+    });
+
+    it('preserves writable acquisition failure without attempting cleanup', async () => {
+      const { backend, writable, createWritable, dispose } = await fixture();
+      const cause = new Error('settings writable unavailable');
+      createWritable.mockRejectedValueOnce(cause);
+      try {
+        await expect(backend.saveSettings({ settings: SETTINGS })).rejects.toBe(cause);
+        expect(createWritable).toHaveBeenCalledOnce();
+        expect(writable.write).not.toHaveBeenCalled();
+        expect(writable.close).not.toHaveBeenCalled();
+        expect(writable.abort).not.toHaveBeenCalled();
+      } finally {
+        await dispose();
+      }
+    });
+  });
+
+  it.each([0, 4])('opens a %i-byte reader-only body without materializing it and keeps Blob range semantics', async size => {
+    const fixture = await readerOnlyBinaryFixture({ bytes: Uint8Array.from({ length: size }, (_, index) => index + 1) });
+    try {
+      const handle = await fixture.backend.openBinaryObject({ binaryObjectId: BINARY_OBJECT_ID });
+      expect(handle).not.toBeNull();
+      if (handle === null) throw new Error('Expected binary reader');
+      expect(handle).toMatchObject({ size, mimeType: 'application/x-indexed', backing: { type: 'reader_only' } });
+      expect(fixture.read).not.toHaveBeenCalled();
+      expect(fixture.stream).not.toHaveBeenCalled();
+      expect(fixture.close).not.toHaveBeenCalled();
+      const expected = createBlobStorageBinaryObjectReadHandle({
+        blob: new Blob([Uint8Array.from({ length: size }, (_, index) => index + 1)]), mimeType: handle.mimeType,
+      });
+      for (const { position, length, offset } of [
+        { position: 0, length: 1, offset: 1 },
+        { position: 0, length: 8, offset: 2 },
+        { position: Math.max(0, size - 1), length: 4, offset: 0 },
+        { position: size, length: 1, offset: 0 },
+        { position: size + 1, length: 0, offset: 0 },
+      ]) {
+        const actualBuffer = new Uint8Array(5).fill(99);
+        const expectedBuffer = actualBuffer.slice();
+        expect(await handle.read({ buffer: actualBuffer, position, length, offset, signal: undefined }))
+          .toEqual(await expected.read({ buffer: expectedBuffer, position, length, offset, signal: undefined }));
+        expect(actualBuffer).toEqual(expectedBuffer);
+      }
+      if (size > 0) expect(fixture.read.mock.calls[0]?.[0]).toMatchObject({ position: 0, length: 1, offset: 1 });
+      if (size > 1) {
+        fixture.read.mockResolvedValueOnce({ bytesRead: 1 });
+        await expect(handle.read({ buffer: new Uint8Array(size), offset: 0, position: 0, length: size, signal: undefined }))
+          .resolves.toEqual({ bytesRead: 1 });
+      }
+      for (const [start, end] of [[0, undefined], [2, 20], [-2, undefined], [3, 1], [10, undefined]] as const) {
+        const actual = await new Response(handle.stream({ start, end, signal: undefined })).arrayBuffer();
+        const wanted = await new Response(expected.stream({ start, end, signal: undefined })).arrayBuffer();
+        expect(new Uint8Array(actual)).toEqual(new Uint8Array(wanted));
+      }
+      const cancelled = handle.stream({ start: 0, end: undefined, signal: undefined });
+      await cancelled.cancel();
+      expect(fixture.close).not.toHaveBeenCalled();
+      const controller = new AbortController();
+      const abort = new Error('cancel binary read');
+      controller.abort(abort);
+      await expect(handle.read({ buffer: new Uint8Array(1), position: 0, length: 0, offset: 0, signal: controller.signal })).rejects.toBe(abort);
+      expect(() => handle.stream({ start: 0, end: undefined, signal: controller.signal })).toThrow(abort);
+      await handle.close();
+      expect(fixture.close).toHaveBeenCalledTimes(1);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('reports lazy body failures at read or stream time and closes compatibility and dump readers', async () => {
+    const fixture = await readerOnlyBinaryFixture({ bytes: Uint8Array.of(1, 2, 3) });
+    const failure = new Error('binary body unavailable');
+    fixture.read.mockRejectedValue(failure);
+    fixture.stream.mockImplementation(() => new ReadableStream({ start(controller) {
+      controller.error(failure);
+    } }));
+    try {
+      const handle = await fixture.backend.openBinaryObject({ binaryObjectId: BINARY_OBJECT_ID });
+      expect(handle).not.toBeNull();
+      if (handle === null) throw new Error('Expected lazy reader');
+      await expect(handle.read({ buffer: new Uint8Array(1), position: 0, length: 1, offset: 0, signal: undefined })).rejects.toBe(failure);
+      await handle.close();
+      await expect(fixture.backend.getFile({ binaryObjectId: BINARY_OBJECT_ID })).rejects.toBe(failure);
+      const snapshot = await fixture.backend.dump();
+      await expect(snapshot.contentStream[Symbol.asyncIterator]().next()).rejects.toBe(failure);
+      expect(fixture.close).toHaveBeenCalledTimes(3);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('does not acquire a body reader if reading its existing index fails', async () => {
+    const fixture = await readerOnlyBinaryFixture({ bytes: Uint8Array.of(1) });
+    const storage = await fixture.root.getDirectoryHandle('naidan-storage');
+    const binaries = await storage.getDirectoryHandle('binary-objects');
+    const shard = await binaries.getDirectoryHandle('a1');
+    const index = await shard.getFileHandle('index.json');
+    const indexRead = vi.spyOn(index, 'getFile').mockRejectedValue(new Error('index read failed'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(fixture.backend.openBinaryObject({ binaryObjectId: BINARY_OBJECT_ID })).resolves.toBeNull();
+      expect(fixture.openReadable).not.toHaveBeenCalled();
+      indexRead.mockRestore();
+      fixture.openReadable.mockRejectedValue(new Error('body open failed'));
+      await expect(fixture.backend.openBinaryObject({ binaryObjectId: BINARY_OBJECT_ID })).resolves.toBeNull();
+      expect(fixture.openReadable).toHaveBeenCalledTimes(1);
+      expect(fixture.close).not.toHaveBeenCalled();
+    } finally {
+      indexRead.mockRestore();
+      log.mockRestore();
+      await fixture.dispose();
+    }
+  });
+
   it('preserves layout read and close failures in operation order', async () => {
     const readFailure = new Error('layout read failed');
     const closeFailure = new Error('layout readable close failed');

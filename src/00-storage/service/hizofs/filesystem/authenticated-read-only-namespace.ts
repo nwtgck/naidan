@@ -66,6 +66,124 @@ function safeReadLength({ length }: { length: bigint }): number {
   return Number(length);
 }
 
+export function createAuthenticatedFileExtentReader({ indexDiagnostics, recordSource, validationCache }: {
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
+  recordSource: AuthenticatedNamespaceRecordSource;
+  validationCache: ReadOnlyNamespaceValidationCache;
+}): ({ inode, length, offset, copyPending }: Parameters<ReadOnlyNamespacePageSource["readExtentFile"]>[0] & {
+  copyPending?: ({ destination }: { destination: Uint8Array }) => readonly Readonly<{ start: bigint; end: bigint }>[];
+}) => Promise<Uint8Array> {
+  const validations = validationCache;
+  return async ({ inode, length, offset, copyPending }) => {
+    const output = new Uint8Array(safeReadLength({ length }));
+    if (length === 0n) return output;
+    const uncovered = copyPending?.({ destination: output });
+    const extentReader = new ImmutableBTreeReader<FileOffset, FileExtentLeafEntry, HomeRecordReference>({
+      compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
+      getEntryKey: ({ entry }) => entry.fileOffset,
+      operationDiagnostics: indexDiagnostics,
+      pageReader: async ({ isRoot, reference }) => {
+        const expectedRecordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page;
+        if (reference.recordKind !== expectedRecordKind) throw new TypeError("namespace Home Record Reference has the wrong Record Kind");
+        const record = await recordSource.readHomeRecord({ reference });
+        const bytes = record.plaintext;
+        try {
+          if (record.recordKind !== expectedRecordKind) throw new TypeError("authenticated namespace record has the wrong Record Kind");
+          return recordSource.decodeRecordPayload({
+            decode: () => extentPageToImmutable({ page: decodeFileExtentPage({ bytes, isRoot }) }),
+          });
+        } finally {
+          bytes.fill(0);
+        }
+      },
+      referenceIdentity,
+    });
+    const extentRootReference = inode.content.extentTreeRootHomeRef;
+    await validations.validateFileExtentTree({
+      fileSize: inode.fileSize,
+      rootReference: extentRootReference,
+      validate: async () => {
+        let previousExtentEnd: bigint | undefined;
+        for await (const extent of extentReader.entries({ rootReference: extentRootReference })) {
+          const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
+          if (previousExtentEnd !== undefined && extent.fileOffset < previousExtentEnd) {
+            throw new TypeError("File Extent tree contains overlapping logical extents");
+          }
+          if (extentEnd > inode.fileSize) {
+            throw new TypeError("File Extent tree contains an extent beyond the inode file size");
+          }
+          previousExtentEnd = extentEnd;
+        }
+      },
+    });
+    if (uncovered?.length === 0) return output;
+    const requestedEnd = offset + length;
+    const copyAuthenticatedExtentRange = async ({ copyEnd, copyStart, extent }: {
+      copyEnd: bigint;
+      copyStart: bigint;
+      extent: FileExtentLeafEntry;
+    }): Promise<void> => {
+      for (let index = 0; index < (uncovered?.length ?? 1); index += 1) {
+        const range = uncovered?.[index];
+        const start = range !== undefined && range.start > copyStart ? range.start : copyStart;
+        const end = range !== undefined && range.end < copyEnd ? range.end : copyEnd;
+        if (start >= end) continue;
+        await recordSource.copyFileDataRange({
+          destination: output,
+          destinationOffset: Number(start - offset),
+          reference: extent.fileDataHomeRef,
+          sourceLength: Number(end - start),
+          sourceOffset: extent.dataOffset + Number(start - extent.fileOffset),
+          validatePlaintextLength: ({ plaintextLength }) => validateExtentAgainstReferencedData({
+            entry: extent,
+            fileDataPlaintextLength: plaintextLength,
+            inodeFileSize: inode.fileSize,
+          }),
+        });
+      }
+    };
+
+    const extentScan = await extentReader.seekFloorWithEntries({
+      key: createFileOffset({ value: offset }),
+      rootReference: extentRootReference,
+    });
+    const floorExtent = extentScan.floor;
+    if (floorExtent !== undefined) {
+      const floorExtentEnd = floorExtent.fileOffset + BigInt(floorExtent.byteLength);
+      if (floorExtent.fileOffset <= offset && floorExtentEnd >= requestedEnd) {
+        // WHY: a range proven to be fully covered by one authenticated Extent
+        // needs only a floor lookup. Avoid constructing the general async
+        // range cursor, but fall back unchanged for holes and boundary-crossing
+        // reads so sparse and successor semantics stay owned by that path.
+        await copyAuthenticatedExtentRange({ copyEnd: requestedEnd, copyStart: offset, extent: floorExtent });
+        return output;
+      }
+    }
+
+    let copiedUntil = offset;
+    for await (const extent of extentScan.entries) {
+      const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
+      if (extentEnd <= copiedUntil) continue;
+      if (extent.fileOffset >= requestedEnd) return output;
+      if (extent.fileOffset > copiedUntil) {
+        // Extent gaps are authenticated sparse topology, not corruption. The
+        // output buffer starts zeroed, so advance across the hole without
+        // allocating or synthesizing a File Data Record.
+        copiedUntil = extent.fileOffset < requestedEnd ? extent.fileOffset : requestedEnd;
+        if (copiedUntil === requestedEnd) return output;
+      }
+      const copyStart = copiedUntil > extent.fileOffset ? copiedUntil : extent.fileOffset;
+      const copyEnd = requestedEnd < extentEnd ? requestedEnd : extentEnd;
+      await copyAuthenticatedExtentRange({ copyEnd, copyStart, extent });
+      copiedUntil = copyEnd;
+      if (copiedUntil === requestedEnd) return output;
+    }
+    // Any trailing logical range after the last extent is an implicit sparse
+    // hole and remains zero in the bounded output buffer.
+    return output;
+  };
+}
+
 export function createAuthenticatedReadOnlyNamespaceResolver({
   commit,
   decodedDirectoryPageIndexCache,
@@ -178,108 +296,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       default: return page satisfies never;
       }
     },
-    readExtentFile: async ({ inode, length, offset }) => {
-      const output = new Uint8Array(safeReadLength({ length }));
-      if (length === 0n) return output;
-      const extentReader = new ImmutableBTreeReader<FileOffset, FileExtentLeafEntry, HomeRecordReference>({
-        compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
-        getEntryKey: ({ entry }) => entry.fileOffset,
-        operationDiagnostics: indexDiagnostics,
-        pageReader: async ({ isRoot, reference }) => {
-          const bytes = await readPlaintext({
-            expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
-            reference,
-          });
-          try {
-            return recordSource.decodeRecordPayload({
-              decode: () => extentPageToImmutable({ page: decodeFileExtentPage({ bytes, isRoot }) }),
-            });
-          } finally {
-            bytes.fill(0);
-          }
-        },
-        referenceIdentity,
-      });
-      const extentRootReference = inode.content.extentTreeRootHomeRef;
-      await validations.validateFileExtentTree({
-        fileSize: inode.fileSize,
-        rootReference: extentRootReference,
-        validate: async () => {
-          let previousExtentEnd: bigint | undefined;
-          for await (const extent of extentReader.entries({ rootReference: extentRootReference })) {
-            const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
-            if (previousExtentEnd !== undefined && extent.fileOffset < previousExtentEnd) {
-              throw new TypeError("File Extent tree contains overlapping logical extents");
-            }
-            if (extentEnd > inode.fileSize) {
-              throw new TypeError("File Extent tree contains an extent beyond the inode file size");
-            }
-            previousExtentEnd = extentEnd;
-          }
-        },
-      });
-      const requestedEnd = offset + length;
-      const copyAuthenticatedExtentRange = async ({ copyEnd, copyStart, extent }: {
-        copyEnd: bigint;
-        copyStart: bigint;
-        extent: FileExtentLeafEntry;
-      }): Promise<void> => {
-        const sourceStart = extent.dataOffset + Number(copyStart - extent.fileOffset);
-        const sourceLength = Number(copyEnd - copyStart);
-        const destinationStart = Number(copyStart - offset);
-        await recordSource.copyFileDataRange({
-          destination: output,
-          destinationOffset: destinationStart,
-          reference: extent.fileDataHomeRef,
-          sourceLength,
-          sourceOffset: sourceStart,
-          validatePlaintextLength: ({ plaintextLength }) => validateExtentAgainstReferencedData({
-            entry: extent,
-            fileDataPlaintextLength: plaintextLength,
-            inodeFileSize: inode.fileSize,
-          }),
-        });
-      };
-
-      const extentScan = await extentReader.seekFloorWithEntries({
-        key: createFileOffset({ value: offset }),
-        rootReference: extentRootReference,
-      });
-      const floorExtent = extentScan.floor;
-      if (floorExtent !== undefined) {
-        const floorExtentEnd = floorExtent.fileOffset + BigInt(floorExtent.byteLength);
-        if (floorExtent.fileOffset <= offset && floorExtentEnd >= requestedEnd) {
-          // WHY: a range proven to be fully covered by one authenticated Extent
-          // needs only a floor lookup. Avoid constructing the general async
-          // range cursor, but fall back unchanged for holes and boundary-crossing
-          // reads so sparse and successor semantics stay owned by that path.
-          await copyAuthenticatedExtentRange({ copyEnd: requestedEnd, copyStart: offset, extent: floorExtent });
-          return output;
-        }
-      }
-
-      let copiedUntil = offset;
-      for await (const extent of extentScan.entries) {
-        const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
-        if (extentEnd <= copiedUntil) continue;
-        if (extent.fileOffset >= requestedEnd) return output;
-        if (extent.fileOffset > copiedUntil) {
-          // Extent gaps are authenticated sparse topology, not corruption. The
-          // output buffer starts zeroed, so advance across the hole without
-          // allocating or synthesizing a File Data Record.
-          copiedUntil = extent.fileOffset < requestedEnd ? extent.fileOffset : requestedEnd;
-          if (copiedUntil === requestedEnd) return output;
-        }
-        const copyStart = copiedUntil > extent.fileOffset ? copiedUntil : extent.fileOffset;
-        const copyEnd = requestedEnd < extentEnd ? requestedEnd : extentEnd;
-        await copyAuthenticatedExtentRange({ copyEnd, copyStart, extent });
-        copiedUntil = copyEnd;
-        if (copiedUntil === requestedEnd) return output;
-      }
-      // Any trailing logical range after the last extent is an implicit sparse
-      // hole and remains zero in the bounded output buffer.
-      return output;
-    },
+    readExtentFile: createAuthenticatedFileExtentReader({ indexDiagnostics, recordSource, validationCache: validations }),
     readInodePointPage: async ({ inodeNumber, isRoot, reference }) => {
       const cachedBranch = decodedInodeIndexPageCache?.getBranchPage({ isRoot, reference });
       if (cachedBranch !== undefined) return { page: cachedBranch, type: "branch" as const };

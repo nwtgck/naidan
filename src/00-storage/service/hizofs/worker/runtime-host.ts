@@ -1,6 +1,7 @@
 import {
   createHizoFSStorageFileSystemSession,
   createRuntimeBoundHizoFSApplicationSessionPort,
+  HizoFSStorageFileSystemSession,
   type HizoFSApplicationMutationPort,
   type HizoFSApplicationMutationSuccessCondition,
   type HizoFSApplicationRuntimeSession,
@@ -28,6 +29,11 @@ import {
 import type { ContainerCoordinationScope } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import type { CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
 import type { HizoFSRuntimeOwnerOpenPolicy } from "@/00-storage/service/hizofs/runtime/runtime-owner-coordinator";
+import {
+  SessionLifecycle,
+  type OwnedSessionChild,
+  type SessionChildRegistration,
+} from "@/00-storage/service/hizofs/runtime/session-lifecycle";
 import type {
   HizoFSRuntimePolicy,
 } from "@/00-storage/service/hizofs/runtime/runtime-policy";
@@ -83,6 +89,155 @@ async function closeRuntimeSessionAfterFailure({ cause, message, session }: {
   throw cause;
 }
 
+export type HizoFSReadObservationFactory = ({ capture }: {
+  capture: "at_open" | "per_operation";
+}) => Promise<Readonly<Pick<StorageFileSystemSession, "root" | "close">>>;
+
+type ReadObservationOwner = Pick<ContainerRuntimeSession, "registerReadChild" | "runReadOperation">;
+
+class OwnedReadObservationRuntimeSession implements HizoFSApplicationRuntimeSession {
+  private readonly lifecycle: SessionLifecycle;
+  private readonly parent: ReadObservationOwner;
+  private registration: SessionChildRegistration | undefined;
+  private revoked = false;
+
+  constructor({ parent, release }: { parent: ReadObservationOwner; release: () => void }) {
+    this.parent = parent;
+    this.lifecycle = new SessionLifecycle({ releaseResources: async () => {
+      try {
+        release();
+      } finally {
+        this.registration?.releaseOwnership();
+      }
+    } });
+  }
+
+  assertOpen(): void {
+    if (this.revoked || this.lifecycle.state() !== "open") {
+      throw new Error("HizoFS read observation is closing or closed");
+    }
+  }
+
+  attach({ close }: { close: () => Promise<void> }): void {
+    this.registration = this.parent.registerReadChild({ child: {
+      close,
+      revoke: () => {
+        this.revoked = true;
+      },
+    } });
+  }
+
+  registerReadChild({ child }: { child: OwnedSessionChild }): SessionChildRegistration {
+    this.assertOpen();
+    return this.lifecycle.registerChild({ child });
+  }
+
+  async acquireWriter(): Promise<HizoFSApplicationRuntimeWriter> {
+    throw new Error("HizoFS read observation cannot acquire a writer");
+  }
+
+  async close(): Promise<void> {
+    this.revoked = true;
+    await this.lifecycle.close();
+  }
+
+  async runReadOperation<Value>({ operation }: { operation: () => Promise<Value> }): Promise<Value> {
+    this.assertOpen();
+    return await this.lifecycle.runOperation({ operation: async () => await this.parent.runReadOperation({
+      operation: async () => {
+        this.assertOpen();
+        return await operation();
+      },
+    }) });
+  }
+}
+
+async function createReadObservation({
+  assertOperationAllowed,
+  capture,
+  captureStableReadNamespace,
+  mutationPort,
+  namespace,
+  parent,
+  rootName,
+  rootPath,
+}: {
+  assertOperationAllowed: (() => void) | undefined;
+  capture: "at_open" | "per_operation";
+  captureStableReadNamespace: () => HizoFSApplicationStableReadNamespaceCapture;
+  mutationPort: HizoFSApplicationMutationPort;
+  namespace: HizoFSApplicationSessionNamespace;
+  parent: ReadObservationOwner;
+  rootName: string | undefined;
+  rootPath: readonly string[] | undefined;
+}): Promise<Readonly<{ port: HizoFSApplicationSessionPort; session: StorageFileSystemSession }>> {
+  let opened: Readonly<{
+    port: HizoFSApplicationSessionPort;
+    runtime: OwnedReadObservationRuntimeSession;
+    session: StorageFileSystemSession;
+  }> | undefined;
+  let runtime: OwnedReadObservationRuntimeSession | undefined;
+  try {
+    await parent.runReadOperation({ operation: async () => {
+      assertOperationAllowed?.();
+      const captured = (() => {
+        switch (capture) {
+        case "at_open": return captureStableReadNamespace();
+        case "per_operation": return undefined;
+        default: return capture satisfies never;
+        }
+      })();
+      const readNamespace = captured?.namespace ?? namespace;
+      const captureRead = captured === undefined
+        ? captureStableReadNamespace
+        : () => ({ namespace: readNamespace, release: () => undefined });
+      runtime = new OwnedReadObservationRuntimeSession({
+        parent,
+        release: () => captured?.release(),
+      });
+      const observationRuntime = runtime;
+      const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+        ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
+        captureStableReadNamespace: captureRead,
+        // Directory iterators retain this accepted view, never the normal
+        // snapshot factory that may materialize and publish a working Commit.
+        createReadSnapshot: async () => (await createReadObservation({
+          assertOperationAllowed,
+          capture: "at_open",
+          captureStableReadNamespace: captureRead,
+          mutationPort,
+          namespace: readNamespace,
+          parent: observationRuntime,
+          rootName,
+          rootPath,
+        })).port,
+        mutationPort,
+        namespace: readNamespace,
+        runtimeSession: observationRuntime,
+        sync: async () => {
+          throw new Error("HizoFS read observation cannot sync");
+        },
+      } });
+      const session = createHizoFSStorageFileSystemSession({ port, rootName, rootPath });
+      opened = { port, runtime: observationRuntime, session };
+      // Close the complete storage owner so file readers and paged iterators
+      // drain before their captured roots or the parent resources are released.
+      observationRuntime.attach({ close: async () => await session.close() });
+    } });
+    if (opened === undefined) throw new Error("HizoFS read observation did not open");
+    opened.runtime.assertOpen();
+    assertOperationAllowed?.();
+    return opened;
+  } catch (cause: unknown) {
+    try {
+      if (opened !== undefined) await opened.session.close();
+      else await runtime?.close();
+    } catch (cleanupFailure: unknown) {
+      throw new AggregateError([cause, cleanupFailure], "read observation open and cleanup both failed");
+    }
+    throw cause;
+  }
+}
 
 class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSession {
   private closePromise: Promise<void> | undefined;
@@ -382,6 +537,7 @@ export class HizoFSWorkerRuntimeHost {
       createReadSnapshotResources?: ReadSnapshotResourceFactory;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
+      readOnlyMutationPort?: HizoFSApplicationMutationPort;
       releaseResources: () => Promise<void>;
       syncDurability: StorageFileSystemSyncDurability;
       workerMountGrantIssuer?: HizoFSWorkerMountGrantIssuer;
@@ -393,7 +549,8 @@ export class HizoFSWorkerRuntimeHost {
       verified: Verified;
     }) => DurableGenerationIdentity;
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
-    registerRuntimeSession?: ({ runtimeSession }: {
+    registerRuntimeSession?: ({ openReadObservation, runtimeSession }: {
+      openReadObservation: HizoFSReadObservationFactory | undefined;
       runtimeSession: HizoFSApplicationRuntimeSession;
     }) => void;
     rootName?: string;
@@ -407,6 +564,7 @@ export class HizoFSWorkerRuntimeHost {
       createReadSnapshotResources: ReadSnapshotResourceFactory | undefined;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
+      readOnlyMutationPort: HizoFSApplicationMutationPort | undefined;
       recheckSyncAuthority: () => Promise<void>;
       syncDurability: StorageFileSystemSyncDurability;
       workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
@@ -486,6 +644,7 @@ export class HizoFSWorkerRuntimeHost {
           createReadSnapshotResources,
           mutationPort,
           namespace,
+          readOnlyMutationPort,
           releaseResources,
           syncDurability,
           workerMountGrantIssuer,
@@ -498,6 +657,7 @@ export class HizoFSWorkerRuntimeHost {
           createReadSnapshotResources,
           mutationPort,
           namespace,
+          readOnlyMutationPort,
           recheckSyncAuthority: async () => {
             try {
               await recheckAuthority({ captured });
@@ -578,8 +738,7 @@ export class HizoFSWorkerRuntimeHost {
       }
     };
     try {
-      registerRuntimeSession?.({ runtimeSession: session });
-      return createHizoFSStorageFileSystemSession({
+      const fileSystemSession = new HizoFSStorageFileSystemSession({
         port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
           ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
           ...(captureStableReadNamespace === undefined ? {} : { captureStableReadNamespace }),
@@ -605,6 +764,28 @@ export class HizoFSWorkerRuntimeHost {
         rootPath,
         workerMountGrantIssuer: resolvedApplicationResources.workerMountGrantIssuer,
       });
+      const readOnlyMutationPort = resolvedApplicationResources.readOnlyMutationPort;
+      const openReadObservation: HizoFSReadObservationFactory | undefined =
+        captureStableReadNamespace === undefined || readOnlyMutationPort === undefined
+          ? undefined
+          : async ({ capture }) => {
+            const observation = await createReadObservation({
+              assertOperationAllowed: () => {
+                fileSystemSession.assertOpen();
+                assertOperationAllowed?.();
+              },
+              capture,
+              captureStableReadNamespace,
+              mutationPort: readOnlyMutationPort,
+              namespace: resolvedApplicationResources.namespace,
+              parent: session,
+              rootName,
+              rootPath,
+            });
+            return { close: async () => await observation.session.close(), root: observation.session.root };
+          };
+      registerRuntimeSession?.({ openReadObservation, runtimeSession: session });
+      return fileSystemSession;
     } catch (cause: unknown) {
       return await closeRuntimeSessionAfterFailure({
         cause,

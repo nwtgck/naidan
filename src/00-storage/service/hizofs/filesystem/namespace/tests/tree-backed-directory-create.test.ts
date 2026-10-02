@@ -1,41 +1,31 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
-  createCommitSequence,
-  createFileSystemCommitPayload,
   createHomeRecordReference,
   createInodeNumber,
   createInodeRevision,
   createSubvolumeId,
   createTimestampMilliseconds,
   createUInt64,
-  parseMutationId,
   parseSegmentId,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type DirectoryPage,
   type HomeRecordReference,
-  type InodeLeafEntry,
-  type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   createDirectoryPageTreePageStore,
   readDirectoryPageTreeEntry,
   type DirectoryPagePort,
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
-import type { RootInodeTablePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
-import { prepareOrdinaryEntryCreateCommit } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-commit";
 import {
   prepareTreeBackedDirectoryCreateMutation,
   TreeBackedDirectoryCreateMutationError,
 } from "@/00-storage/service/hizofs/filesystem/namespace/tree-backed-directory-create-mutation";
 import { prepareOrdinaryEntryCreatePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
-import type { ImmutableBTreePage } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import { describe, expect, it } from "vitest";
 
 const operationTimestamp = createTimestampMilliseconds({ value: 1_700_000_000_000n });
-
-type InodePage = ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>;
 
 function reference({ kind, offset }: { kind: number; offset: bigint }): HomeRecordReference {
   return createHomeRecordReference({ fields: {
@@ -72,30 +62,6 @@ class MemoryDirectoryPagePort implements DirectoryPagePort {
   }
 }
 
-class MemoryInodePageStore implements RootInodeTablePageStore {
-  readonly pages = new Map<HomeRecordReference, InodePage>();
-  private nextOffset = 2_048n;
-
-  async readPage({ reference: pageReference }: {
-    isRoot: boolean;
-    reference: HomeRecordReference;
-  }): Promise<InodePage> {
-    const page = this.pages.get(pageReference);
-    if (page === undefined) throw new Error("missing Inode Table page");
-    return page;
-  }
-
-  async writePage({ page }: { isRoot: boolean; page: InodePage }): Promise<HomeRecordReference> {
-    const pageReference = reference({
-      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-      offset: this.nextOffset,
-    });
-    this.nextOffset += 128n;
-    this.pages.set(pageReference, page);
-    return pageReference;
-  }
-}
-
 function existingEntry({ name = "z" }: { name?: string } = {}): DirectoryLeafEntry {
   return {
     inodeKind: "file",
@@ -110,10 +76,6 @@ function fixture({ revision = 4n }: { revision?: bigint } = {}) {
     kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
     offset: 64n,
   });
-  const inodeRoot = reference({
-    kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-    offset: 256n,
-  });
   const parent: DirectoryInodeEntry = {
     content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" },
     inodeKind: "directory",
@@ -123,21 +85,9 @@ function fixture({ revision = 4n }: { revision?: bigint } = {}) {
   };
   const directoryPort = new MemoryDirectoryPagePort();
   directoryPort.pages.set(directoryRoot, { entries: [existingEntry()], level: 0, type: "leaf" });
-  const inodePageStore = new MemoryInodePageStore();
-  inodePageStore.pages.set(inodeRoot, { entries: [parent], level: 0, type: "leaf" });
   return {
-    baseCommit: createFileSystemCommitPayload({ payload: {
-      commitSequence: createCommitSequence({ value: 1n }),
-      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
-      nestedSubvolumeTableRootHomeRef: null,
-      nextInodeNumber: createInodeNumber({ value: 3n }),
-      nextSubvolumeId: createSubvolumeId({ value: 2n }),
-      rootDirectoryInodeNumber: parent.inodeNumber,
-      rootInodeTableRootHomeRef: inodeRoot,
-    } }),
     directoryPageStore: createDirectoryPageTreePageStore({ pagePort: directoryPort }),
     directoryPort,
-    inodePageStore,
     parent,
   };
 }
@@ -298,34 +248,4 @@ describe("tree-backed directory creation", () => {
     })).rejects.toThrow("inline directory mutation executor");
   });
 
-  it("prepares a new Commit root and advances the inode allocator", async () => {
-    const { baseCommit, directoryPageStore, inodePageStore, parent } = fixture();
-    const result = await prepareOrdinaryEntryCreateCommit({
-      baseCommit,
-      directoryPageStore,
-      inodeTablePageStore: inodePageStore,
-      maximumKnownInodeNumber: createInodeNumber({ value: 2n }),
-      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
-      operationTimestamp,
-      parent,
-      request: { type: "file" },
-      target: {
-        entryName: "file",
-        parentAccess: "read_write",
-        parentDirectoryInodeNumber: parent.inodeNumber,
-        parentSubvolumeId: createSubvolumeId({ value: 1n }),
-      },
-    });
-
-    expect(result.commitPayload.commitSequence).toBe(2n);
-    expect(result.commitPayload.nextInodeNumber).toBe(4n);
-    expect(result.commitPayload.mutationId).toEqual(new Uint8Array(16).fill(7));
-    expect(result.commitPayload.rootInodeTableRootHomeRef).not.toBe(baseCommit.rootInodeTableRootHomeRef);
-    const writtenRoot = inodePageStore.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
-    if (writtenRoot?.type !== "leaf") throw new Error("expected written root Inode Table leaf");
-    expect(writtenRoot.entries).toMatchObject([
-      { inodeKind: "directory", inodeNumber: 1n, inodeRevision: 5n },
-      { inodeKind: "file", inodeNumber: 3n, inodeRevision: 1n },
-    ]);
-  });
 });

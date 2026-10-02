@@ -7,7 +7,15 @@ const AppCommandRuntime = defineAsyncComponent(
   () => import('@/components/AppCommandRuntime.vue'),
 );
 const AppAuxiliaryUi = defineAsyncComponent(
-  () => import('@/components/AppAuxiliaryUi.vue'),
+  async () => {
+    try {
+      return await import('@/components/AppAuxiliaryUi.vue');
+    } catch (error) {
+      // The auxiliary component cannot report failure before its module loads.
+      reportInitialShellFailure({ error });
+      throw error;
+    }
+  },
 );
 
 const emit = defineEmits<{

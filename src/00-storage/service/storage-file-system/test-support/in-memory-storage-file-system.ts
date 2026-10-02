@@ -1,4 +1,4 @@
-import { createBlobStorageBinaryObjectReadHandle } from '@/00-storage/service/binary-object-io';
+import { createBlobStorageBinaryObjectReadHandle, type StorageBinaryObjectReadHandle } from '@/00-storage/service/binary-object-io';
 import type {
   StorageDirectoryHandle,
   StorageEntryHandle,
@@ -126,6 +126,22 @@ class InMemoryStorageWritableFile implements StorageWritableFile {
   private readonly node: InMemoryFileNode;
   private pendingBytes: Uint8Array;
   private settled = false;
+
+  async read({ buffer, length, offset, position, signal }: Parameters<StorageBinaryObjectReadHandle['read']>[0]): Promise<{ bytesRead: number }> {
+    this.assertOpen();
+    signal?.throwIfAborted();
+    assertNonNegativeSafeInteger({ value: offset, fieldName: 'Read buffer offset' });
+    assertNonNegativeSafeInteger({ value: length, fieldName: 'Read length' });
+    assertNonNegativeSafeInteger({ value: position, fieldName: 'Read position' });
+    if (offset > buffer.byteLength || length > buffer.byteLength - offset) {
+      throw new RangeError('Read destination range exceeds the supplied buffer');
+    }
+    if (position > this.pendingBytes.byteLength || length > this.pendingBytes.byteLength - position) {
+      throw new RangeError('File read range exceeds file size');
+    }
+    buffer.set(this.pendingBytes.subarray(position, position + length), offset);
+    return { bytesRead: length };
+  }
 
   async write({ position, data }: {
     position: number;

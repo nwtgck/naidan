@@ -10,6 +10,7 @@ import {
 
 function runtime(): OpfsPersistenceRuntime {
   return {
+    runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
     writableProfile: 'development-unverified',
     async changePassphrase() {
       throw new Error('not used');

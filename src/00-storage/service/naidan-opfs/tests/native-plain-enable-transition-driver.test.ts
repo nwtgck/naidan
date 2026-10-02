@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fileSystemIdToNaidanContainerToken } from "@/00-storage/service/naidan-persistence-control/00-format";
 import { createNativePlainEnableTransitionDriver, TEST_ONLY } from "@/00-storage/service/naidan-opfs/native-plain-enable-transition-driver";
-import { TEST_ONLY as APPLICATION_NAMESPACE_TEST_ONLY } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
+import { createNativePlainApplicationNamespaceSession, TEST_ONLY as APPLICATION_NAMESPACE_TEST_ONLY } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
 import type { StorageFileSystemSession } from "@/00-storage/service/storage-file-system/types";
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from "@/00-storage/service/naidan-opfs/persistence-runtime-contract";
@@ -104,6 +104,33 @@ describe("native plain enable transition driver", () => {
       session,
     })).rejects.toBe(closeFailure);
   });
+
+  it.each(["success", "operation", "close", "both"] as const)("preserves undefined callback failures during session close: %s", async failure => {
+    const closeCause = failure === "both" ? new Error("session close failed") : undefined;
+    const close = vi.fn(async () => {
+      if (failure === "close" || failure === "both") throw closeCause;
+    });
+    const session: StorageFileSystemSession = {
+      ...createNativePlainApplicationNamespaceSession({ nativeNamespaceRoot: nativeDirectory({ entries: [] }).root }),
+      close,
+    };
+    const operation = vi.fn(async ({ session: opened }: { session: StorageFileSystemSession }) => {
+      expect(opened).toBe(session);
+      if (failure === "operation" || failure === "both") throw undefined;
+      return undefined;
+    });
+    const result = APPLICATION_NAMESPACE_TEST_ONLY.runWithSession({
+      failureMessage: "operation and close both failed", operation, session,
+    });
+    if (failure === "success") await expect(result).resolves.toBeUndefined();
+    else if (failure === "both") await expect(result).rejects.toMatchObject({
+      errors: [undefined, closeCause], message: "operation and close both failed", name: "AggregateError",
+    });
+    else await expect(result).rejects.toBeUndefined();
+    expect(operation).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("excludes only Persistence Control and canonical HizoFS containers", () => {
     const container = fileSystemIdToNaidanContainerToken({ id: FILE_SYSTEM_ID });
     expect(TEST_ONLY.includeApplicationStorageEntry({ name: "settings.json" })).toBe(true);

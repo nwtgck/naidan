@@ -15,6 +15,7 @@ import {
   type HizoFSApplicationRuntimeWriter,
 } from "@/00-storage/service/hizofs/api/application-session-port";
 import { captureFileWriteBytes } from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
+import { createHizoFSStorageFileSystemSession } from "@/00-storage/service/hizofs/api/storage-file-system-session";
 import { ReadOnlyNamespaceError, type ReadOnlyNamespace } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
 
@@ -71,6 +72,7 @@ function namespace({ includeSubvolume = false }: {
           inodeRevision: createInodeRevision({ value: 1n }),
           kind: "symlink" as const,
           modifiedAt,
+          symlinkTargetByteLength: 9,
         };
       }
       return {
@@ -188,6 +190,11 @@ function mutationPort({ markCommitPoint = true }: {
     async openWritable(request) {
       calls.push(["open-writable", request]);
       return {
+        async read({ length, offset, signal }) {
+          signal?.throwIfAborted();
+          calls.push(["read-writable", { length, offset }]);
+          return new Uint8Array(Number(length));
+        },
         async abort({ reason }) {
           calls.push(["abort", reason]);
         },
@@ -230,7 +237,45 @@ function createPort({ includeSubvolume = false, markCommitPoint = true }: {
   };
 }
 
+function openPrepared({ kind, port }: {
+  kind: "bulk" | "writable";
+  port: ReturnType<typeof createRuntimeBoundHizoFSApplicationSessionPort>;
+}) {
+  if (kind === "writable") return port.openWritable({ keepExistingData: true, path: ["file"] });
+  if (port.openExplicitBulk === undefined) throw new Error("expected explicit bulk support");
+  return port.openExplicitBulk({ path: ["target"] });
+}
+
 describe("runtime-bound HizoFS application session port", () => {
+  it("forwards genuine page bounds and exclusive names without calling the full listing", async () => {
+    const readNamespace = namespace();
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: readNamespace,
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+    await expect(port.listDirectoryPage!({ afterName: "between", maximumEntries: 2, path: ["directory"] }))
+      .resolves.toEqual({ entries: [], truncated: false });
+    expect(readNamespace.listAfterBounded).toHaveBeenCalledExactlyOnceWith({ afterName: "between", maximumEntries: 2, pathComponents: ["directory"] });
+    expect(readNamespace.list).not.toHaveBeenCalled();
+    await port.close();
+  });
+
+  it("advertises paging only when the namespace has genuine bounded paging", async () => {
+    const { listAfterBounded: _listAfterBounded, ...unpaged } = namespace();
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: unpaged,
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+    expect(port.listDirectoryPage).toBeUndefined();
+    await expect(port.listDirectory({ path: [] })).resolves.toEqual([{ kind: "file", name: "file" }]);
+    expect(unpaged.list).toHaveBeenCalledOnce();
+    await port.close();
+  });
+
   it("projects immutable namespace reads through runtime close linearization", async () => {
     const { port, runtimeState } = createPort();
 
@@ -334,14 +379,23 @@ describe("runtime-bound HizoFS application session port", () => {
     await port.close();
   });
 
-  it("reports symlink size as exact UTF-8 target bytes", async () => {
+  it.each([
+    ["../target", 9],
+    ["\u00e9/path", 7],
+    ["\ufeffx", 4],
+    ["x\u{1f680}", 5],
+  ] as const)("reports symlink size from one stat projection without reading the target again: %s", async (target, byteLength) => {
     const runtimeState = runtime();
-    const target = "\u00e9/path";
+    const sourceNamespace = namespace();
+    const projected = await sourceNamespace.stat({ pathComponents: ["link"] });
+    const stat = vi.fn(async () => ({ ...projected, symlinkTargetByteLength: byteLength }));
+    const readlink = vi.fn(async () => target);
     const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
       mutationPort: mutationPort().port,
       namespace: {
-        ...namespace(),
-        readlink: async () => target,
+        ...sourceNamespace,
+        readlink,
+        stat,
       },
       runtimeSession: runtimeState.session,
       sync: async () => undefined,
@@ -351,12 +405,36 @@ describe("runtime-bound HizoFS application session port", () => {
       createdAt: 10n,
       kind: "symlink",
       modifiedAt: 20n,
-      size: 7n,
+      size: BigInt(byteLength),
     });
+    expect(stat).toHaveBeenCalledExactlyOnceWith({ pathComponents: ["link"] });
+    expect(readlink).not.toHaveBeenCalled();
     await expect(port.readlink({ path: ["link"] })).resolves.toBe(target);
+    expect(readlink).toHaveBeenCalledExactlyOnceWith({ pathComponents: ["link"] });
     expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(2);
     await port.close();
   });
+
+  it.each([undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects an invalid symlink target byte-length projection: %s",
+    async symlinkTargetByteLength => {
+      const sourceNamespace = namespace();
+      const projected = await sourceNamespace.stat({ pathComponents: ["link"] });
+      const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+        mutationPort: mutationPort().port,
+        namespace: {
+          ...sourceNamespace,
+          stat: async () => ({ ...projected, symlinkTargetByteLength }),
+        },
+        runtimeSession: runtime().session,
+        sync: async () => undefined,
+      } });
+
+      await expect(port.stat({ path: ["link"] })).rejects.toThrow("target byte length");
+      expect(sourceNamespace.readlink).not.toHaveBeenCalled();
+      await port.close();
+    },
+  );
 
 
   it("binds readable size and bytes to one captured working namespace", async () => {
@@ -389,6 +467,121 @@ describe("runtime-bound HizoFS application session port", () => {
     await readable.close();
     await readable.close();
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["success", "failure", "abort"] as const)("retains a readable capture until every admitted read settles with %s", async outcome => {
+    const firstRead = Promise.withResolvers<Uint8Array>();
+    const secondRead = Promise.withResolvers<Uint8Array>();
+    const readFile = vi.fn<ReadOnlyNamespace["readFile"]>()
+      .mockImplementationOnce(async () => await firstRead.promise)
+      .mockImplementationOnce(async () => await secondRead.promise);
+    const capturedNamespace = { ...namespace(), readFile };
+    const release = vi.fn();
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      captureStableReadNamespace: () => ({ namespace: capturedNamespace, release }),
+      mutationPort: mutationPort().port,
+      namespace: namespace(),
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+    const readable = await port.openReadable({ path: ["file"] });
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(readable.read({ length: 1n, offset: 0n, signal: aborted.signal }))
+      .rejects.toBe(aborted.signal.reason);
+    expect(readFile).not.toHaveBeenCalled();
+
+    const first = readable.read({ length: 1n, offset: 0n, signal: undefined });
+    const second = readable.read({ length: 1n, offset: 1n, signal: undefined });
+    const secondOutcome = second.then(value => ({ value }), cause => ({ cause }));
+    let settledCloses = 0;
+    const closing = readable.close().then(() => {
+      settledCloses += 1;
+    });
+    const repeatedClose = readable.close().then(() => {
+      settledCloses += 1;
+    });
+    await Promise.resolve();
+    expect(release).not.toHaveBeenCalled();
+    expect(settledCloses).toBe(0);
+    await expect(readable.read({ length: 1n, offset: 0n, signal: undefined }))
+      .rejects.toMatchObject({ code: "session_closed" });
+
+    firstRead.resolve(Uint8Array.of(1));
+    await expect(first).resolves.toEqual(Uint8Array.of(1));
+    expect(release).not.toHaveBeenCalled();
+    expect(settledCloses).toBe(0);
+    switch (outcome) {
+    case "success":
+      secondRead.resolve(Uint8Array.of(2));
+      await expect(secondOutcome).resolves.toEqual({ value: Uint8Array.of(2) });
+      break;
+    case "failure":
+    case "abort": {
+      const failure = outcome === "abort" ? new DOMException("read aborted", "AbortError") : new Error("read failed");
+      secondRead.reject(failure);
+      await expect(secondOutcome).resolves.toEqual({ cause: failure });
+      break;
+    }
+    default: outcome satisfies never;
+    }
+    await Promise.all([closing, repeatedClose]);
+    expect(settledCloses).toBe(2);
+    expect(release).toHaveBeenCalledOnce();
+    await readable.close();
+    expect(release).toHaveBeenCalledOnce();
+    await port.close();
+  });
+
+  it("shares a readable release failure across close calls without releasing twice", async () => {
+    const failure = new Error("stable readable release failed");
+    const release = vi.fn(() => {
+      throw failure;
+    });
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      captureStableReadNamespace: () => ({ namespace: namespace(), release }),
+      mutationPort: mutationPort().port,
+      namespace: namespace(),
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+    const readable = await port.openReadable({ path: ["file"] });
+    const outcomes = await Promise.allSettled([readable.close(), readable.close()]);
+    expect(outcomes).toEqual([
+      { reason: failure, status: "rejected" },
+      { reason: failure, status: "rejected" },
+    ]);
+    await expect(readable.close()).rejects.toBe(failure);
+    expect(release).toHaveBeenCalledOnce();
+    await port.close();
+  });
+
+  it("stops a queued public stream pull when readable close begins synchronously", async () => {
+    const capturedNamespace = namespace();
+    const release = vi.fn();
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      captureStableReadNamespace: () => ({ namespace: capturedNamespace, release }),
+      mutationPort: mutationPort().port,
+      namespace: capturedNamespace,
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    const stream = readable.stream({ end: undefined, signal: undefined, start: 0 });
+    const closing = readable.close();
+    const streamReader = stream.getReader();
+    try {
+      await expect(streamReader.read()).rejects.toMatchObject({ code: "session_closed" });
+      expect(capturedNamespace.readFile).not.toHaveBeenCalled();
+      await closing;
+      expect(release).toHaveBeenCalledOnce();
+    } finally {
+      await streamReader.cancel().catch(() => undefined);
+      await closing;
+      await session.close();
+    }
   });
 
   it("projects private missing-entry failures into the shared storage boundary", async () => {
@@ -648,6 +841,50 @@ describe("runtime-bound HizoFS application session port", () => {
     expect(runtimeState.calls.at(-1)).toBe("close-writer");
   });
 
+  it.each([
+    ["bulk", "working_candidate_acceptance", "accepted"],
+    ["bulk", "durable_publication", "accepted"],
+    ["bulk", "working_candidate_acceptance", "no_change"],
+    ["bulk", "durable_publication", "no_change"],
+    ["writable", "working_candidate_acceptance", "accepted"],
+    ["writable", "durable_publication", "accepted"],
+    ["writable", "working_candidate_acceptance", "no_change"],
+    ["writable", "durable_publication", "no_change"],
+  ] as const)("applies %s %s policy to %s prepared completion", async (kind, condition, resolution) => {
+    const runtimeState = runtime();
+    const mutations = mutationPort();
+    const abort = vi.fn(async () => undefined);
+    vi.spyOn(mutations.port, kind === "bulk" ? "openExplicitBulk" : "openWritable").mockResolvedValue({
+      abort,
+      async commit({ authority }: { authority: HizoFSApplicationPublicationAuthority }) {
+        if (resolution === "accepted") authority.markCandidateAccepted();
+        else authority.markNoChangeResolved();
+      },
+      createEmptyFile: async () => undefined,
+      truncate: async () => undefined,
+      write: async () => "returned_to_caller" as const,
+    });
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      mutationSuccessCondition: condition,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+    const prepared = await openPrepared({ kind, port });
+    if (condition === "durable_publication" && resolution === "accepted") {
+      await expect(prepared.commit()).rejects.toMatchObject({
+        code: "commit_point_not_crossed",
+        message: expect.stringContaining(kind === "bulk" ? "explicit bulk commit" : "file commit"),
+      });
+      expect(abort).toHaveBeenCalledOnce();
+    } else {
+      await expect(prepared.commit()).resolves.toBeUndefined();
+      expect(abort).not.toHaveBeenCalled();
+    }
+    expect(runtimeState.calls).toEqual(["acquire-writer", "run-publication", "close-writer"]);
+  });
+
   it("preserves writable commit and prepared-abort failures in order", async () => {
     const runtimeState = runtime();
     const mutations = mutationPort();
@@ -656,6 +893,9 @@ describe("runtime-bound HizoFS application session port", () => {
     mutations.port.openWritable = async request => {
       mutations.calls.push(["open-writable-failing-cleanup", request]);
       return {
+        async read() {
+          throw new Error("unused read");
+        },
         async abort() {
           throw abortFailure;
         },
@@ -689,6 +929,87 @@ describe("runtime-bound HizoFS application session port", () => {
     expect(runtimeState.calls.at(-1)).toBe("close-writer");
   });
 
+  describe.each(["success", "failure"] as const)("undefined primary with writer cleanup %s", cleanupOutcome => {
+    it.each([
+      ["ordinary", "mutation"],
+      ["bulk", "commit"],
+      ["bulk", "abort"],
+      ["bulk", "open"],
+      ["writable", "commit"],
+      ["writable", "abort"],
+      ["writable", "open"],
+    ] as const)("preserves %s %s rejection and cleanup order", async (kind, phase) => {
+      const runtimeState = runtime();
+      const mutations = mutationPort();
+      const cleanupFailure = new Error("writer cleanup failed");
+      const close = vi.fn(async () => {
+        runtimeState.calls.push("close-writer");
+        if (cleanupOutcome === "failure") throw cleanupFailure;
+      });
+      const acquireWriter = runtimeState.session.acquireWriter;
+      vi.spyOn(runtimeState.session, "acquireWriter").mockImplementation(async () => {
+        const writer = await acquireWriter();
+        writer.close = close;
+        return writer;
+      });
+      const fail = vi.fn(async () => {
+        throw undefined;
+      });
+      const abort = vi.fn(async () => {
+        if (phase === "abort") await fail();
+      });
+      if (kind === "ordinary") {
+        vi.spyOn(mutations.port, "createFile").mockImplementation(fail);
+      } else {
+        const open = vi.spyOn(mutations.port, kind === "bulk" ? "openExplicitBulk" : "openWritable");
+        if (phase === "open") {
+          open.mockImplementation(fail);
+        } else {
+          open.mockResolvedValue({
+            abort,
+            commit: fail,
+            createEmptyFile: async () => undefined,
+            truncate: async () => undefined,
+            write: async () => "returned_to_caller" as const,
+          });
+        }
+      }
+      const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+        mutationPort: mutations.port,
+        namespace: namespace(),
+        runtimeSession: runtimeState.session,
+        sync: async () => undefined,
+      } });
+      let operation: () => Promise<unknown>;
+      if (kind === "ordinary") {
+        operation = async () => await port.createFile({ name: "file", path: [] });
+      } else {
+        if (phase === "open") {
+          operation = async () => await openPrepared({ kind, port });
+        } else {
+          const prepared = await openPrepared({ kind, port });
+          operation = phase === "abort"
+            ? async () => await prepared.abort({ reason: "test cancellation" })
+            : async () => await prepared.commit();
+        }
+      }
+
+      const [outcome] = await Promise.allSettled([operation()]);
+      if (cleanupOutcome === "success") {
+        expect(outcome).toEqual({ status: "rejected", reason: undefined });
+      } else {
+        expect(outcome.status).toBe("rejected");
+        if (outcome.status !== "rejected") throw new Error("expected rejected operation");
+        expect(outcome.reason).toBeInstanceOf(AggregateError);
+        expect((outcome.reason as AggregateError).errors).toEqual([undefined, cleanupFailure]);
+      }
+      expect(fail).toHaveBeenCalledOnce();
+      expect(abort).toHaveBeenCalledTimes(phase === "commit" || phase === "abort" ? 1 : 0);
+      expect(close).toHaveBeenCalledOnce();
+      expect(runtimeState.calls.at(-1)).toBe("close-writer");
+    });
+  });
+
   it("aborts open explicit bulk builders before closing the runtime session", async () => {
     const { mutations, port, runtimeState } = createPort();
     const openExplicitBulk = port.openExplicitBulk;
@@ -704,6 +1025,9 @@ describe("runtime-bound HizoFS application session port", () => {
     const { mutations, port } = createPort();
     let retained: Uint8Array | undefined;
     mutations.port.openWritable = async () => ({
+      async read() {
+        throw new Error("unused read");
+      },
       async abort() {
         retained?.fill(0);
       },
@@ -772,6 +1096,67 @@ describe("runtime-bound HizoFS application session port", () => {
     ]);
   });
 
+  it.each([
+    ["writable", "writable"],
+    ["writable", "bulk"],
+    ["bulk", "writable"],
+    ["bulk", "bulk"],
+  ] as const)("reserves a pending %s before a concurrent %s can acquire the writer", async (firstKind, secondKind) => {
+    const { port, runtimeState } = createPort();
+    const first = openPrepared({ kind: firstKind, port });
+    const second = openPrepared({ kind: secondKind, port });
+    const mutationResult = port.createDirectory({ name: "blocked", path: [] }).catch(cause => cause);
+    const results = await Promise.allSettled([first, second]);
+    for (const result of results) {
+      if (result.status === "fulfilled") await result.value.abort({ reason: "test cleanup" });
+    }
+
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "operation_in_progress" } });
+    await expect(mutationResult).resolves.toMatchObject({ code: "operation_in_progress" });
+    expect(runtimeState.calls.filter(call => call === "acquire-writer")).toHaveLength(1);
+    await expect(port.createDirectory({ name: "after-release", path: [] })).resolves.toBeUndefined();
+  });
+
+  it.each(["writable", "bulk"] as const)("releases the %s opening reservation after acquisition or preparation fails", async kind => {
+    const mutations = mutationPort();
+    const runtimeState = runtime();
+    const preparationFailure = new Error("preparation failed");
+    vi.spyOn(mutations.port, kind === "bulk" ? "openExplicitBulk" : "openWritable")
+      .mockRejectedValueOnce(preparationFailure);
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+    const acquisitionFailure = new Error("writer acquisition failed");
+    vi.spyOn(runtimeState.session, "acquireWriter").mockRejectedValueOnce(acquisitionFailure);
+    await expect(openPrepared({ kind, port })).rejects.toBe(acquisitionFailure);
+
+    await expect(openPrepared({ kind, port })).rejects.toBe(preparationFailure);
+
+    const prepared = await openPrepared({ kind, port });
+    await prepared.abort({ reason: "test cleanup" });
+    await expect(port.createDirectory({ name: "after-failure", path: [] })).resolves.toBeUndefined();
+    expect(runtimeState.calls.filter(call => call === "close-writer")).toHaveLength(3);
+  });
+
+  it("keeps reads available during prepared opening and permits concurrent ordinary mutations", async () => {
+    const { port } = createPort();
+    const opening = port.openWritable({ keepExistingData: true, path: ["file"] });
+    await expect(Promise.all([
+      port.stat({ path: ["file"] }),
+      port.listDirectory({ path: [] }),
+    ])).resolves.toHaveLength(2);
+    await (await opening).abort({ reason: "test cleanup" });
+
+    await expect(Promise.all([
+      port.createDirectory({ name: "first", path: [] }),
+      port.createDirectory({ name: "second", path: [] }),
+    ])).resolves.toEqual([undefined, undefined]);
+  });
+
   it("rejects same-session writer operations while an explicit bulk builder owns the writer", async () => {
     const { port, runtimeState } = createPort();
     const openExplicitBulk = port.openExplicitBulk;
@@ -798,6 +1183,9 @@ describe("runtime-bound HizoFS application session port", () => {
     await writable.write({ data: captureFileWriteBytes({ bytes }), position: 2n });
     bytes.fill(0);
     await writable.truncate({ size: 9n });
+    await expect(writable.read({ length: 2n, offset: 1n, signal: undefined })).resolves.toEqual(new Uint8Array(2));
+    expect(mutations.calls).toContainEqual(["read-writable", { length: 2n, offset: 1n }]);
+    expect(runtimeState.calls).toEqual(["acquire-writer"]);
     await writable.commit();
 
     expect(mutations.calls).toContainEqual(["write", { data: [7, 8], position: 2n }]);
@@ -817,6 +1205,7 @@ describe("runtime-bound HizoFS application session port", () => {
     await writable.abort({ reason: "discard prepared mutation" });
     await expect(writable.commit()).rejects.toMatchObject({ code: "session_closed" });
     await expect(writable.truncate({ size: 0n })).rejects.toMatchObject({ code: "session_closed" });
+    await expect(writable.read({ length: 0n, offset: 0n, signal: undefined })).rejects.toMatchObject({ code: "session_closed" });
     await expect(writable.write({
       data: captureFileWriteBytes({ bytes: Uint8Array.of(7) }),
       position: 0n,
@@ -900,6 +1289,9 @@ describe("runtime-bound HizoFS application session port", () => {
     await openStarted;
     await port.close();
     resolvePrepared?.({
+      async read() {
+        throw new Error("delayed prepared writable must not read");
+      },
       async abort({ reason }) {
         mutations.calls.push(["abort-delayed", reason]);
       },

@@ -15,6 +15,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { WholeFileReflinkPlan } from "@/00-storage/service/hizofs/filesystem/reflink/whole-file-reflink-plan";
+import { inlineDirectoryEntriesFit, promoteInlineDirectoryParent } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-promotion";
 
 export type WholeFileReflinkMutationErrorCode =
   | "destination_changed"
@@ -129,12 +130,15 @@ export async function prepareWholeFileReflinkMutation({
     }
   })();
 
-  const updatedDestinationParent: DirectoryInodeEntry = {
+  const candidateParent: DirectoryInodeEntry = {
     ...destinationParent,
     content,
     inodeRevision: createInodeRevision({ value: destinationParent.inodeRevision + 1n }),
     timestamps: { ...destinationParent.timestamps, modifiedAt: operationTimestamp },
   };
+  const updatedDestinationParent = content.type === "inline" && !inlineDirectoryEntriesFit({ entries: content.entries })
+    ? await promoteInlineDirectoryParent({ candidateParent: { ...candidateParent, content }, pageStore: directoryPageStore })
+    : candidateParent;
   assertInodeLeafEntryFitsMetadataPage({ entry: updatedDestinationParent });
 
   return {

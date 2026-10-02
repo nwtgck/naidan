@@ -190,7 +190,20 @@ export class CompactionPublicationGate {
       }
       return Object.freeze(acquired);
     } catch (cause: unknown) {
-      for (const lease of acquired.reverse()) lease.release();
+      const cleanupFailures: unknown[] = [];
+      for (const lease of acquired.reverse()) {
+        try {
+          lease.release();
+        } catch (cleanupFailure: unknown) {
+          cleanupFailures.push(cleanupFailure);
+        }
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(
+          [cause, ...cleanupFailures],
+          "compaction source deletion lease acquisition and cleanup both failed",
+        );
+      }
       throw cause;
     }
   }

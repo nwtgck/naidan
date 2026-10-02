@@ -18,6 +18,7 @@ export interface OpfsEncryptionStartupGate {
   returnInterruptedEncryptionToPlain({ passphrase }: { passphrase: string }): Promise<void>,
   retryInspection(): Promise<void>,
   reportApplicationFailure({ error }: { error: unknown }): void,
+  reportUnlockPresentationFailure({ error }: { error: unknown }): void,
   reportUnlockPresentationReady(): void,
   wait(): Promise<void>,
   waitForUnlockPresentation(): Promise<void>,
@@ -36,6 +37,7 @@ export function createOpfsEncryptionStartupGate({
   const unlockPresentationCompletion = Promise.withResolvers<void>();
   let completed = false;
   let unlockPresentationCompleted = false;
+  let unlockPresentationFailure: { readonly error: unknown } | undefined;
 
   function complete(): void {
     if (completed) {
@@ -51,6 +53,15 @@ export function createOpfsEncryptionStartupGate({
     }
     unlockPresentationCompleted = true;
     unlockPresentationCompletion.resolve();
+  }
+
+  function reportUnlockPresentationFailure({ error }: { error: unknown }): void {
+    if (unlockPresentationCompleted) return;
+    unlockPresentationFailure = { error };
+    // Retain early loader failures until the startup waiter arrives, without
+    // creating an unhandled rejection or claiming storage was unlocked.
+    complete();
+    reportUnlockPresentationReady();
   }
 
   async function unlockWithPassphrase({
@@ -233,9 +244,16 @@ export function createOpfsEncryptionStartupGate({
     returnInterruptedEncryptionToPlain,
     retryInspection,
     reportApplicationFailure,
+    reportUnlockPresentationFailure,
     reportUnlockPresentationReady,
-    wait: async () => await completion.promise,
-    waitForUnlockPresentation: async () => await unlockPresentationCompletion.promise,
+    wait: async () => {
+      await completion.promise;
+      if (unlockPresentationFailure !== undefined) throw unlockPresentationFailure.error;
+    },
+    waitForUnlockPresentation: async () => {
+      await unlockPresentationCompletion.promise;
+      if (unlockPresentationFailure !== undefined) throw unlockPresentationFailure.error;
+    },
   };
 }
 

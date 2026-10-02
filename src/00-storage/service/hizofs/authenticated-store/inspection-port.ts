@@ -9,6 +9,7 @@ import type {
 } from '@/00-storage/service/hizofs/00-format';
 import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto';
 import type {
+  HizoFSDirectoryCursorBackend,
   HizoFSReadableBackend,
   PhysicalEntry,
 } from '@/00-storage/service/hizofs/physical-store/backend';
@@ -35,7 +36,10 @@ import {
 export type HizoFSInspectionPhysicalEntry = PhysicalEntry;
 
 export interface AuthenticatedHizoFSInspectionPort {
-  list({ directory }: { directory: string }): Promise<readonly HizoFSInspectionPhysicalEntry[]>;
+  list({ directory, maximumEntries }: {
+    directory: string;
+    maximumEntries: number;
+  }): Promise<readonly HizoFSInspectionPhysicalEntry[]>;
   openSuperblockCopies({ fileSystemId, rootKey, supportedFeatureBits }: {
     fileSystemId: FileSystemId;
     rootKey: FileSystemRootKey;
@@ -90,9 +94,47 @@ export function createAuthenticatedHizoFSInspectionPort({ backend }: {
   backend: HizoFSReadableBackend;
 }): AuthenticatedHizoFSInspectionPort {
   return {
-    list: async ({ directory }) => await backend.list({
-      directory: canonicalContainerDirectory({ value: directory }),
-    }),
+    list: async ({ directory, maximumEntries }) => {
+      if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 1) {
+        throw new RangeError("maximumEntries must be a positive safe integer");
+      }
+      const canonicalDirectory = canonicalContainerDirectory({ value: directory });
+      const openDirectoryCursor = (backend as HizoFSReadableBackend & Partial<HizoFSDirectoryCursorBackend>)
+        .openDirectoryCursor;
+      if (openDirectoryCursor === undefined) {
+        return await backend.list({ directory: canonicalDirectory });
+      }
+      const cursor = await openDirectoryCursor.call(backend, { directory: canonicalDirectory });
+      const entries: HizoFSInspectionPhysicalEntry[] = [];
+      try {
+        while (entries.length <= maximumEntries) {
+          const remaining = maximumEntries - entries.length;
+          // One excess entry lets the caller retain its existing bound diagnostic.
+          const requested = remaining === Number.MAX_SAFE_INTEGER ? remaining : remaining + 1;
+          const page = await cursor.read({ maximumEntries: requested });
+          if (page.entries.length > requested) {
+            throw new RangeError("physical directory cursor exceeded the requested entry bound");
+          }
+          if (page.entries.length === 0 && !page.done) {
+            throw new Error("physical directory cursor did not advance");
+          }
+          for (const entry of page.entries) entries.push(entry);
+          if (page.done) break;
+        }
+        if (entries.length <= maximumEntries) {
+          entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+        }
+      } catch (cause: unknown) {
+        try {
+          await cursor.close();
+        } catch (closeCause: unknown) {
+          throw new AggregateError([cause, closeCause], "physical directory inspection and cursor close failed");
+        }
+        throw cause;
+      }
+      await cursor.close();
+      return entries;
+    },
     openSuperblockCopies: async ({ fileSystemId, rootKey, supportedFeatureBits }) => await openSuperblockCopies({
       backend,
       fileSystemId,

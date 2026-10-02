@@ -24,6 +24,7 @@ import {
   createHizoFSBenchmarkStudyReport,
 } from '@/features/debug-hizofs/benchmark/studies';
 import {
+  hizoFSBenchmarkConfigurationJsonInputSchema,
   hizoFSBenchmarkConfigurationSchema,
   type HizoFSBenchmarkBackendMode,
   type HizoFSBenchmarkConfiguration,
@@ -76,6 +77,8 @@ const studyReport = ref<HizoFSBenchmarkStudyReport>();
 const errorMessage = ref<string>();
 const copyStatus = ref<string>();
 let benchmarkClient: HizoFSBenchmarkWorkerClient | undefined;
+const ownedClients = new Set<HizoFSBenchmarkWorkerClient>();
+let unmounted = false;
 
 const estimatedWrittenBytes = computed(() => {
   const parsed = hizoFSBenchmarkConfigurationSchema.safeParse(configuration.value);
@@ -132,8 +135,8 @@ const studyResultRows = computed<readonly StudyResultRow[]>(() => {
       status: variant.report.status,
       configurationSummary,
       caseLabel: result.label,
-      rawMedian: result.backends.rawOpfs?.durationMs.median,
-      hizoFSMedian: result.backends.hizofs?.durationMs.median,
+      rawMedian: result.backends.rawOpfs?.durationMs?.median,
+      hizoFSMedian: result.backends.hizofs?.durationMs?.median,
       durationRatio: result.comparison?.durationRatio,
     }));
   });
@@ -230,6 +233,29 @@ function toggleWorkload({ workload }: { workload: HizoFSBenchmarkWorkload }): vo
   };
 }
 
+async function disposeClient({ client }: { client: HizoFSBenchmarkWorkerClient }): Promise<void> {
+  if (!ownedClients.delete(client)) return;
+  try {
+    await client.dispose();
+  } catch (error) {
+    if (unmounted) {
+      console.error('Failed to dispose the HizoFS benchmark Worker', error);
+    } else {
+      errorMessage.value ??= toErrorMessage({ error });
+    }
+  }
+}
+
+async function openClient(): Promise<HizoFSBenchmarkWorkerClient | undefined> {
+  const client = await createHizoFSBenchmarkWorkerClient();
+  ownedClients.add(client);
+  if (unmounted) {
+    await disposeClient({ client });
+    return undefined;
+  }
+  return client;
+}
+
 async function runBenchmark(): Promise<void> {
   if (running.value) return;
   errorMessage.value = undefined;
@@ -242,8 +268,8 @@ async function runBenchmark(): Promise<void> {
   cancelRequested.value = false;
   try {
     const parsed = hizoFSBenchmarkConfigurationSchema.parse(configuration.value);
-    benchmarkClient = await createHizoFSBenchmarkWorkerClient();
-    if (cancelRequested.value) return;
+    benchmarkClient = await openClient();
+    if (benchmarkClient === undefined || unmounted || cancelRequested.value) return;
     const currentRunMode = runMode.value;
     let studyKind: HizoFSBenchmarkStudyKind;
     switch (currentRunMode) {
@@ -323,11 +349,7 @@ async function runBenchmark(): Promise<void> {
     const client = benchmarkClient;
     benchmarkClient = undefined;
     if (client !== undefined) {
-      try {
-        await client.dispose();
-      } catch (error) {
-        errorMessage.value ??= toErrorMessage({ error });
-      }
+      await disposeClient({ client });
     }
     running.value = false;
     cancelling.value = false;
@@ -342,17 +364,14 @@ async function cleanBenchmarkData(): Promise<void> {
   errorMessage.value = undefined;
   let client: HizoFSBenchmarkWorkerClient | undefined;
   try {
-    client = await createHizoFSBenchmarkWorkerClient();
+    client = await openClient();
+    if (client === undefined || unmounted) return;
     await client.cleanBenchmarkData();
     copyStatus.value = 'Benchmark data cleaned';
   } catch (error) {
     errorMessage.value = toErrorMessage({ error });
   } finally {
-    try {
-      await client?.dispose();
-    } catch (error) {
-      errorMessage.value ??= toErrorMessage({ error });
-    }
+    if (client !== undefined) await disposeClient({ client });
     cleaningData.value = false;
   }
 }
@@ -398,7 +417,7 @@ function openConfigurationImport(): void {
 
 function applyConfigurationImport(): void {
   try {
-    configuration.value = hizoFSBenchmarkConfigurationSchema.parse(
+    configuration.value = hizoFSBenchmarkConfigurationJsonInputSchema.parse(
       JSON.parse(configurationImportText.value),
     );
     configurationImportError.value = undefined;
@@ -435,11 +454,18 @@ async function copyHumanSummary(): Promise<void> {
       `Study ID: ${currentStudyReport.studyId}`,
       `Study kind: ${currentStudyReport.studyKind}`,
       '',
+      ...currentStudyReport.variants.flatMap(variant => [
+        `Variant: ${variant.label}`,
+        `Variant ID: ${variant.variantId}`,
+        `Status: ${variant.report.status}`,
+        formatRuntimePolicyApplication({ report: variant.report }),
+        '',
+      ]),
       '| Variant | Status | Case | HizoFS median | Raw median |',
       '|---|---|---|---:|---:|',
       ...currentStudyReport.variants.flatMap(variant => (
         variant.report.results.map(result => (
-          `| ${variant.label} | ${variant.report.status} | ${result.label} | ${formatDuration({ value: result.backends.hizofs?.durationMs.median })} | ${formatDuration({ value: result.backends.rawOpfs?.durationMs.median })} |`
+          `| ${variant.label} | ${variant.report.status} | ${result.label} | ${formatDuration({ value: result.backends.hizofs?.durationMs?.median })} | ${formatDuration({ value: result.backends.rawOpfs?.durationMs?.median })} |`
         ))
       )),
     ];
@@ -458,11 +484,13 @@ async function copyHumanSummary(): Promise<void> {
     `Store lifecycle: ${currentReport.configuration.storeLifecycle}`,
     `Backing diagnostics: ${currentReport.configuration.backingStoreDiagnosticsMode}`,
     '',
+    formatRuntimePolicyApplication({ report: currentReport }),
+    '',
     '| Case | Raw OPFS | HizoFS | HizoFS / Raw |',
     '|---|---:|---:|---:|',
     ...currentReport.results.map(result => {
-      const raw = result.backends.rawOpfs?.durationMs.median;
-      const hizofs = result.backends.hizofs?.durationMs.median;
+      const raw = result.backends.rawOpfs?.durationMs?.median;
+      const hizofs = result.backends.hizofs?.durationMs?.median;
       const ratio = result.comparison?.durationRatio;
       return `| ${result.label} | ${formatDuration({ value: raw })} | ${formatDuration({ value: hizofs })} | ${ratio === undefined ? '—' : `${ratio.toFixed(2)}×`} |`;
     }),
@@ -538,6 +566,44 @@ async function copyText({ text, status }: { text: string; status: string }): Pro
   }
 }
 
+function formatRuntimePolicyApplication({ report: value }: { report: HizoFSBenchmarkReport }): string {
+  const application = value.measurementModel.hizoFSRuntimePolicy.application;
+  switch (application.type) {
+  case 'unavailable': {
+    const { type, reason, ...unhandled } = application;
+    unhandled satisfies Record<PropertyKey, never>;
+    return [`Runtime policy application: ${type}`, `reason: ${reason}`].join('\n');
+  }
+  case 'production_options': {
+    const { type, options, notAppliedConfigurationFields, ...unhandled } = application;
+    unhandled satisfies Record<PropertyKey, never>;
+    const {
+      backingFileHandleCacheEntryLimit,
+      decodedInodeIndexPageCacheEntryLimit,
+      metadataRecordCachePolicy,
+      ...unhandledOptions
+    } = options;
+    unhandledOptions satisfies Record<PropertyKey, never>;
+    const { maximumBytes, maximumEntries, ...unhandledMetadata } = metadataRecordCachePolicy;
+    unhandledMetadata satisfies Record<PropertyKey, never>;
+    const requested = value.configuration.hizoFSRuntimePolicy;
+    return [
+      `Runtime policy application: ${type}`,
+      `options.backingFileHandleCacheEntryLimit: ${String(backingFileHandleCacheEntryLimit)} (requested: ${String(requested.backingFileHandleCacheEntryLimit)})`,
+      `options.decodedInodeIndexPageCacheEntryLimit: ${String(decodedInodeIndexPageCacheEntryLimit)}`,
+      `options.metadataRecordCachePolicy.maximumBytes: ${String(maximumBytes)}`,
+      `options.metadataRecordCachePolicy.maximumEntries: ${String(maximumEntries)}`,
+      'notAppliedConfigurationFields:',
+      ...notAppliedConfigurationFields.map(name => `${name}: requested ${String(requested[name])}`),
+    ].join('\n');
+  }
+  default: {
+    const _ex: never = application;
+    throw new Error(`Unhandled benchmark policy application: ${String(_ex)}`);
+  }
+  }
+}
+
 function summarizeStudyConfiguration({
   configuration: value,
 }: {
@@ -550,11 +616,11 @@ function summarizeStudyConfiguration({
     value.storeLifecycle,
     `diag=${value.backingStoreDiagnosticsMode}`,
     value.workloads.join('+'),
-    `chunk=${formatBytes({ value: policy.fileChunkSize })}`,
-    `write=${String(policy.fileChunkWriteConcurrency)}`,
-    `read=${String(policy.fileChunkReadPrefetchConcurrency)}`,
-    `handles=${String(policy.backingFileHandleCacheEntryLimit)}`,
-    `chunks=${formatBytes({ value: policy.fileChunkCacheByteLimit })}/${policy.fileChunkCacheAdmission}`,
+    `requested chunk=${formatBytes({ value: policy.fileChunkSize })}`,
+    `requested write=${String(policy.fileChunkWriteConcurrency)}`,
+    `requested read=${String(policy.fileChunkReadPrefetchConcurrency)}`,
+    `requested handles=${String(policy.backingFileHandleCacheEntryLimit)}`,
+    `requested chunks=${formatBytes({ value: policy.fileChunkCacheByteLimit })}/${policy.fileChunkCacheAdmission}`,
     `gc=${String(garbageCollection.removeConcurrency)}x/${String(garbageCollection.maximumRemovalsPerSlice)}/${String(garbageCollection.maximumSliceDurationMs)}ms`,
   ].join(' · ');
 }
@@ -643,10 +709,13 @@ defineExpose({
 });
 
 onBeforeUnmount(() => {
+  unmounted = true;
   cancelRequested.value = true;
-  void benchmarkClient?.cancelCurrentOperation();
-  void benchmarkClient?.dispose();
+  // Disposal may terminate a pending cancellation RPC. Consume that expected
+  // rejection without waiting for the Worker before releasing owned clients.
+  void benchmarkClient?.cancelCurrentOperation().catch(() => undefined);
   benchmarkClient = undefined;
+  for (const client of ownedClients) void disposeClient({ client });
 });
 </script>
 
@@ -721,11 +790,11 @@ onBeforeUnmount(() => {
             <label tw-class="text-xs">Measured iterations<select v-model.number="configuration.measuredIterations" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="3">3</option><option :value="5">5</option><option :value="10">10</option></select></label>
             <label tw-class="text-xs">Store lifecycle<select v-model="configuration.storeLifecycle" data-testid="hizofs-benchmark-store-lifecycle" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="reuse_without_gc">Reuse without GC</option><option value="fresh_per_iteration">Fresh store per iteration</option><option value="reuse_with_gc_between_iterations">Reuse with GC between iterations</option><option value="reopen_between_iterations">Reopen between iterations</option></select></label>
             <label tw-class="text-xs">Backing diagnostics<select v-model="configuration.backingStoreDiagnosticsMode" data-testid="hizofs-benchmark-backing-diagnostics-mode" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="basic">Basic totals</option><option value="detailed">Detailed path attribution</option></select></label>
-            <label tw-class="text-xs">Chunk write concurrency<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency" data-testid="hizofs-benchmark-write-concurrency" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select></label>
-            <label tw-class="text-xs">Sequential read prefetch<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency" data-testid="hizofs-benchmark-read-prefetch" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">Off / 1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select></label>
+            <label tw-class="text-xs">Chunk write concurrency<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency" data-testid="hizofs-benchmark-write-concurrency" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" disabled @change="markCustom"><option :value="1">1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select><span tw-class="mt-1 block font-mono text-[10px] text-gray-500">Not applied by production benchmark · requested: {{ configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency }}</span></label>
+            <label tw-class="text-xs">Sequential read prefetch<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency" data-testid="hizofs-benchmark-read-prefetch" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" disabled @change="markCustom"><option :value="1">Off / 1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select><span tw-class="mt-1 block font-mono text-[10px] text-gray-500">Not applied by production benchmark · requested: {{ configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency }}</span></label>
             <label tw-class="text-xs">Backing file handles<select v-model.number="configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit" data-testid="hizofs-benchmark-backing-file-handle-cache" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="0">Disabled</option><option :value="1024">1,024</option><option :value="4096">4,096</option><option :value="16384">16,384</option></select></label>
-            <label tw-class="text-xs">File chunk cache<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit" data-testid="hizofs-benchmark-file-chunk-cache" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="0">Disabled</option><option :value="4194304">4 MiB</option><option :value="8388608">8 MiB</option><option :value="16842752">16 MiB + record overhead</option><option :value="33554432">32 MiB</option></select></label>
-            <label tw-class="text-xs">Chunk cache admission<select v-model="configuration.hizoFSRuntimePolicy.fileChunkCacheAdmission" data-testid="hizofs-benchmark-file-chunk-cache-admission" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="read">Read only</option><option value="read_write">Read and write</option></select></label>
+            <label tw-class="text-xs">File chunk cache<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit" data-testid="hizofs-benchmark-file-chunk-cache" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" disabled @change="markCustom"><option :value="0">Disabled</option><option :value="4194304">4 MiB</option><option :value="8388608">8 MiB</option><option :value="16842752">16 MiB + record overhead</option><option :value="33554432">32 MiB</option></select><span tw-class="mt-1 block font-mono text-[10px] text-gray-500">Not applied by production benchmark · requested: {{ configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit }}</span></label>
+            <label tw-class="text-xs">Chunk cache admission<select v-model="configuration.hizoFSRuntimePolicy.fileChunkCacheAdmission" data-testid="hizofs-benchmark-file-chunk-cache-admission" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" disabled @change="markCustom"><option value="read">Read only</option><option value="read_write">Read and write</option></select><span tw-class="mt-1 block font-mono text-[10px] text-gray-500">Not applied by production benchmark · requested: {{ configuration.hizoFSRuntimePolicy.fileChunkCacheAdmission }}</span></label>
             <label tw-class="text-xs">Random seed<input v-model.number="configuration.randomSeed" type="number" min="1" max="4294967295" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @input="markCustom"></label>
 
             <label tw-class="text-xs">Small file count<select v-model.number="configuration.smallFiles.count" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="32">32</option><option :value="500">500</option><option :value="1000">1,000</option><option :value="10000">10,000</option></select></label>
@@ -775,12 +844,16 @@ onBeforeUnmount(() => {
             <div><h3 tw-class="text-sm font-semibold">Study result: {{ studyReport.status }}</h3><div tw-class="mt-1 font-mono text-[10px] text-gray-500">{{ studyReport.studyKind }} · {{ studyReport.studyId }}</div></div>
             <div tw-class="flex flex-wrap gap-2">
               <button type="button" data-testid="hizofs-benchmark-copy-summary" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copySummaryJson">Copy summary JSON</button>
-              <button type="button" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
+              <button type="button" data-testid="hizofs-benchmark-copy-markdown" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
               <button type="button" data-testid="hizofs-benchmark-download-full" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJson"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON</button>
               <button type="button" data-testid="hizofs-benchmark-download-full-zip" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJsonZip"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON ZIP</button>
             </div>
           </header>
           <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Completed {{ studyReport.completedVariantCount }} of {{ studyReport.plannedVariantCount }} planned variants. Each variant owns an isolated benchmark run and full diagnostics.</div>
+          <details v-for="variant in studyReport.variants" :key="variant.variantId" data-testid="hizofs-benchmark-variant-policy" tw-class="border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+            <summary tw-class="cursor-pointer break-all text-xs">{{ variant.label }} · {{ variant.variantId }} · {{ variant.report.status }} · {{ variant.report.measurementModel.hizoFSRuntimePolicy.application.type }}</summary>
+            <pre tw-class="mt-2 whitespace-pre-wrap break-all font-mono text-[10px]">{{ formatRuntimePolicyApplication({ report: variant.report }) }}</pre>
+          </details>
           <div tw-class="overflow-x-auto">
             <table tw-class="w-full min-w-[1100px] text-left text-xs">
               <thead tw-class="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-950"><tr><th tw-class="px-3 py-2">Variant</th><th tw-class="px-3 py-2">Status</th><th tw-class="px-3 py-2">Configuration</th><th tw-class="px-3 py-2">Case</th><th tw-class="px-3 py-2 text-right">Raw median</th><th tw-class="px-3 py-2 text-right">HizoFS median</th><th tw-class="px-3 py-2 text-right">Ratio</th></tr></thead>
@@ -804,18 +877,19 @@ onBeforeUnmount(() => {
             <div><h3 tw-class="text-sm font-semibold">Result: {{ report.status }}</h3><div tw-class="mt-1 font-mono text-[10px] text-gray-500">{{ report.runId }}</div></div>
             <div tw-class="flex flex-wrap gap-2">
               <button type="button" data-testid="hizofs-benchmark-copy-summary" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copySummaryJson">Copy summary JSON</button>
-              <button type="button" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
+              <button type="button" data-testid="hizofs-benchmark-copy-markdown" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
               <button type="button" data-testid="hizofs-benchmark-download-full" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJson"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON</button>
               <button type="button" data-testid="hizofs-benchmark-download-full-zip" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJsonZip"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON ZIP</button>
             </div>
           </header>
           <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Duration ratio is HizoFS median duration divided by raw OPFS median duration.</div>
+          <pre data-testid="hizofs-benchmark-policy-application" tw-class="whitespace-pre-wrap break-all border-b border-gray-200 px-4 py-2 font-mono text-[10px] dark:border-gray-700">{{ formatRuntimePolicyApplication({ report }) }}</pre>
           <div tw-class="overflow-x-auto">
             <table tw-class="w-full min-w-[1100px] text-left text-xs">
               <thead tw-class="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-950"><tr><th tw-class="px-3 py-2">Case</th><th tw-class="px-3 py-2">Raw median</th><th tw-class="px-3 py-2">HizoFS median</th><th tw-class="px-3 py-2">Duration ratio</th><th tw-class="px-3 py-2">Raw rate</th><th tw-class="px-3 py-2">HizoFS rate</th><th tw-class="px-3 py-2">Read amp</th><th tw-class="px-3 py-2">Write amp</th><th tw-class="px-3 py-2">HizoFS commits</th></tr></thead>
               <tbody>
                 <template v-for="result in report.results" :key="`${result.workload}:${result.caseId}`">
-                  <tr tw-class="border-t border-gray-100 dark:border-gray-800"><td tw-class="px-3 py-2"><div tw-class="font-medium">{{ result.label }}</div><div tw-class="font-mono text-[9px] text-gray-400">{{ result.caseId }}</div></td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.rawOpfs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.hizofs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.comparison?.durationRatio === undefined ? '—' : `${result.comparison.durationRatio.toFixed(2)}×` }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.rawOpfs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.hizofs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingReadBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingWriteBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.commits.superblockPublications ?? '—' }}</td></tr>
+                  <tr tw-class="border-t border-gray-100 dark:border-gray-800"><td tw-class="px-3 py-2"><div tw-class="font-medium">{{ result.label }}</div><div tw-class="font-mono text-[9px] text-gray-400">{{ result.caseId }}</div></td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.rawOpfs?.durationMs?.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.hizofs?.durationMs?.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.comparison?.durationRatio === undefined ? '—' : `${result.comparison.durationRatio.toFixed(2)}×` }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.rawOpfs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.hizofs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingReadBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingWriteBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.commits.superblockPublications ?? '—' }}</td></tr>
                   <tr tw-class="border-t border-dashed border-gray-100 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-950/40"><td colspan="9" tw-class="px-3 py-2"><details><summary tw-class="cursor-pointer text-[10px] text-gray-500">Parameters and samples</summary><pre tw-class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px]">{{ JSON.stringify(result, undefined, 2) }}</pre></details></td></tr>
                 </template>
               </tbody>

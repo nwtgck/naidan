@@ -23,7 +23,7 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 class CountingInMemoryBackend
   extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
@@ -76,6 +76,47 @@ function deterministicRandomSource(): RandomByteSource {
 }
 
 describe("authenticated file content mutation authority", () => {
+  it("revokes synchronously and awaits the local metadata writer cleanup", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      fileSystemId: parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" }),
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const allowClose = Promise.withResolvers<void>();
+    const closeFile = backend.closeFile.bind(backend);
+    try {
+      await authority.writeDirectoryPage({ isRoot: true, page: { entries: [], level: 0, type: "leaf" } });
+      await authority.flushPendingMetadataRecords();
+      vi.spyOn(backend, "closeFile").mockImplementation(async (input) => {
+        await allowClose.promise;
+        await closeFile(input);
+      });
+      authority.abandon();
+      expect(authority.state()).toBe("closed");
+      await expect(authority.writeFileData({ bytes: Uint8Array.of(1) })).rejects.toThrow("closed");
+      let settled = false;
+      const cleanup = authority.settleWriterCleanup().then(() => {
+        settled = true;
+      });
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      const completedBeforeClose = settled;
+      allowClose.resolve();
+      await cleanup;
+      expect(completedBeforeClose).toBe(false);
+      expect(backend.openHandleCount()).toBe(0);
+      await authority.settleWriterCleanup();
+    } finally {
+      allowClose.resolve();
+      rootKey.destroy();
+    }
+  });
+
   it("owns data and extent writers and closes them together", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -196,6 +237,9 @@ describe("authenticated file content mutation authority", () => {
     expect(authority.state()).toBe("active");
     authority.completeWorkingAcceptanceWithoutCandidate();
     expect(authority.state()).toBe("closed");
+    await authority.settleWriterCleanup();
+    expect(writerOwner.state()).toBe("open");
+    expect(dataWriterOwner.state()).toBe("open");
     await expect(writerOwner.close()).resolves.toBeUndefined();
     await expect(dataWriterOwner.close()).resolves.toBeUndefined();
     rootKey.destroy();
@@ -230,8 +274,29 @@ describe("authenticated file content mutation authority", () => {
     const secondReference = await authority.writeFileData({ bytes: Uint8Array.of(4, 5, 6) });
     const thirdReference = await authority.writeFileData({ bytes: Uint8Array.of(7, 8, 9) });
 
+    const destination = new Uint8Array(5).fill(0xff);
+    const lengths: number[] = [];
+    const request = {
+      destination,
+      destinationOffset: 1,
+      sourceLength: 2,
+      reference: firstReference,
+      sourceOffset: 1,
+      validatePlaintextLength: ({ plaintextLength }: { plaintextLength: number }) => lengths.push(plaintextLength),
+    };
+    expect(authority.copyPendingFileDataRange(request)).toBe(true);
+    expect(destination).toEqual(Uint8Array.of(0xff, 2, 3, 0xff, 0xff));
+    expect(lengths).toEqual([3]);
+    expect(authority.copyPendingFileDataRange({
+      ...request, reference: { ...firstReference, frameLength: firstReference.frameLength + 16 },
+    })).toBe(false);
+    expect(() => authority.copyPendingFileDataRange({ ...request, sourceOffset: 2 })).toThrow(RangeError);
+    destination.fill(0);
+    expect(authority.copyPendingFileDataRange(request)).toBe(true);
+    expect(destination[1]).toBe(2);
     expect(backend.writeAtOperations).toBe(writesAfterFirstStage);
     await authority.flushPendingFileDataRecords();
+    expect(authority.copyPendingFileDataRange(request)).toBe(false);
     expect(backend.writeAtOperations).toBe(writesAfterFirstStage + 1);
     for (const [reference, bytes] of [
       [firstReference, Uint8Array.of(1, 2, 3)],
@@ -247,6 +312,7 @@ describe("authenticated file content mutation authority", () => {
       })).resolves.toEqual(bytes);
     }
     authority.abandon();
+    expect(() => authority.copyPendingFileDataRange(request)).toThrow();
     await expect(dataWriterOwner.close()).resolves.toBeUndefined();
     rootKey.destroy();
   });

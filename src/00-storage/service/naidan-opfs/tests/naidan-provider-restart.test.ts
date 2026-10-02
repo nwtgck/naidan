@@ -198,6 +198,7 @@ async function createTestRuntimePort({
     runStablePlainRetiredCleanup: async () => {
       throw new Error('stable-plain cleanup is not used by the restart fixture');
     },
+    runWithStableEncryptedAuthority: async ({ operation }) => await operation(),
     openApplicationSession: async ({ passphrase }) => {
       const { fileSystemSession, runtimeHost } = await openApplicationSession({
         backend,

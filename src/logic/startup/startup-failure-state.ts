@@ -1,6 +1,6 @@
 import type { Component } from 'vue';
 import type { StartupState } from './types';
-import type { OpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
+import type { OpfsEncryptionStartupGate } from '@/composables/opfs-encryption-startup-gate';
 
 function createOpfsApplicationFailureState({
   gate,

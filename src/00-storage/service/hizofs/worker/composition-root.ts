@@ -78,6 +78,7 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { AuthenticatedStoreError } from "@/00-storage/service/hizofs/authenticated-store/errors";
+import { shareAuthenticatedContainerDirectoryState } from "@/00-storage/service/hizofs/authenticated-store/ensure-container-directory";
 import { createAuthenticatedHizoFSInspectionPort, type AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
 import { AuthenticatedFileDataRecordCache } from "@/00-storage/service/hizofs/authenticated-store/file-data-record-cache";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
@@ -108,6 +109,7 @@ import { openSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import {
+  createAuthenticatedFileExtentReader,
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
@@ -218,6 +220,7 @@ import {
   hasCrashDurableWritableSemantics,
   type HizoFSCrashDurableWritableBackend,
   type HizoFSDevelopmentWritableBackend,
+  type HizoFSDirectoryCursorBackend,
   type HizoFSPhysicalWriteBackend,
   type HizoFSReadableBackend,
   type HizoFSWritableBackend,
@@ -251,11 +254,11 @@ import type {
 } from "@/00-storage/service/storage-file-system/types";
 import type { StorageFileSystemSyncDurability } from "@/00-storage/service/storage-file-system/sync-error";
 import { DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, type HizoFSRuntimePolicy } from "@/00-storage/service/hizofs/runtime/runtime-policy";
-import type { TransitionTargetEndpointSession } from "@/00-storage/service/naidan-persistence-control/transition/transition-provider-adapter";
 
 import {
   createBrowserHizoFSWorkerRuntimeHost,
   HizoFSWorkerRuntimeHost,
+  type HizoFSReadObservationFactory,
 } from "@/00-storage/service/hizofs/worker/runtime-host";
 import type { HizoFSRuntimeOwnerOpenPolicy } from "@/00-storage/service/hizofs/runtime/runtime-owner-coordinator";
 export type { HizoFSRuntimeOwnerOpenPolicy } from "@/00-storage/service/hizofs/runtime/runtime-owner-coordinator";
@@ -662,6 +665,7 @@ type DevelopmentWritableCredentialSessionState = {
     "openManagementCleanHeadBarrier"
   >;
   readonly operationGate: DevelopmentWritableCredentialOperationGate;
+  readonly openReadObservation: HizoFSReadObservationFactory;
   readonly opened: OpenedEmptyEncryptedContainer;
   readonly recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
   readonly runtimeSession: HizoFSApplicationRuntimeSession;
@@ -847,6 +851,26 @@ export async function withAuthenticatedDevelopmentWritableSessionRootKeyProof<T>
   } finally {
     if (state.lifecycle === "proving") state.lifecycle = "open";
   }
+}
+
+export async function openAuthenticatedDevelopmentWritableSessionReadObservation({ capture, session }: {
+  capture: Parameters<HizoFSReadObservationFactory>[0]["capture"];
+  session: StorageFileSystemSession;
+}): ReturnType<HizoFSReadObservationFactory> {
+  const state = developmentWritableCredentialStateBySession.get(session);
+  if (state === undefined) throw new TypeError("HizoFS read observation session is foreign");
+  switch (state.lifecycle) {
+  case "open": break;
+  case "closed":
+  case "closing":
+  case "proving":
+  case "recovery_required":
+  case "reencrypting":
+  case "updating": throw new TypeError("HizoFS read observation requires an open session");
+  default: return state.lifecycle satisfies never;
+  }
+  assertCredentialSessionOperationAllowed({ gate: state.operationGate });
+  return await state.openReadObservation({ capture });
 }
 
 export async function withAuthenticatedDevelopmentWritableSessionReadAuthority<T>({
@@ -1515,6 +1539,7 @@ function createPreparedMutationSelectedCandidatePublisher({
 type StagedMutationCommitMaterializationAuthority =
   DetachablePreparedMutationCommitPublicationPort & Readonly<{
     abandon: () => void;
+    settleWriterCleanup: () => Promise<void>;
   }>;
 
 function createPublishedStagedSuccessor({ candidate, stagedSuccessor, superblock }: {
@@ -1692,6 +1717,14 @@ function createStagedMutationSelectedCandidatePublisher({
             materializationAuthority?.abandon();
           } catch (cleanupCause: unknown) {
             failures.push(cleanupCause);
+          }
+          try {
+            await materializationAuthority?.settleWriterCleanup();
+          } catch (cleanupCause: unknown) {
+            if (cleanupCause !== cause
+              && !(cause instanceof AggregateError && cause.errors.includes(cleanupCause))) {
+              failures.push(cleanupCause);
+            }
           }
           return Object.freeze({
             cause: failures.length === 1
@@ -1891,6 +1924,8 @@ function prepareAndInstallStagedMutationSelectedCandidate({
     admission.commitAcceptedStagedSuccessor({ publisher, successor });
     return Object.freeze({ publisher, successor });
   } catch (cause: unknown) {
+    // Acceptance transfers publication ownership even when later scheduling fails.
+    if (admission.hasAcceptedSuccessor()) throw cause;
     const failures: unknown[] = [cause];
     try {
       if (publisher === undefined) releasePublicationResources();
@@ -2454,6 +2489,7 @@ export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
   }>>;
   mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
   namespace: HizoFSApplicationSessionNamespace;
+  readOnlyMutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
   releaseResources: () => Promise<void>;
   syncDurability: StorageFileSystemSyncDurability;
   workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer;
@@ -2905,7 +2941,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   }
 
   let released = false;
-  let mutationPoison: unknown | undefined;
+  let mutationPoison: { cause: unknown } | undefined;
   const fileDataRecordCache = new AuthenticatedFileDataRecordCache({
     diagnostics: recordDiagnostics,
     policy: APPLICATION_FILE_DATA_RECORD_CACHE_POLICY,
@@ -3458,7 +3494,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           intendedLogicalState: cause.intendedLogicalState,
         });
       } catch (resolutionCause: unknown) {
-        mutationPoison = resolutionCause;
+        mutationPoison = { cause: resolutionCause };
         throw new AggregateError(
           [cause, resolutionCause],
           `${operationLabel} publication failed and authoritative outcome resolution also failed`,
@@ -3472,7 +3508,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     case "not_published":
       switch (resolution.superblock.copyState) {
       case "normal": break;
-      case "superblock_redundancy_degraded": mutationPoison = cause; break;
+      case "superblock_redundancy_degraded": mutationPoison = { cause }; break;
       default: return resolution.superblock.copyState satisfies never;
       }
       authority.abandon();
@@ -3487,7 +3523,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       throw cause;
     case "publication_conflict":
       runtimeAdmission.rollback();
-      mutationPoison = cause;
+      mutationPoison = { cause };
       throw new HizoFSApplicationMutationSessionPoisonedError({ cause });
     case "published": {
       let reopened: Awaited<ReturnType<typeof readBootstrapRoot>>;
@@ -3505,7 +3541,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           rootKey: opened.rootKey,
         });
       } catch (verificationCause: unknown) {
-        mutationPoison = verificationCause;
+        mutationPoison = { cause: verificationCause };
         throw new AggregateError(
           [cause, verificationCause],
           `published ${operationLabel} authority could not be verified`,
@@ -3515,7 +3551,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         const mismatch = new TypeError(
           `published ${operationLabel} Commit payload does not match the prepared mutation`,
         );
-        mutationPoison = mismatch;
+        mutationPoison = { cause: mismatch };
         throw mismatch;
       }
       inheritValidatedInodeTableSuccessor({ base: base.commit, successor: reopened.commit });
@@ -3532,7 +3568,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       switch (resolution.superblock.copyState) {
       case "normal": return;
       case "superblock_redundancy_degraded":
-        mutationPoison = cause;
+        mutationPoison = { cause };
         throw new HizoFSApplicationMutationCommittedDegradedError({ cause });
       default: return resolution.superblock.copyState satisfies never;
       }
@@ -3595,7 +3631,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         [cause],
         "mutation preparation failed while publication outcome remained unresolved",
       );
-      mutationPoison = unresolved;
+      mutationPoison = { cause: unresolved };
       throw unresolved;
     }
     default: return state satisfies never;
@@ -3618,7 +3654,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   }): Promise<void> => {
     invalidateFreshExplicitBulkTarget();
     if (mutationPoison !== undefined) {
-      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison });
+      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison.cause });
     }
     applicationAuthority.assertPublicationAllowed();
     const base = await captureRecheckedWorkingGeneration({ operationLabel: "mutation" });
@@ -3703,7 +3739,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           try {
             commitRuntimeDurableSuccessor({ admission: runtimeAdmission, successor: nextGeneration });
           } catch (runtimeCause: unknown) {
-            mutationPoison = runtimeCause;
+            mutationPoison = { cause: runtimeCause };
             candidateSlot.retain({ cause: runtimeCause });
             throw runtimeCause;
           }
@@ -3728,7 +3764,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             if (mutationPoison === undefined || candidateSlot.matchesCurrentGeneration()) {
               candidateSlot.release();
             } else {
-              candidateSlot.retain({ cause: mutationPoison ?? resolutionCause });
+              candidateSlot.retain({ cause: mutationPoison.cause });
             }
             throw resolutionCause;
           }
@@ -3751,7 +3787,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           return cleanupMetadataMutationAuthorityAfterFailure({ authority: metadataAuthority, cause });
         }
         const admittedBase = generationFromDescriptor({ descriptor: admittedBaseDescriptor });
-        let accepted = false;
         try {
           const candidateBaseCommit = createMutationCandidatePlanningBaseCommit({ base: admittedBaseDescriptor });
           const prepared = await prepare({
@@ -3802,7 +3837,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             releasePublicationResources: () => publicationRootKey.destroy(),
             resourceUsage: metadataAuthority.resourceUsage(),
           });
-          accepted = true;
           metadataAuthority.completeWorkingAcceptanceWithoutCandidate();
           inheritValidatedInodeTableSuccessor({ base: base.commit, successor: prepared.commitPayload });
           const captured = authenticatedGeneration.capture();
@@ -3811,14 +3845,26 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             right: installed.successor.workingIdentity,
           })) {
             const cause = new TypeError("runtime did not expose the accepted mutation successor");
-            mutationPoison = cause;
+            mutationPoison = { cause };
             throw cause;
           }
           adoptGenerationDescriptor({ descriptor: captured });
           applicationAuthority.markCandidateAccepted();
         } catch (cause: unknown) {
-          if (accepted) {
-            mutationPoison ??= cause;
+          if (admission.hasAcceptedSuccessor()) {
+            mutationPoison ??= { cause };
+            try {
+              const authorityState = metadataAuthority.state();
+              switch (authorityState) {
+              case "active": metadataAuthority.completeWorkingAcceptanceWithoutCandidate(); break;
+              case "candidate_prepared":
+              case "closed":
+              case "publishing": break;
+              default: return authorityState satisfies never;
+              }
+            } catch (cleanupCause: unknown) {
+              throw new AggregateError([cause, cleanupCause], "accepted mutation and local authority cleanup both failed");
+            }
             throw cause;
           }
           return cleanupMetadataMutationAuthorityAfterFailure({ authority: metadataAuthority, cause });
@@ -3831,28 +3877,28 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
     };
 
-    let operationFailure: unknown | undefined;
+    let operationFailure: { cause: unknown } | undefined;
     try {
       await performMutation();
     } catch (cause: unknown) {
-      operationFailure = cause;
+      operationFailure = { cause };
     }
-    let releaseFailure: unknown | undefined;
+    let releaseFailure: { cause: unknown } | undefined;
     try {
       workingGenerationDependency.release();
     } catch (cause: unknown) {
-      releaseFailure = cause;
+      releaseFailure = { cause };
     }
     if (operationFailure !== undefined) {
       if (releaseFailure !== undefined) {
         throw new AggregateError(
-          [operationFailure, releaseFailure],
+          [operationFailure.cause, releaseFailure.cause],
           "mutation operation and writer dependency release both failed",
         );
       }
-      throw operationFailure;
+      throw operationFailure.cause;
     }
-    if (releaseFailure !== undefined) throw releaseFailure;
+    if (releaseFailure !== undefined) throw releaseFailure.cause;
   };
 
 
@@ -4229,7 +4275,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     path: readonly string[];
   }): Promise<HizoFSApplicationPreparedExplicitBulk> => {
     if (mutationPoison !== undefined) {
-      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison });
+      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison.cause });
     }
     const targetIdentity = sessionPathIdentity({ path });
     const freshTarget = freshExplicitBulkTarget;
@@ -4288,19 +4334,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       message: string;
       operation: () => Promise<void>;
     }): Promise<void> => {
-      let primary: unknown | undefined;
+      let primary: { cause: unknown } | undefined;
       try {
         await operation();
       } catch (cause: unknown) {
-        primary = cause;
+        primary = { cause };
       }
       try {
         releaseWriterDependency();
       } catch (releaseCause: unknown) {
-        if (primary !== undefined) throw new AggregateError([primary, releaseCause], message);
+        if (primary !== undefined) throw new AggregateError([primary.cause, releaseCause], message);
         throw releaseCause;
       }
-      if (primary !== undefined) throw primary;
+      if (primary !== undefined) throw primary.cause;
     };
 
     return {
@@ -4358,7 +4404,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   }): Promise<HizoFSApplicationPreparedWritable> => {
     invalidateFreshExplicitBulkTarget();
     if (mutationPoison !== undefined) {
-      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison });
+      throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison.cause });
     }
     const base = await captureRecheckedWorkingGeneration({ operationLabel: "writable open" });
     const source = requireWritableFile({
@@ -4393,9 +4439,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       writePage: async ({ isRoot, page }) => await fileAuthority.writeInodeTablePage({ isRoot, page }),
     } });
     let changed = false;
-    let operationFailure: unknown | undefined;
-    let activeOperation: Promise<void> | undefined;
+    let operationFailure: { cause: unknown } | undefined;
+    let activeOperation: Promise<unknown> | undefined;
     let staged = source;
+    let stagedReadValidations: ReadOnlyNamespaceValidationCache | undefined;
+    let readStagedExtents: ReturnType<typeof createAuthenticatedFileExtentReader> | undefined;
     let extentAppendTailWitness: FileExtentAppendTailWitness | undefined;
     let extentRangeWriteBatch: PreparedFileExtentRangeWriteBatch | undefined;
     let extentTailAppendBatch: PreparedFileExtentTailAppendBatch | undefined;
@@ -4407,7 +4455,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       default: state satisfies never;
       }
       if (operationFailure !== undefined) {
-        throw new HizoFSApplicationMutationSessionPoisonedError({ cause: operationFailure });
+        throw new HizoFSApplicationMutationSessionPoisonedError({ cause: operationFailure.cause });
       }
       if (activeOperation !== undefined) throw new Error("prepared HizoFS writable operation already in progress");
     };
@@ -4415,10 +4463,24 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     const stage = async ({ operation }: { operation: () => Promise<void> }): Promise<void> => {
       requireOpen();
       const running = (async () => {
+        const previous = staged;
         try {
           await operation();
+          if (stagedReadValidations !== undefined) {
+            if (previous.content.type === "tree" && staged.content.type === "tree") {
+              stagedReadValidations.inheritValidatedFileExtentTreeSuccessor({
+                baseFileSize: previous.fileSize,
+                baseRootReference: previous.content.extentTreeRootHomeRef,
+                successorFileSize: staged.fileSize,
+                successorRootReference: staged.content.extentTreeRootHomeRef,
+              });
+            } else {
+              stagedReadValidations.clear();
+            }
+          }
         } catch (cause: unknown) {
-          operationFailure = cause;
+          stagedReadValidations?.clear();
+          operationFailure = { cause };
           throw cause;
         }
       })();
@@ -4507,319 +4569,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     }
 
     const preparedWritable: HizoFSApplicationPreparedWritable = {
-      abort: async () => {
-        if (activeOperation !== undefined) {
-          try {
-            await activeOperation;
-          } catch {
-            // The staged failure remains recorded; abort still owns cleanup.
-          }
-        }
-        switch (state) {
-        case "closed": return;
-        case "open":
-          discardExtentRangeWriteBatch();
-          discardExtentTailAppendBatch();
-          fileAuthority.abandon();
-          state = "closed";
-          return;
-        default: return state satisfies never;
-        }
-      },
-      commit: async ({ authority: applicationAuthority }) => {
-        if (activeOperation !== undefined) {
-          try {
-            await activeOperation;
-          } catch {
-            // The exact staged failure is rethrown below after cleanup.
-          }
-        }
-        switch (state) {
-        case "open": break;
-        case "closed": throw new Error("prepared HizoFS writable is closed");
-        default: state satisfies never;
-        }
-        if (operationFailure !== undefined) {
-          discardExtentRangeWriteBatch();
-          discardExtentTailAppendBatch();
-          fileAuthority.abandon();
-          state = "closed";
-          throw new HizoFSApplicationMutationSessionPoisonedError({ cause: operationFailure });
-        }
-        if (!changed) {
-          discardExtentRangeWriteBatch();
-          discardExtentTailAppendBatch();
-          fileAuthority.abandon();
-          state = "closed";
-          applicationAuthority.markNoChangeResolved();
-          return;
-        }
-        applicationAuthority.assertPublicationAllowed();
-        const checkedBase = await captureRecheckedWorkingGeneration({ operationLabel: "file mutation" });
-        if (!sameWorkingGenerationIdentity({
-          left: checkedBase.workingIdentity,
-          right: base.workingIdentity,
-        })) {
-          throw new TypeError("prepared file mutation base generation changed");
-        }
-        applicationAuthority.assertPublicationAllowed();
-        const mutationId = await generateSuccessorMutationId({ baseMutationId: checkedBase.commit.mutationId });
-        const publicationMode = authenticatedGeneration.publicationModeApplied();
-        const baseDescriptor = descriptorFromGeneration({ value: checkedBase });
-        const prepareCommitPayload = async ({ candidateBaseCommit }: {
-          candidateBaseCommit: FileSystemCommitPayload;
-        }): Promise<FileSystemCommitPayload> => {
-          const prepared = await prepareRootInodeTableMutation({
-            baseCommit: candidateBaseCommit,
-            changes: [{ entry: staged, type: "set" }],
-            mutationId,
-            pageStore: inodeTablePageStore,
-          });
-          switch (prepared.type) {
-          case "prepared": return prepared.commitPayload;
-          case "unchanged": throw new Error(
-            "changed prepared writable unexpectedly produced no Inode Table mutation",
-          );
-          default: return prepared satisfies never;
-          }
-        };
-
-        try {
-          // Materialize pending tail plaintext into File Data references first,
-          // then durably flush the bounded Data batch before final metadata
-          // preparation. No accepted working generation may outlive the
-          // physical bytes referenced by its File Extent tree.
-          await flushExtentRangeWriteBatch();
-          await flushExtentTailAppendBatch();
-          await fileAuthority.flushPendingFileDataRecords();
-        } catch (cause: unknown) {
-          fileAuthority.abandon();
-          state = "closed";
-          throw cause;
-        }
-
-        switch (publicationMode) {
-        case "immediate_publication": {
-          let commitPayload: FileSystemCommitPayload;
-          try {
-            commitPayload = await prepareCommitPayload({ candidateBaseCommit: base.commit });
-          } catch (cause: unknown) {
-            fileAuthority.abandon();
-            state = "closed";
-            throw cause;
-          }
-          const runtimeAdmission = openRuntimeMutationAdmission({ base });
-          const candidateSlot = createInstalledWorkingCandidateSlot({
-            base,
-            operationLabel: "file mutation",
-            runtimeAdmission,
-          });
-          try {
-            const publication = await publishPreparedMutationCommit({
-              assertPublicationAllowed: applicationAuthority.assertPublicationAllowed,
-              base: base.superblock,
-              commitPayload,
-              onCandidatePrepared: ({ candidate }) => {
-                transferMeasuredMutationResources({
-                  admission: runtimeAdmission,
-                  usage: fileAuthority.resourceUsage(),
-                });
-                candidateSlot.install({ candidate, commitPayload });
-                applicationAuthority.markCandidateAccepted();
-                return candidateSlot.selectCandidateForPublication();
-              },
-              publicationPort: fileAuthority,
-            });
-            const installedCandidate = candidateSlot.requireGeneration();
-            const expectedPublishedIdentity = createWorkingGenerationIdentity({
-              authorityEpoch: installedCandidate.workingIdentity.authorityEpoch,
-              generationNumber: installedCandidate.workingIdentity.generationNumber,
-              mutationId: commitPayload.mutationId,
-            });
-            if (
-              !sameCommitPayload({ left: installedCandidate.commit, right: commitPayload })
-              || !sameWorkingGenerationIdentity({
-                left: installedCandidate.workingIdentity,
-                right: expectedPublishedIdentity,
-              })
-            ) {
-              throw new TypeError("published file mutation does not match its installed working candidate");
-            }
-            inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
-            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
-            try {
-              commitRuntimeDurableSuccessor({
-                admission: runtimeAdmission,
-                successor: promoteWorkingCandidateGeneration({
-                  candidate: installedCandidate,
-                  publication,
-                }),
-              });
-            } catch (runtimeCause: unknown) {
-              mutationPoison = runtimeCause;
-              candidateSlot.retain({ cause: runtimeCause });
-              throw runtimeCause;
-            }
-            applicationAuthority.markCommitPointCrossed();
-            candidateSlot.release();
-            state = "closed";
-          } catch (cause: unknown) {
-            if (!(cause instanceof PreparedMutationCommitPublicationError)) {
-              candidateSlot.release();
-              const authorityState = fileAuthority.state();
-              switch (authorityState) {
-              case "active":
-              case "candidate_prepared": fileAuthority.abandon(); break;
-              case "closed": break;
-              case "publishing": {
-                const unresolved = new AggregateError(
-                  [cause],
-                  "file publication preparation failed while publication outcome remained unresolved",
-                );
-                mutationPoison = unresolved;
-                state = "closed";
-                throw unresolved;
-              }
-              default: return authorityState satisfies never;
-              }
-              state = "closed";
-              throw cause;
-            }
-
-            state = "closed";
-            try {
-              await resolveFailedPublication({
-                applicationAuthority,
-                authority: fileAuthority,
-                base,
-                cause,
-                operationLabel: "file mutation",
-                runtimeAdmission,
-              });
-              candidateSlot.release();
-            } catch (resolutionCause: unknown) {
-              if (mutationPoison === undefined || candidateSlot.matchesCurrentGeneration()) {
-                candidateSlot.release();
-              } else {
-                candidateSlot.retain({ cause: mutationPoison ?? resolutionCause });
-              }
-              throw resolutionCause;
-            }
-          } finally {
-            runtimeAdmission.rollback();
-          }
-          return;
-        }
-        case "lazy_publication": {
-          let admission: ContainerRuntimeAcceptedMutationAdmission;
-          let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
-          try {
-            ({ admission, base: admittedBaseDescriptor } = await openStableAcceptedApplicationMutationAdmission({
-              authenticatedGeneration,
-              dirtyMetadataBytes: 0,
-              expectedBase: baseDescriptor,
-              unpublishedPhysicalBytes: 0,
-            }));
-          } catch (cause: unknown) {
-            state = "closed";
-            fileAuthority.abandon();
-            throw cause;
-          }
-          let commitPayload: FileSystemCommitPayload;
-          try {
-            commitPayload = await prepareCommitPayload({
-              candidateBaseCommit: createMutationCandidatePlanningBaseCommit({ base: admittedBaseDescriptor }),
-            });
-          } catch (cause: unknown) {
-            admission.rollback();
-            fileAuthority.abandon();
-            state = "closed";
-            throw cause;
-          }
-          let accepted = false;
-          try {
-            await fileAuthority.flushPendingMetadataRecords();
-            const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
-            const installed = prepareAndInstallStagedMutationSelectedCandidate({
-              admission,
-              assertCandidatePreparationAllowed: () => {
-                assertCurrentWorkingGeneration({
-                  captured: base.workingIdentity,
-                  operationLabel: "staged file mutation candidate preparation",
-                });
-                applicationAuthority.assertPublicationAllowed();
-              },
-              assertRuntimePublicationAllowed: () => {
-                if (publicationRootKey.isDestroyed()) {
-                  throw new TypeError("released staged publication resources cannot publish a working candidate");
-                }
-              },
-              base: admittedBaseDescriptor,
-              commitPayload,
-              createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
-                backend,
-                decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
-                decodedInodeBranchPageCache: decodedInodeIndexPageCache,
-                diagnostics: recordDiagnostics,
-                fileSystemId: opened.fileSystemId,
-                mutationScopeDiagnostics: "suppress",
-                randomSource,
-                relocationIndexRootPhysicalRef:
-                  admittedBaseDescriptor.durableAuthority.superblock.logicalState.relocationIndexRootPhysicalRef,
-                rootKey: publicationRootKey,
-                supportedFeatureBits,
-              }),
-              prepareWorkingAcceptance: () => fileAuthority.prepareWorkingAcceptanceWithoutCandidate(),
-              releasePublicationResources: () => publicationRootKey.destroy(),
-              resourceUsage: fileAuthority.resourceUsage(),
-            });
-            accepted = true;
-            fileAuthority.completeWorkingAcceptanceWithoutCandidate();
-            inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
-            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
-            const captured = authenticatedGeneration.capture();
-            if (!sameWorkingGenerationIdentity({
-              left: captured.workingIdentity,
-              right: installed.successor.workingIdentity,
-            })) {
-              const cause = new TypeError("runtime did not expose the accepted file mutation successor");
-              mutationPoison = cause;
-              throw cause;
-            }
-            adoptGenerationDescriptor({ descriptor: captured });
-            applicationAuthority.markCandidateAccepted();
-            state = "closed";
-          } catch (cause: unknown) {
-            state = "closed";
-            if (accepted) {
-              mutationPoison ??= cause;
-              throw cause;
-            }
-            const authorityState = fileAuthority.state();
-            switch (authorityState) {
-            case "active":
-            case "candidate_prepared": fileAuthority.abandon(); break;
-            case "closed": break;
-            case "publishing": {
-              const unresolved = new AggregateError(
-                [cause],
-                "deferred file mutation preparation failed while publication outcome remained unresolved",
-              );
-              mutationPoison = unresolved;
-              throw unresolved;
-            }
-            default: return authorityState satisfies never;
-            }
-            throw cause;
-          } finally {
-            admission.rollback();
-          }
-          return;
-        }
-        default: return publicationMode satisfies never;
-        }
-      },
-      truncate: stageTruncate,
       write: async ({ data, position }) => {
         await stage({
           operation: async () => {
@@ -4961,6 +4710,390 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         });
         return "consumed";
       },
+      truncate: stageTruncate,
+      read: async ({ length, offset, signal }) => {
+        requireOpen();
+        signal?.throwIfAborted();
+        if (offset < 0n || length < 0n || offset > staged.fileSize || length > staged.fileSize - offset) {
+          throw new RangeError("file read range exceeds file size");
+        }
+        const running = (async () => {
+          switch (staged.content.type) {
+          case "inline": return staged.content.bytes.slice(Number(offset), Number(offset + length));
+          case "tree": {
+            if (readStagedExtents === undefined) {
+              // Provisional references can be reused after abort. Keep both the
+              // pending byte view and its validation proof inside this writer.
+              stagedReadValidations = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 });
+              const persisted = createAuthenticatedNamespaceRecordSource({
+                backend,
+                diagnostics: recordDiagnostics,
+                fileDataRecordCache,
+                fileSystemId: opened.fileSystemId,
+                metadataRecordCache,
+                relocationIndexRootPhysicalRef: base.superblock.logicalState.relocationIndexRootPhysicalRef,
+                relocationPageRecordCache,
+                rootKey: opened.rootKey,
+              });
+              readStagedExtents = createAuthenticatedFileExtentReader({
+                indexDiagnostics,
+                recordSource: {
+                  copyFileDataRange: async ({ destination, destinationOffset, reference, sourceLength, sourceOffset, validatePlaintextLength }) => {
+                    const request = { destination, destinationOffset, reference, sourceLength, sourceOffset, validatePlaintextLength };
+                    if (!fileAuthority.copyPendingFileDataRange(request)) await persisted.copyFileDataRange(request);
+                  },
+                  decodeRecordPayload: persisted.decodeRecordPayload,
+                  readHomeRecord: async ({ reference }) => fileAuthority.readPendingMetadataRecord({ reference })
+                    ?? await persisted.readHomeRecord({ reference }),
+                },
+                validationCache: stagedReadValidations,
+              });
+            }
+            const pending = extentTailAppendBatch ?? extentRangeWriteBatch;
+            return await readStagedExtents({
+              copyPending: pending === undefined ? undefined : ({ destination }) => pending.copyPendingRange({ destination, offset }),
+              inode: { ...staged, content: staged.content },
+              length,
+              offset,
+            });
+          }
+          default: return staged.content satisfies never;
+          }
+        })();
+        activeOperation = running;
+        try {
+          const bytes = await running;
+          signal?.throwIfAborted();
+          return bytes;
+        } catch (cause: unknown) {
+          stagedReadValidations?.clear();
+          throw cause;
+        } finally {
+          if (activeOperation === running) activeOperation = undefined;
+        }
+      },
+      abort: async () => {
+        if (activeOperation !== undefined) {
+          try {
+            await activeOperation;
+          } catch {
+            // The staged failure remains recorded; abort still owns cleanup.
+          }
+        }
+        switch (state) {
+        case "closed": return;
+        case "open":
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
+          fileAuthority.abandon();
+          state = "closed";
+          return;
+        default: return state satisfies never;
+        }
+      },
+      commit: async ({ authority: applicationAuthority }) => {
+        if (activeOperation !== undefined) {
+          try {
+            await activeOperation;
+          } catch {
+            // The exact staged failure is rethrown below after cleanup.
+          }
+        }
+        switch (state) {
+        case "open": break;
+        case "closed": throw new Error("prepared HizoFS writable is closed");
+        default: state satisfies never;
+        }
+        if (operationFailure !== undefined) {
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
+          fileAuthority.abandon();
+          state = "closed";
+          throw new HizoFSApplicationMutationSessionPoisonedError({ cause: operationFailure.cause });
+        }
+        if (!changed) {
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
+          fileAuthority.abandon();
+          state = "closed";
+          applicationAuthority.markNoChangeResolved();
+          return;
+        }
+        applicationAuthority.assertPublicationAllowed();
+        const checkedBase = await captureRecheckedWorkingGeneration({ operationLabel: "file mutation" });
+        if (!sameWorkingGenerationIdentity({
+          left: checkedBase.workingIdentity,
+          right: base.workingIdentity,
+        })) {
+          throw new TypeError("prepared file mutation base generation changed");
+        }
+        applicationAuthority.assertPublicationAllowed();
+        const mutationId = await generateSuccessorMutationId({ baseMutationId: checkedBase.commit.mutationId });
+        const publicationMode = authenticatedGeneration.publicationModeApplied();
+        const baseDescriptor = descriptorFromGeneration({ value: checkedBase });
+        const prepareCommitPayload = async ({ candidateBaseCommit }: {
+          candidateBaseCommit: FileSystemCommitPayload;
+        }): Promise<FileSystemCommitPayload> => {
+          const prepared = await prepareRootInodeTableMutation({
+            baseCommit: candidateBaseCommit,
+            changes: [{ entry: staged, type: "set" }],
+            mutationId,
+            pageStore: inodeTablePageStore,
+          });
+          switch (prepared.type) {
+          case "prepared": return prepared.commitPayload;
+          case "unchanged": throw new Error(
+            "changed prepared writable unexpectedly produced no Inode Table mutation",
+          );
+          default: return prepared satisfies never;
+          }
+        };
+
+        try {
+          // Materialize pending tail plaintext into File Data references first,
+          // then durably flush the bounded Data batch before final metadata
+          // preparation. No accepted working generation may outlive the
+          // physical bytes referenced by its File Extent tree.
+          await flushExtentRangeWriteBatch();
+          await flushExtentTailAppendBatch();
+          await fileAuthority.flushPendingFileDataRecords();
+        } catch (cause: unknown) {
+          fileAuthority.abandon();
+          state = "closed";
+          throw cause;
+        }
+
+        switch (publicationMode) {
+        case "immediate_publication": {
+          let commitPayload: FileSystemCommitPayload;
+          try {
+            commitPayload = await prepareCommitPayload({ candidateBaseCommit: base.commit });
+          } catch (cause: unknown) {
+            fileAuthority.abandon();
+            state = "closed";
+            throw cause;
+          }
+          const runtimeAdmission = openRuntimeMutationAdmission({ base });
+          const candidateSlot = createInstalledWorkingCandidateSlot({
+            base,
+            operationLabel: "file mutation",
+            runtimeAdmission,
+          });
+          try {
+            const publication = await publishPreparedMutationCommit({
+              assertPublicationAllowed: applicationAuthority.assertPublicationAllowed,
+              base: base.superblock,
+              commitPayload,
+              onCandidatePrepared: ({ candidate }) => {
+                transferMeasuredMutationResources({
+                  admission: runtimeAdmission,
+                  usage: fileAuthority.resourceUsage(),
+                });
+                candidateSlot.install({ candidate, commitPayload });
+                applicationAuthority.markCandidateAccepted();
+                return candidateSlot.selectCandidateForPublication();
+              },
+              publicationPort: fileAuthority,
+            });
+            const installedCandidate = candidateSlot.requireGeneration();
+            const expectedPublishedIdentity = createWorkingGenerationIdentity({
+              authorityEpoch: installedCandidate.workingIdentity.authorityEpoch,
+              generationNumber: installedCandidate.workingIdentity.generationNumber,
+              mutationId: commitPayload.mutationId,
+            });
+            if (
+              !sameCommitPayload({ left: installedCandidate.commit, right: commitPayload })
+              || !sameWorkingGenerationIdentity({
+                left: installedCandidate.workingIdentity,
+                right: expectedPublishedIdentity,
+              })
+            ) {
+              throw new TypeError("published file mutation does not match its installed working candidate");
+            }
+            inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
+            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
+            try {
+              commitRuntimeDurableSuccessor({
+                admission: runtimeAdmission,
+                successor: promoteWorkingCandidateGeneration({
+                  candidate: installedCandidate,
+                  publication,
+                }),
+              });
+            } catch (runtimeCause: unknown) {
+              mutationPoison = { cause: runtimeCause };
+              candidateSlot.retain({ cause: runtimeCause });
+              throw runtimeCause;
+            }
+            applicationAuthority.markCommitPointCrossed();
+            candidateSlot.release();
+            state = "closed";
+          } catch (cause: unknown) {
+            if (!(cause instanceof PreparedMutationCommitPublicationError)) {
+              candidateSlot.release();
+              const authorityState = fileAuthority.state();
+              switch (authorityState) {
+              case "active":
+              case "candidate_prepared": fileAuthority.abandon(); break;
+              case "closed": break;
+              case "publishing": {
+                const unresolved = new AggregateError(
+                  [cause],
+                  "file publication preparation failed while publication outcome remained unresolved",
+                );
+                mutationPoison = { cause: unresolved };
+                state = "closed";
+                throw unresolved;
+              }
+              default: return authorityState satisfies never;
+              }
+              state = "closed";
+              throw cause;
+            }
+
+            state = "closed";
+            try {
+              await resolveFailedPublication({
+                applicationAuthority,
+                authority: fileAuthority,
+                base,
+                cause,
+                operationLabel: "file mutation",
+                runtimeAdmission,
+              });
+              candidateSlot.release();
+            } catch (resolutionCause: unknown) {
+              if (mutationPoison === undefined || candidateSlot.matchesCurrentGeneration()) {
+                candidateSlot.release();
+              } else {
+                candidateSlot.retain({ cause: mutationPoison.cause });
+              }
+              throw resolutionCause;
+            }
+          } finally {
+            runtimeAdmission.rollback();
+          }
+          return;
+        }
+        case "lazy_publication": {
+          let admission: ContainerRuntimeAcceptedMutationAdmission;
+          let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
+          try {
+            ({ admission, base: admittedBaseDescriptor } = await openStableAcceptedApplicationMutationAdmission({
+              authenticatedGeneration,
+              dirtyMetadataBytes: 0,
+              expectedBase: baseDescriptor,
+              unpublishedPhysicalBytes: 0,
+            }));
+          } catch (cause: unknown) {
+            state = "closed";
+            fileAuthority.abandon();
+            throw cause;
+          }
+          let commitPayload: FileSystemCommitPayload;
+          try {
+            commitPayload = await prepareCommitPayload({
+              candidateBaseCommit: createMutationCandidatePlanningBaseCommit({ base: admittedBaseDescriptor }),
+            });
+          } catch (cause: unknown) {
+            admission.rollback();
+            fileAuthority.abandon();
+            state = "closed";
+            throw cause;
+          }
+          try {
+            await fileAuthority.flushPendingMetadataRecords();
+            const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
+            const installed = prepareAndInstallStagedMutationSelectedCandidate({
+              admission,
+              assertCandidatePreparationAllowed: () => {
+                assertCurrentWorkingGeneration({
+                  captured: base.workingIdentity,
+                  operationLabel: "staged file mutation candidate preparation",
+                });
+                applicationAuthority.assertPublicationAllowed();
+              },
+              assertRuntimePublicationAllowed: () => {
+                if (publicationRootKey.isDestroyed()) {
+                  throw new TypeError("released staged publication resources cannot publish a working candidate");
+                }
+              },
+              base: admittedBaseDescriptor,
+              commitPayload,
+              createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
+                backend,
+                decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
+                decodedInodeBranchPageCache: decodedInodeIndexPageCache,
+                diagnostics: recordDiagnostics,
+                fileSystemId: opened.fileSystemId,
+                mutationScopeDiagnostics: "suppress",
+                randomSource,
+                relocationIndexRootPhysicalRef:
+                  admittedBaseDescriptor.durableAuthority.superblock.logicalState.relocationIndexRootPhysicalRef,
+                rootKey: publicationRootKey,
+                supportedFeatureBits,
+              }),
+              prepareWorkingAcceptance: () => fileAuthority.prepareWorkingAcceptanceWithoutCandidate(),
+              releasePublicationResources: () => publicationRootKey.destroy(),
+              resourceUsage: fileAuthority.resourceUsage(),
+            });
+            fileAuthority.completeWorkingAcceptanceWithoutCandidate();
+            inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
+            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
+            const captured = authenticatedGeneration.capture();
+            if (!sameWorkingGenerationIdentity({
+              left: captured.workingIdentity,
+              right: installed.successor.workingIdentity,
+            })) {
+              const cause = new TypeError("runtime did not expose the accepted file mutation successor");
+              mutationPoison = { cause };
+              throw cause;
+            }
+            adoptGenerationDescriptor({ descriptor: captured });
+            applicationAuthority.markCandidateAccepted();
+            state = "closed";
+          } catch (cause: unknown) {
+            state = "closed";
+            if (admission.hasAcceptedSuccessor()) {
+              mutationPoison ??= { cause };
+              try {
+                const authorityState = fileAuthority.state();
+                switch (authorityState) {
+                case "active": fileAuthority.completeWorkingAcceptanceWithoutCandidate(); break;
+                case "candidate_prepared":
+                case "closed":
+                case "publishing": break;
+                default: return authorityState satisfies never;
+                }
+              } catch (cleanupCause: unknown) {
+                throw new AggregateError([cause, cleanupCause], "accepted file mutation and local authority cleanup both failed");
+              }
+              throw cause;
+            }
+            const authorityState = fileAuthority.state();
+            switch (authorityState) {
+            case "active":
+            case "candidate_prepared": fileAuthority.abandon(); break;
+            case "closed": break;
+            case "publishing": {
+              const unresolved = new AggregateError(
+                [cause],
+                "deferred file mutation preparation failed while publication outcome remained unresolved",
+              );
+              mutationPoison = { cause: unresolved };
+              throw unresolved;
+            }
+            default: return authorityState satisfies never;
+            }
+            throw cause;
+          } finally {
+            admission.rollback();
+          }
+          return;
+        }
+        default: return publicationMode satisfies never;
+        }
+      },
     };
     let workingGenerationDependency: Readonly<{ release: () => void }>;
     try {
@@ -4981,6 +5114,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     const releaseWriterDependency = (): void => {
       if (!workingGenerationDependencyActive) return;
       workingGenerationDependencyActive = false;
+      stagedReadValidations?.clear();
+      stagedReadValidations = undefined;
+      readStagedExtents = undefined;
       workingGenerationDependency.release();
     };
     const settleWithWriterDependencyRelease = async ({ message, operation }: {
@@ -5018,6 +5154,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         message: "prepared writable commit and writer dependency release both failed",
         operation: async () => await preparedWritable.commit({ authority }),
       }),
+      read: preparedWritable.read,
       truncate: preparedWritable.truncate,
       write: preparedWritable.write,
     };
@@ -5153,6 +5290,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     },
     mutationPort,
     namespace,
+    readOnlyMutationPort: readOnlyMutationPort(),
     releaseResources: async () => {
       if (released) return;
       released = true;
@@ -5284,7 +5422,8 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
   registerManagementGenerationAdopter?: ({ adopter }: {
     adopter: AuthenticatedManagementCleanGenerationAdopter;
   }) => void;
-  registerRuntimeSession?: ({ runtimeSession }: {
+  registerRuntimeSession?: ({ openReadObservation, runtimeSession }: {
+    openReadObservation: HizoFSReadObservationFactory | undefined;
     runtimeSession: HizoFSApplicationRuntimeSession;
   }) => void;
   rootName?: string;
@@ -5407,6 +5546,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
     let credentialAuthorityUpdater: AuthenticatedCredentialAuthorityUpdater | undefined;
     let managementGenerationAdopter: AuthenticatedManagementCleanGenerationAdopter | undefined;
     let runtimeSession: HizoFSApplicationRuntimeSession | undefined;
+    let openReadObservation: HizoFSReadObservationFactory | undefined;
     const operationGate: DevelopmentWritableCredentialOperationGate = {
       cause: undefined,
       outcome: "session_reopen_required",
@@ -5432,11 +5572,12 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         }
         managementGenerationAdopter = adopter;
       },
-      registerRuntimeSession: ({ runtimeSession: registered }) => {
+      registerRuntimeSession: ({ openReadObservation: observationFactory, runtimeSession: registered }) => {
         if (runtimeSession !== undefined) {
           throw new TypeError("application session registered more than one runtime session");
         }
         runtimeSession = registered;
+        openReadObservation = observationFactory;
       },
       rootName,
       runtimeHost,
@@ -5486,6 +5627,10 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
       await underlyingSession.close();
       throw new Error("writable application session did not register its runtime session");
     }
+    if (openReadObservation === undefined) {
+      await underlyingSession.close();
+      throw new Error("writable application session did not register its read observation factory");
+    }
     if (managementGenerationAdopter === undefined) {
       await underlyingSession.close();
       throw new Error("writable application session did not register its management generation adopter");
@@ -5498,6 +5643,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         managementGenerationAdopter,
         managementRuntimeHost: runtimeHost,
         operationGate,
+        openReadObservation,
         opened: openedAuthority.opened,
         recordDiagnostics: openedAuthority.recordDiagnostics,
         runtimeSession,
@@ -5819,7 +5965,9 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
   const provisionDirectoryHierarchy = backend.provisionDirectoryHierarchy;
   const readExactPairWithFileSize = backend.readExactPairWithFileSize;
   const syncFileDirectoryEntry = backend.syncFileDirectoryEntry;
-  return {
+  const openDirectoryCursor = (backend as HizoFSWritableBackend<AuthenticatedPhysicalBytes> & Partial<HizoFSDirectoryCursorBackend>)
+    .openDirectoryCursor;
+  const wrapper: HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes> & Partial<HizoFSDirectoryCursorBackend> = {
     capabilities: backend.capabilities,
     closeFile: async ({ file }: { file: HizoFSWritableFile }) => await measured({
       operation: async () => await backend.closeFile({ file }),
@@ -5862,6 +6010,25 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
     list: async ({ directory }) => await measured({
       operation: async () => await backend.list({ directory }),
       phase: "physical_list",
+    }),
+    ...(openDirectoryCursor === undefined ? {} : {
+      openDirectoryCursor: async ({ directory }) => {
+        // Count actual listing calls, not directories or time spent between pages.
+        const cursor = await measured({
+          operation: async () => await openDirectoryCursor.call(backend, { directory }),
+          phase: "physical_list",
+        });
+        return {
+          close: async () => await measured({
+            operation: async () => await cursor.close(),
+            phase: "physical_list",
+          }),
+          read: async ({ maximumEntries }) => await measured({
+            operation: async () => await cursor.read({ maximumEntries }),
+            phase: "physical_list",
+          }),
+        };
+      },
     }),
     openFileForUpdate: async ({ path }) => await measured({
       operation: async () => await backend.openFileForUpdate({ path }),
@@ -5938,6 +6105,8 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       phase: "physical_write_at",
     }),
   };
+  shareAuthenticatedContainerDirectoryState({ backend, wrapper });
+  return wrapper;
 }
 
 const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
@@ -5954,6 +6123,13 @@ const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxReaderPins: 512,
   maxSegmentReferences: 16_384,
 });
+
+type HizoFSTransitionTargetSession = Readonly<
+  Pick<StreamingNamespaceImportTargetSession, "close" | "discardStagedSliceState" | "stageSliceState" | "target"> & {
+    authorityIdentity: string;
+    source: ReturnType<typeof createHizoFSTransitionNamespaceSource>;
+  }
+>;
 
 export async function openBrowserHizoFSTransitionTargetEndpointSession({
   authorityIdentity,
@@ -5974,7 +6150,7 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
     fileSystemId: FileSystemId;
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
-}): Promise<TransitionTargetEndpointSession> {
+}): Promise<HizoFSTransitionTargetSession> {
   const backend = createHizoFSOpfsWritableBackend({
     diagnostics: undefined,
     fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
@@ -6068,18 +6244,19 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
       });
       return privateSource;
     };
-    let closed = false;
+    let closeCompletion: Promise<void> | undefined;
     return {
       authorityIdentity,
       discardStagedSliceState: async () => await targetSession.discardStagedSliceState(),
       close: async () => {
-        if (closed) return;
-        closed = true;
-        await settleTransitionEndpointClose({
+        if (closeCompletion !== undefined) return await closeCompletion;
+        closeCompletion = settleTransitionEndpointClose({
           abandonAuthority: () => authority.abandon(),
           closeTarget: async () => await targetSession.close(),
           destroyRootKey: () => opened.rootKey.destroy(),
+          settleWriterCleanup: async () => await authority.settleWriterCleanup(),
         });
+        return await closeCompletion;
       },
       stageSliceState: async () => await targetSession.stageSliceState(),
       source: {
@@ -6100,10 +6277,13 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
     };
   } catch (cause: unknown) {
     const authorityToAbandon = fileAuthority;
-    return abandonTransitionEndpointAfterOpenFailure({
+    return await abandonTransitionEndpointAfterOpenFailure({
       abandonAuthority: authorityToAbandon === undefined ? undefined : () => authorityToAbandon.abandon(),
       cause,
       destroyRootKey: () => opened.rootKey.destroy(),
+      settleWriterCleanup: authorityToAbandon === undefined
+        ? undefined
+        : async () => await authorityToAbandon.settleWriterCleanup(),
     });
   }
 }
@@ -6112,10 +6292,12 @@ async function settleTransitionEndpointClose({
   abandonAuthority,
   closeTarget,
   destroyRootKey,
+  settleWriterCleanup,
 }: {
   abandonAuthority: () => void;
   closeTarget: () => Promise<void>;
   destroyRootKey: () => void;
+  settleWriterCleanup: () => Promise<void>;
 }): Promise<void> {
   const failures: unknown[] = [];
   try {
@@ -6125,6 +6307,11 @@ async function settleTransitionEndpointClose({
   }
   try {
     abandonAuthority();
+  } catch (cause: unknown) {
+    failures.push(cause);
+  }
+  try {
+    await settleWriterCleanup();
   } catch (cause: unknown) {
     failures.push(cause);
   }
@@ -6139,20 +6326,27 @@ async function settleTransitionEndpointClose({
   }
 }
 
-function abandonTransitionEndpointAfterOpenFailure({
+async function abandonTransitionEndpointAfterOpenFailure({
   abandonAuthority,
   cause,
   destroyRootKey,
+  settleWriterCleanup,
 }: {
   abandonAuthority: (() => void) | undefined;
   cause: unknown;
   destroyRootKey: () => void;
-}): never {
+  settleWriterCleanup: (() => Promise<void>) | undefined;
+}): Promise<never> {
   const failures = [cause];
   try {
     abandonAuthority?.();
   } catch (cleanupFailure: unknown) {
     failures.push(cleanupFailure);
+  }
+  try {
+    await settleWriterCleanup?.();
+  } catch (cleanupFailure: unknown) {
+    if (cleanupFailure !== cause) failures.push(cleanupFailure);
   }
   try {
     destroyRootKey();
@@ -6221,6 +6415,45 @@ export async function publishBrowserHizoFSTransitionTargetCandidate({
     supportedFeatureBits: createFeatureBits({ value: 0n }),
   });
   let authority: Awaited<ReturnType<typeof createAuthenticatedFileContentMutationAuthority>> | undefined;
+  let publicationFailure: Readonly<{ cause: unknown }> | undefined;
+  const settlePublicationResources = async (): Promise<void> => {
+    const cleanupFailures: unknown[] = [];
+    if (authority !== undefined) {
+      try {
+        const state = authority.state();
+        switch (state) {
+        case "active":
+        case "candidate_prepared": authority.abandon(); break;
+        case "closed":
+        case "publishing": break;
+        default: state satisfies never;
+        }
+      } catch (cleanupCause: unknown) {
+        cleanupFailures.push(cleanupCause);
+      }
+      try {
+        await authority.settleWriterCleanup();
+      } catch (cleanupCause: unknown) {
+        const primary = publicationFailure?.cause;
+        if (publicationFailure === undefined || (cleanupCause !== primary
+          && !(primary instanceof AggregateError && primary.errors.includes(cleanupCause)))) {
+          cleanupFailures.push(cleanupCause);
+        }
+      }
+    }
+    try {
+      opened.rootKey.destroy();
+    } catch (cleanupCause: unknown) {
+      cleanupFailures.push(cleanupCause);
+    }
+    if (cleanupFailures.length !== 0) {
+      if (publicationFailure === undefined && cleanupFailures.length === 1) throw cleanupFailures[0];
+      throw new AggregateError(
+        publicationFailure === undefined ? cleanupFailures : [publicationFailure.cause, ...cleanupFailures],
+        "transition target publication and resource cleanup failed",
+      );
+    }
+  };
   try {
     switch (opened.dataOpenMode) {
     case "normal": break;
@@ -6322,18 +6555,11 @@ export async function publishBrowserHizoFSTransitionTargetCandidate({
       }
     }
     return { commitSequence: commitPayload.commitSequence, fileSystemId: opened.fileSystemId };
+  } catch (cause: unknown) {
+    publicationFailure = { cause };
+    throw cause;
   } finally {
-    if (authority !== undefined) {
-      const state = authority.state();
-      switch (state) {
-      case "active":
-      case "candidate_prepared": authority.abandon(); break;
-      case "closed":
-      case "publishing": break;
-      default: state satisfies never;
-      }
-    }
-    opened.rootKey.destroy();
+    await settlePublicationResources();
   }
 }
 

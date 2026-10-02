@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeBase64UrlUnpadded, encodeBase64UrlUnpadded } from '@/00-storage/service/hizofs/00-format/v1/encoding/base64-url';
 import { decodeLowercaseHex, encodeLowercaseHex } from '@/00-storage/service/hizofs/00-format/v1/encoding/lowercase-hex';
-import { decodeFilenameComponent, decodeUtf8Strict, encodeFilenameComponent, encodedFilenameComponentByteLength, encodedSymlinkTargetByteLength, encodePassphraseUtf8, encodeSymlinkTarget, encodeUtf8Strict, compareFilenameComponentsByUtf8, writeFilenameComponent } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
+import { decodeFilenameComponent, decodeSymlinkTarget, decodeUtf8Strict, encodeFilenameComponent, encodedFilenameComponentByteLength, encodedSymlinkTargetByteLength, encodePassphraseUtf8, encodeSymlinkTarget, encodeUtf8Strict, compareFilenameComponentsByUtf8, writeFilenameComponent } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
 import { compareUnsignedBytes } from '@/00-storage/service/hizofs/00-format/v1/ordering/unsigned-bytes';
 import { createTimestampMilliseconds, createUInt64, TIMESTAMP_MILLISECONDS_MAXIMUM, TIMESTAMP_MILLISECONDS_MINIMUM, UINT64_MAXIMUM } from '@/00-storage/service/hizofs/00-format/v1/scalars';
 
@@ -11,6 +11,22 @@ describe('HizoFS V1 primitive contracts', () => {
     expect([...encodeUtf8Strict({ value: 'e\u0301' })]).toEqual([0x65, 0xcc, 0x81]);
     expect(() => encodeUtf8Strict({ value: '\ud800' })).toThrow('unpaired high surrogate');
     expect(() => decodeUtf8Strict({ bytes: Uint8Array.of(0xc0, 0x80) })).toThrow('well-formed UTF-8');
+  });
+
+  it.each(['\uFEFF', '\uFEFFalpha', '\uFEFF\uFEFFalpha', 'a\uFEFF'])('preserves U+FEFF as text, filename, and symlink data: %j', value => {
+    const encoded = encodeUtf8Strict({ value });
+    if (value.startsWith('\uFEFF')) expect([...encoded.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(decodeUtf8Strict({ bytes: encoded })).toBe(value);
+    expect(decodeFilenameComponent({ bytes: encodeFilenameComponent({ value }) })).toBe(value);
+    expect(decodeSymlinkTarget({ bytes: encodeSymlinkTarget({ value }) })).toBe(value);
+  });
+
+  it('still rejects malformed UTF-8 following a valid BOM', () => {
+    for (const invalid of [Uint8Array.of(0xef, 0xbb, 0xbf, 0xc0, 0x80), Uint8Array.of(0xef, 0xbb)]) {
+      expect(() => decodeUtf8Strict({ bytes: invalid })).toThrow('well-formed UTF-8');
+      expect(() => decodeFilenameComponent({ bytes: invalid })).toThrow('well-formed UTF-8');
+      expect(() => decodeSymlinkTarget({ bytes: invalid })).toThrow('well-formed UTF-8');
+    }
   });
 
   it('enforces filename, symlink, and passphrase byte profiles', () => {

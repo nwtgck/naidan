@@ -390,7 +390,7 @@ export class AuthenticatedSegmentWriter {
   private operationInProgress = false;
   private persistedFrameBytesValue = 0;
   private retainedWritableFile: HizoFSWritableFile | undefined;
-  private retainedWritableFileCloseFailure: unknown | undefined;
+  private retainedWritableFileCloseFailure: Readonly<{ cause: unknown }> | undefined;
   private retainedWritableFileCloseOperation: Promise<void> | undefined;
   private stateValue: SegmentWriterState = "active";
 
@@ -441,7 +441,7 @@ export class AuthenticatedSegmentWriter {
     }).then(
       () => undefined,
       (cause: unknown) => {
-        this.retainedWritableFileCloseFailure = cause;
+        this.retainedWritableFileCloseFailure = { cause };
       },
     );
     this.retainedWritableFileCloseOperation = closeOperation;
@@ -457,7 +457,7 @@ export class AuthenticatedSegmentWriter {
     }
     const failure = this.retainedWritableFileCloseFailure;
     if (failure !== undefined) {
-      throw failure;
+      throw failure.cause;
     }
   }
 

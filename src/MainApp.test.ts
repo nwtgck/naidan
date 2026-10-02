@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApplicationShellRenderGate } from '@/logic/startup/application-shell-render-gate';
 import MainApp from './MainApp.vue';
 
 const appInteraction = ref<
@@ -146,5 +147,45 @@ describe('MainApp', () => {
     expect(wrapper.get('[data-testid="main-app-surface"]').attributes('data-post-startup-features')).toBe('inactive');
     expect(wrapper.find('[data-testid="app-command-runtime"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(false);
+  });
+
+  it('settles the encrypted shell gate when the auxiliary component cannot be imported', async () => {
+    const auxiliaryModule = await import('./components/AppAuxiliaryUi.vue');
+    const failure = new Error('auxiliary UI chunk unavailable');
+    vi.doMock('./components/AppAuxiliaryUi.vue', () => {
+      throw failure;
+    });
+    vi.resetModules();
+    const { default: MainAppWithFailedAuxiliaryImport } = await import('./MainApp.vue');
+    const gate = createApplicationShellRenderGate();
+    const completion = gate.waitForInitialRender().catch(error => error);
+    const vueError = vi.fn();
+    appInteraction.value = 'blocked-by-startup';
+    const wrapper = mount(MainAppWithFailedAuxiliaryImport, {
+      attrs: {
+        onInitialShellRendered: () => gate.reportInitialRender(),
+        onInitialShellRenderFailed: ({ error }: { error: unknown }) => gate.reportInitialRenderFailure({ error }),
+      },
+      global: { config: { errorHandler: vueError } },
+    });
+    try {
+      await vi.dynamicImportSettled();
+      await flushPromises();
+
+      expect(vueError).toHaveBeenCalledOnce();
+      const importFailure = vueError.mock.calls[0]?.[0];
+      expect(importFailure).toHaveProperty('cause', failure);
+      expect(wrapper.emitted('initialShellRenderFailed')).toHaveLength(1);
+      expect(wrapper.emitted('initialShellRenderFailed')?.[0]?.[0]).toEqual({ error: importFailure });
+      expect(await completion).toBe(importFailure);
+      expect(wrapper.find('[data-testid="main-app-surface"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="app-command-runtime"]').exists()).toBe(false);
+      expect(wrapper.emitted('initialShellRendered')).toBeUndefined();
+    } finally {
+      wrapper.unmount();
+      vi.doMock('./components/AppAuxiliaryUi.vue', () => auxiliaryModule);
+      vi.resetModules();
+    }
   });
 });

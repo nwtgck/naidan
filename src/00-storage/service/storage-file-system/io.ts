@@ -1,5 +1,5 @@
 import { runWithStorageBinaryObjectReadHandleClose } from '@/00-storage/service/binary-object-io';
-import type { StorageFileHandle } from './types';
+import type { StorageFileHandle, StorageWritableFile } from './types';
 
 const DEFAULT_STREAM_CHUNK_SIZE = 1024 * 1024;
 
@@ -53,13 +53,29 @@ export async function writeStorageReadableStream({
   signal: AbortSignal | undefined;
   onBytesWritten: (({ byteLength }: { byteLength: number }) => void) | undefined;
 }): Promise<void> {
-  const writable = await fileHandle.createWritable({ keepExistingData: false });
-  const reader = source.getReader();
+  let writable: StorageWritableFile;
+  try {
+    writable = await fileHandle.createWritable({ keepExistingData: false });
+  } catch (error: unknown) {
+    const cancelFailure = await captureCleanupFailure({
+      cleanup: async () => {
+        if (!source.locked) await source.cancel(error);
+      },
+    });
+    throwWithCleanupFailures({
+      cleanupFailures: cancelFailure === undefined ? [] : [cancelFailure],
+      message: 'Storage writable open and source cancellation both failed',
+      primaryFailure: error,
+    });
+  }
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let position = 0;
   try {
+    reader = source.getReader();
     while (true) {
       signal?.throwIfAborted();
       const result = await reader.read();
+      signal?.throwIfAborted();
       if (result.done) {
         break;
       }
@@ -79,7 +95,7 @@ export async function writeStorageReadableStream({
     await writable.close();
   } catch (error: unknown) {
     const cancelFailure = await captureCleanupFailure({
-      cleanup: async () => await reader.cancel(error),
+      cleanup: async () => await reader?.cancel(error),
     });
     const abortFailure = await captureCleanupFailure({
       cleanup: async () => await writable.abort({ reason: error }),
@@ -90,7 +106,7 @@ export async function writeStorageReadableStream({
       primaryFailure: error,
     });
   } finally {
-    reader.releaseLock();
+    reader?.releaseLock();
   }
 }
 

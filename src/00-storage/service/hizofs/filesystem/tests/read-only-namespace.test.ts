@@ -15,8 +15,8 @@ import {
   type InodeLeafEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import {
-  createReadOnlyNamespace,
   createReadOnlyNamespaceResolver,
+  type ReadOnlyNamespace,
   type ReadOnlyNamespacePageSource,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
@@ -82,7 +82,7 @@ function standaloneTreeDirectoryInodePage({ root }: { root: HomeRecordReference 
 function fixture(): Readonly<{
   directoryPages: Map<HomeRecordReference, DirectoryPage>;
   inodePages: Map<HomeRecordReference, Readonly<{ entries: readonly InodeLeafEntry[]; level: 0; type: "leaf" }> | InodeBranchPage>;
-  namespace: ReturnType<typeof createReadOnlyNamespace>;
+  namespace: ReadOnlyNamespace;
   pointReads: Mock<NonNullable<ReadOnlyNamespacePageSource["readInodePointPage"]>>;
   readDirectoryPage: Mock<ReadOnlyNamespacePageSource["readDirectoryPage"]>;
   readExtentFile: Mock<ReadOnlyNamespacePageSource["readExtentFile"]>;
@@ -169,7 +169,7 @@ function fixture(): Readonly<{
   return {
     directoryPages,
     inodePages,
-    namespace: createReadOnlyNamespace({
+    namespace: createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
       rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
       source,
@@ -187,6 +187,141 @@ function fixture(): Readonly<{
 }
 
 describe("read-only HizoFS namespace", () => {
+  describe("cold tree directory graph validation", () => {
+    function treeFixture() {
+      const current = fixture();
+      const firstLeaf = reference({ kind: KINDS.directory_page, offset: 704n });
+      const lastLeaf = reference({ kind: KINDS.directory_page, offset: 832n });
+      const directory = inode({
+        content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" },
+        inodeKind: "directory",
+        inodeNumber: createInodeNumber({ value: 1n }),
+      });
+      if (directory.inodeKind !== "directory") throw new Error("expected root Directory fixture");
+      for (const [key, page] of current.inodePages) {
+        if (!("type" in page)) continue;
+        current.inodePages.set(key, {
+          ...page,
+          entries: page.entries.filter(entry => entry.inodeNumber !== 4n)
+            .map(entry => entry.inodeNumber === 1n ? directory : entry),
+        });
+      }
+      current.directoryPages.set(directoryRoot, {
+        entries: [
+          { childPageHomeRef: firstLeaf, upperBoundName: "beta" },
+          { childPageHomeRef: lastLeaf, upperBoundName: "zeta" },
+        ],
+        level: 1,
+        type: "branch",
+      });
+      current.directoryPages.set(firstLeaf, {
+        entries: [
+          { inodeKind: "file", inodeNumber: createInodeNumber({ value: 2n }), name: "alpha", targetType: "inode" },
+          { inodeKind: "symlink", inodeNumber: createInodeNumber({ value: 3n }), name: "beta", targetType: "inode" },
+        ],
+        level: 0,
+        type: "leaf",
+      });
+      current.directoryPages.set(lastLeaf, {
+        entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "zeta", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      });
+      const validationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1_024 });
+      const resolver = createReadOnlyNamespaceResolver({
+        inodeTableRootHomeRef: inodeRoot,
+        rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+        source: {
+          readDirectoryPage: current.readDirectoryPage,
+          readExtentFile: current.readExtentFile,
+          readInodePointPage: current.pointReads,
+          readInodePage: current.readInodePage,
+        },
+        validationCache,
+      });
+      return { ...current, firstLeaf, lastLeaf, resolver, validationCache };
+    }
+
+    it("consumes each Directory page once for a cold graph and reuses the completed proof", async () => {
+      const { firstLeaf, lastLeaf, readDirectoryPage, readInodePage, resolver } = treeFixture();
+      await expect(resolver.stat({ pathComponents: [] })).resolves.toMatchObject({ kind: "directory", inodeNumber: 1n });
+      expect(readInodePage).toHaveBeenCalledTimes(3);
+      expect(readDirectoryPage.mock.calls.map(([args]) => args.reference)).toEqual([directoryRoot, firstLeaf, lastLeaf]);
+
+      await expect(resolver.stat({ pathComponents: [] })).resolves.toMatchObject({ kind: "directory", inodeNumber: 1n });
+      expect(readInodePage).toHaveBeenCalledTimes(3);
+      expect(readDirectoryPage).toHaveBeenCalledTimes(3);
+      expect(await resolver.list({ pathComponents: [] })).toEqual([
+        { inodeKind: "file", inodeNumber: 2n, name: "alpha", targetType: "inode" },
+        { inodeKind: "symlink", inodeNumber: 3n, name: "beta", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: 5n, name: "zeta", targetType: "inode" },
+      ]);
+      expect(readDirectoryPage).toHaveBeenCalledTimes(6);
+      expect(readInodePage).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(["read", "structure"] as const)("prioritizes a late Directory %s failure over binding classification without caching partial proofs", async failureKind => {
+      const { directoryPages, firstLeaf, lastLeaf, pointReads, readDirectoryPage, readInodePage, resolver, validationCache } = treeFixture();
+      directoryPages.set(firstLeaf, {
+        entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 99n }), name: "beta", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      });
+      const readFailure = new Error("late Directory read failed");
+      if (failureKind === "structure") {
+        directoryPages.set(lastLeaf, { entries: [], level: 0, type: "leaf" });
+      } else {
+        readDirectoryPage.mockImplementation(async ({ reference: value }) => {
+          if (value === lastLeaf) throw readFailure;
+          const page = directoryPages.get(value);
+          if (page === undefined) throw new Error("missing Directory fixture");
+          return page;
+        });
+      }
+      const expected = failureKind === "read" ? readFailure : expect.any(TypeError);
+      await expect(resolver.stat({ pathComponents: [] })).rejects.toEqual(expected);
+      expect(pointReads).not.toHaveBeenCalled();
+      expect(readDirectoryPage).toHaveBeenCalledTimes(3);
+
+      await expect(resolver.stat({ pathComponents: [] })).rejects.toEqual(expected);
+      expect(readInodePage).toHaveBeenCalledTimes(6);
+      expect(readDirectoryPage).toHaveBeenCalledTimes(6);
+      const missingProof = new Error("Directory proof was not recorded");
+      const validate = vi.fn(async () => {
+        throw missingProof;
+      });
+      await expect(validationCache.validate({ kind: "directory_tree", reference: directoryRoot, validate })).rejects.toBe(missingProof);
+      expect(validate).toHaveBeenCalledOnce();
+      expect(pointReads).not.toHaveBeenCalled();
+    });
+
+    it.each([new Error("classification read failed"), undefined])("preserves classification failure %s only after the Directory traversal completes", async cause => {
+      const { directoryPages, firstLeaf, pointReads, readDirectoryPage, readInodePage, resolver, validationCache } = treeFixture();
+      directoryPages.set(firstLeaf, {
+        entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 99n }), name: "beta", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      });
+      pointReads.mockImplementation(async () => {
+        expect(readDirectoryPage.mock.calls.length % 3).toBe(0);
+        throw cause;
+      });
+
+      await expect(resolver.stat({ pathComponents: [] })).rejects.toBe(cause);
+      expect(pointReads).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ inodeNumber: 99n }));
+      expect(readDirectoryPage).toHaveBeenCalledTimes(3);
+      const validate = vi.fn(async () => undefined);
+      await validationCache.validate({ kind: "directory_tree", reference: directoryRoot, validate });
+      expect(validate).not.toHaveBeenCalled();
+      expect(readDirectoryPage).toHaveBeenCalledTimes(3);
+
+      await expect(resolver.stat({ pathComponents: [] })).rejects.toBe(cause);
+      expect(readInodePage).toHaveBeenCalledTimes(6);
+      expect(readDirectoryPage).toHaveBeenCalledTimes(6);
+      expect(pointReads).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("builds the global namespace proof without nested validation-cache admission", async () => {
     const { pointReads, readDirectoryPage, readExtentFile, readInodePage } = fixture();
     const resolver = createReadOnlyNamespaceResolver({
@@ -519,6 +654,33 @@ describe("read-only HizoFS namespace", () => {
     expect(inline.inodeRevision).toBe(9_007_199_254_740_995n);
     expect(inline.createdAt).toBe(-8_640_000_000_000_000n);
     expect(inline.modifiedAt).toBe(8_640_000_000_000_000n);
+  });
+
+  it.each([
+    ["../target", 9],
+    ["\u00e9/path", 7],
+    ["\ufeffx", 4],
+    ["x\u{1f680}", 5],
+  ] as const)("projects symlink target byte length and timestamps from the same inode: %s", async (target, byteLength) => {
+    const { inodePages, namespace, readExtentFile } = fixture();
+    const page = inodePages.get(inodeLeafA);
+    if (page === undefined || !("type" in page)) throw new Error("expected inode leaf fixture");
+    inodePages.set(inodeLeafA, {
+      ...page,
+      entries: page.entries.map(entry => entry.inodeKind === "symlink"
+        ? { ...entry, target, timestamps }
+        : entry),
+    });
+
+    await expect(namespace.stat({ pathComponents: ["link"] })).resolves.toEqual({
+      createdAt: timestamps.createdAt,
+      inodeNumber: 3n,
+      inodeRevision: 1n,
+      kind: "symlink",
+      modifiedAt: timestamps.modifiedAt,
+      symlinkTargetByteLength: byteLength,
+    });
+    expect(readExtentFile).not.toHaveBeenCalled();
   });
 
   it("reads inline files locally and delegates tree files without narrowing bigint offsets", async () => {

@@ -12,6 +12,7 @@ import type {
 import type {
   HizoFSBenchmarkConfiguration,
   HizoFSBenchmarkDiagnostics,
+  HizoFSBenchmarkReport,
   HizoFSBenchmarkSample,
 } from "./types";
 
@@ -82,6 +83,7 @@ export interface HizoFSBenchmarkBulkBuilder {
 export interface HizoFSBenchmarkRuntime {
   readonly session: StorageFileSystemSession;
   readonly diagnostics: HizoFSBenchmarkRuntimeDiagnostics;
+  readonly policyApplication: HizoFSBenchmarkReport["measurementModel"]["hizoFSRuntimePolicy"]["application"];
 
   reopen(): Promise<StorageFileSystemSession>;
 
