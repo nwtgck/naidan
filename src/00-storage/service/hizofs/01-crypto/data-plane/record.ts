@@ -8,11 +8,10 @@ import {
 import { deriveRecordKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
 import { decryptAesGcm, encryptAesGcmOwnedRecord } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
 import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
-import {
-  plaintextRecordBytes,
-  type AuthenticatedRecordBytes,
-  type PlaintextRecordBytes,
-  type RecordNonce,
+import type {
+  AuthenticatedRecordBytes,
+  PlaintextRecordBytes,
+  RecordNonce,
 } from '@/00-storage/service/hizofs/01-crypto/types';
 
 function validateFrameHeader({ completeFrameHeader }: { completeFrameHeader: Uint8Array }): void {
@@ -107,14 +106,13 @@ export async function decryptAuthenticatedRecord({ ciphertext, completeFrameHead
 }): Promise<PlaintextRecordBytes> {
   validateFrameHeader({ completeFrameHeader });
   const key = await deriveRecordKey({ fileSystemId, homeSegmentId, rootKey });
-  return plaintextRecordBytes({
-    bytes: await decryptAesGcm({
-      aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
-      ciphertextAndTag: ciphertext,
-      key,
-      nonce,
-    }),
+  const plaintext = await decryptAesGcm({
+    aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
+    ciphertextAndTag: ciphertext,
+    key,
+    nonce,
   });
+  return plaintext as PlaintextRecordBytes;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

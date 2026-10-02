@@ -460,6 +460,53 @@ describe('Wesh StorageDirectoryHandle remote', () => {
     await handle.close();
   });
 
+  it.each([
+    { label: 'shrink', initial: 'abcdef', captured: 'xy', position: 0 },
+    { label: 'growth', initial: 'ab', captured: 'abcdef', position: 0 },
+    { label: 'growth beyond the old EOF', initial: 'ab', captured: 'abcdef', position: 2 },
+    { label: 'growth from empty', initial: '', captured: 'abc', position: 0 },
+  ])('uses the lazily captured reader size after $label', async ({ initial, captured, position }) => {
+    const root = createInMemoryStorageRoot({ name: 'storage-root' });
+    const file = await root.getFileHandle({ name: 'value.txt', create: true });
+    const replaceContents = async ({ value }: { value: string }) => {
+      const writer = await file.createWritable({ keepExistingData: false });
+      await writer.write({ data: new TextEncoder().encode(value), position: 0 });
+      await writer.close();
+    };
+    await replaceContents({ value: initial });
+    const originalOpen = file.openReadable.bind(file);
+    const openReadable = vi.spyOn(file, 'openReadable').mockImplementation(async request => {
+      const reader = await originalOpen(request);
+      const originalRead = reader.read.bind(reader);
+      vi.spyOn(reader, 'read').mockImplementation(readRequest => {
+        expect(readRequest.position + readRequest.length).toBeLessThanOrEqual(reader.size);
+        return originalRead(readRequest);
+      });
+      return reader;
+    });
+    const handle = new OpenStorageFile({ fileHandle: file, flags: READ_ONLY_FLAGS });
+    await handle.initialize();
+    try {
+      expect(await handle.stat()).toMatchObject({ size: initial.length });
+      expect(await handle.read({ buffer: new Uint8Array(1), length: 0 })).toEqual({ bytesRead: 0 });
+      expect(openReadable).not.toHaveBeenCalled();
+      await replaceContents({ value: captured });
+      const bytes = new Uint8Array(16);
+      expect(await handle.read({ buffer: bytes, position })).toEqual({ bytesRead: captured.length - position });
+      expect(new TextDecoder().decode(bytes.subarray(0, captured.length - position))).toBe(captured.slice(position));
+      expect(await handle.stat()).toMatchObject({ size: captured.length });
+
+      await replaceContents({ value: 'z' });
+      expect(await handle.stat()).toMatchObject({ size: captured.length });
+      expect(await handle.read({ buffer: bytes })).toEqual({ bytesRead: captured.length });
+      expect(new TextDecoder().decode(bytes.subarray(0, captured.length))).toBe(captured);
+      expect(await handle.read({ buffer: bytes })).toEqual({ bytesRead: 0 });
+      expect(openReadable).toHaveBeenCalledOnce();
+    } finally {
+      await handle.close();
+    }
+  });
+
   it('publishes multiple Wesh writes only when the storage writable closes', async () => {
     const { provider, remote } = await createMountedStorageDirectory();
     const handle = await provider.open({

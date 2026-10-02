@@ -22,12 +22,17 @@ export async function encryptAesGcm({ aad, key, nonce, plaintext }: {
   plaintext: Uint8Array;
 }): Promise<Uint8Array> {
   validateNonce({ nonce });
-  const encrypted = await globalThis.crypto.subtle.encrypt(
-    { additionalData: Uint8Array.from(aad), iv: Uint8Array.from(nonce), name: 'AES-GCM', tagLength: 128 },
-    key,
-    Uint8Array.from(plaintext),
-  );
-  return new Uint8Array(encrypted);
+  const ownedPlaintext = Uint8Array.from(plaintext);
+  try {
+    const encrypted = await globalThis.crypto.subtle.encrypt(
+      { additionalData: Uint8Array.from(aad), iv: Uint8Array.from(nonce), name: 'AES-GCM', tagLength: 128 },
+      key,
+      ownedPlaintext,
+    );
+    return new Uint8Array(encrypted);
+  } finally {
+    ownedPlaintext.fill(0);
+  }
 }
 
 /**

@@ -107,10 +107,10 @@ export class AuthenticatedRelocationPageRecordCache {
         this.promote({ identity, entry: coalesced });
         return coalesced.plaintext.slice();
       }
-      return await this.read({ frameLength, identity, load });
     }
 
-    const canSingleFlight = this.policy.maximumBytes > 0
+    const canSingleFlight = sharedLoad === undefined
+      && this.policy.maximumBytes > 0
       && this.policy.maximumEntries > 0
       && frameLength <= this.policy.maximumBytes
       && this.pendingLoadFrameBytes + frameLength <= this.policy.maximumBytes
@@ -133,7 +133,6 @@ export class AuthenticatedRelocationPageRecordCache {
         this.promote({ identity, entry: admitted });
         return admitted.plaintext.slice();
       }
-      return await this.read({ frameLength, identity, load });
     }
 
     const plaintext = await load();
@@ -458,6 +457,7 @@ export async function lookupRelocationMapping({ homeReference, readPage, rootPhy
         message: "Relocation Index child level does not match its parent",
       });
     }
+    if (isRoot && page.type === "leaf" && page.entries.length === 0) return null;
     const pageMaximum = lastPageKey({ page });
     if (expectedUpperBound !== undefined
       && compareRelocationKeys({ left: pageMaximum, right: expectedUpperBound }) !== 0) {

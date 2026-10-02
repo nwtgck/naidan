@@ -8,8 +8,12 @@ export type RandomByteSource = ({ bytes }: { bytes: Uint8Array }) => void;
 
 function defaultRandomSource({ bytes }: { bytes: Uint8Array }): void {
   const ownedBytes = new Uint8Array(bytes.byteLength);
-  globalThis.crypto.getRandomValues(ownedBytes);
-  bytes.set(ownedBytes);
+  try {
+    globalThis.crypto.getRandomValues(ownedBytes);
+    bytes.set(ownedBytes);
+  } finally {
+    ownedBytes.fill(0);
+  }
 }
 
 function isAllZero({ bytes }: { bytes: Uint8Array }): boolean {
@@ -27,13 +31,16 @@ export function generateNonce({ randomSource = defaultRandomSource }: {
 export function generateFileSystemRootKey({ randomSource = defaultRandomSource }: {
   randomSource?: RandomByteSource;
 } = {}): FileSystemRootKey {
-  return FileSystemRootKey.create({
-    bytes: generateUniqueRandomBytes({
-      byteLength: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.rootKeyBytes,
-      isUsed: () => false,
-      randomSource,
-    }),
+  const candidate = generateUniqueRandomBytes({
+    byteLength: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.rootKeyBytes,
+    isUsed: () => false,
+    randomSource,
   });
+  try {
+    return FileSystemRootKey.create({ bytes: candidate });
+  } finally {
+    candidate.fill(0);
+  }
 }
 
 export function generateUniqueRandomBytes({ byteLength, isUsed, randomSource = defaultRandomSource }: {

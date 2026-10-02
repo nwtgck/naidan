@@ -19,21 +19,24 @@ for (const scenario of [writerMutationScenario, sparseAndReflinkScenario, symlin
       try {
         await applyScenario({ scenario, session: writable.session });
         await writable.session.sync();
-      } finally {
-        await writable.session.close();
-      }
 
-      await writable.backend.crashAndRecover();
+        await writable.backend.crashAndRecover();
 
-      const fresh = await openFreshReadOnlySession({
-        backend: writable.backend,
-        expectedFileSystemId: writable.fileSystemId,
-        passphrase: writable.passphrase,
-      });
-      try {
-        expect(await observeObservableState({ session: fresh })).toEqual(expectedObservableState({ scenario }));
+        const fresh = await openFreshReadOnlySession({
+          backend: writable.backend,
+          expectedFileSystemId: writable.fileSystemId,
+          passphrase: writable.passphrase,
+        });
+        let observationSucceeded = false;
+        try {
+          expect(await observeObservableState({ session: fresh })).toEqual(expectedObservableState({ scenario }));
+          observationSucceeded = true;
+        } finally {
+          if (observationSucceeded) await fresh.close();
+          else await fresh.close().catch(() => undefined);
+        }
       } finally {
-        await fresh.close();
+        await writable.session.close().catch(() => undefined);
       }
     });
   });

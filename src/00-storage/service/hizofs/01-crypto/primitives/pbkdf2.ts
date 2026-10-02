@@ -32,13 +32,19 @@ export async function deriveCredentialWrappingKey({
   const passphraseBytes = encodePassphraseUtf8({ value: passphrase });
   const kdfSalt = encodePassphraseSlotKdfContext({ fileSystemId, salt, slotId });
   try {
-    const baseKey = await globalThis.crypto.subtle.importKey(
-      'raw',
-      Uint8Array.from(passphraseBytes).buffer,
-      'PBKDF2',
-      false,
-      ['deriveKey'],
-    );
+    const importBytes = Uint8Array.from(passphraseBytes);
+    let baseKey: CryptoKey;
+    try {
+      baseKey = await globalThis.crypto.subtle.importKey(
+        'raw',
+        importBytes.buffer,
+        'PBKDF2',
+        false,
+        ['deriveKey'],
+      );
+    } finally {
+      importBytes.fill(0);
+    }
     return await globalThis.crypto.subtle.deriveKey(
       { hash: 'SHA-256', iterations, name: 'PBKDF2', salt: Uint8Array.from(kdfSalt).buffer },
       baseKey,

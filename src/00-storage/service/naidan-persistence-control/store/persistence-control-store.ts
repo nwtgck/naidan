@@ -6,7 +6,6 @@ import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
   persistenceControlCandidatesAreBootstrapAbsent,
   persistenceControlAuthenticationFileSystemId,
-  persistenceControlPublicationOutcome,
   persistenceControlReadbackMatches,
   planPersistenceControlPublication,
   selectPersistenceControlAuthority,
@@ -242,14 +241,14 @@ export async function publishPersistenceControl({
           message: 'Persistence Control authority commit point did not verify',
         });
       }
-      const secondControl = await createProtectedControl({
-        copy: plan.convergence.copy,
-        proofAuthority,
-        randomSource,
-        semanticState,
-        sequence: plan.convergence.sequence,
-      });
       try {
+        const secondControl = await createProtectedControl({
+          copy: plan.convergence.copy,
+          proofAuthority,
+          randomSource,
+          semanticState,
+          sequence: plan.convergence.sequence,
+        });
         await physical.publishWholeFileDurably({ bytes: encodePersistenceControl({ control: secondControl }), copy: secondControl.copy });
         await verifyPublishedCopy({ control: secondControl, copy: secondControl.copy, physical, proofAuthority });
         return selectPersistenceControlAuthority({ candidates: (await readPersistenceControlCandidates({ physical, proofAuthority })).candidates });
@@ -263,20 +262,6 @@ export async function publishPersistenceControl({
       }
     },
   });
-}
-
-export async function resolvePersistenceControlPublicationOutcome({ desiredState, physical, proofAuthority }: {
-  desiredState: PersistenceControlSemanticState;
-  physical: PersistenceControlPhysicalPort;
-  proofAuthority: PersistenceControlProofAuthority;
-}): Promise<'committed_degraded' | 'committed_converged' | 'not_committed'> {
-  let selected: SelectedPersistenceControlAuthority;
-  try {
-    selected = await openPersistenceControl({ physical, proofAuthority });
-  } catch {
-    return 'not_committed';
-  }
-  return persistenceControlPublicationOutcome({ desiredState, selectedAuthority: selected });
 }
 
 export const TEST_ONLY = {

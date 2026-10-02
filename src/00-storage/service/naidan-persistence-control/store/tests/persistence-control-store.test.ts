@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parsePortableFileSystemId } from '@/00-storage/service/hizofs/compatibility';
+import { persistenceControlPublicationOutcome } from '@/00-storage/service/naidan-persistence-control/00-format';
 import type { PersistenceControlRootKeyDerivationCapability } from '@/00-storage/service/naidan-persistence-control/crypto';
 import {
   openPersistenceControl,
   PersistenceControlPublicationError,
   publishPersistenceControl,
   readPersistenceControlCandidates,
-  resolvePersistenceControlPublicationOutcome,
   type PersistenceControlPhysicalPort,
   type PersistenceControlProofAuthority,
 } from '@/00-storage/service/naidan-persistence-control/store';
@@ -39,6 +39,7 @@ class MemoryPhysicalPort implements PersistenceControlPhysicalPort {
   public readonly files = new Map<0 | 1, Uint8Array>();
   public readonly publications: Array<{ copy: 0 | 1; bytes: Uint8Array }> = [];
   public failPublicationNumber: number | undefined;
+  public readonly publicationFailure = new Error('injected durable publication failure');
   private publicationCount = 0;
   private locked = false;
 
@@ -51,7 +52,7 @@ class MemoryPhysicalPort implements PersistenceControlPhysicalPort {
 
   public async publishWholeFileDurably({ bytes, copy }: { bytes: Uint8Array; copy: 0 | 1 }): Promise<void> {
     this.publicationCount += 1;
-    if (this.publicationCount === this.failPublicationNumber) throw new Error('injected durable publication failure');
+    if (this.publicationCount === this.failPublicationNumber) throw this.publicationFailure;
     const owned = Uint8Array.from(bytes);
     this.files.set(copy, owned);
     this.publications.push({ bytes: owned, copy });
@@ -160,12 +161,46 @@ describe('Naidan Persistence Control A/B store', () => {
     expect(caught).toBeInstanceOf(PersistenceControlPublicationError);
     expect(caught).toMatchObject({ code: 'convergence_failed' });
     const error = caught as PersistenceControlPublicationError;
+    expect(error.cause).toBe(physical.publicationFailure);
     expect(error.committedAuthority?.control.sequence).toBe(1);
-    expect(await resolvePersistenceControlPublicationOutcome({
+    expect(physical.publications.map(({ copy }) => copy)).toEqual([0]);
+    expect(persistenceControlPublicationOutcome({
       desiredState: { mode: { type: 'plain' }, retiredFileSystemIds: [] },
-      physical,
-      proofAuthority: proofAuthority(),
+      selectedAuthority: await openPersistenceControl({ physical, proofAuthority: proofAuthority() }),
     })).toBe('committed_degraded');
+  });
+
+  it.each([
+    { label: 'Error', cause: new Error('second protection generation failed') },
+    { label: 'undefined', cause: undefined },
+  ])('retains the first commit when second protection generation throws $label', async ({ cause }) => {
+    const physical = new MemoryPhysicalPort();
+    const authority = proofAuthority();
+    const validateEndpointReadiness = vi.spyOn(authority, 'validateEndpointReadiness');
+    let protectionCount = 0;
+    const failure: unknown = await publishPersistenceControl({
+      bootstrapAuthorization: 'verified_plain_namespace',
+      physical,
+      proofAuthority: authority,
+      randomSource: ({ bytes }) => {
+        if (++protectionCount === 2) throw cause;
+        deterministicRandom({ bytes });
+      },
+      semanticState: { mode: { activeFileSystemId: FILE_SYSTEM_ID, type: 'hizofs' }, retiredFileSystemIds: [] },
+    }).then(() => undefined, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(PersistenceControlPublicationError);
+    if (!(failure instanceof PersistenceControlPublicationError)) throw new Error('expected publication failure');
+    expect(failure.code).toBe('convergence_failed');
+    expect(failure.cause).toBe(cause);
+    expect(failure.committedAuthority).toMatchObject({
+      control: { copy: 0, sequence: 1, mode: { activeFileSystemId: FILE_SYSTEM_ID, type: 'hizofs' } },
+      redundancy: 'degraded',
+    });
+    expect(validateEndpointReadiness).toHaveBeenCalledOnce();
+    expect(validateEndpointReadiness).toHaveBeenCalledWith({ control: failure.committedAuthority?.control });
+    expect(protectionCount).toBe(2);
+    expect(physical.publications.map(({ copy }) => copy)).toEqual([0]);
+    expect(await openPersistenceControl({ physical, proofAuthority: authority })).toEqual(failure.committedAuthority);
   });
 
   it('reports first-copy failure as not committed', async () => {

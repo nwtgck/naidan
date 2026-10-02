@@ -139,28 +139,19 @@ export class AuthenticatedFileDataRecordCache {
       await sharedLoad;
       if (this.disposed) throw new TypeError("authenticated File Data cache is disposed");
       const coalesced = this.entries.get(identity);
-      if (coalesced === undefined) {
-        return await this.copyRange({
+      if (coalesced !== undefined) {
+        this.promote({ identity, entry: coalesced });
+        this.diagnostics?.recordFileDataCacheEvent?.({ event: "hit" });
+        this.copyValidatedRange({
           destination,
           destinationOffset,
-          load,
-          reference,
+          plaintext: coalesced.plaintext,
           sourceLength,
           sourceOffset,
           validatePlaintextLength,
         });
+        return;
       }
-      this.promote({ identity, entry: coalesced });
-      this.diagnostics?.recordFileDataCacheEvent?.({ event: "hit" });
-      this.copyValidatedRange({
-        destination,
-        destinationOffset,
-        plaintext: coalesced.plaintext,
-        sourceLength,
-        sourceOffset,
-        validatePlaintextLength,
-      });
-      return;
     }
 
     // WHY: only references whose complete authenticated frame fits the cache
@@ -168,7 +159,8 @@ export class AuthenticatedFileDataRecordCache {
     // plaintext for such a frame is retainable after authentication, so waiters
     // never depend on a transient buffer that the leader must zeroize early.
     const canSingleFlight = (
-      this.policy.maximumBytes > 0
+      sharedLoad === undefined
+      && this.policy.maximumBytes > 0
       && this.policy.maximumEntries > 0
       && reference.frameLength <= this.policy.maximumBytes
       && this.pendingLoadFrameBytes + reference.frameLength <= this.policy.maximumBytes
@@ -188,27 +180,18 @@ export class AuthenticatedFileDataRecordCache {
       }
       if (this.disposed) throw new TypeError("authenticated File Data cache is disposed");
       const admitted = this.entries.get(identity);
-      if (admitted === undefined) {
-        return await this.copyRange({
+      if (admitted !== undefined) {
+        this.promote({ identity, entry: admitted });
+        this.copyValidatedRange({
           destination,
           destinationOffset,
-          load,
-          reference,
+          plaintext: admitted.plaintext,
           sourceLength,
           sourceOffset,
           validatePlaintextLength,
         });
+        return;
       }
-      this.promote({ identity, entry: admitted });
-      this.copyValidatedRange({
-        destination,
-        destinationOffset,
-        plaintext: admitted.plaintext,
-        sourceLength,
-        sourceOffset,
-        validatePlaintextLength,
-      });
-      return;
     }
 
     const loaded = await load();

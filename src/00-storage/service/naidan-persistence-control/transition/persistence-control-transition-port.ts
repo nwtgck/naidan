@@ -1,6 +1,6 @@
 import {
+  persistenceControlCandidatesAreBootstrapAbsent,
   selectPersistenceControlAuthority,
-  type PersistenceControlCandidate,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
 import {
   publishPersistenceControl,
@@ -14,12 +14,6 @@ import type {
   TransitionControlPort,
   TransitionSemanticState,
 } from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
-
-function bothPersistenceControlCopiesAreMissing({ candidates }: {
-  candidates: readonly [PersistenceControlCandidate, PersistenceControlCandidate];
-}): boolean {
-  return candidates.every(candidate => candidate.state === 'structurally_invalid' && candidate.reason === 'missing');
-}
 
 /**
  * Creates one transition-scoped Persistence Control port.
@@ -47,7 +41,7 @@ export function createPersistenceControlTransitionPort({
     publishState: async ({ state }) => {
       if (bootstrapAvailable) {
         const before = await readPersistenceControlCandidates({ physical, proofAuthority });
-        if (!bothPersistenceControlCopiesAreMissing({ candidates: before.candidates })) {
+        if (!persistenceControlCandidatesAreBootstrapAbsent({ candidates: before.candidates })) {
           bootstrapAvailable = false;
         }
       }
@@ -70,7 +64,7 @@ export function createPersistenceControlTransitionPort({
           retiredFileSystemIds: selected.control.retiredFileSystemIds,
         };
       } catch (cause: unknown) {
-        if (bootstrapAvailable && bothPersistenceControlCopiesAreMissing({ candidates: read.candidates })) {
+        if (bootstrapAvailable && persistenceControlCandidatesAreBootstrapAbsent({ candidates: read.candidates })) {
           return { mode: { type: 'plain' }, retiredFileSystemIds: [] };
         }
         bootstrapAvailable = false;
@@ -81,5 +75,4 @@ export function createPersistenceControlTransitionPort({
 }
 
 export const TEST_ONLY = {
-  bothPersistenceControlCopiesAreMissing,
 };

@@ -290,18 +290,17 @@ export class OpenStorageFile implements WeshFileHandle {
       throw new Error('Read buffer range is invalid');
     }
     const readPosition = position ?? this.cursor;
-    const logicalSize = this.logicalSize;
-    if (logicalSize === undefined) throw new Error('Storage file handle is not initialized');
+    if (this.logicalSize === undefined) throw new Error('Storage file handle is not initialized');
     if (!Number.isSafeInteger(readPosition) || readPosition < 0) {
       throw new RangeError('Read position must be a safe non-negative integer');
     }
-    const boundedLength = Math.min(length, Math.max(0, logicalSize - readPosition));
-    if (boundedLength === 0) return { bytesRead: 0 };
+    if (length === 0) return { bytesRead: 0 };
     let source = this.writer ?? this.reader;
     if (source === undefined) {
       this.readerOpening ??= this.fileHandle.openReadable({ mimeType: 'application/octet-stream' }).then(
         reader => {
           this.reader = reader;
+          this.logicalSize = reader.size;
           this.readerOpening = undefined;
           return reader;
         },
@@ -313,6 +312,8 @@ export class OpenStorageFile implements WeshFileHandle {
       source = await this.readerOpening;
       this.assertOpen();
     }
+    const boundedLength = Math.min(length, Math.max(0, this.logicalSize - readPosition));
+    if (boundedLength === 0) return { bytesRead: 0 };
     if (source.read === undefined) throw new Error('The storage writable does not support reading staged contents');
     const result = await source.read({
       buffer,

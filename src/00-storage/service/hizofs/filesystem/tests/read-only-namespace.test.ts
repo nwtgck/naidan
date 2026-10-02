@@ -356,7 +356,7 @@ describe("read-only HizoFS namespace", () => {
     const pages = new Map<HomeRecordReference, DirectoryPage>([
       [root, {
         entries: [
-          { childPageHomeRef: first, upperBoundName: "m" },
+          { childPageHomeRef: first, upperBoundName: "alpha" },
           { childPageHomeRef: corruptSibling, upperBoundName: "z" },
         ],
         level: 1,
@@ -371,11 +371,13 @@ describe("read-only HizoFS namespace", () => {
       // the other child, so only complete-tree validation can detect this.
       [corruptSibling, { entries: [], level: 0, type: "leaf" }],
     ]);
+    const directoryReads: HomeRecordReference[] = [];
     const resolver = createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
       rootDirectoryInodeNumber: createInodeNumber({ value: 7n }),
       source: {
         readDirectoryPage: async ({ reference: value }) => {
+          directoryReads.push(value);
           const page = pages.get(value);
           if (page === undefined) throw new Error("missing Directory page fixture");
           return page;
@@ -393,6 +395,7 @@ describe("read-only HizoFS namespace", () => {
     if (directory.inodeKind !== "directory") throw new Error("expected Directory fixture");
 
     await expect(resolver.lookupDirectoryEntry({ directory, name: "alpha" })).rejects.toBeInstanceOf(TypeError);
+    expect(directoryReads).toEqual([root, first, corruptSibling]);
     expect(pointReads).not.toHaveBeenCalled();
   });
 

@@ -115,6 +115,122 @@ describe("AuthenticatedFileDataRecordCache", () => {
     expect(retained.every(byte => byte === 0)).toBe(true);
   });
 
+  it("uses one owned fallback after eviction and preserves a newer pending load", async () => {
+    const reference = fileDataReference();
+    const otherReference = fileDataReference({ seed: 2 });
+    const cache = new AuthenticatedFileDataRecordCache({
+      diagnostics: undefined,
+      policy: { maximumBytes: 256, maximumEntries: 1 },
+    });
+    const original = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const other = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const leaderFresh = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const followerFresh = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const newer = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const bytes = Uint8Array.of(1, 2, 3, 4);
+    const originalRecord = loadedFileData({ bytes: bytes.slice(), reference });
+    const leaderRecord = loadedFileData({ bytes: bytes.slice(), reference });
+    const followerRecord = loadedFileData({ bytes: bytes.slice(), reference });
+    const newerRecord = loadedFileData({ bytes: bytes.slice(), reference });
+    const otherRecord = loadedFileData({ bytes: Uint8Array.of(5, 6, 7, 8), reference: otherReference });
+    const leaderLoad = vi.fn<() => Promise<AuthenticatedFileDataRecord>>()
+      .mockReturnValueOnce(original.promise).mockReturnValueOnce(leaderFresh.promise);
+    const followerLoad = vi.fn(() => followerFresh.promise);
+    const newerLoad = vi.fn(() => newer.promise);
+    const unexpectedLoad = vi.fn(async () => {
+      throw new Error("expected the newer pending load");
+    });
+    const copy = ({ destination, load, reference: sourceReference }: {
+      destination: Uint8Array;
+      load: () => Promise<AuthenticatedFileDataRecord>;
+      reference: HomeRecordReference;
+    }) => cache.copyRange({
+      destination, destinationOffset: 1, load, reference: sourceReference,
+      sourceLength: 2, sourceOffset: 1,
+      validatePlaintextLength: ({ plaintextLength }) => expect(plaintextLength).toBe(4),
+    });
+    const first = new Uint8Array(4).fill(9);
+    const second = new Uint8Array(4).fill(9);
+    const firstRead = copy({ destination: first, load: leaderLoad, reference });
+    const secondRead = copy({ destination: second, load: followerLoad, reference });
+    const otherRead = copy({ destination: new Uint8Array(4), load: () => other.promise, reference: otherReference });
+    const reads = [firstRead, secondRead, otherRead];
+    try {
+      original.resolve(originalRecord);
+      other.resolve(otherRecord);
+      await otherRead;
+      expect(originalRecord.plaintext).toEqual(new Uint8Array(4));
+      expect(leaderLoad).toHaveBeenCalledTimes(2);
+      expect(followerLoad).toHaveBeenCalledOnce();
+
+      reads.push(copy({ destination: new Uint8Array(4), load: newerLoad, reference }));
+      expect(newerLoad).toHaveBeenCalledOnce();
+      leaderFresh.resolve(leaderRecord);
+      followerFresh.resolve(followerRecord);
+      await Promise.all([firstRead, secondRead]);
+      expect(first).toEqual(Uint8Array.of(9, 2, 3, 9));
+      expect(second).toEqual(first);
+      await copy({
+        destination: new Uint8Array(4), reference: otherReference,
+        load: async () => loadedFileData({ bytes: Uint8Array.of(5, 6, 7, 8), reference: otherReference }),
+      });
+      const late = new Uint8Array(4).fill(9);
+      reads.push(copy({ destination: late, load: unexpectedLoad, reference }));
+      expect(unexpectedLoad).not.toHaveBeenCalled();
+      newer.resolve(newerRecord);
+      await Promise.all(reads);
+      expect(late).toEqual(first);
+      expect(leaderLoad).toHaveBeenCalledTimes(2);
+      expect(followerLoad).toHaveBeenCalledOnce();
+      expect(newerLoad).toHaveBeenCalledOnce();
+    } finally {
+      original.resolve(originalRecord);
+      other.resolve(otherRecord);
+      leaderFresh.resolve(leaderRecord);
+      followerFresh.resolve(followerRecord);
+      newer.resolve(newerRecord);
+      await Promise.allSettled(reads);
+      cache.dispose();
+    }
+    for (const record of [originalRecord, leaderRecord, followerRecord, newerRecord, otherRecord]) {
+      expect(record.plaintext).toEqual(new Uint8Array(4));
+    }
+  });
+
+  it.each(["rejection", "disposal"] as const)("does not retry a shared load after %s", async mode => {
+    const reference = fileDataReference();
+    const cache = new AuthenticatedFileDataRecordCache({
+      diagnostics: undefined,
+      policy: { maximumBytes: 256, maximumEntries: 1 },
+    });
+    const pending = Promise.withResolvers<AuthenticatedFileDataRecord>();
+    const load = vi.fn(() => pending.promise);
+    const copy = () => cache.copyRange({
+      destination: new Uint8Array(2), destinationOffset: 0, load, reference,
+      sourceLength: 2, sourceOffset: 0, validatePlaintextLength: () => undefined,
+    });
+    const reads = Promise.allSettled([copy(), copy()]);
+    const plaintext = Uint8Array.of(1, 2);
+    if (mode === "disposal") {
+      cache.dispose();
+      pending.resolve(loadedFileData({ bytes: plaintext, reference }));
+    } else {
+      pending.reject(undefined);
+    }
+    try {
+      for (const result of await reads) {
+        expect(result.status).toBe("rejected");
+        if (result.status !== "rejected") throw new Error("expected a rejected load");
+        if (mode === "disposal") expect(result.reason).toBeInstanceOf(TypeError);
+        else expect(result.reason).toBeUndefined();
+      }
+      expect(load).toHaveBeenCalledOnce();
+      if (mode === "disposal") expect(plaintext).toEqual(new Uint8Array(2));
+    } finally {
+      cache.dispose();
+    }
+  });
+
   it("rechecks concurrent non-single-flight admissions without replacing retained plaintext", async () => {
     const reference = fileDataReference();
     const firstPlaintext = Uint8Array.from({ length: 32 }, (_, index) => index);

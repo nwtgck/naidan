@@ -9,7 +9,6 @@ import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-cry
 import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   authenticatedSuperblockBytes,
-  plaintextSuperblockBytes,
   type AuthenticatedSuperblockBytes,
   type PlaintextSuperblockBytes,
   type SuperblockNonce,
@@ -48,9 +47,8 @@ export async function decryptAuthenticatedSuperblock({ ciphertext, copy, exactHe
 }): Promise<PlaintextSuperblockBytes> {
   validateHeader({ exactHeader });
   const key = await deriveSuperblockKey({ copy, fileSystemId, publicationSequence, rootKey });
-  return plaintextSuperblockBytes({
-    bytes: await decryptAesGcm({ aad: encodeSuperblockAad({ exactHeader }), ciphertextAndTag: ciphertext, key, nonce }),
-  });
+  const plaintext = await decryptAesGcm({ aad: encodeSuperblockAad({ exactHeader }), ciphertextAndTag: ciphertext, key, nonce });
+  return plaintext as PlaintextSuperblockBytes;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

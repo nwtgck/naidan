@@ -110,6 +110,103 @@ describe("Authenticated Relocation page record cache", () => {
     await expect(cache.read({ frameLength: 32, identity: "root|page", load })).rejects.toThrow("disposed");
   });
 
+  it("uses one owned fallback after eviction without replacing a newer pending page", async () => {
+    const cache = new AuthenticatedRelocationPageRecordCache({
+      policy: { maximumBytes: 256, maximumEntries: 1 },
+    });
+    const original = Promise.withResolvers<Uint8Array>();
+    const other = Promise.withResolvers<Uint8Array>();
+    const leaderFresh = Promise.withResolvers<Uint8Array>();
+    const followerFresh = Promise.withResolvers<Uint8Array>();
+    const newer = Promise.withResolvers<Uint8Array>();
+    const bytes = Uint8Array.of(1, 2, 3, 4);
+    const originalBytes = bytes.slice();
+    const leaderBytes = bytes.slice();
+    const followerBytes = bytes.slice();
+    const newerBytes = bytes.slice();
+    const otherBytes = Uint8Array.of(5, 6, 7, 8);
+    const leaderLoad = vi.fn<() => Promise<Uint8Array>>()
+      .mockReturnValueOnce(original.promise).mockReturnValueOnce(leaderFresh.promise);
+    const followerLoad = vi.fn(() => followerFresh.promise);
+    const newerLoad = vi.fn(() => newer.promise);
+    const unexpectedLoad = vi.fn(async () => {
+      throw new Error("expected the newer pending page");
+    });
+    const firstRead = cache.read({ frameLength: 96, identity: "root|page", load: leaderLoad });
+    const secondRead = cache.read({ frameLength: 96, identity: "root|page", load: followerLoad });
+    const otherRead = cache.read({ frameLength: 96, identity: "root|other", load: () => other.promise });
+    const reads = [firstRead, secondRead, otherRead];
+    try {
+      original.resolve(originalBytes);
+      other.resolve(otherBytes);
+      await otherRead;
+      expect(originalBytes).toEqual(new Uint8Array(4));
+      expect(leaderLoad).toHaveBeenCalledTimes(2);
+      expect(followerLoad).toHaveBeenCalledOnce();
+
+      reads.push(cache.read({ frameLength: 96, identity: "root|page", load: newerLoad }));
+      expect(newerLoad).toHaveBeenCalledOnce();
+      leaderFresh.resolve(leaderBytes);
+      followerFresh.resolve(followerBytes);
+      const [first, second] = await Promise.all([firstRead, secondRead]);
+      expect(first).toEqual(bytes);
+      expect(second).toEqual(bytes);
+      first.fill(9);
+      expect(second).toEqual(bytes);
+      expect(leaderBytes).toEqual(bytes);
+      await cache.read({ frameLength: 96, identity: "root|other", load: async () => Uint8Array.of(5, 6, 7, 8) });
+      const late = cache.read({ frameLength: 96, identity: "root|page", load: unexpectedLoad });
+      reads.push(late);
+      expect(unexpectedLoad).not.toHaveBeenCalled();
+      newer.resolve(newerBytes);
+      await Promise.all(reads);
+      expect(await late).toEqual(bytes);
+      expect(leaderLoad).toHaveBeenCalledTimes(2);
+      expect(followerLoad).toHaveBeenCalledOnce();
+      expect(newerLoad).toHaveBeenCalledOnce();
+    } finally {
+      original.resolve(originalBytes);
+      other.resolve(otherBytes);
+      leaderFresh.resolve(leaderBytes);
+      followerFresh.resolve(followerBytes);
+      newer.resolve(newerBytes);
+      await Promise.allSettled(reads);
+      cache.dispose();
+    }
+    for (const owned of [originalBytes, leaderBytes, followerBytes, newerBytes, otherBytes]) {
+      expect(owned).toEqual(new Uint8Array(4));
+    }
+  });
+
+  it.each(["rejection", "disposal"] as const)("does not retry a shared page after %s", async mode => {
+    const cache = new AuthenticatedRelocationPageRecordCache({ policy: { maximumBytes: 256, maximumEntries: 1 } });
+    const pending = Promise.withResolvers<Uint8Array>();
+    const load = vi.fn(() => pending.promise);
+    const reads = Promise.allSettled([
+      cache.read({ frameLength: 96, identity: "root|page", load }),
+      cache.read({ frameLength: 96, identity: "root|page", load }),
+    ]);
+    const plaintext = Uint8Array.of(1, 2);
+    if (mode === "disposal") {
+      cache.dispose();
+      pending.resolve(plaintext);
+    } else {
+      pending.reject(undefined);
+    }
+    try {
+      for (const result of await reads) {
+        expect(result.status).toBe("rejected");
+        if (result.status !== "rejected") throw new Error("expected a rejected load");
+        if (mode === "disposal") expect(result.reason).toBeInstanceOf(TypeError);
+        else expect(result.reason).toBeUndefined();
+      }
+      expect(load).toHaveBeenCalledOnce();
+      if (mode === "disposal") expect(plaintext).toEqual(new Uint8Array(2));
+    } finally {
+      cache.dispose();
+    }
+  });
+
   it("evicts and zeroizes the least-recently-used retained page within both bounds", async () => {
     const cache = new AuthenticatedRelocationPageRecordCache({
       policy: { maximumBytes: 8, maximumEntries: 2 },
@@ -209,6 +306,15 @@ describe("Relocation Index lookup", () => {
       ]) }),
       rootPhysicalReference: rootReference,
     })).rejects.toThrow("upper bound");
+
+    await expect(lookupRelocationMapping({
+      homeReference,
+      readPage: pageReader({ pages: new Map<PhysicalRecordReference, RelocationIndexPage>([
+        [rootReference, root],
+        [childReference, root],
+      ]) }),
+      rootPhysicalReference: rootReference,
+    })).rejects.toThrow("child level");
   });
 
   it("rejects an overlapping key range in an unrelated sibling subtree", async () => {
@@ -266,10 +372,39 @@ describe("Relocation Index lookup", () => {
   });
 
   it("accepts an empty leaf root as a canonical empty mapping", async () => {
+    const readPage = pageReader({ pages: new Map([[rootReference, { entries: [], level: 0, type: "leaf" }]]) });
     await expect(validateRelocationIndexTree({
-      readPage: pageReader({ pages: new Map([[rootReference, { entries: [], level: 0, type: "leaf" }]]) }),
+      readPage,
       rootPhysicalReference: rootReference,
     })).resolves.toBeUndefined();
+    await expect(lookupRelocationMapping({
+      homeReference,
+      readPage,
+      rootPhysicalReference: rootReference,
+    })).resolves.toBeNull();
+  });
+
+  it.each(["root branch", "non-root leaf"] as const)("rejects an empty %s", async role => {
+    const childReference = physicalRef({ kind: KINDS.relocation_index_page, seed: 11 });
+    const root: RelocationIndexPage = {
+      entries: role === "root branch" ? [] : [{
+        childPagePhysicalRef: childReference,
+        upperBound: { homeOffset: homeReference.byteOffset, homeSegmentId: homeReference.segmentId },
+      }],
+      level: 1,
+      type: "branch",
+    };
+    const readPage = pageReader({ pages: new Map<PhysicalRecordReference, RelocationIndexPage>([
+      [rootReference, root],
+      [childReference, { entries: [], level: 0, type: "leaf" }],
+    ]) });
+    await expect(lookupRelocationMapping({
+      homeReference,
+      readPage,
+      rootPhysicalReference: rootReference,
+    })).rejects.toMatchObject({ code: "control_plane_corrupt" });
+    await expect(validateRelocationIndexTree({ readPage, rootPhysicalReference: rootReference }))
+      .rejects.toMatchObject({ code: "control_plane_corrupt" });
   });
 
   it("rejects a mapping that changes record kind or frame length", async () => {
@@ -289,7 +424,10 @@ describe("Relocation Index lookup", () => {
     })).rejects.toThrow("kind or frame length");
   });
 
-  it("resolves a byte-copied ordinary frame through an authenticated physical-only leaf", async () => {
+  it.each([
+    { location: "mapped", hasMapping: true },
+    { location: "Home", hasMapping: false },
+  ])("resolves the $location ordinary frame through an authenticated physical-only leaf", async ({ hasMapping }) => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
@@ -316,11 +454,11 @@ describe("Relocation Index lookup", () => {
     const pagePlaintext = encodeRelocationIndexPage({
       isRoot: true,
       page: {
-        entries: [{
+        entries: hasMapping ? [{
           currentPhysicalRecordRef: mappedCommitReference,
           homeOffset: created.activeCommitHomeRef.byteOffset,
           homeSegmentId: created.activeCommitHomeRef.segmentId,
-        }],
+        }] : [],
         level: 0,
         type: "leaf",
       },
@@ -370,20 +508,22 @@ describe("Relocation Index lookup", () => {
       await backend.closeFile({ file });
     }
 
-    const originalCiphertextOffset = created.activeCommitHomeRef.byteOffset
-      + BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
-    const corruptByte = await backend.readExact({ length: 1, offset: originalCiphertextOffset, path });
-    corruptByte[0] = (corruptByte[0] ?? 0) ^ 0xff;
-    const corruptingFile = await backend.openFileForUpdate({ path });
-    try {
-      await backend.writeAt({
-        bytes: authenticatedHizoFSPhysicalBytes({ bytes: corruptByte }),
-        file: corruptingFile,
-        offset: originalCiphertextOffset,
-      });
-      await backend.syncFileData({ file: corruptingFile });
-    } finally {
-      await backend.closeFile({ file: corruptingFile });
+    if (hasMapping) {
+      const originalCiphertextOffset = created.activeCommitHomeRef.byteOffset
+        + BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
+      const corruptByte = await backend.readExact({ length: 1, offset: originalCiphertextOffset, path });
+      corruptByte[0] = (corruptByte[0] ?? 0) ^ 0xff;
+      const corruptingFile = await backend.openFileForUpdate({ path });
+      try {
+        await backend.writeAt({
+          bytes: authenticatedHizoFSPhysicalBytes({ bytes: corruptByte }),
+          file: corruptingFile,
+          offset: originalCiphertextOffset,
+        });
+        await backend.syncFileData({ file: corruptingFile });
+      } finally {
+        await backend.closeFile({ file: corruptingFile });
+      }
     }
 
     const relocationPageRecordCache = new AuthenticatedRelocationPageRecordCache({
@@ -393,7 +533,7 @@ describe("Relocation Index lookup", () => {
       },
     });
     const readExact = vi.spyOn(backend, "readExact");
-    const resolveMappedCommit = async () => await resolveAuthenticatedHomeRecord({
+    const resolveCommit = async () => await resolveAuthenticatedHomeRecord({
       backend,
       fileSystemId,
       homeReference: created.activeCommitHomeRef,
@@ -401,11 +541,12 @@ describe("Relocation Index lookup", () => {
       relocationPageRecordCache,
       rootKey,
     });
-    const firstResolved = await resolveMappedCommit();
-    const secondResolved = await resolveMappedCommit();
+    const firstResolved = await resolveCommit();
+    const secondResolved = await resolveCommit();
     try {
-      expect(firstResolved.physicalReference).toEqual(mappedCommitReference);
-      expect(secondResolved.physicalReference).toEqual(mappedCommitReference);
+      const expectedReference = hasMapping ? mappedCommitReference : created.activeCommitHomeRef;
+      expect(firstResolved.physicalReference).toEqual(expectedReference);
+      expect(secondResolved.physicalReference).toEqual(expectedReference);
       expect(decodeFileSystemCommitPayload({ bytes: firstResolved.plaintext }).commitSequence).toBe(1n);
       expect(decodeFileSystemCommitPayload({ bytes: secondResolved.plaintext }).commitSequence).toBe(1n);
       const relocationPagePhysicalReads = readExact.mock.calls.filter(([request]) => (
