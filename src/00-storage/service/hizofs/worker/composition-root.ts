@@ -146,7 +146,6 @@ import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/files
 import { createFileExtentTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/file-extent-tree";
 import {
   materializeStagedMutationCommitCandidateThroughPort,
-  prepareDeferredMutationCommitPublication,
   prepareStagedMutationCommit,
   publishPreparedMutationCommit,
   publishPreparedMutationCommitCandidateThroughPort,
@@ -1343,199 +1342,6 @@ function createMutationCandidatePlanningBaseCommit({ base }: {
     mutationId: base.durableAuthority.commit.mutationId,
   } });
 }
-
-function assertDeferredSuccessor({
-  base,
-  deferred,
-  successor,
-}: {
-  base: AuthenticatedApplicationGenerationDescriptor;
-  deferred: DeferredPreparedMutationCommitPublication;
-  successor: AuthenticatedApplicationGenerationDescriptor;
-}): void {
-  if (!sameDurableGenerationIdentity({
-    left: base.durableAuthority.identity,
-    right: successor.durableAuthority.identity,
-  })) {
-    throw new TypeError("deferred mutation successor must retain its durable base authority");
-  }
-  if (
-    successor.workingIdentity.authorityEpoch !== base.workingIdentity.authorityEpoch
-    || successor.workingIdentity.generationNumber !== base.workingIdentity.generationNumber + 1n
-  ) {
-    throw new TypeError("deferred mutation successor is not the exact next working generation");
-  }
-  if (!validatedHomeRecordReferencesEqual({
-    left: deferred.candidate.commitHomeRef,
-    right: successor.commitReference,
-  })) {
-    throw new TypeError("deferred mutation candidate reference does not match its working successor");
-  }
-  if (!sameFileSystemCommitPayloadFields({
-    left: deferred.candidate.commitPayload,
-    right: successor.commit,
-  })) {
-    throw new TypeError("deferred mutation candidate payload does not match its working successor");
-  }
-}
-
-function refreshedBaseAuthority({
-  base,
-  superblock,
-}: {
-  base: AuthenticatedApplicationGenerationDescriptor;
-  superblock: Parameters<typeof createAuthenticatedDurableApplicationGenerationAuthority>[0]["superblock"];
-}): AuthenticatedDurableApplicationGenerationAuthority {
-  return createAuthenticatedDurableApplicationGenerationAuthority({
-    commit: base.durableAuthority.commit,
-    commitReference: base.durableAuthority.commitReference,
-    superblock,
-  });
-}
-
-function publishedSuccessor({
-  successor,
-  superblock,
-}: {
-  successor: AuthenticatedApplicationGenerationDescriptor;
-  superblock: Parameters<typeof createAuthenticatedDurableApplicationGenerationAuthority>[0]["superblock"];
-}): AuthenticatedApplicationGenerationDescriptor {
-  return createAuthenticatedApplicationGenerationDescriptor({
-    commit: successor.commit,
-    commitReference: successor.commitReference,
-    durableAuthority: createAuthenticatedDurableApplicationGenerationAuthority({
-      commit: successor.commit,
-      commitReference: successor.commitReference,
-      superblock,
-    }),
-    workingIdentity: successor.workingIdentity,
-  });
-}
-
-/**
- * Adapts one detached authenticated Commit authority to the runtime-owned
- * selected-candidate publisher. The application operation no longer owns the
- * publication assertion: the supplied gate must recheck current runtime
- * authority immediately before the first Superblock authority write.
- */
-function createPreparedMutationSelectedCandidatePublisher({
-  assertRuntimePublicationAllowed,
-  base,
-  deferred,
-  successor,
-}: {
-  assertRuntimePublicationAllowed: () => void;
-  base: AuthenticatedApplicationGenerationDescriptor;
-  deferred: DeferredPreparedMutationCommitPublication;
-  successor: AuthenticatedApplicationGenerationDescriptor;
-}): ContainerRuntimeSelectedCandidatePublisher {
-  assertDeferredSuccessor({ base, deferred, successor });
-  return Object.freeze({
-    abandon: () => deferred.publicationPort.abandon(),
-    completeOutcomeUnknownResolution: ({ outcome }) => {
-      switch (outcome) {
-      case "confirmed_not_published":
-        deferred.publicationPort.completeExternallyResolvedPublication({ outcome: "not_published" });
-        return;
-      case "confirmed_published":
-        deferred.publicationPort.completeExternallyResolvedPublication({ outcome: "published" });
-        return;
-      default: return outcome satisfies never;
-      }
-    },
-    publish: async ({ onCandidateMaterialized }) => {
-      onCandidateMaterialized({
-        candidateDurableIdentity: createDurableGenerationIdentity({
-          commitReference: deferred.candidate.commitHomeRef,
-          commitSequence: deferred.candidate.commitPayload.commitSequence,
-          mutationId: deferred.candidate.commitPayload.mutationId,
-        }),
-      });
-      try {
-        const publication = await publishPreparedMutationCommitCandidateThroughPort({
-          assertPublicationAllowed: assertRuntimePublicationAllowed,
-          base: base.durableAuthority.superblock,
-          candidate: deferred.candidate,
-          publicationPort: deferred.publicationPort,
-        });
-        return Object.freeze({
-          durableSuccessor: publishedSuccessor({
-            successor,
-            superblock: publication.superblock,
-          }),
-          type: "published" as const,
-        });
-      } catch (cause: unknown) {
-        if (!(cause instanceof PreparedMutationCommitPublicationError)) {
-          return Object.freeze({
-            cause,
-            refreshedDurableAuthority: base.durableAuthority,
-            type: "not_published" as const,
-          });
-        }
-        switch (cause.outcome) {
-        case "not_published": return Object.freeze({
-          cause,
-          refreshedDurableAuthority: base.durableAuthority,
-          type: "not_published" as const,
-        });
-        case "committed_redundancy_degraded":
-        case "outcome_resolution_required":
-        case undefined: break;
-        default: return cause.outcome satisfies never;
-        }
-
-        let resolution;
-        try {
-          resolution = await deferred.publicationPort.resolvePublication({
-            base: base.durableAuthority.superblock,
-            intendedLogicalState: cause.intendedLogicalState,
-          });
-        } catch (resolutionCause: unknown) {
-          return Object.freeze({
-            cause: new AggregateError(
-              [cause, resolutionCause],
-              "deferred mutation publication outcome could not be resolved",
-            ),
-            type: "outcome_unknown" as const,
-          });
-        }
-        switch (resolution.type) {
-        case "not_published": return Object.freeze({
-          cause,
-          refreshedDurableAuthority: refreshedBaseAuthority({ base, superblock: resolution.superblock }),
-          type: "not_published" as const,
-        });
-        case "publication_conflict": return Object.freeze({
-          cause: new AggregateError(
-            [cause],
-            "deferred mutation publication resolved to a conflicting durable authority",
-          ),
-          type: "outcome_unknown" as const,
-        });
-        case "published":
-          switch (resolution.superblock.copyState) {
-          case "normal": return Object.freeze({
-            durableSuccessor: publishedSuccessor({ successor, superblock: resolution.superblock }),
-            type: "published" as const,
-          });
-          case "superblock_redundancy_degraded": return Object.freeze({
-            cause: new AggregateError(
-              [cause],
-              "deferred mutation committed without converged Superblock copies",
-            ),
-            type: "outcome_unknown" as const,
-          });
-          default: return resolution.superblock.copyState satisfies never;
-          }
-        default: return resolution satisfies never;
-        }
-      }
-    },
-  });
-}
-
-
 type StagedMutationCommitMaterializationAuthority =
   DetachablePreparedMutationCommitPublicationPort & Readonly<{
     abandon: () => void;
@@ -1829,43 +1635,6 @@ function createStagedMutationSelectedCandidatePublisher({
     },
   });
 }
-
-
-/**
- * Transfers one exact detached candidate into runtime ownership. A rejected
- * admission leaves the publisher owned by the caller; a successful call makes
- * the runtime solely responsible for publication or terminal abandonment.
- */
-function installPreparedMutationSelectedCandidate({
-  admission,
-  assertRuntimePublicationAllowed,
-  base,
-  deferred,
-  resourceUsage,
-  successor,
-}: {
-  admission: ContainerRuntimeAcceptedMutationAdmission;
-  assertRuntimePublicationAllowed: () => void;
-  base: AuthenticatedApplicationGenerationDescriptor;
-  deferred: DeferredPreparedMutationCommitPublication;
-  resourceUsage: AuthenticatedMutationResourceUsage;
-  successor: AuthenticatedApplicationGenerationDescriptor;
-}): ContainerRuntimeSelectedCandidatePublisher {
-  admission.replaceResourceReservation({
-    dirtyMetadataBytes: resourceUsage.appendedMetadataFrameBytes,
-    unpublishedPhysicalBytes: resourceUsage.unpublishedPhysicalBytes,
-  });
-  const publisher = createPreparedMutationSelectedCandidatePublisher({
-    assertRuntimePublicationAllowed,
-    base,
-    deferred,
-    successor,
-  });
-  admission.commitAcceptedSuccessor({ publisher, successor });
-  deferred.publicationPort.completeWorkingAcceptance();
-  return publisher;
-}
-
 function prepareAndInstallStagedMutationSelectedCandidate({
   admission,
   assertCandidatePreparationAllowed,
@@ -1940,76 +1709,6 @@ function prepareAndInstallStagedMutationSelectedCandidate({
     }
     if (failures.length === 1) throw cause;
     throw new AggregateError(failures, "staged mutation admission cleanup failed");
-  }
-}
-
-async function prepareAndInstallDeferredMutationSelectedCandidate({
-  admission,
-  assertCandidatePreparationAllowed,
-  assertRuntimePublicationAllowed,
-  base,
-  commitPayload,
-  createSuccessor,
-  publicationPort,
-  resourceUsage,
-}: {
-  admission: ContainerRuntimeAcceptedMutationAdmission;
-  assertCandidatePreparationAllowed: () => void;
-  assertRuntimePublicationAllowed: () => void;
-  base: AuthenticatedApplicationGenerationDescriptor;
-  commitPayload: FileSystemCommitPayload;
-  createSuccessor: ({ candidate }: {
-    candidate: PreparedMutationCommitCandidate;
-  }) => AuthenticatedApplicationGenerationDescriptor;
-  publicationPort: Parameters<typeof prepareDeferredMutationCommitPublication>[0]["publicationPort"];
-  resourceUsage: AuthenticatedMutationResourceUsage;
-}): Promise<Readonly<{
-  publisher: ContainerRuntimeSelectedCandidatePublisher;
-  successor: AuthenticatedApplicationGenerationDescriptor;
-}>> {
-  const deferred = await prepareDeferredMutationCommitPublication({
-    assertPublicationAllowed: assertCandidatePreparationAllowed,
-    base: base.durableAuthority.superblock,
-    commitPayload,
-    onCandidatePrepared: undefined,
-    publicationPort,
-  });
-  const closeUnacceptedPreparation = ({ cause }: { cause: unknown }): never => {
-    const cleanupFailures: unknown[] = [];
-    try {
-      deferred.publicationPort.abandon();
-    } catch (cleanupCause: unknown) {
-      cleanupFailures.push(cleanupCause);
-    }
-    try {
-      admission.rollback();
-    } catch (cleanupCause: unknown) {
-      cleanupFailures.push(cleanupCause);
-    }
-    if (cleanupFailures.length === 0) throw cause;
-    throw new AggregateError(
-      [cause, ...cleanupFailures],
-      "deferred candidate preparation and runtime admission cleanup both failed",
-    );
-  };
-  let successor: AuthenticatedApplicationGenerationDescriptor;
-  try {
-    successor = createSuccessor({ candidate: deferred.candidate });
-  } catch (cause: unknown) {
-    return closeUnacceptedPreparation({ cause });
-  }
-  try {
-    const publisher = installPreparedMutationSelectedCandidate({
-      admission,
-      assertRuntimePublicationAllowed,
-      base,
-      deferred,
-      resourceUsage,
-      successor,
-    });
-    return Object.freeze({ publisher, successor });
-  } catch (cause: unknown) {
-    return closeUnacceptedPreparation({ cause });
   }
 }
 
@@ -7160,11 +6859,8 @@ export const TEST_ONLY = {
   acquireWorkingGenerationRootDependency,
   captureAuthenticatedMaintenanceRootsWithReader,
   createMutationCandidatePlanningBaseCommit,
-  createPreparedMutationSelectedCandidatePublisher,
   createStagedMutationSelectedCandidatePublisher,
-  installPreparedMutationSelectedCandidate,
   instrumentHizoFSWritableBackend,
-  prepareAndInstallDeferredMutationSelectedCandidate,
   prepareAndInstallStagedMutationSelectedCandidate,
   releaseBenchmarkCapabilityAfterSessionOpenFailure,
   settleRootCapture,

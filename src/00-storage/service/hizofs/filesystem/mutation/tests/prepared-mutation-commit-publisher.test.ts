@@ -19,7 +19,6 @@ import type { OpenedSuperblockCopies } from "@/00-storage/service/hizofs/authent
 import {
   appendPreparedMutationCommitCandidateThroughPort,
   materializeStagedMutationCommitCandidateThroughPort,
-  prepareDeferredMutationCommitPublication,
   prepareStagedMutationCommit,
   publishPreparedMutationCommit,
   publishPreparedMutationCommitCandidateThroughPort,
@@ -207,6 +206,31 @@ describe("prepared mutation Commit publisher", () => {
     expect(appendCandidate).not.toHaveBeenCalled();
   });
 
+  it("rejects staged materialization before append when the runtime gate fails", async () => {
+    const base = baseAuthority();
+    const { appendCandidate, port, publishCandidate } = successfulPort();
+    const staged = prepareStagedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base,
+      commitPayload: preparedCommit(),
+    });
+    const failure = new Error("runtime publication gate rejected materialization");
+    const beforeAppendAttempt = vi.fn();
+
+    await expect(materializeStagedMutationCommitCandidateThroughPort({
+      assertPublicationAllowed: () => {
+        throw failure;
+      },
+      base,
+      beforeAppendAttempt,
+      publicationPort: port,
+      staged,
+    })).rejects.toBe(failure);
+    expect(beforeAppendAttempt).not.toHaveBeenCalled();
+    expect(appendCandidate).not.toHaveBeenCalled();
+    expect(publishCandidate).not.toHaveBeenCalled();
+  });
+
 
   it.each([
     { mismatch: "sequence", message: "prepared Commit Sequence does not match the mutation candidate plan" },
@@ -276,75 +300,6 @@ describe("prepared mutation Commit publisher", () => {
     });
     expect(publication.commitHomeRef).toEqual(candidate.commitHomeRef);
     expect(publishCandidate).toHaveBeenCalledWith(expect.objectContaining({ candidate }));
-  });
-
-
-  it("prepares a detached candidate without starting durable publication", async () => {
-    const events: string[] = [];
-    const commitPayload = preparedCommit();
-    const { port } = successfulPort();
-    const detachedPublish = vi.fn();
-    const detachedResolve = vi.fn();
-    const abandon = vi.fn();
-    const prepared = await prepareDeferredMutationCommitPublication({
-      assertPublicationAllowed: () => events.push("gate"),
-      base: baseAuthority(),
-      commitPayload,
-      onCandidatePrepared: ({ candidate }) => {
-        events.push("install");
-        return candidate;
-      },
-      publicationPort: {
-        appendCandidate: async request => {
-          events.push("append");
-          return await port.appendCandidate(request);
-        },
-        detachPreparedCandidatePublication: ({ candidate }) => {
-          events.push("detach");
-          expect(candidate.commitPayload).toEqual(commitPayload);
-          return {
-            abandon,
-            completeWorkingAcceptance: vi.fn(),
-            completeExternallyResolvedPublication: vi.fn(),
-            publishCandidate: detachedPublish,
-            resolvePublication: detachedResolve,
-          };
-        },
-        publishCandidate: port.publishCandidate,
-      },
-    });
-
-    expect(prepared.candidate.commitPayload).toEqual(commitPayload);
-    expect(prepared.publicationPort.publishCandidate).toBe(detachedPublish);
-    expect(events).toEqual(["gate", "append", "install", "gate", "detach"]);
-    expect(port.publishCandidate).not.toHaveBeenCalled();
-    expect(detachedPublish).not.toHaveBeenCalled();
-    expect(detachedResolve).not.toHaveBeenCalled();
-    expect(abandon).not.toHaveBeenCalled();
-  });
-
-  it("does not detach when the final runtime authority gate is revoked", async () => {
-    let gateChecks = 0;
-    const { port } = successfulPort();
-    const detach = vi.fn();
-
-    await expect(prepareDeferredMutationCommitPublication({
-      assertPublicationAllowed: () => {
-        gateChecks += 1;
-        if (gateChecks === 2) throw new Error("runtime authority changed before detach");
-      },
-      base: baseAuthority(),
-      commitPayload: preparedCommit(),
-      onCandidatePrepared: undefined,
-      publicationPort: {
-        appendCandidate: port.appendCandidate,
-        detachPreparedCandidatePublication: detach,
-        publishCandidate: port.publishCandidate,
-      },
-    })).rejects.toThrow("runtime authority changed before detach");
-
-    expect(detach).not.toHaveBeenCalled();
-    expect(port.publishCandidate).not.toHaveBeenCalled();
   });
 
   it("rejects publication when the working selector substitutes a different candidate", async () => {

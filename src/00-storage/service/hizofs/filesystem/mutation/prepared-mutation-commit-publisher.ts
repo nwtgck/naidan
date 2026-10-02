@@ -238,36 +238,6 @@ export async function publishPreparedMutationCommitCandidateThroughPort({
   }
 }
 
-export async function prepareDeferredMutationCommitPublication({
-  assertPublicationAllowed,
-  base,
-  commitPayload,
-  onCandidatePrepared,
-  publicationPort,
-}: {
-  assertPublicationAllowed: () => void;
-  base: OpenedSuperblockCopies;
-  commitPayload: FileSystemCommitPayload;
-  onCandidatePrepared: (({ candidate }: {
-    candidate: PreparedMutationCommitCandidate;
-  }) => PreparedMutationCommitCandidate) | undefined;
-  publicationPort: DetachablePreparedMutationCommitPublicationPort;
-}): Promise<DeferredPreparedMutationCommitPublication> {
-  const candidate = await appendPreparedMutationCommitCandidateThroughPort({
-    assertPublicationAllowed,
-    base,
-    commitPayload,
-    publicationPort,
-  });
-  const selectedCandidate = onCandidatePrepared?.({ candidate }) ?? candidate;
-  if (selectedCandidate !== candidate) {
-    throw new TypeError("working candidate selection did not return the authenticated candidate");
-  }
-  assertPublicationAllowed();
-  const detachedPublicationPort = publicationPort.detachPreparedCandidatePublication({ candidate });
-  return Object.freeze({ candidate, publicationPort: detachedPublicationPort });
-}
-
 export async function publishPreparedMutationCommit({
   assertPublicationAllowed,
   base,
