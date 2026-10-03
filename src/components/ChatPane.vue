@@ -13,6 +13,7 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { provideChatViewScope } from '@/composables/chat/ui/chat-view-scope';
 import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
@@ -130,7 +131,6 @@ const chatConversation = useChatConversation();
 const chatBranches = useChatBranches();
 const chatCompaction = useChatCompaction();
 const chatGroups = useChatGroups();
-const chatModels = useChatModels();
 const chatTitle = useChatTitle();
 const chatMetadata = useChatMetadata();
 const chatLifecycle = useChatLifecycle();
@@ -146,6 +146,8 @@ const emit = defineEmits<{
 }>();
 
 const chatId = computed(() => props.chatId);
+const chatModels = useChatModels({ scope: chatId });
+provideChatViewScope({ chatId });
 const chatPaneState = useChatPaneState({
   chatId,
 });

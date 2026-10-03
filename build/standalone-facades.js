@@ -1,4 +1,6 @@
 export const STANDALONE_FACADES = [
+  { facadePath: '@/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationDefaults.vue', standalonePath: 'src/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationUnavailable.vue' },
+  { facadePath: '@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue', standalonePath: 'src/features/stable-diffusion-cpp-browser/components/ImageGenerationUnavailable.vue' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/use-image-benchmark', standalonePath: 'src/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone.ts' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/use-image-generation', standalonePath: 'src/features/stable-diffusion-cpp-browser/use-image-generation-standalone.ts' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/worker/client', standalonePath: 'src/features/stable-diffusion-cpp-browser/worker/client-standalone.ts' },

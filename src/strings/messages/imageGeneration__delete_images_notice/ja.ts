@@ -1,0 +1,1 @@
+export const imageGeneration__delete_images_notice = ({ count }: { count: number }): string => `${count}枚の画像と保存済みプレビューを完全に削除しますか？画像本体のBinaryObjectも削除されます。同じファイルを参照するチャットや他の生成でも表示・再利用できなくなります。初期画像・参照画像やモデルをたどって削除することはありません。元に戻せません。画像を残す場合はアーカイブを使ってください。`;

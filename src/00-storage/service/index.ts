@@ -1,3 +1,8 @@
+import type { ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationExportSnapshot } from './image-generation-export';
+import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
+import type { ImageGenerationStoreAccess } from './image-generation';
+import type { ImageGenerationBinaryFile } from './image-generation-binaries';
 import { prepareModelLaunchChat, restoreModelLaunch, detachRemovedModelLaunchOwners, readModelLaunch, type ModelLaunchChatRequest } from './model-launch';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
@@ -438,6 +443,84 @@ export class StorageService {
         },
       }),
     });
+  }
+
+  /** Pin binary publication and metadata to one store. Never call saveFile from
+   * the inner Workspace callback: that would recursively acquire LOCK_METADATA. */
+  async publishImageGeneration({ store, publication, files }: {
+    store: ImageGenerationStoreAccess,
+    publication:
+      | { type: 'run', run: ImageGenerationRun }
+      | { type: 'asset', asset: ImageGenerationAsset }
+      | { type: 'draft', draft: ImageGenerationSessionDraft, expectedRevision: number | undefined },
+    files: ImageGenerationBinaryFile[],
+  }): Promise<void> {
+    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
+    const provider = this.getProvider();
+    const accepted = structuredClone(publication);
+    const images = files.map(file => ({ ...file }));
+    const service = await import('./image-generation');
+    const { publishImageGenerationBinaries } = await import('./image-generation-binaries');
+    const referenced = (() => {
+      switch (accepted.type) {
+      case 'asset': return [accepted.asset.result.binaryObjectId, ...accepted.asset.previews.map(image => image.binaryObjectId)];
+      case 'run': {
+        const inputs = accepted.run.request.imageInputs;
+        return [...(inputs.initImage ? [inputs.initImage.binaryObjectId] : []), ...inputs.referenceImages.map(image => image.binaryObjectId)];
+      }
+      case 'draft': {
+        const inputs = accepted.draft.request.imageInputs;
+        return [...(inputs.initImage ? [inputs.initImage.binaryObjectId] : []), ...inputs.referenceImages.map(image => image.binaryObjectId)];
+      }
+      default: { const exhaustive: never = accepted; throw new Error(String(exhaustive)); }
+      }
+    })();
+    const write = () => publishImageGenerationBinaries({ provider, referenced, files: images });
+    await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'publishImageGeneration' }), fn: async () => {
+      // A queued callback must not publish through a provider that was replaced
+      // before it acquired its lock. Once started, write uses only this provider.
+      if (this.getProvider() !== provider) throw new Error('Image Generation storage changed before publication.');
+      switch (accepted.type) {
+      case 'run': return service.createImageGenerationRun({ store, run: accepted.run, writeInputs: write });
+      case 'asset': return service.commitImageGenerationAsset({ store, asset: accepted.asset, writeImages: write });
+      case 'draft': return service.saveImageGenerationDraft({ store, draft: accepted.draft, expectedRevision: accepted.expectedRevision, writeInputs: write });
+      default: { const exhaustive: never = accepted; throw new Error(String(exhaustive)); }
+      }
+    } });
+  }
+
+  async deleteImageGenerationOutput({ store, sessionId, assetId, expectedRevision }: {
+    store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: import('@/01-models/ids').ImageGenerationAssetId, expectedRevision: number,
+  }): Promise<void> {
+    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
+    const provider = this.getProvider();
+    const { deleteImageGenerationAsset } = await import('./image-generation-curation');
+    try {
+      await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteImageGenerationOutput' }), fn: async () => {
+        if (this.getProvider() !== provider) throw new Error('The storage provider changed before deletion.');
+        await deleteImageGenerationAsset({ store, sessionId, assetId, expectedRevision, removeBinary: ({ binaryObjectId }) => provider.deleteBinaryObject({ binaryObjectId }) });
+      } });
+    } finally {
+      // Notify even on partial failure: completed byte removals are irreversible.
+      this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
+    }
+  }
+
+  async captureImageGenerationExport({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationExportSnapshot> {
+    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
+    const provider = this.getProvider();
+    const { collectImageGenerationSessionMetadata } = await import('./image-generation-export');
+    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'captureImageGenerationExport' }), fn: async () => {
+      if (this.getProvider() !== provider) throw new Error('The storage provider changed before export.');
+      const { metadata, binaryObjectIds } = await collectImageGenerationSessionMetadata({ store, sessionId });
+      const binaries: ImageGenerationExportSnapshot['binaries'] = [];
+      for (const id of binaryObjectIds) {
+        const blob = await provider.getFile({ binaryObjectId: id });
+        if (!blob) throw new Error(`A referenced image is missing: ${idToRaw({ id })}`);
+        binaries.push({ id, blob });
+      }
+      return { metadata, binaries };
+    } });
   }
 
   async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {

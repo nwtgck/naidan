@@ -202,3 +202,24 @@ describe('AssistantProcessSequence — cursor slot placement', () => {
     });
   });
 });
+
+
+it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle', async () => {
+  await ensureAllStringsForTest({ locale: 'ja' });
+  const tools = ['image_generation_get_context', 'image_generation_set_prompt'];
+  const wrapper = mount(AssistantProcessSequence, { props: { items: makeItems(), isProcessing: false,
+    stats: makeStats({ thinkingSteps: 3, toolCallCount: 2, toolNames: tools }) } });
+  try {
+    const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');
+    expect(toggle.element.tagName).toBe('BUTTON'); expect(toggle.attributes('type')).toBe('button');
+    for (const name of tools) {
+      expect(toggle.text()).toContain(name); expect(toggle.attributes('title')).toContain(name);
+    }
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(toggle.findAll('.truncate, .line-clamp-1')).toHaveLength(0);
+    expect(toggle.find('.whitespace-normal').exists()).toBe(true);
+    await toggle.trigger('click'); expect(toggle.attributes('aria-expanded')).toBe('true');
+  } finally {
+    wrapper.unmount();
+  }
+});

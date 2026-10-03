@@ -2,7 +2,8 @@ import type { ChatId, ToolApprovalRequestId } from '@/01-models/ids';
 
 export type ApprovalActionId =
   | 'tool.wikipedia.search'
-  | 'tool.wikipedia.get_page';
+  | 'tool.wikipedia.get_page'
+  | 'tool.image_generation.set_prompt';
 
 export type ApprovalAction = {
   id: ApprovalActionId,
@@ -10,6 +11,7 @@ export type ApprovalAction = {
 };
 
 export type ApprovalPreview =
+  | { type: 'image_generation_prompt', field: 'prompt' | 'negativePrompt', before: string, after: string }
   | {
       type: 'wikipedia_search',
       keyword: string,

@@ -110,26 +110,8 @@ vi.mock('../00-storage/service', () => ({
   },
 }));
 
-vi.mock('../composables/chat/ui/useChatPaneState', async () => {
-  const currentChatStateModule = await import('@/composables/chat/ui/useCurrentChatState');
-  return {
-    useChatPaneState: () => {
-      const state = currentChatStateModule.useCurrentChatState();
-      return {
-        chat: state.currentChat,
-        chatGroup: state.currentChatGroup,
-        activeMessages: state.activeMessages,
-        allMessages: state.TEST_ONLY.allMessages,
-        resolvedSettings: state.resolvedSettings,
-        inheritedSettings: state.inheritedSettings,
-        chatGroups: state.chatGroups,
-        TEST_ONLY: {
-          // Export internal state and logic used only for testing here. Do not reference these in production logic.
-        },
-      };
-    },
-  };
-});
+// Exercise the real ChatPane adapter. An async mock importing useCurrentChatState
+// deadlocks module loading: that module itself imports useChatPaneState.
 
 function mountChatPane({
   global,

@@ -6,8 +6,8 @@ import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useSettings } from '@/composables/useSettings';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-// IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
-import Logo from './Logo.vue';
+// IMPORTANT: Branding is part of the initial sidebar layout and must not flicker.
+import SidebarHeader from './SidebarHeader.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
@@ -17,7 +17,7 @@ import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
-  BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
+  BotIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
@@ -446,7 +446,6 @@ const vFocus: ObjectDirective<HTMLElement> = {
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
-const appVersion = __APP_VERSION__;
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as HTMLElement;
@@ -971,36 +970,9 @@ defineExpose({
 
 <template>
   <div tw-class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
-    <!-- Header -->
-    <div :tw-class="['pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center overflow-hidden', isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1']">
-      <router-link v-if="isSidebarOpen" to="/" tw-class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
-        <div tw-class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
-          <Logo :size="20" />
-        </div>
-        <div class="animate-in fade-in" tw-class="flex items-baseline gap-1.5 duration-300">
-          <h1 tw-class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
-            Naidan
-          </h1>
-          <div tw-class="flex items-center gap-1">
-            <span tw-class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
-            <GhostIcon
-              v-if="settings.storageType === 'memory'"
-              tw-class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse"
-              :title="lazyStrings.Sidebar__ephemeral_session()"
-              data-testid="sidebar-ghost-icon"
-            />
-          </div>
-        </div>
-      </router-link>
-      <button
-        @click="toggleSidebar"
-        tw-class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0"
-        :title="isSidebarOpen ? lazyStrings.Sidebar__close_sidebar() : lazyStrings.Sidebar__open_sidebar()"
-        data-testid="sidebar-toggle"
-      >
-        <PanelLeftIcon tw-class="w-5 h-5" />
-      </button>
-    </div>
+    <SidebarHeader :expanded="isSidebarOpen" @toggle="toggleSidebar">
+      <template #status><GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse" :title="lazyStrings.Sidebar__ephemeral_session()" data-testid="sidebar-ghost-icon" /></template>
+    </SidebarHeader>
 
     <PWAUpdateNotification />
 

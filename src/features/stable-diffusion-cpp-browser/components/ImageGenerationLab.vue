@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, useId, watch } from 'vue';
 import { ImageIcon, FolderOpenIcon, HistoryIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
-import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
+import type { BinaryObjectId, ImageGenerationId, ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 import ImageGenerationHistory from './ImageGenerationHistory.vue';
 import ImageGenerationEditor from './ImageGenerationEditor.vue';
@@ -14,6 +14,10 @@ import ImageModelCatalog from './ImageModelCatalog.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageBenchmark from './ImageBenchmark.vue';
+const props = defineProps<{ workspace?: boolean, sessionId?: ImageGenerationSessionId }>();
+const emit = defineEmits<{ openGeneration: [] }>();
+const ImageGenerationTranslationDefaults = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationDefaults.vue'));
+const ImageGenerationWorkspace = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue'));
 const id = useId();
 const view = useImageGeneration();
 const benchmark = useImageBenchmark({ generation: view });
@@ -45,6 +49,11 @@ const tabs = computed(() => [
   { id: 'measure' as const, label: lazyStrings.imageBenchmark__diagnostics(), icon: SlidersHorizontalIcon },
 ]);
 function openTab({ tab }: { tab: typeof activeTab.value }): void {
+  // A different session can still be the same generate tab. Do not lose its URL
+  // change to defineModel's same-value suppression.
+  if (props.workspace && tab === 'generate') {
+    emit('openGeneration'); return;
+  }
   activeTab.value = tab;
 }
 function tabKey({ event }: { event: KeyboardEvent }): void {
@@ -74,9 +83,9 @@ const { library, busy, supported, formDisabled, debug, unavailable, files, loras
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
 <template>
-  <main tw-class="h-full overflow-y-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" data-testid="image-generation-lab">
-    <div tw-class="max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-5 space-y-5">
-      <div tw-class="sticky top-0 z-30 -mx-4 -mt-4 space-y-2 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-4 pt-3 pb-2 shadow-sm backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-4" data-testid="image-lab-sticky-header">
+  <main :tw-class="['h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100', props.workspace && activeTab === 'generate' ? 'overflow-hidden' : 'overflow-y-auto']" data-testid="image-generation-lab">
+    <div :tw-class="props.workspace && activeTab === 'generate' ? 'h-full min-h-0 flex flex-col' : 'max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-5 space-y-5'">
+      <div v-if="!props.workspace" tw-class="sticky top-0 z-30 -mx-4 -mt-4 space-y-2 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-4 pt-3 pb-2 shadow-sm backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-4" data-testid="image-lab-sticky-header">
         <header tw-class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white flex items-center gap-2">
             <ImageIcon tw-class="w-5 h-5 text-blue-600 dark:text-blue-400" />{{ lazyStrings.ImageGenerationLab__image_generation_entirely_in_browser() }}</h1>
@@ -111,16 +120,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
         </ul>
         <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
       </div>
-      <div tw-class="space-y-6">
-        <div tw-class="min-w-0 flex-1 w-full">
+      <div :tw-class="props.workspace && activeTab === 'generate' ? 'flex-1 min-h-0' : 'space-y-6'">
+        <div :tw-class="['min-w-0 w-full', props.workspace && activeTab === 'generate' ? 'h-full' : 'flex-1']">
           <!-- Pane visibility must not own the form, generation, downloads, or result URLs. -->
-          <div v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(28rem,0.9fr)_minmax(0,1.1fr)] gap-6 xl:gap-10 items-start">
+          <ImageGenerationWorkspace :session-id="props.sessionId" v-if="props.workspace" v-show="activeTab === 'generate'" :generation="view" :active="activeTab === 'generate'" @models="openTab({ tab: 'models' })" @diagnostics="openTab({ tab: 'measure' })" @workspace="openTab({ tab: 'generate' })" />
+          <div v-if="!props.workspace" v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(28rem,0.9fr)_minmax(0,1.1fr)] gap-6 xl:gap-10 items-start">
             <ImageGenerationEditor :view="view" :active="activeTab === 'generate'" @manage-models="openTab({ tab: 'models' })" />
             <div tw-class="min-w-0">
               <ImageGenerationResults :view="view" :active="activeTab === 'generate'" @open-history="openHistory" @prepare="openTab({ tab: 'models' })" />
             </div>
           </div>
-          <div v-show="activeTab === 'models'" role="tabpanel" :id="id + '-panel-models'" :aria-labelledby="id + '-tab-models'" tw-class="space-y-4">
+          <div v-show="activeTab === 'models'" :role="props.workspace ? 'region' : 'tabpanel'" :id="id + '-panel-models'" :aria-label="props.workspace ? lazyStrings.ImageGenerationLab__models() : undefined" :aria-labelledby="props.workspace ? undefined : id + '-tab-models'" tw-class="space-y-4">
             <div tw-class="flex flex-wrap items-center justify-between gap-3">
               <div tw-class="space-y-1">
                 <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
@@ -136,6 +146,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               </div>
               <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
+            <ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" />
             <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
               <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
             </ImageSettingsSection>
@@ -144,11 +155,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               <ImageRepositoryImport :disabled="formDisabled" :view="library" />
             </div>
           </div>
-          <div v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
+          <div v-if="!props.workspace" v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
             <!-- Import publication locks editor changes; downloads do not lock history reuse or browsing. -->
             <ImageGenerationHistory v-if="historyVisited" :view="view.history" :active="activeTab === 'history'" :disabled="formDisabled || view.historyActions.busy.value" :record-delete-disabled="view.historyActions.busy.value" :editor-disabled="library.importing.value" @reuse="reuseHistory" @use-image="useHistoryImage" :on-download="view.downloadHistory" :download-preferences="view.imageDownloadPreferences" :on-download-preferences-change="view.setImageDownloadPreferences" />
           </div>
-          <div v-show="activeTab === 'measure'" role="tabpanel" :id="id + '-panel-measure'" :aria-labelledby="id + '-tab-measure'">
+          <div v-show="activeTab === 'measure'" :role="props.workspace ? 'region' : 'tabpanel'" :id="id + '-panel-measure'" :aria-label="props.workspace ? lazyStrings.imageBenchmark__diagnostics() : undefined" :aria-labelledby="props.workspace ? undefined : id + '-tab-measure'">
             <ImageBenchmark :active="activeTab === 'measure'" v-if="benchmarkVisited" :bench="benchmark" :generation="view" />
           </div>
         </div>

@@ -9,7 +9,9 @@ import ImageModelConfiguration from './ImageModelConfiguration.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
 import ImageInputControls from './ImageInputControls.vue';
+import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
+defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePrompt', text: string }): unknown }>();
 const emit = defineEmits<{ manageModels: [] }>();
 const id = useId();
 const configurationOpen = ref(false);
@@ -64,7 +66,7 @@ const componentSummary = computed(() => library.components.value.map(component =
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <form @submit.prevent="generate" tw-class="min-w-0 space-y-4">
+  <form @submit.prevent="generate()" tw-class="min-w-0 space-y-4">
     <section :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-model-setup">
       <ImageModelLibrary :active="active" :manual-name="(files.model || files.diffusion)?.name" :view="library" :disabled="formDisabled" @prepare="emit('manageModels')" />
       <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2" data-testid="image-model-options">
@@ -90,9 +92,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </fieldset>
     </section>
     <section tw-class="space-y-2" data-testid="image-prompt-section">
-      <label :for="id + '-prompt'" tw-class="sr-only">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label>
+      <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div></div>
       <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="draftDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-base leading-relaxed text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
-      <label :for="id + '-negative-prompt'" tw-class="sr-only">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label>
+      <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-negative-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'negativePrompt'" :text="parameters.negativePrompt" /><ImageGenerationCopyButton :text="parameters.negativePrompt" :label="lazyStrings.imageGeneration__copy_negative_prompt()" data-testid="image-copy-draft-negative-prompt" /></div></div>
       <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
       <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
         <button type="submit" :disabled="formDisabled || !supported || !hasModel || library.importing.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>

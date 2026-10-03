@@ -13,16 +13,17 @@ export type ImageGenerationSnapshot = {
 };
 
 /** Freeze the complete request before generation; mutable form state is never read on completion. */
-export function snapshotImageGeneration({ request, sourceCommit, locateFile, createdAt }: {
+export function snapshotImageGeneration({ request, sourceCommit, locateFile, createdAt, identifyInput }: {
   request: Request,
   sourceCommit: string,
   locateFile: ({ file }: { file: File }) => ImageGenerationModelFile,
   createdAt: number,
+  identifyInput?: ({ file }: { file: File }) => BinaryObjectId,
 }): ImageGenerationSnapshot {
   const inputFiles: HistoryBinaryFile[] = [];
   function inputImage({ file }: { file: File }) {
-    const binaryObjectId = generateId<BinaryObjectId>();
-    inputFiles.push({ binaryObjectId, blob: file, name: file.name });
+    const binaryObjectId = identifyInput ? identifyInput({ file }) : generateId<BinaryObjectId>();
+    if (!inputFiles.some(input => input.binaryObjectId === binaryObjectId)) inputFiles.push({ binaryObjectId, blob: file, name: file.name });
     return { binaryObjectId, name: file.name };
   }
   const { artifact, models, loras, imageInputs, parameters, preview, weightResidency, gpuBudgetMiB,

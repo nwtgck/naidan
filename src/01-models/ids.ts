@@ -31,6 +31,13 @@ export type BinaryObjectId = BrandedId<'BinaryObjectId'>;
 export type VolumeId = BrandedId<'VolumeId'>;
 export type HostModelDirectoryId = BrandedId<'HostModelDirectoryId'>;
 export type ImageGenerationId = BrandedId<'ImageGenerationId'>;
+export type ImageGenerationStoreId = BrandedId<'ImageGenerationStoreId'>;
+export type ImageGenerationSessionId = BrandedId<'ImageGenerationSessionId'>;
+export type ImageGenerationRunId = BrandedId<'ImageGenerationRunId'>;
+export type ImageGenerationAssetId = BrandedId<'ImageGenerationAssetId'>;
+export type ImageGenerationTagId = BrandedId<'ImageGenerationTagId'>;
+export type ImageGenerationBindingId = BrandedId<'ImageGenerationBindingId'>;
+export type ImageGenerationDraftRevisionId = BrandedId<'ImageGenerationDraftRevisionId'>;
 export type ProviderProfileId = BrandedId<'ProviderProfileId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
 export type GlobalEventId = BrandedId<'GlobalEventId'>;
@@ -76,6 +83,34 @@ export function toHostModelDirectoryId({ raw }: { raw: string }): HostModelDirec
 
 export function toImageGenerationId({ raw }: { raw: string }): ImageGenerationId {
   return raw as unknown as ImageGenerationId;
+}
+
+export function toImageGenerationStoreId({ raw }: { raw: string }): ImageGenerationStoreId {
+  return raw as unknown as ImageGenerationStoreId;
+}
+
+export function toImageGenerationSessionId({ raw }: { raw: string }): ImageGenerationSessionId {
+  return raw as unknown as ImageGenerationSessionId;
+}
+
+export function toImageGenerationRunId({ raw }: { raw: string }): ImageGenerationRunId {
+  return raw as unknown as ImageGenerationRunId;
+}
+
+export function toImageGenerationAssetId({ raw }: { raw: string }): ImageGenerationAssetId {
+  return raw as unknown as ImageGenerationAssetId;
+}
+
+export function toImageGenerationTagId({ raw }: { raw: string }): ImageGenerationTagId {
+  return raw as unknown as ImageGenerationTagId;
+}
+
+export function toImageGenerationBindingId({ raw }: { raw: string }): ImageGenerationBindingId {
+  return raw as unknown as ImageGenerationBindingId;
+}
+
+export function toImageGenerationDraftRevisionId({ raw }: { raw: string }): ImageGenerationDraftRevisionId {
+  return raw as unknown as ImageGenerationDraftRevisionId;
 }
 
 export function toProviderProfileId({ raw }: { raw: string }): ProviderProfileId {

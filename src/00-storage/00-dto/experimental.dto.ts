@@ -139,7 +139,7 @@ const BrowserImageModelLocationSchemaDto = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('opfs'), path: ImageGenerationPathSchemaDto.refine(path => path.startsWith('models/')) }),
   z.object({ kind: z.literal('host'), directoryId: z.string().min(1), path: ImageGenerationPathSchemaDto }),
 ]);
-const BrowserImageModelSelectionSchemaDto = z.object({
+export const BrowserImageModelSelectionSchemaDto = z.object({
   primary: z.object({
     slot: z.enum(['model', 'diffusion']),
     location: BrowserImageModelLocationSchemaDto,

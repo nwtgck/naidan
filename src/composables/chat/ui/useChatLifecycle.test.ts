@@ -1,3 +1,4 @@
+import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,8 +26,8 @@ const {
   mockUpdateChatMeta: vi.fn().mockResolvedValue(undefined),
   mockUpdateHierarchy: vi.fn(),
   mockCreatingChat: { value: false },
-  mockCurrentChatGroupRef: { value: null },
-  mockCurrentChatRef: { value: null },
+  mockCurrentChatGroupRef: { value: null as ChatGroup | null },
+  mockCurrentChatRef: { value: null as Chat | null },
 }));
 
 vi.mock('@/00-storage/service', () => ({
@@ -145,4 +146,22 @@ describe('useChatLifecycle', () => {
     expect(created).not.toBeNull();
     expect(mockEnsureChatWorkspaceMounted).not.toHaveBeenCalled();
   });
+  it('creates a grouped assistant chat without replacing the selected regular chat or group', async () => {
+    const existing: Chat = { id: existingChatId, title: 'Main chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
+    const group: ChatGroup = { id: groupId, name: 'Images', isCollapsed: false, updatedAt: 1, items: [] };
+    mockCurrentChatRef.value = existing; mockCurrentChatGroupRef.value = group;
+    const created = await useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: 'custom-model', systemPrompt: undefined });
+    expect(created).toMatchObject({ groupId, modelId: 'custom-model' });
+    expect(mockCurrentChatRef.value).toBe(existing); expect(mockCurrentChatGroupRef.value).toBe(group);
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+    expect(mockUpdateHierarchy).toHaveBeenCalledOnce(); expect(mockLoadData).toHaveBeenCalledOnce();
+    expect(mockRegisterLiveInstance).toHaveBeenCalledOnce(); expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
+    expect(mockCreatingChat.value).toBe(false);
+  });
+  it('releases the creation gate on failure while preserving main-chat navigation', async () => {
+    mockUpdateChatContent.mockRejectedValueOnce(new Error('save failure'));
+    await expect(useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined })).rejects.toThrow('save failure');
+    expect(mockCreatingChat.value).toBe(false); expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+  });
+
 });

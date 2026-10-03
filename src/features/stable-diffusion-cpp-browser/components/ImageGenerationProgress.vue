@@ -4,9 +4,18 @@ import { lazyStrings } from '@/strings';
 import type { Progress } from '@/features/stable-diffusion-cpp-browser/types';
 
 const props = defineProps<{
+  size?: 'monitor' | 'compact',
   busy: boolean, supported: boolean, active: boolean, stopping: boolean, progress: Progress | undefined,
   width: number, height: number, image: { url: string, width: number, height: number } | undefined,
 }>();
+const heightLimit = computed(() => {
+  switch (props.size) {
+  case 'compact': return 20;
+  case 'monitor': return 38;
+  case undefined: return 65;
+  default: { const exhaustive: never = props.size; throw new Error(String(exhaustive)); }
+  }
+});
 const visible = computed(() => props.supported && props.busy);
 const running = computed(() => visible.value && props.active && !props.stopping);
 const elapsedSeconds = ref(0);
@@ -65,7 +74,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div v-if="visible" data-testid="image-generation-progress" :data-running="running && !image" class="generation-progress" tw-class="w-full">
-    <div :style="{ aspectRatio: `${width} / ${height}`, maxWidth: `${65 * width / height}vh` }" data-testid="image-generation-canvas" tw-class="relative w-full mx-auto overflow-hidden rounded-2xl flex items-center justify-center bg-gray-50/50 dark:bg-gray-900/30">
+    <div :style="{ aspectRatio: `${width} / ${height}`, maxWidth: `${heightLimit * width / height}vh` }" data-testid="image-generation-canvas" tw-class="relative w-full mx-auto overflow-hidden rounded-2xl flex items-center justify-center bg-gray-50/50 dark:bg-gray-900/30">
       <img v-if="image" :src="image.url" :width="image.width" :height="image.height" :style="{ maxWidth: `min(100%, ${image.width}px)` }" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" data-testid="image-generation-current-preview" tw-class="max-h-full object-contain" />
       <template v-else>
         <div aria-hidden="true" tw-class="absolute inset-0 pointer-events-none">

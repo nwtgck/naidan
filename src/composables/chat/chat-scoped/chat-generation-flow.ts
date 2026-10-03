@@ -1,3 +1,4 @@
+import { getImageGenerationToolsForChat } from '@/features/stable-diffusion-cpp-browser/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
@@ -1032,7 +1033,7 @@ async function getEnabledToolsForChat({
       : (await storageService.loadChatGroup({ id: chat.groupId }))?.mounts)
     : undefined;
 
-  return await getEnabledTools({
+  const tools = await getEnabledTools({
     enabledNames,
     settings: settings.value as unknown as Settings,
     chatGroupMounts,
@@ -1043,6 +1044,12 @@ async function getEnabledToolsForChat({
     tmpHandle: chatTmpDirectory?.handle,
     requestChoice,
   });
+  try {
+    return [...tools, ...getImageGenerationToolsForChat({ chatId: chat.id })];
+  } catch (error) {
+    for (const tool of tools) await tool.dispose?.();
+    throw error;
+  }
 }
 
 async function handleImageGenerationWithDefaults({

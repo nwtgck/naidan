@@ -19,7 +19,7 @@ it('opens the independent audio workspace from Quick Access and closes the menu'
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', component: { template: '<div />' } },
     { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation-lab', component: { template: '<div />' } },
+    { path: '/image-generation', component: { template: '<div />' } },
   ] });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
@@ -33,12 +33,12 @@ it('opens the independent image workspace from Quick Access and closes the menu'
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', component: { template: '<div />' } },
     { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation-lab', component: { template: '<div />' } },
+    { path: '/image-generation', component: { template: '<div />' } },
   ] });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
   await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
-  const link = wrapper.get('[data-testid="sidebar-image-generation-link"]'); expect(link.attributes('href')).toBe('/image-generation-lab');
-  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/image-generation-lab');
+  const link = wrapper.get('[data-testid="sidebar-image-generation-link"]'); expect(link.attributes('href')).toBe('/image-generation');
+  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/image-generation');
   expect(wrapper.find('[data-testid="sidebar-image-generation-link"]').exists()).toBe(false);
 });

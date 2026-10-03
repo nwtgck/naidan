@@ -1,0 +1,1 @@
+export const imageGeneration__translation_priority = (): string => "Translation inherits each setting from this session, then Image Generation settings, then global settings. Blank fields inherit. Changing these settings never changes ordinary chats.";

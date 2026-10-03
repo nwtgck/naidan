@@ -1,3 +1,5 @@
+import { useChatViewScope } from './chat-view-scope';
+import { useChatPaneState } from './useChatPaneState';
 import { computed, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/01-models/types';
 import type { Settings } from '@/01-models/types';
@@ -30,6 +32,18 @@ export type CurrentChatStateAdapter = {
 };
 
 export function useCurrentChatState(): CurrentChatStateAdapter {
+  const scope = useChatViewScope();
+  if (scope) {
+    const pane = useChatPaneState({ chatId: scope });
+    return {
+      currentChat: pane.chat, currentChatGroup: pane.chatGroup,
+      currentChatId: computed(() => pane.chat.value?.id),
+      activeMessages: pane.activeMessages, resolvedSettings: pane.resolvedSettings,
+      inheritedSettings: pane.inheritedSettings, chatGroups: pane.chatGroups,
+      sidebarItems: computed(() => rootItems.value),
+      ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { allMessages: pane.allMessages } }) || {}),
+    };
+  }
   const { settings } = useSettings();
   const chatCurrentBridge = createChatCurrentBridge({
     currentChatRef,
