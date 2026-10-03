@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageInputControls from './ImageInputControls.vue';
 import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
@@ -9,6 +9,7 @@ import { requestSchema } from '@/features/stable-diffusion-cpp-browser/types';
 let wrapper: VueWrapper<InstanceType<typeof ImageInputControls>> | undefined;
 let inputs = emptyImageInputs();
 const createUrl = vi.fn(), revokeUrl = vi.fn();
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); inputs = emptyImageInputs();
   createUrl.mockReset(); revokeUrl.mockReset();
@@ -24,6 +25,8 @@ beforeEach(async () => {
 });
 afterEach(() => {
   wrapper?.unmount(); vi.unstubAllGlobals();
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else Reflect.deleteProperty(navigator, 'clipboard');
 });
 async function expand(): Promise<void> {
   wrapper!.get<HTMLDetailsElement>('details').element.open = true;
@@ -138,4 +141,93 @@ it('opens an image preview and closes it when the pane becomes inactive or the f
   await wrapper!.get('[data-testid="image-input-expand-initial"]').trigger('click');
   await wrapper!.get('[data-testid="image-input-clear-initial"]').trigger('click');
   expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
+});
+
+function clipboard({ read }: { read: () => Promise<ClipboardItem[]> }): void {
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read } });
+}
+function clipboardItem({ types }: { types: string[] }): ClipboardItem {
+  return { types, presentationStyle: 'unspecified', getType: vi.fn(async (type: string) => new Blob(['pixels'], { type })) };
+}
+function pasteEvent({ files, items }: { files: File[], items: { type: string, getAsFile(): File | undefined }[] }): ClipboardEvent {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { files, items } });
+  return event as ClipboardEvent;
+}
+it('pastes into the explicitly focused role, preserves reference order and never imports both files and items', async () => {
+  await expand();
+  const first = new File(['one'], 'first.png', { type: 'image/png' }), second = new File(['two'], 'second.webp', { type: 'image/webp' });
+  const initial = pasteEvent({ files: [first, second], items: [{ type: 'image/png', getAsFile: () => first }] });
+  wrapper!.get('[data-testid="image-input-initial-drop"]').element.dispatchEvent(initial); await flushPromises();
+  expect(initial.defaultPrevented).toBe(true); expect(inputs.initImage).toBe(first);
+  const reference = pasteEvent({ files: [], items: [{ type: 'image/webp', getAsFile: () => second }, { type: 'image/png', getAsFile: () => first }] });
+  wrapper!.get('[data-testid="image-input-reference-drop"]').element.dispatchEvent(reference); await flushPromises();
+  expect(inputs.referenceImages).toEqual([second, first]); expect(inputs.initImage).toBe(first);
+});
+it('leaves text paste and strength editing alone and reports unsupported image types without replacing inputs', async () => {
+  await expand();
+  const file = new File(['one'], 'first.png', { type: 'image/png' }); await choose({ selector: 'image-input-initial', files: [file] });
+  const plain = pasteEvent({ files: [], items: [{ type: 'text/plain', getAsFile: () => undefined }] });
+  wrapper!.get('[data-testid="image-input-reference-drop"]').element.dispatchEvent(plain);
+  const inNumber = pasteEvent({ files: [file], items: [] });
+  wrapper!.get('[data-testid="image-input-strength"]').element.dispatchEvent(inNumber);
+  await flushPromises();
+  expect(plain.defaultPrevented).toBe(false); expect(inNumber.defaultPrevented).toBe(false);
+  expect(inputs.referenceImages).toHaveLength(0);
+  const unsupported = pasteEvent({ files: [new File(['svg'], 'unsupported.svg', { type: 'image/svg+xml' })], items: [] });
+  wrapper!.get('[data-testid="image-input-initial-drop"]').element.dispatchEvent(unsupported); await flushPromises();
+  expect(inputs.initImage).toBe(file); expect(wrapper!.get('[role="alert"]').text()).toContain('PNG');
+});
+it.each(['inactive', 'disabled', 'collapsed'] as const)('does not intercept native image paste while %s', async state => {
+  await expand();
+  switch (state) {
+  case 'inactive': await wrapper!.setProps({ active: false }); break;
+  case 'disabled': await wrapper!.setProps({ disabled: true }); break;
+  case 'collapsed': wrapper!.get<HTMLDetailsElement>('details').element.open = false; await wrapper!.get('details').trigger('toggle'); break;
+  default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+  }
+  const event = pasteEvent({ files: [new File(['x'], 'paste.png', { type: 'image/png' })], items: [] });
+  wrapper!.get('[data-testid="image-input-initial-drop"]').element.dispatchEvent(event); await flushPromises();
+  expect(event.defaultPrevented).toBe(false); expect(inputs.initImage).toBeUndefined();
+});
+it('requests clipboard access only after a click and imports one representation per clipboard image', async () => {
+  const first = clipboardItem({ types: ['text/html', 'image/webp', 'image/png'] }), second = clipboardItem({ types: ['image/jpeg'] });
+  const read = vi.fn(async () => [first, second]); clipboard({ read });
+  await expand(); expect(read).not.toHaveBeenCalled();
+  await wrapper!.get('[data-testid="image-input-paste-reference"]').trigger('click'); await flushPromises();
+  expect(read).toHaveBeenCalledOnce(); expect(first.getType).toHaveBeenCalledExactlyOnceWith('image/png');
+  expect(inputs.referenceImages.map(file => file.type)).toEqual(['image/png', 'image/jpeg']);
+  expect(inputs.referenceImages.map(file => file.name)).toEqual(['clipboard-1.png', 'clipboard-2.jpg']);
+});
+it.each(['unavailable', 'denied', 'no-image'] as const)('explains %s clipboard access and preserves native-paste fallback', async state => {
+  switch (state) {
+  case 'unavailable': Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); break;
+  case 'denied': clipboard({ read: async () => {
+    throw new DOMException('Denied', 'NotAllowedError');
+  } }); break;
+  case 'no-image': clipboard({ read: async () => [clipboardItem({ types: ['text/plain'] })] }); break;
+  default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+  }
+  await expand(); await wrapper!.get('[data-testid="image-input-paste-initial"]').trigger('click'); await flushPromises();
+  expect(wrapper!.get('[data-testid="image-input-clipboard-feedback-initial"]').text()).not.toBe('');
+  expect(inputs.initImage).toBeUndefined();
+  const file = new File(['fallback'], 'fallback.png', { type: 'image/png' });
+  wrapper!.get('[data-testid="image-input-initial-drop"]').element.dispatchEvent(pasteEvent({ files: [file], items: [] })); await flushPromises();
+  expect(inputs.initImage).toBe(file);
+});
+it.each(['inputs-replaced', 'disabled-then-enabled', 'inactive', 'unmounted'] as const)('discards a pending permission read after %s', async change => {
+  const gate = Promise.withResolvers<ClipboardItem[]>(); const read = vi.fn(() => gate.promise); clipboard({ read });
+  await expand(); await wrapper!.get('[data-testid="image-input-paste-initial"]').trigger('click');
+  const emittedBefore = wrapper!.emitted('update:modelValue')?.length ?? 0;
+  const captured = wrapper!;
+  switch (change) {
+  case 'inputs-replaced': inputs = { ...emptyImageInputs() }; await wrapper!.setProps({ modelValue: inputs }); break;
+  case 'disabled-then-enabled': await wrapper!.setProps({ disabled: true }); await wrapper!.setProps({ disabled: false }); break;
+  case 'inactive': await wrapper!.setProps({ active: false }); break;
+  case 'unmounted': wrapper!.unmount(); wrapper = undefined; break;
+  default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
+  }
+  gate.resolve([clipboardItem({ types: ['image/png'] })]); await flushPromises();
+  expect(captured.emitted('update:modelValue')?.length ?? 0).toBe(emittedBefore);
+  expect(inputs.initImage).toBeUndefined();
 });

@@ -88,6 +88,7 @@ export function useChatPaneState({
       ...chat.value,
       modelId: undefined,
       endpoint: undefined,
+      titleGeneration: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     };

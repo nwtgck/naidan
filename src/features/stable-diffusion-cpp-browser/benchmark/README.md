@@ -1,7 +1,7 @@
 # Image benchmark workspace
 
 The image-generation lab has a secondary diagnostics tab at
-`/image-generation-lab/diagnostics`. Both URLs share the same owner, preserving
+`/image-generation/diagnostics`. Both URLs share the same owner, preserving
 settings and active work when navigating between them. It consumes the existing
 published local inventory, the existing image Worker client and the existing
 versioned diagnostic events. It does not add a native API, dependency, shader,

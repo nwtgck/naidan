@@ -1,6 +1,6 @@
 # Experimental browser image workspace
 
-`/#/image-generation-lab` is a dedicated experimental image workspace.
+`/#/image-generation` is a dedicated experimental image workspace.
 The sidebar quick-access link opens it.
 Opening the page does not fetch model files, instantiate Wasm, create an inference
 Worker or request a GPU adapter. Settings/results are temporary page-local state.
@@ -31,7 +31,7 @@ npm run build:hosted
 npm run dev
 ```
 
-Open `/#/image-generation-lab` from the sidebar quick-access link, import a local repository folder (or use the advanced single-file controls),
+Open `/#/image-generation` from the sidebar quick-access link, import a local repository folder (or use the advanced single-file controls),
 then start generation explicitly. No environment variable or manual
 copy into node_modules is needed with the committed dependency installed.
 

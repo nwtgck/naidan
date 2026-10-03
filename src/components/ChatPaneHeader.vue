@@ -209,6 +209,7 @@ defineExpose({
               @click="emit('update:show-chat-settings', !showChatSettings)"
               tw-class="flex items-center gap-1.5 min-w-0 w-fit group"
               :title="lazyStrings.ChatPaneHeader__chat_settings_and_model_override()"
+              :aria-label="lazyStrings.ChatPaneHeader__model_and_chat_settings()"
               data-testid="model-trigger"
             >
               <div
@@ -216,9 +217,10 @@ defineExpose({
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200']"
               >
-                <span tw-class="truncate max-w-[120px] sm:max-w-[200px]">
-                  {{ modelLabel }}
+                <span data-testid="chat-model-name" tw-class="truncate max-w-[120px] sm:max-w-[200px]">
+                  {{ modelLabel || lazyStrings.ChatPaneHeader__model_and_chat_settings() }}
                 </span>
+                <span v-if="modelLabel" tw-class="hidden sm:inline">{{ lazyStrings.ChatPaneHeader__model_and_chat_settings() }}</span>
                 <Settings2Icon :tw-class="['w-3 h-3 shrink-0', { 'animate-pulse': showChatSettings }]" />
               </div>
               <div

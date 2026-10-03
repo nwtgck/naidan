@@ -1,3 +1,5 @@
+import type { ImageGenerationDraftAccess } from './generation-draft';
+import type { ImageGenerationSubmission } from './generation-submission';
 import type { ImageLibraryView } from './library-view';
 import type { Ref, ComputedRef } from 'vue';
 import type { createImageForm } from './form';
@@ -26,7 +28,7 @@ export type ImageEngineStateView = {
   refresh(): Promise<void>;
 };
 
-export type ImageGenerationView = ReturnType<typeof createImageForm> & {
+export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<ImageGenerationDraftAccess> & {
   engineState: ImageEngineStateView;
   seedMode: Ref<'random' | 'fixed'>;
   randomizeSeed(): void;
@@ -62,7 +64,7 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & {
   chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void;
   resetFiles(): void;
   removeResult({ resultId }: { resultId: number }): void;
-  generate(): Promise<void>;
+  generate({ submission }?: { submission?: ImageGenerationSubmission }): Promise<void>;
   cancel(): void;
   forceCancel(): void;
   releaseModel(): void;

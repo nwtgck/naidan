@@ -104,7 +104,7 @@ defineExpose({
             <span>{{ lazyStrings.audioGeneration__audio_generation() }}</span>
           </RouterLink>
           <RouterLink
-            to="/image-generation-lab"
+            to="/image-generation"
             @click="showOpfsMenu = false"
             tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-image-generation-link"

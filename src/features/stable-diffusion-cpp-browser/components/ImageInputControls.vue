@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { ArrowLeftIcon, ArrowRightIcon, ImagePlusIcon, ImageOffIcon, ReplaceIcon, Trash2Icon, ZoomInIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, ArrowRightIcon, ImagePlusIcon, ImageOffIcon, ClipboardPasteIcon, ReplaceIcon, Trash2Icon, ZoomInIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { ImageInputs } from '@/features/stable-diffusion-cpp-browser/types';
 import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import { pastedImageFiles, readClipboardImageFiles } from '@/features/stable-diffusion-cpp-browser/image-input-clipboard';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
 const props = defineProps<{ modelValue: ImageInputs, disabled: boolean, active: boolean }>();
@@ -12,7 +13,23 @@ type Role = 'initial' | 'reference';
 type Preview = { key: number, file: File, url: string | undefined, failed: boolean };
 const open = ref(false), invalid = ref<Role>(), dragging = ref<Role>(), viewerIndex = ref<number>();
 const previews = shallowRef(new Map<File, Preview>());
-let nextKey = 0;
+let nextKey = 0, clipboardEpoch = 0;
+const clipboardBusy = ref<Role>();
+const clipboardMessage = ref<{ role: Role, type: 'unavailable' | 'failed' | 'empty' }>();
+// Async permission prompts must not write into another session/edited input.
+watch(() => [props.modelValue, props.disabled, props.active, open.value] as const, () => {
+  clipboardEpoch++; clipboardBusy.value = undefined; clipboardMessage.value = undefined;
+}, { flush: 'sync' });
+const clipboardFeedback = computed(() => {
+  const type = clipboardMessage.value?.type;
+  switch (type) {
+  case 'unavailable': return lazyStrings.ImageInputControls__clipboard_unavailable();
+  case 'failed': return lazyStrings.ImageInputControls__clipboard_failed();
+  case 'empty': return lazyStrings.ImageInputControls__clipboard_no_image();
+  case undefined: return undefined;
+  default: { const exhaustive: never = type; throw new Error(String(exhaustive)); }
+  }
+});
 const orderedFiles = computed(() => [...(props.modelValue.initImage ? [props.modelValue.initImage] : []), ...props.modelValue.referenceImages]);
 const frames = computed(() => orderedFiles.value.flatMap(file => {
   const preview = previews.value.get(file); return preview ? [preview] : [];
@@ -43,6 +60,7 @@ watch(() => props.active, active => {
   if (!active) viewerIndex.value = undefined;
 });
 onBeforeUnmount(() => {
+  clipboardEpoch++;
   for (const preview of previews.value.values()) if (preview.url) URL.revokeObjectURL(preview.url);
   previews.value.clear();
 });
@@ -81,6 +99,39 @@ function choose({ role, event, replaceIndex }: { role: Role, event: Event, repla
 function drop({ role, event }: { role: Role, event: DragEvent }): void {
   dragging.value = undefined;
   accept({ role, files: Array.from(event.dataTransfer?.files ?? []), replaceIndex: undefined });
+}
+function paste({ role, event }: { role: Role, event: ClipboardEvent }): void {
+  if (props.disabled || !props.active || !open.value || event.defaultPrevented) return;
+  // Do not turn a paste meant for a strength field or an editor into an import.
+  if (event.target instanceof Element && event.target.closest('input:not([type="file"]), textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  const files = pastedImageFiles({ data: event.clipboardData ?? undefined });
+  if (!files.length) return;
+  event.preventDefault(); event.stopPropagation();
+  clipboardEpoch++; clipboardBusy.value = undefined; clipboardMessage.value = undefined;
+  accept({ role, files, replaceIndex: undefined });
+}
+async function pasteFromClipboard({ role, event }: { role: Role, event: MouseEvent }): Promise<void> {
+  if (props.disabled || !props.active || !open.value || clipboardBusy.value) return;
+  // Keep native paste usable after a failed/unavailable clipboard.read call.
+  const region = event.currentTarget instanceof Element ? event.currentTarget.closest<HTMLElement>('[data-image-paste-region]') : undefined;
+  region?.focus({ preventScroll: true });
+  clipboardMessage.value = undefined; invalid.value = undefined;
+  const clipboard = navigator.clipboard;
+  if (!clipboard?.read) {
+    clipboardMessage.value = { role, type: 'unavailable' }; return;
+  }
+  const token = ++clipboardEpoch;
+  clipboardBusy.value = role;
+  try {
+    const files = await readClipboardImageFiles({ clipboard });
+    if (token !== clipboardEpoch) return;
+    if (!files.length) clipboardMessage.value = { role, type: 'empty' };
+    else accept({ role, files, replaceIndex: undefined });
+  } catch {
+    if (token === clipboardEpoch) clipboardMessage.value = { role, type: 'failed' };
+  } finally {
+    if (token === clipboardEpoch) clipboardBusy.value = undefined;
+  }
 }
 function dragLeave({ event }: { event: DragEvent }): void {
   if (event.currentTarget instanceof Node && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
@@ -132,7 +183,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <ImagePlusIcon v-else aria-hidden="true" tw-class="w-4 h-4" />
     </template>
     <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageInputControls__model_support_required() }}</p>
-    <div v-for="group in groups" :key="group.role" @dragover.prevent="!disabled && (dragging = group.role)" @dragleave="dragLeave({ event: $event })" @drop.prevent.stop="drop({ role: group.role, event: $event })" :tw-class="['rounded-xl border p-3 space-y-3 transition-colors', dragging === group.role ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-800']" :data-testid="'image-input-' + group.role + '-drop'">
+    <div v-for="group in groups" :key="group.role" tabindex="0" role="group" :aria-label="group.title" data-image-paste-region @paste="paste({ role: group.role, event: $event })" @dragover.prevent="!disabled && (dragging = group.role)" @dragleave="dragLeave({ event: $event })" @drop.prevent.stop="drop({ role: group.role, event: $event })" :tw-class="['rounded-xl border p-3 space-y-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', dragging === group.role ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/30' : 'border-gray-200 dark:border-gray-800']" :data-testid="'image-input-' + group.role + '-drop'">
       <div tw-class="space-y-1">
         <h3 tw-class="text-sm font-medium">{{ group.title }}</h3>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ group.help }}</p>
@@ -165,6 +216,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         {{ group.role === 'reference' ? lazyStrings.ImageInputControls__add_reference_images() : group.frames.length ? lazyStrings.ImageInputControls__replace_image() : lazyStrings.ImageInputControls__choose_image() }}
         <input type="file" :multiple="group.role === 'reference'" accept="image/png,image/jpeg,image/webp" :disabled="disabled" @change="choose({ role: group.role, event: $event, replaceIndex: undefined })" :data-testid="group.role === 'initial' ? 'image-input-initial' : 'image-input-references'" tw-class="sr-only" />
       </label>
+      <button type="button" @click="pasteFromClipboard({ role: group.role, event: $event })" :disabled="disabled || !!clipboardBusy" :data-testid="'image-input-paste-' + group.role" tw-class="min-h-10 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"><ClipboardPasteIcon tw-class="w-4 h-4" />{{ clipboardBusy === group.role ? lazyStrings.ImageInputControls__reading_clipboard() : lazyStrings.ImageInputControls__paste_image() }}</button>
+      <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageInputControls__paste_help() }}</p>
+      <p v-if="clipboardMessage?.role === group.role" :data-testid="'image-input-clipboard-feedback-' + group.role" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ clipboardFeedback }}</p>
       <label v-if="group.role === 'initial' && group.frames.length" tw-class="block space-y-2">
         <span tw-class="text-xs font-medium">{{ lazyStrings.ImageInputControls__change_strength() }}</span>
         <span tw-class="flex items-center gap-3">

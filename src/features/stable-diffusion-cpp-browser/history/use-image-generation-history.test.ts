@@ -202,7 +202,7 @@ describe('image history query ownership', () => {
       expect(view.currentPage.value).toBe(target);
       expect(view.items.value).toEqual(records.slice((target - 1) * 40, target * 40));
       expect(view.items.value.length).toBeLessThanOrEqual(40);
-      expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: (target - 1) * 40, limit: 40 } });
+      expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: '', offset: (target - 1) * 40, limit: 40 } });
     }
     const calls = mocks.query.mock.calls.length;
     for (const target of [0, -1, 252, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 1]) await view.goToPage({ page: target });
@@ -226,7 +226,7 @@ describe('image history query ownership', () => {
     expect(view.currentPage.value).toBe(1);
     expect(view.error.value).toBe('Page could not be read');
     await view.reload();
-    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 40, limit: 40 } });
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: '', offset: 40, limit: 40 } });
     expect(view.items.value).toBe(second.items);
     expect(view.currentPage.value).toBe(2);
     expect(view.pageCount.value).toBe(2);
@@ -247,7 +247,7 @@ describe('image history query ownership', () => {
     expect(view.currentPage.value).toBe(2);
     expect(view.loading.value).toBe(true);
     await vi.advanceTimersByTimeAsync(250);
-    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: 'garden', offset: 0, limit: 40 } });
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: 'garden', offset: 0, limit: 40 } });
     expect(view.currentPage.value).toBe(1);
     expect(view.items.value[0]?.prompt).toBe('found');
     await view.dispose();
@@ -279,7 +279,7 @@ describe('image history query ownership', () => {
     await view.reload(); await view.goToPage({ page: 3 });
     const removing = view.remove({ id: last.items[0]!.id });
     await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 40, limit: 40 } });
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: '', offset: 40, limit: 40 } });
     expect(view.currentPage.value).toBe(3);
     expect(view.items.value).toBe(last.items);
     expect(view.total.value).toBe(81);
@@ -456,7 +456,7 @@ describe('image history query ownership', () => {
     }
     expect(mocks.query).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(150);
-    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 0, limit: 40 } });
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: '', offset: 0, limit: 40 } });
     expect(view.items.value[0]?.prompt).toBe('all images');
     expect(view.selected.value).toBe(selected);
     expect(view.loading.value).toBe(false);
@@ -483,7 +483,7 @@ describe('image history query ownership', () => {
     await view.goToPage({ page: 2 });
     expect(mocks.query).toHaveBeenCalledTimes(2);
     await view.reload();
-    expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: 'garden', offset: 0, limit: 40 } });
+    expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: 'garden', offset: 0, limit: 40 } });
     expect(view.items.value[0]?.prompt).toBe('retry');
     expect(view.error.value).toBe('');
     await view.dispose();

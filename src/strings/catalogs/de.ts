@@ -1,3 +1,155 @@
+// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
+// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
+import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/de';
+import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/de';
+import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/de';
+import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/de';
+import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/de';
+import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/de';
+import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/de';
+import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/de';
+import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/de';
+import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/de';
+import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/de';
+import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/de';
+import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/de';
+import { SHARED__mount } from '@/strings/messages/SHARED__mount/de';
+import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/de';
+import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/de';
+import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/de';
+import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/de';
+import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/de';
+import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/de';
+import { imageGeneration__add_tag } from '@/strings/messages/imageGeneration__add_tag/de';
+import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/de';
+import { imageGeneration__notice_dismiss } from '@/strings/messages/imageGeneration__notice_dismiss/de';
+import { imageGeneration__notice_body } from '@/strings/messages/imageGeneration__notice_body/de';
+import { imageGeneration__notice_title } from '@/strings/messages/imageGeneration__notice_title/de';
+import { imageGeneration__copy_failed } from '@/strings/messages/imageGeneration__copy_failed/de';
+import { imageGeneration__copy_negative_prompt } from '@/strings/messages/imageGeneration__copy_negative_prompt/de';
+import { imageGeneration__float_chat } from '@/strings/messages/imageGeneration__float_chat/de';
+import { imageGeneration__dock_chat } from '@/strings/messages/imageGeneration__dock_chat/de';
+import { imageGeneration__chat_help } from '@/strings/messages/imageGeneration__chat_help/de';
+import { ImageInputControls__reading_clipboard } from '@/strings/messages/ImageInputControls__reading_clipboard/de';
+import { ImageInputControls__clipboard_no_image } from '@/strings/messages/ImageInputControls__clipboard_no_image/de';
+import { ImageInputControls__clipboard_failed } from '@/strings/messages/ImageInputControls__clipboard_failed/de';
+import { ImageInputControls__clipboard_unavailable } from '@/strings/messages/ImageInputControls__clipboard_unavailable/de';
+import { ImageInputControls__paste_help } from '@/strings/messages/ImageInputControls__paste_help/de';
+import { ImageInputControls__paste_image } from '@/strings/messages/ImageInputControls__paste_image/de';
+import { ImageGenerationViewer__details } from '@/strings/messages/ImageGenerationViewer__details/de';
+import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/de';
+import { imageGeneration__generation_session } from '@/strings/messages/imageGeneration__generation_session/de';
+import { imageGeneration__choose_chat_help } from '@/strings/messages/imageGeneration__choose_chat_help/de';
+import { imageGeneration__close_chat } from '@/strings/messages/imageGeneration__close_chat/de';
+import { imageGeneration__open_assistant_chat } from '@/strings/messages/imageGeneration__open_assistant_chat/de';
+import { imageGeneration__export_cancelled } from '@/strings/messages/imageGeneration__export_cancelled/de';
+import { imageGeneration__next_unavailable } from '@/strings/messages/imageGeneration__next_unavailable/de';
+import { imageGeneration__saving_required } from '@/strings/messages/imageGeneration__saving_required/de';
+import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/de';
+import { imageGeneration__interrupted } from '@/strings/messages/imageGeneration__interrupted/de';
+import { imageGeneration__failed } from '@/strings/messages/imageGeneration__failed/de';
+import { imageGeneration__cancelled } from '@/strings/messages/imageGeneration__cancelled/de';
+import { imageGeneration__completed } from '@/strings/messages/imageGeneration__completed/de';
+import { imageGeneration__running } from '@/strings/messages/imageGeneration__running/de';
+import { imageGeneration__queued } from '@/strings/messages/imageGeneration__queued/de';
+import { imageGeneration__run_status } from '@/strings/messages/imageGeneration__run_status/de';
+import { imageGeneration__next_image } from '@/strings/messages/imageGeneration__next_image/de';
+import { imageGeneration__previous_image } from '@/strings/messages/imageGeneration__previous_image/de';
+import { imageGeneration__compare_notice } from '@/strings/messages/imageGeneration__compare_notice/de';
+import { imageGeneration__compare_equal } from '@/strings/messages/imageGeneration__compare_equal/de';
+import { imageGeneration__run_empty } from '@/strings/messages/imageGeneration__run_empty/de';
+import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/de';
+import { imageGeneration__editor } from '@/strings/messages/imageGeneration__editor/de';
+import { imageGeneration__review } from '@/strings/messages/imageGeneration__review/de';
+import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/de';
+import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/de';
+import { imageGeneration__sessions } from '@/strings/messages/imageGeneration__sessions/de';
+import { imageGeneration__back_to_chats } from '@/strings/messages/imageGeneration__back_to_chats/de';
+import { imageGeneration__rename_session } from '@/strings/messages/imageGeneration__rename_session/de';
+import { imageGeneration__no_sessions } from '@/strings/messages/imageGeneration__no_sessions/de';
+import { imageGeneration__empty_gallery } from '@/strings/messages/imageGeneration__empty_gallery/de';
+import { imageGeneration__storage_required } from '@/strings/messages/imageGeneration__storage_required/de';
+import { imageGeneration__images } from '@/strings/messages/imageGeneration__images/de';
+import { imageGeneration__runs } from '@/strings/messages/imageGeneration__runs/de';
+import { imageGeneration__gallery } from '@/strings/messages/imageGeneration__gallery/de';
+import { imageGeneration__compare } from '@/strings/messages/imageGeneration__compare/de';
+import { imageGeneration__favorite } from '@/strings/messages/imageGeneration__favorite/de';
+import { imageGeneration__tags } from '@/strings/messages/imageGeneration__tags/de';
+import { imageGeneration__new_tag } from '@/strings/messages/imageGeneration__new_tag/de';
+import { imageGeneration__rename_tag } from '@/strings/messages/imageGeneration__rename_tag/de';
+import { imageGeneration__tag_rules } from '@/strings/messages/imageGeneration__tag_rules/de';
+import { imageGeneration__all_tags } from '@/strings/messages/imageGeneration__all_tags/de';
+import { imageGeneration__search_images } from '@/strings/messages/imageGeneration__search_images/de';
+import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/de';
+import { imageGeneration__inspect } from '@/strings/messages/imageGeneration__inspect/de';
+import { imageGeneration__select_compare } from '@/strings/messages/imageGeneration__select_compare/de';
+import { imageGeneration__compare_help } from '@/strings/messages/imageGeneration__compare_help/de';
+import { imageGeneration__reuse_settings } from '@/strings/messages/imageGeneration__reuse_settings/de';
+import { imageGeneration__reuse_prompt } from '@/strings/messages/imageGeneration__reuse_prompt/de';
+import { imageGeneration__initial_image } from '@/strings/messages/imageGeneration__initial_image/de';
+import { imageGeneration__reference_image } from '@/strings/messages/imageGeneration__reference_image/de';
+import { imageGeneration__close_details } from '@/strings/messages/imageGeneration__close_details/de';
+import { imageGeneration__execution } from '@/strings/messages/imageGeneration__execution/de';
+import { imageGeneration__save_retry } from '@/strings/messages/imageGeneration__save_retry/de';
+import { imageGeneration__pending_save } from '@/strings/messages/imageGeneration__pending_save/de';
+import { imageGeneration__draft_saved } from '@/strings/messages/imageGeneration__draft_saved/de';
+import { imageGeneration__draft_dirty } from '@/strings/messages/imageGeneration__draft_dirty/de';
+import { imageGeneration__draft_saving } from '@/strings/messages/imageGeneration__draft_saving/de';
+import { imageGeneration__draft_failed } from '@/strings/messages/imageGeneration__draft_failed/de';
+import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/de';
+import { imageGeneration__create_chat_in_group } from '@/strings/messages/imageGeneration__create_chat_in_group/de';
+import { imageGeneration__delete_images_notice } from '@/strings/messages/imageGeneration__delete_images_notice/de';
+import { imageGeneration__batch_failed } from '@/strings/messages/imageGeneration__batch_failed/de';
+import { imageGeneration__selected_images } from '@/strings/messages/imageGeneration__selected_images/de';
+import { imageGeneration__archive } from '@/strings/messages/imageGeneration__archive/de';
+import { imageGeneration__restore } from '@/strings/messages/imageGeneration__restore/de';
+import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/de';
+import { imageGeneration__archived_images } from '@/strings/messages/imageGeneration__archived_images/de';
+import { imageGeneration__all_images } from '@/strings/messages/imageGeneration__all_images/de';
+import { imageGeneration__archive_run } from '@/strings/messages/imageGeneration__archive_run/de';
+import { imageGeneration__restore_run } from '@/strings/messages/imageGeneration__restore_run/de';
+import { imageGeneration__delete_images } from '@/strings/messages/imageGeneration__delete_images/de';
+import { imageGeneration__select_image } from '@/strings/messages/imageGeneration__select_image/de';
+import { imageGeneration__select_loaded } from '@/strings/messages/imageGeneration__select_loaded/de';
+import { imageGeneration__pending_deletions } from '@/strings/messages/imageGeneration__pending_deletions/de';
+import { imageGeneration__retry_deletions } from '@/strings/messages/imageGeneration__retry_deletions/de';
+import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/de';
+import { imageGeneration__search_chats } from '@/strings/messages/imageGeneration__search_chats/de';
+import { imageGeneration__create_and_connect_chat } from '@/strings/messages/imageGeneration__create_and_connect_chat/de';
+import { imageGeneration__change_chat } from '@/strings/messages/imageGeneration__change_chat/de';
+import { imageGeneration__copy_prompt } from '@/strings/messages/imageGeneration__copy_prompt/de';
+import { imageGeneration__copy_settings } from '@/strings/messages/imageGeneration__copy_settings/de';
+import { imageGeneration__copied } from '@/strings/messages/imageGeneration__copied/de';
+import { imageGeneration__preview_empty } from '@/strings/messages/imageGeneration__preview_empty/de';
+import { imageGeneration__newest_first } from '@/strings/messages/imageGeneration__newest_first/de';
+import { imageGeneration__archive_help } from '@/strings/messages/imageGeneration__archive_help/de';
+import { imageGeneration__remove_tag } from '@/strings/messages/imageGeneration__remove_tag/de';
+import { imageGeneration__assistant } from '@/strings/messages/imageGeneration__assistant/de';
+import { imageGeneration__attach_chat } from '@/strings/messages/imageGeneration__attach_chat/de';
+import { imageGeneration__no_chat } from '@/strings/messages/imageGeneration__no_chat/de';
+import { imageGeneration__open_chat } from '@/strings/messages/imageGeneration__open_chat/de';
+import { imageGeneration__detach } from '@/strings/messages/imageGeneration__detach/de';
+import { imageGeneration__assistant_help } from '@/strings/messages/imageGeneration__assistant_help/de';
+import { imageGeneration__assistant_privacy } from '@/strings/messages/imageGeneration__assistant_privacy/de';
+import { imageGeneration__prompt_edit } from '@/strings/messages/imageGeneration__prompt_edit/de';
+import { imageGeneration__before } from '@/strings/messages/imageGeneration__before/de';
+import { imageGeneration__after } from '@/strings/messages/imageGeneration__after/de';
+import { imageGeneration__leave_warning } from '@/strings/messages/imageGeneration__leave_warning/de';
+import { imageGeneration__export_session } from '@/strings/messages/imageGeneration__export_session/de';
+import { imageGeneration__exporting } from '@/strings/messages/imageGeneration__exporting/de';
+import { imageGeneration__interrupted_help } from '@/strings/messages/imageGeneration__interrupted_help/de';
+import { imageGeneration__clear_selection } from '@/strings/messages/imageGeneration__clear_selection/de';
+import { imageGeneration__refresh } from '@/strings/messages/imageGeneration__refresh/de';
+import { imageGeneration__rename } from '@/strings/messages/imageGeneration__rename/de';
+import { imageGeneration__apply_tag } from '@/strings/messages/imageGeneration__apply_tag/de';
+import { imageGeneration__count_help } from '@/strings/messages/imageGeneration__count_help/de';
+import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/de';
+import { imageGeneration__parameters } from '@/strings/messages/imageGeneration__parameters/de';
+import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__lineage/de';
+import { imageGeneration__no_chat_choices } from '@/strings/messages/imageGeneration__no_chat_choices/de';
+import { imageGeneration__export_notice } from '@/strings/messages/imageGeneration__export_notice/de';
+import { imageGeneration__capture_for_assistant } from '@/strings/messages/imageGeneration__capture_for_assistant/de';
+import { ChatPaneHeader__model_and_chat_settings } from '@/strings/messages/ChatPaneHeader__model_and_chat_settings/de';
 import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/de';
 import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/de';
 import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/de';
@@ -132,28 +284,6 @@ import { audioGeneration__number_range } from '@/strings/messages/audioGeneratio
 import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/de';
 import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/de';
 import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/de';
-// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
-// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
-import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/de';
-import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/de';
-import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/de';
-import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/de';
-import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/de';
-import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/de';
-import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/de';
-import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/de';
-import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/de';
-import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/de';
-import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/de';
-import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/de';
-import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/de';
-import { SHARED__mount } from '@/strings/messages/SHARED__mount/de';
-import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/de';
-import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/de';
-import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/de';
-import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/de';
-import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/de';
-import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/de';
 import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/de';
 import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/de';
 import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/de';
@@ -2417,6 +2547,145 @@ import { ImageInputControls__model_support_required } from '@/strings/messages/I
 import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/de';
 
 export const catalog = {
+  // SHARED__ intentionally couples every call site. Follow messages/AGENTS.md.
+  SHARED__all_chats,
+  SHARED__assistant,
+  SHARED__browser_provided,
+  SHARED__cancel,
+  SHARED__choose_which_chats_are_visible_to_the_shell,
+  SHARED__configure_browser_based_shell_access,
+  SHARED__confirm,
+  SHARED__connection_failed_check_url_or_provider,
+  SHARED__current_chat,
+  SHARED__current_chat_plus_chat_group,
+  SHARED__expose_chat_discovery_paths,
+  SHARED__generated_image,
+  SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
+  SHARED__mount,
+  SHARED__new_chat,
+  SHARED__no_models_found_at_this_endpoint,
+  SHARED__unsupported_experimental_endpoint,
+  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
+  SHARED__visibility,
+  SHARED__writable_tmp_is_available_with_opfs_storage,
+  imageGeneration__add_tag,
+  imageGeneration__manage_tags,
+  imageGeneration__notice_dismiss,
+  imageGeneration__notice_body,
+  imageGeneration__notice_title,
+  imageGeneration__copy_failed,
+  imageGeneration__copy_negative_prompt,
+  imageGeneration__float_chat,
+  imageGeneration__dock_chat,
+  imageGeneration__chat_help,
+  imageGeneration__review,
+  imageGeneration__editor,
+  imageGeneration__loading,
+  imageGeneration__run_empty,
+  imageGeneration__compare_equal,
+  imageGeneration__compare_notice,
+  imageGeneration__previous_image,
+  imageGeneration__next_image,
+  imageGeneration__run_status,
+  imageGeneration__queued,
+  imageGeneration__running,
+  imageGeneration__completed,
+  imageGeneration__cancelled,
+  imageGeneration__failed,
+  imageGeneration__interrupted,
+  imageGeneration__more_execution,
+  imageGeneration__saving_required,
+  imageGeneration__next_unavailable,
+  imageGeneration__export_cancelled,
+  imageGeneration__name,
+  imageGeneration__new_session,
+  imageGeneration__sessions,
+  imageGeneration__back_to_chats,
+  imageGeneration__rename_session,
+  imageGeneration__no_sessions,
+  imageGeneration__empty_gallery,
+  imageGeneration__storage_required,
+  imageGeneration__images,
+  imageGeneration__runs,
+  imageGeneration__gallery,
+  imageGeneration__compare,
+  imageGeneration__favorite,
+  imageGeneration__tags,
+  imageGeneration__new_tag,
+  imageGeneration__rename_tag,
+  imageGeneration__tag_rules,
+  imageGeneration__all_tags,
+  imageGeneration__search_images,
+  imageGeneration__load_more,
+  imageGeneration__inspect,
+  imageGeneration__select_compare,
+  imageGeneration__compare_help,
+  imageGeneration__reuse_settings,
+  imageGeneration__reuse_prompt,
+  imageGeneration__initial_image,
+  imageGeneration__reference_image,
+  imageGeneration__close_details,
+  imageGeneration__execution,
+  imageGeneration__save_retry,
+  imageGeneration__pending_save,
+  imageGeneration__draft_saved,
+  imageGeneration__draft_dirty,
+  imageGeneration__draft_saving,
+  imageGeneration__draft_failed,
+  imageGeneration__viewing_other,
+  imageGeneration__create_chat_in_group,
+  imageGeneration__delete_images_notice,
+  imageGeneration__batch_failed,
+  imageGeneration__selected_images,
+  imageGeneration__archive,
+  imageGeneration__restore,
+  imageGeneration__active_images,
+  imageGeneration__archived_images,
+  imageGeneration__all_images,
+  imageGeneration__archive_run,
+  imageGeneration__restore_run,
+  imageGeneration__delete_images,
+  imageGeneration__select_image,
+  imageGeneration__select_loaded,
+  imageGeneration__pending_deletions,
+  imageGeneration__retry_deletions,
+  imageGeneration__unfavorite,
+  imageGeneration__search_chats,
+  imageGeneration__create_and_connect_chat,
+  imageGeneration__change_chat,
+  imageGeneration__copy_prompt,
+  imageGeneration__copy_settings,
+  imageGeneration__copied,
+  imageGeneration__preview_empty,
+  imageGeneration__newest_first,
+  imageGeneration__archive_help,
+  imageGeneration__remove_tag,
+  imageGeneration__assistant,
+  imageGeneration__attach_chat,
+  imageGeneration__no_chat,
+  imageGeneration__open_chat,
+  imageGeneration__detach,
+  imageGeneration__assistant_help,
+  imageGeneration__assistant_privacy,
+  imageGeneration__prompt_edit,
+  imageGeneration__before,
+  imageGeneration__after,
+  imageGeneration__leave_warning,
+  imageGeneration__export_session,
+  imageGeneration__exporting,
+  imageGeneration__interrupted_help,
+  imageGeneration__clear_selection,
+  imageGeneration__refresh,
+  imageGeneration__rename,
+  imageGeneration__apply_tag,
+  imageGeneration__count_help,
+  imageGeneration__actual_seed,
+  imageGeneration__parameters,
+  imageGeneration__lineage,
+  imageGeneration__no_chat_choices,
+  imageGeneration__export_notice,
+  imageGeneration__capture_for_assistant,
+  ChatPaneHeader__model_and_chat_settings,
   LlamaCppBrowserDownloadSources__copy_failed,
   LlamaCppBrowserDownloadSources__url_copied,
   LlamaCppBrowserDownloadSources__copy_url,
@@ -2677,26 +2946,6 @@ export const catalog = {
   audioGeneration__history_memory_usage,
 
 
-  SHARED__all_chats,
-  SHARED__assistant,
-  SHARED__browser_provided,
-  SHARED__cancel,
-  SHARED__choose_which_chats_are_visible_to_the_shell,
-  SHARED__configure_browser_based_shell_access,
-  SHARED__confirm,
-  SHARED__connection_failed_check_url_or_provider,
-  SHARED__current_chat,
-  SHARED__current_chat_plus_chat_group,
-  SHARED__expose_chat_discovery_paths,
-  SHARED__generated_image,
-  SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
-  SHARED__mount,
-  SHARED__new_chat,
-  SHARED__no_models_found_at_this_endpoint,
-  SHARED__unsupported_experimental_endpoint,
-  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
-  SHARED__visibility,
-  SHARED__writable_tmp_is_available_with_opfs_storage,
   LlamaCppBrowserModelRecovery__manage_models,
   LlamaCppBrowserModelRecovery__check_again,
   LlamaCppBrowserModelRecovery__could_not_prepare_download,
@@ -4780,4 +5029,16 @@ export const catalog = {
   ImageInputControls__initial_image_help,
   ImageInputControls__model_support_required,
   imageBenchmark__include_input_images_in_zip,
+  ImageInputControls__reading_clipboard,
+  ImageInputControls__clipboard_no_image,
+  ImageInputControls__clipboard_failed,
+  ImageInputControls__clipboard_unavailable,
+  ImageInputControls__paste_help,
+  ImageInputControls__paste_image,
+  ImageGenerationViewer__details,
+  imageGeneration__action_applied,
+  imageGeneration__generation_session,
+  imageGeneration__choose_chat_help,
+  imageGeneration__close_chat,
+  imageGeneration__open_assistant_chat,
 } satisfies Strings;

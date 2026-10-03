@@ -13,6 +13,8 @@ const actionLabel = computed(() => resolveActionLabel({ actionId: props.request.
 
 function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): string | undefined {
   switch (actionId) {
+  case 'tool.image_generation.set_prompt':
+    return lazyStrings.imageGeneration__prompt_edit();
   case 'tool.wikipedia.search':
     return lazyStrings.chatApproval__search_wikipedia();
   case 'tool.wikipedia.get_page':

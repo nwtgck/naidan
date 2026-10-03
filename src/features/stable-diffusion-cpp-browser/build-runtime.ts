@@ -106,11 +106,16 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 }
 
 const standaloneUiFiles = new Set([
+  'components/ImageGenerationCopyButton.vue', 'components/ImageGenerationUnavailable.vue', 'components/ImageGenerationSidebar.vue', 'components/ImageGenerationPromptApprovalPreview.vue',
+  'session/navigation.ts', 'session/assistant-registry.ts',
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
   'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationViewer.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
   'components/ImageModelCatalog.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
   'components/ImageLoraControls.vue', 'components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue',
   'components/ImageInputControls.vue', 'image-input-form.ts',
+  // Local presentation helpers only. Disabled standalone inputs never invoke
+  // clipboard access; these modules do not load native code or open storage.
+  'image-input-clipboard.ts', 'dialog-keyboard.ts',
   // This component only renders caller-owned progress and pixels; its runtime
   // type import is erased and it never starts inference or creates a Worker.
   'components/ImageGenerationProgress.vue',

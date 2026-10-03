@@ -1,3 +1,155 @@
+// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
+// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
+import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/zh-Hans';
+import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/zh-Hans';
+import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/zh-Hans';
+import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/zh-Hans';
+import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/zh-Hans';
+import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/zh-Hans';
+import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/zh-Hans';
+import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/zh-Hans';
+import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/zh-Hans';
+import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/zh-Hans';
+import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/zh-Hans';
+import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/zh-Hans';
+import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/zh-Hans';
+import { SHARED__mount } from '@/strings/messages/SHARED__mount/zh-Hans';
+import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/zh-Hans';
+import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/zh-Hans';
+import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/zh-Hans';
+import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/zh-Hans';
+import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/zh-Hans';
+import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/zh-Hans';
+import { imageGeneration__add_tag } from '@/strings/messages/imageGeneration__add_tag/zh-Hans';
+import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/zh-Hans';
+import { imageGeneration__notice_dismiss } from '@/strings/messages/imageGeneration__notice_dismiss/zh-Hans';
+import { imageGeneration__notice_body } from '@/strings/messages/imageGeneration__notice_body/zh-Hans';
+import { imageGeneration__notice_title } from '@/strings/messages/imageGeneration__notice_title/zh-Hans';
+import { imageGeneration__copy_failed } from '@/strings/messages/imageGeneration__copy_failed/zh-Hans';
+import { imageGeneration__copy_negative_prompt } from '@/strings/messages/imageGeneration__copy_negative_prompt/zh-Hans';
+import { imageGeneration__float_chat } from '@/strings/messages/imageGeneration__float_chat/zh-Hans';
+import { imageGeneration__dock_chat } from '@/strings/messages/imageGeneration__dock_chat/zh-Hans';
+import { imageGeneration__chat_help } from '@/strings/messages/imageGeneration__chat_help/zh-Hans';
+import { ImageInputControls__reading_clipboard } from '@/strings/messages/ImageInputControls__reading_clipboard/zh-Hans';
+import { ImageInputControls__clipboard_no_image } from '@/strings/messages/ImageInputControls__clipboard_no_image/zh-Hans';
+import { ImageInputControls__clipboard_failed } from '@/strings/messages/ImageInputControls__clipboard_failed/zh-Hans';
+import { ImageInputControls__clipboard_unavailable } from '@/strings/messages/ImageInputControls__clipboard_unavailable/zh-Hans';
+import { ImageInputControls__paste_help } from '@/strings/messages/ImageInputControls__paste_help/zh-Hans';
+import { ImageInputControls__paste_image } from '@/strings/messages/ImageInputControls__paste_image/zh-Hans';
+import { ImageGenerationViewer__details } from '@/strings/messages/ImageGenerationViewer__details/zh-Hans';
+import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/zh-Hans';
+import { imageGeneration__generation_session } from '@/strings/messages/imageGeneration__generation_session/zh-Hans';
+import { imageGeneration__choose_chat_help } from '@/strings/messages/imageGeneration__choose_chat_help/zh-Hans';
+import { imageGeneration__close_chat } from '@/strings/messages/imageGeneration__close_chat/zh-Hans';
+import { imageGeneration__open_assistant_chat } from '@/strings/messages/imageGeneration__open_assistant_chat/zh-Hans';
+import { imageGeneration__export_cancelled } from '@/strings/messages/imageGeneration__export_cancelled/zh-Hans';
+import { imageGeneration__next_unavailable } from '@/strings/messages/imageGeneration__next_unavailable/zh-Hans';
+import { imageGeneration__saving_required } from '@/strings/messages/imageGeneration__saving_required/zh-Hans';
+import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/zh-Hans';
+import { imageGeneration__interrupted } from '@/strings/messages/imageGeneration__interrupted/zh-Hans';
+import { imageGeneration__failed } from '@/strings/messages/imageGeneration__failed/zh-Hans';
+import { imageGeneration__cancelled } from '@/strings/messages/imageGeneration__cancelled/zh-Hans';
+import { imageGeneration__completed } from '@/strings/messages/imageGeneration__completed/zh-Hans';
+import { imageGeneration__running } from '@/strings/messages/imageGeneration__running/zh-Hans';
+import { imageGeneration__queued } from '@/strings/messages/imageGeneration__queued/zh-Hans';
+import { imageGeneration__run_status } from '@/strings/messages/imageGeneration__run_status/zh-Hans';
+import { imageGeneration__next_image } from '@/strings/messages/imageGeneration__next_image/zh-Hans';
+import { imageGeneration__previous_image } from '@/strings/messages/imageGeneration__previous_image/zh-Hans';
+import { imageGeneration__compare_notice } from '@/strings/messages/imageGeneration__compare_notice/zh-Hans';
+import { imageGeneration__compare_equal } from '@/strings/messages/imageGeneration__compare_equal/zh-Hans';
+import { imageGeneration__run_empty } from '@/strings/messages/imageGeneration__run_empty/zh-Hans';
+import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/zh-Hans';
+import { imageGeneration__editor } from '@/strings/messages/imageGeneration__editor/zh-Hans';
+import { imageGeneration__review } from '@/strings/messages/imageGeneration__review/zh-Hans';
+import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/zh-Hans';
+import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/zh-Hans';
+import { imageGeneration__sessions } from '@/strings/messages/imageGeneration__sessions/zh-Hans';
+import { imageGeneration__back_to_chats } from '@/strings/messages/imageGeneration__back_to_chats/zh-Hans';
+import { imageGeneration__rename_session } from '@/strings/messages/imageGeneration__rename_session/zh-Hans';
+import { imageGeneration__no_sessions } from '@/strings/messages/imageGeneration__no_sessions/zh-Hans';
+import { imageGeneration__empty_gallery } from '@/strings/messages/imageGeneration__empty_gallery/zh-Hans';
+import { imageGeneration__storage_required } from '@/strings/messages/imageGeneration__storage_required/zh-Hans';
+import { imageGeneration__images } from '@/strings/messages/imageGeneration__images/zh-Hans';
+import { imageGeneration__runs } from '@/strings/messages/imageGeneration__runs/zh-Hans';
+import { imageGeneration__gallery } from '@/strings/messages/imageGeneration__gallery/zh-Hans';
+import { imageGeneration__compare } from '@/strings/messages/imageGeneration__compare/zh-Hans';
+import { imageGeneration__favorite } from '@/strings/messages/imageGeneration__favorite/zh-Hans';
+import { imageGeneration__tags } from '@/strings/messages/imageGeneration__tags/zh-Hans';
+import { imageGeneration__new_tag } from '@/strings/messages/imageGeneration__new_tag/zh-Hans';
+import { imageGeneration__rename_tag } from '@/strings/messages/imageGeneration__rename_tag/zh-Hans';
+import { imageGeneration__tag_rules } from '@/strings/messages/imageGeneration__tag_rules/zh-Hans';
+import { imageGeneration__all_tags } from '@/strings/messages/imageGeneration__all_tags/zh-Hans';
+import { imageGeneration__search_images } from '@/strings/messages/imageGeneration__search_images/zh-Hans';
+import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/zh-Hans';
+import { imageGeneration__inspect } from '@/strings/messages/imageGeneration__inspect/zh-Hans';
+import { imageGeneration__select_compare } from '@/strings/messages/imageGeneration__select_compare/zh-Hans';
+import { imageGeneration__compare_help } from '@/strings/messages/imageGeneration__compare_help/zh-Hans';
+import { imageGeneration__reuse_settings } from '@/strings/messages/imageGeneration__reuse_settings/zh-Hans';
+import { imageGeneration__reuse_prompt } from '@/strings/messages/imageGeneration__reuse_prompt/zh-Hans';
+import { imageGeneration__initial_image } from '@/strings/messages/imageGeneration__initial_image/zh-Hans';
+import { imageGeneration__reference_image } from '@/strings/messages/imageGeneration__reference_image/zh-Hans';
+import { imageGeneration__close_details } from '@/strings/messages/imageGeneration__close_details/zh-Hans';
+import { imageGeneration__execution } from '@/strings/messages/imageGeneration__execution/zh-Hans';
+import { imageGeneration__save_retry } from '@/strings/messages/imageGeneration__save_retry/zh-Hans';
+import { imageGeneration__pending_save } from '@/strings/messages/imageGeneration__pending_save/zh-Hans';
+import { imageGeneration__draft_saved } from '@/strings/messages/imageGeneration__draft_saved/zh-Hans';
+import { imageGeneration__draft_dirty } from '@/strings/messages/imageGeneration__draft_dirty/zh-Hans';
+import { imageGeneration__draft_saving } from '@/strings/messages/imageGeneration__draft_saving/zh-Hans';
+import { imageGeneration__draft_failed } from '@/strings/messages/imageGeneration__draft_failed/zh-Hans';
+import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/zh-Hans';
+import { imageGeneration__create_chat_in_group } from '@/strings/messages/imageGeneration__create_chat_in_group/zh-Hans';
+import { imageGeneration__delete_images_notice } from '@/strings/messages/imageGeneration__delete_images_notice/zh-Hans';
+import { imageGeneration__batch_failed } from '@/strings/messages/imageGeneration__batch_failed/zh-Hans';
+import { imageGeneration__selected_images } from '@/strings/messages/imageGeneration__selected_images/zh-Hans';
+import { imageGeneration__archive } from '@/strings/messages/imageGeneration__archive/zh-Hans';
+import { imageGeneration__restore } from '@/strings/messages/imageGeneration__restore/zh-Hans';
+import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/zh-Hans';
+import { imageGeneration__archived_images } from '@/strings/messages/imageGeneration__archived_images/zh-Hans';
+import { imageGeneration__all_images } from '@/strings/messages/imageGeneration__all_images/zh-Hans';
+import { imageGeneration__archive_run } from '@/strings/messages/imageGeneration__archive_run/zh-Hans';
+import { imageGeneration__restore_run } from '@/strings/messages/imageGeneration__restore_run/zh-Hans';
+import { imageGeneration__delete_images } from '@/strings/messages/imageGeneration__delete_images/zh-Hans';
+import { imageGeneration__select_image } from '@/strings/messages/imageGeneration__select_image/zh-Hans';
+import { imageGeneration__select_loaded } from '@/strings/messages/imageGeneration__select_loaded/zh-Hans';
+import { imageGeneration__pending_deletions } from '@/strings/messages/imageGeneration__pending_deletions/zh-Hans';
+import { imageGeneration__retry_deletions } from '@/strings/messages/imageGeneration__retry_deletions/zh-Hans';
+import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/zh-Hans';
+import { imageGeneration__search_chats } from '@/strings/messages/imageGeneration__search_chats/zh-Hans';
+import { imageGeneration__create_and_connect_chat } from '@/strings/messages/imageGeneration__create_and_connect_chat/zh-Hans';
+import { imageGeneration__change_chat } from '@/strings/messages/imageGeneration__change_chat/zh-Hans';
+import { imageGeneration__copy_prompt } from '@/strings/messages/imageGeneration__copy_prompt/zh-Hans';
+import { imageGeneration__copy_settings } from '@/strings/messages/imageGeneration__copy_settings/zh-Hans';
+import { imageGeneration__copied } from '@/strings/messages/imageGeneration__copied/zh-Hans';
+import { imageGeneration__preview_empty } from '@/strings/messages/imageGeneration__preview_empty/zh-Hans';
+import { imageGeneration__newest_first } from '@/strings/messages/imageGeneration__newest_first/zh-Hans';
+import { imageGeneration__archive_help } from '@/strings/messages/imageGeneration__archive_help/zh-Hans';
+import { imageGeneration__remove_tag } from '@/strings/messages/imageGeneration__remove_tag/zh-Hans';
+import { imageGeneration__assistant } from '@/strings/messages/imageGeneration__assistant/zh-Hans';
+import { imageGeneration__attach_chat } from '@/strings/messages/imageGeneration__attach_chat/zh-Hans';
+import { imageGeneration__no_chat } from '@/strings/messages/imageGeneration__no_chat/zh-Hans';
+import { imageGeneration__open_chat } from '@/strings/messages/imageGeneration__open_chat/zh-Hans';
+import { imageGeneration__detach } from '@/strings/messages/imageGeneration__detach/zh-Hans';
+import { imageGeneration__assistant_help } from '@/strings/messages/imageGeneration__assistant_help/zh-Hans';
+import { imageGeneration__assistant_privacy } from '@/strings/messages/imageGeneration__assistant_privacy/zh-Hans';
+import { imageGeneration__prompt_edit } from '@/strings/messages/imageGeneration__prompt_edit/zh-Hans';
+import { imageGeneration__before } from '@/strings/messages/imageGeneration__before/zh-Hans';
+import { imageGeneration__after } from '@/strings/messages/imageGeneration__after/zh-Hans';
+import { imageGeneration__leave_warning } from '@/strings/messages/imageGeneration__leave_warning/zh-Hans';
+import { imageGeneration__export_session } from '@/strings/messages/imageGeneration__export_session/zh-Hans';
+import { imageGeneration__exporting } from '@/strings/messages/imageGeneration__exporting/zh-Hans';
+import { imageGeneration__interrupted_help } from '@/strings/messages/imageGeneration__interrupted_help/zh-Hans';
+import { imageGeneration__clear_selection } from '@/strings/messages/imageGeneration__clear_selection/zh-Hans';
+import { imageGeneration__refresh } from '@/strings/messages/imageGeneration__refresh/zh-Hans';
+import { imageGeneration__rename } from '@/strings/messages/imageGeneration__rename/zh-Hans';
+import { imageGeneration__apply_tag } from '@/strings/messages/imageGeneration__apply_tag/zh-Hans';
+import { imageGeneration__count_help } from '@/strings/messages/imageGeneration__count_help/zh-Hans';
+import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/zh-Hans';
+import { imageGeneration__parameters } from '@/strings/messages/imageGeneration__parameters/zh-Hans';
+import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__lineage/zh-Hans';
+import { imageGeneration__no_chat_choices } from '@/strings/messages/imageGeneration__no_chat_choices/zh-Hans';
+import { imageGeneration__export_notice } from '@/strings/messages/imageGeneration__export_notice/zh-Hans';
+import { imageGeneration__capture_for_assistant } from '@/strings/messages/imageGeneration__capture_for_assistant/zh-Hans';
+import { ChatPaneHeader__model_and_chat_settings } from '@/strings/messages/ChatPaneHeader__model_and_chat_settings/zh-Hans';
 import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/zh-Hans';
 import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/zh-Hans';
 import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/zh-Hans';
@@ -132,28 +284,6 @@ import { audioGeneration__number_range } from '@/strings/messages/audioGeneratio
 import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/zh-Hans';
 import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/zh-Hans';
 import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/zh-Hans';
-// SHARED__ keys intentionally couple every call site to one product-wide copy decision.
-// Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
-import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/zh-Hans';
-import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/zh-Hans';
-import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/zh-Hans';
-import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/zh-Hans';
-import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/zh-Hans';
-import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/zh-Hans';
-import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/zh-Hans';
-import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/zh-Hans';
-import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/zh-Hans';
-import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/zh-Hans';
-import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/zh-Hans';
-import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/zh-Hans';
-import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/zh-Hans';
-import { SHARED__mount } from '@/strings/messages/SHARED__mount/zh-Hans';
-import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/zh-Hans';
-import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/zh-Hans';
-import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/zh-Hans';
-import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/zh-Hans';
-import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/zh-Hans';
-import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/zh-Hans';
 import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/zh-Hans';
 import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/zh-Hans';
 import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/zh-Hans';
@@ -2417,6 +2547,146 @@ import { ImageInputControls__model_support_required } from '@/strings/messages/I
 import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/zh-Hans';
 
 export const catalog = {
+  // SHARED__ intentionally couples every call site. Follow messages/AGENTS.md.
+  SHARED__all_chats,
+  SHARED__assistant,
+  SHARED__browser_provided,
+  SHARED__cancel,
+  SHARED__choose_which_chats_are_visible_to_the_shell,
+  SHARED__configure_browser_based_shell_access,
+  SHARED__confirm,
+  SHARED__connection_failed_check_url_or_provider,
+  SHARED__current_chat,
+  SHARED__current_chat_plus_chat_group,
+  SHARED__expose_chat_discovery_paths,
+  SHARED__generated_image,
+  SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
+  SHARED__mount,
+  SHARED__new_chat,
+  SHARED__no_models_found_at_this_endpoint,
+  SHARED__unsupported_experimental_endpoint,
+  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
+  SHARED__visibility,
+  SHARED__writable_tmp_is_available_with_opfs_storage,
+  imageGeneration__add_tag,
+  imageGeneration__manage_tags,
+  imageGeneration__notice_dismiss,
+  imageGeneration__notice_body,
+  imageGeneration__notice_title,
+  imageGeneration__copy_failed,
+  imageGeneration__copy_negative_prompt,
+  imageGeneration__float_chat,
+  imageGeneration__dock_chat,
+  imageGeneration__chat_help,
+  imageGeneration__review,
+  imageGeneration__editor,
+  imageGeneration__loading,
+  imageGeneration__run_empty,
+  imageGeneration__compare_equal,
+  imageGeneration__compare_notice,
+  imageGeneration__previous_image,
+  imageGeneration__next_image,
+  imageGeneration__run_status,
+  imageGeneration__queued,
+  imageGeneration__running,
+  imageGeneration__completed,
+  imageGeneration__cancelled,
+  imageGeneration__failed,
+  imageGeneration__interrupted,
+  imageGeneration__more_execution,
+  imageGeneration__saving_required,
+  imageGeneration__next_unavailable,
+  imageGeneration__export_cancelled,
+  imageGeneration__name,
+  imageGeneration__new_session,
+  imageGeneration__sessions,
+  imageGeneration__back_to_chats,
+  imageGeneration__rename_session,
+  imageGeneration__no_sessions,
+  imageGeneration__empty_gallery,
+  imageGeneration__storage_required,
+  imageGeneration__images,
+  imageGeneration__runs,
+  imageGeneration__gallery,
+  imageGeneration__compare,
+  imageGeneration__favorite,
+  imageGeneration__tags,
+  imageGeneration__new_tag,
+  imageGeneration__rename_tag,
+  imageGeneration__tag_rules,
+  imageGeneration__all_tags,
+  imageGeneration__search_images,
+  imageGeneration__load_more,
+  imageGeneration__inspect,
+  imageGeneration__select_compare,
+  imageGeneration__compare_help,
+  imageGeneration__reuse_settings,
+  imageGeneration__reuse_prompt,
+  imageGeneration__initial_image,
+  imageGeneration__reference_image,
+  imageGeneration__close_details,
+  imageGeneration__execution,
+  imageGeneration__save_retry,
+  imageGeneration__pending_save,
+  imageGeneration__draft_saved,
+  imageGeneration__draft_dirty,
+  imageGeneration__draft_saving,
+  imageGeneration__draft_failed,
+  imageGeneration__viewing_other,
+  imageGeneration__create_chat_in_group,
+  imageGeneration__delete_images_notice,
+  imageGeneration__batch_failed,
+  imageGeneration__selected_images,
+  imageGeneration__archive,
+  imageGeneration__restore,
+  imageGeneration__active_images,
+  imageGeneration__archived_images,
+  imageGeneration__all_images,
+  imageGeneration__archive_run,
+  imageGeneration__restore_run,
+  imageGeneration__delete_images,
+  imageGeneration__select_image,
+  imageGeneration__select_loaded,
+  imageGeneration__pending_deletions,
+  imageGeneration__retry_deletions,
+  imageGeneration__unfavorite,
+  imageGeneration__search_chats,
+  imageGeneration__create_and_connect_chat,
+  imageGeneration__change_chat,
+  imageGeneration__copy_prompt,
+  imageGeneration__copy_settings,
+  imageGeneration__copied,
+  imageGeneration__preview_empty,
+  imageGeneration__newest_first,
+  imageGeneration__archive_help,
+  imageGeneration__remove_tag,
+  imageGeneration__assistant,
+  imageGeneration__attach_chat,
+  imageGeneration__no_chat,
+  imageGeneration__open_chat,
+  imageGeneration__detach,
+  imageGeneration__assistant_help,
+  imageGeneration__assistant_privacy,
+  imageGeneration__prompt_edit,
+  imageGeneration__before,
+  imageGeneration__after,
+  imageGeneration__leave_warning,
+  imageGeneration__export_session,
+  imageGeneration__exporting,
+  imageGeneration__interrupted_help,
+  imageGeneration__clear_selection,
+  imageGeneration__refresh,
+  imageGeneration__rename,
+  imageGeneration__apply_tag,
+  imageGeneration__count_help,
+  imageGeneration__actual_seed,
+  imageGeneration__parameters,
+  imageGeneration__lineage,
+  imageGeneration__no_chat_choices,
+  imageGeneration__export_notice,
+  imageGeneration__capture_for_assistant,
+  ChatPaneHeader__model_and_chat_settings,
+
   LlamaCppBrowserDownloadSources__copy_failed,
   LlamaCppBrowserDownloadSources__url_copied,
   LlamaCppBrowserDownloadSources__copy_url,
@@ -2677,26 +2947,6 @@ export const catalog = {
   audioGeneration__history_memory_usage,
 
 
-  SHARED__all_chats,
-  SHARED__assistant,
-  SHARED__browser_provided,
-  SHARED__cancel,
-  SHARED__choose_which_chats_are_visible_to_the_shell,
-  SHARED__configure_browser_based_shell_access,
-  SHARED__confirm,
-  SHARED__connection_failed_check_url_or_provider,
-  SHARED__current_chat,
-  SHARED__current_chat_plus_chat_group,
-  SHARED__expose_chat_discovery_paths,
-  SHARED__generated_image,
-  SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
-  SHARED__mount,
-  SHARED__new_chat,
-  SHARED__no_models_found_at_this_endpoint,
-  SHARED__unsupported_experimental_endpoint,
-  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
-  SHARED__visibility,
-  SHARED__writable_tmp_is_available_with_opfs_storage,
   LlamaCppBrowserModelRecovery__manage_models,
   LlamaCppBrowserModelRecovery__check_again,
   LlamaCppBrowserModelRecovery__could_not_prepare_download,
@@ -4780,4 +5030,16 @@ export const catalog = {
   ImageInputControls__initial_image_help,
   ImageInputControls__model_support_required,
   imageBenchmark__include_input_images_in_zip,
+  ImageInputControls__reading_clipboard,
+  ImageInputControls__clipboard_no_image,
+  ImageInputControls__clipboard_failed,
+  ImageInputControls__clipboard_unavailable,
+  ImageInputControls__paste_help,
+  ImageInputControls__paste_image,
+  ImageGenerationViewer__details,
+  imageGeneration__action_applied,
+  imageGeneration__generation_session,
+  imageGeneration__choose_chat_help,
+  imageGeneration__close_chat,
+  imageGeneration__open_assistant_chat,
 } satisfies Strings;

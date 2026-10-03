@@ -1,3 +1,7 @@
+import { generateId } from '@/01-models/id';
+import { findDraftImage, findDraftModelFile, type ImageGenerationDraft } from './generation-draft';
+import type { ImageGenerationCompletion, ImageGenerationSubmission } from './generation-submission';
+import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import { downloadBlob } from '@/utils/stream-download';
 import { nanoid } from 'nanoid';
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from './diagnostics';
@@ -27,7 +31,7 @@ import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 import { useImageGenerationHistory } from './history/use-image-generation-history';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
-import { prepareImageHistoryReuse } from './history/reuse';
+import { prepareImageHistoryReuse, prepareImageDraftReuse } from './history/reuse';
 import { downloadImageBlob, imageGenerationDownloadBlob, type ImageGenerationExportImage } from './history/download';
 
 /** Hosted policy and lifecycle. The standalone facade never imports this module. */
@@ -73,6 +77,14 @@ export function useImageGeneration(): ImageGenerationView {
   let activeHistoryId: ImageGenerationId | undefined;
   let historySaveRunning = false;
   let restoredModels: Request['models'] | undefined;
+  const inputIds = new WeakMap<File, BinaryObjectId>();
+  function identifyInput({ file }: { file: File }): BinaryObjectId {
+    let id = inputIds.get(file);
+    if (!id) {
+      id = generateId<BinaryObjectId>(); inputIds.set(file, id);
+    }
+    return id;
+  }
   let preferenceFilesMissing = false;
   const diagnosticBuffer = createImageDiagnosticBuffer();
   const manualFacts = shallowRef<ImageModelFacts>();
@@ -108,6 +120,8 @@ export function useImageGeneration(): ImageGenerationView {
   let disposed = false;
   let client: ReturnType<typeof createImageClient> | undefined;
   let generateStartedAt = 0;
+  let stopRequested = false;
+  let submissionActive = false;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const busy = computed(() => controller.value !== undefined);
   // Basic inputs are a draft for the next immutable request. Context changes
@@ -376,39 +390,123 @@ export function useImageGeneration(): ImageGenerationView {
     historyActions.missingFiles.value = [];
     historyActions.missingInactiveFiles.value = [];
   }
+  function captureDraft(): ImageGenerationDraft | undefined {
+    if (!artifact.value || disposed) return undefined;
+    const slots: ModelSlot[] = (() => {
+      switch (layout.value) {
+      case 'checkpoint': return ['model'];
+      case 'components': return ['diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm'];
+      default: { const exhaustive: never = layout.value; throw new Error(String(exhaustive)); }
+      }
+    })();
+    const sourceCommit = (() => {
+      switch (configuration.kind) {
+      case 'available': return configuration.sourceCommit;
+      case 'unavailable': return '';
+      default: { const exhaustive: never = configuration; throw new Error(String(exhaustive)); }
+      }
+    })();
+    const models = library.main.value ? library.selectedModels() ?? [] : restoredModels ?? slots.flatMap(slot => {
+      const file = files.value[slot]; return file ? [{ slot, file }] : [];
+    });
+    const modelFiles: ImageGenerationDraft['modelFiles'] = [];
+    const snapshot = snapshotImageGeneration({ request: {
+      debug: debug.value, runId: 0, sessionId: '', artifact: artifact.value, baseUrl: window.location.href,
+      models, loras: imageLoraHistorySelections({ selections: form.loras.value }), imageInputs: form.imageInputs.value,
+      parameters: { ...parameters.value }, preview: { ...preview.value }, weightResidency: weightResidency.value,
+      gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value,
+    }, sourceCommit, createdAt: Date.now(), identifyInput,
+    locateFile({ file }) {
+      const location = library.historyFileLocation({ file }); modelFiles.push({ location, file }); return location;
+    } });
+    return { request: snapshot.request, layout: layout.value, modelSelection: library.captureModelSelection({ loras: form.loras.value }),
+      loraStates: form.loras.value.map(({ enabled, strength }) => ({ enabled, strength })), seedMode: seedMode.value, debug: debug.value, retainModel: retainModel.value,
+      keepPreviews: keepPreviews.value, maxPreviews: maxPreviews.value, maxResults: maxResults.value,
+      files: snapshot.inputFiles, modelFiles };
+  }
+  function resetDraft(): void {
+    if (formDisabled.value || disposed) return;
+    parameters.value = { ...parameters.value, prompt: '', negativePrompt: '' };
+    seedMode.value = 'random'; form.imageInputs.value = emptyImageInputs();
+    failure.value = ''; invalid.value = false;
+  }
+  async function restoreDraft({ draft }: { draft: ImageGenerationDraft }): Promise<void> {
+    const restored = await restoreRequest({ request: draft.request, purpose: { type: 'draft', loraStates: draft.loraStates, layout: draft.layout, modelSelection: draft.modelSelection },
+      findFile: ({ location }) => findDraftModelFile({ entries: draft.modelFiles, location }) ?? library.findHistoryFile({ location }),
+      getImage: async ({ binaryObjectId }) => findDraftImage({ files: draft.files, binaryObjectId }) ?? await history.getImage({ binaryObjectId }),
+    });
+    if (!restored || disposed) return;
+    seedMode.value = draft.seedMode; debug.value = draft.debug; retainModel.value = draft.retainModel;
+    keepPreviews.value = draft.keepPreviews; maxPreviews.value = draft.maxPreviews; maxResults.value = draft.maxResults;
+    // Reuse the existing identities after resolving input files from persistence.
+    const inputs = form.imageInputs.value;
+    if (inputs.initImage && draft.request.imageInputs.initImage) inputIds.set(inputs.initImage, draft.request.imageInputs.initImage.binaryObjectId);
+    inputs.referenceImages.forEach((file, index) => {
+      const image = draft.request.imageInputs.referenceImages[index]; if (image) inputIds.set(file, image.binaryObjectId);
+    });
+  }
   async function reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void> {
-    if (formDisabled.value || library.importing.value || disposed) return;
+    await restoreRequest({ request: record.request, purpose: { type: 'history' }, findFile: library.findHistoryFile, getImage: history.getImage });
+  }
+  async function restoreRequest({ request, findFile, getImage, purpose }: {
+    purpose: { type: 'history' } | { type: 'draft', loraStates: ImageGenerationDraft['loraStates'], layout: ImageGenerationDraft['layout'], modelSelection: ImageGenerationDraft['modelSelection'] },
+    request: ImageGenerationRecord['request'],
+    findFile: ({ location }: { location: ImageGenerationRecord['request']['models'][number]['file'] }) => File | undefined,
+    getImage: ({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) => Promise<Blob | undefined>,
+  }): Promise<boolean> {
+    if (formDisabled.value || library.importing.value || disposed) return false;
     historyActions.busy.value = true;
     historyActions.error.value = '';
     const revision = storageRevision.value;
     try {
       await library.prepareHistoryFiles();
-      if (disposed || revision !== storageRevision.value) return;
-      const restored = await prepareImageHistoryReuse({ record, findFile: library.findHistoryFile, getImage: history.getImage });
-      if (disposed || revision !== storageRevision.value) return;
+      if (disposed || revision !== storageRevision.value) return false;
+      const restored = await (() => {
+        switch (purpose.type) {
+        case 'draft': return prepareImageDraftReuse({ record: { request }, findFile, getImage, loraStates: purpose.loraStates });
+        case 'history': return prepareImageHistoryReuse({ record: { request }, findFile, getImage });
+        default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+        }
+      })();
+      if (disposed || revision !== storageRevision.value) return false;
       // All reads/validation finish before changing the editor. Missing weights
       // are an explicit re-selection state, never a fallback to another model.
       historyActions.busy.value = false;
       library.useManualFiles();
-      layout.value = restored.models.some(model => model.slot === 'diffusion') ? 'components' : 'checkpoint';
+      switch (purpose.type) {
+      case 'draft': layout.value = purpose.layout; break;
+      case 'history': layout.value = restored.models.some(model => model.slot === 'diffusion') ? 'components' : 'checkpoint'; break;
+      default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+      }
       files.value = Object.fromEntries(restored.models.map(model => [model.slot, model.file]));
+      // Base-model changes intentionally clear adapters/inputs elsewhere. Apply
+      // ALL primary selections first, then restore dependent draft state once.
+      const selection = (() => {
+        switch (purpose.type) {
+        case 'draft': return purpose.modelSelection ? library.restoreModelSelection({ selection: purpose.modelSelection }) : undefined;
+        case 'history': return undefined;
+        default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+        }
+      })();
       parameters.value = restored.parameters;
       seedMode.value = 'fixed';
       preview.value = restored.preview;
-      profile.value = record.request.runtime.profile;
-      weightResidency.value = record.request.runtime.weightResidency;
-      gpuBudgetMiB.value = record.request.runtime.gpuBudgetMiB ?? '';
-      form.loras.value = restored.loras;
+      profile.value = request.runtime.profile;
+      weightResidency.value = request.runtime.weightResidency;
+      gpuBudgetMiB.value = request.runtime.gpuBudgetMiB ?? '';
+      form.loras.value = selection?.loras ?? restored.loras;
       form.imageInputs.value = restored.imageInputs;
       restoredModels = restored.models.length ? restored.models : undefined;
       preferenceFilesMissing = false;
-      historyActions.missingFiles.value = restored.missing;
-      historyActions.missingInactiveFiles.value = restored.missingInactive;
+      historyActions.missingFiles.value = [...new Set([...restored.missing, ...(selection?.missing ?? [])])];
+      historyActions.missingInactiveFiles.value = [...new Set([...restored.missingInactive, ...(selection?.missingInactive ?? [])])];
       invalid.value = false;
       failure.value = '';
       manualFacts.value = undefined;
+      return true;
     } catch (cause) {
       if (!disposed && revision === storageRevision.value) historyActions.error.value = cause instanceof Error ? cause.message : String(cause);
+      return false;
     } finally {
       historyActions.busy.value = false;
     }
@@ -423,6 +521,7 @@ export function useImageGeneration(): ImageGenerationView {
       if (disposed || revision !== storageRevision.value) return;
       if (!blob) throw new Error('The saved image is missing');
       const file = new File([blob], 'history-image.png', { type: blob.type });
+      inputIds.set(file, binaryObjectId);
       switch (role) {
       case 'initial': form.imageInputs.value = { ...form.imageInputs.value, initImage: file }; break;
       case 'reference': form.imageInputs.value = { ...form.imageInputs.value, referenceImages: [...form.imageInputs.value.referenceImages, file] }; break;
@@ -489,7 +588,7 @@ export function useImageGeneration(): ImageGenerationView {
     // history/reuse error, or leave download errors visible on another pane.
     return { status: 'failed', message };
   }
-  async function generate(): Promise<void> {
+  async function generate({ submission }: { submission?: ImageGenerationSubmission } = {}): Promise<void> {
     if (!supported.value || !artifact.value || formDisabled.value || historyActions.missingFiles.value.length || library.importing.value || disposed) return;
     historySaving.status.value = 'idle';
     historySaving.error.value = '';
@@ -526,6 +625,12 @@ export function useImageGeneration(): ImageGenerationView {
     if (!parsed.success) {
       invalid.value = true; return;
     }
+    let seeds: string[];
+    try {
+      seeds = planImageGenerationSeeds({ baseSeed: parsed.data.parameters.seed, count: submission?.count ?? 1 });
+    } catch {
+      invalid.value = true; return;
+    }
     parameters.value.seed = parsed.data.parameters.seed;
     const sourceCommit = (() => {
       switch (configuration.kind) {
@@ -536,9 +641,9 @@ export function useImageGeneration(): ImageGenerationView {
     })();
     // Preserve disabled selections in history without making their files part
     // of request validation, Worker transport or native model loading.
-    const snapshot = snapshotImageGeneration({ request: { ...parsed.data, loras: imageLoraHistorySelections({ selections: form.loras.value }) }, sourceCommit, locateFile: library.historyFileLocation, createdAt: Date.now() });
+    const snapshot = snapshotImageGeneration({ request: { ...parsed.data, loras: imageLoraHistorySelections({ selections: form.loras.value }) }, sourceCommit, locateFile: library.historyFileLocation, createdAt: Date.now(), identifyInput });
     activeHistoryId = snapshot.id;
-    const saveThisGeneration = historySaving.enabled.value && historySaving.supported.value;
+    const saveThisGeneration = submission === undefined && historySaving.enabled.value && historySaving.supported.value;
     const runPreviewIds = new Set<number>();
     diagnosticBuffer.clear(); diagnosticText.value = ''; diagnosticStatus.value = ''; diagnosticFeedback.value = '';
     liveGallery.clear(); livePreview.value = undefined;
@@ -549,91 +654,131 @@ export function useImageGeneration(): ImageGenerationView {
     const operation = new AbortController(); controller.value = operation;
     progress.value = { phase: 'runtime', step: 0, steps: 0 };
     let finalImageReceived = false;
+    let completion: ImageGenerationCompletion = { type: 'cancelled' };
+    stopRequested = false;
+    submissionActive = submission !== undefined;
     try {
+      // Set busy before awaiting persistence, so double clicks cannot create two
+      // owners. The consumer captures the destination before any asynchronous work.
+      if (submission) await submission.accepted({ snapshot, seeds: [...seeds] });
+      if (disposed || operation.signal.aborted || stopRequested) return;
       client ??= createImageClient({ onReleased: () => {
         modelResident.value = false; engineState.invalidate();
       } });
-      const result = await client.generate({ request: parsed.data, signal: operation.signal, onDiagnostic: recordDiagnostic, onProgress({ event }) {
-        if (!disposed && !operation.signal.aborted) {
-          progress.value = event;
-          switch (event.phase) {
-          case 'model': modelResident.value = false; break;
-          case 'runtime': case 'sampling': case 'decoding': case 'encoding': break;
-          default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+      for (const [index, actualSeed] of seeds.entries()) {
+        if (disposed || operation.signal.aborted || stopRequested) break;
+        // Each image has its own preview phase. A previous image's success must
+        // not hide previews or failures of the next image in the same run.
+        finalImageReceived = false;
+        form.latestRun.value = { ...runDimensions, status: 'running' };
+        const imageRequest = { ...parsed.data, parameters: { ...parsed.data.parameters, seed: actualSeed } };
+        const imageSnapshot = { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed: actualSeed } } };
+        generateStartedAt = now();
+        runPreviewIds.clear();
+        liveGallery.clear(); livePreview.value = undefined;
+        progress.value = { phase: 'runtime', step: 0, steps: 0 };
+        const result = await client.generate({ request: imageRequest, signal: operation.signal, onDiagnostic: recordDiagnostic, onProgress({ event }) {
+          if (!disposed && !operation.signal.aborted) {
+            progress.value = event;
+            switch (event.phase) {
+            case 'model': modelResident.value = false; break;
+            case 'runtime': case 'sampling': case 'decoding': case 'encoding': break;
+            default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+            }
+          }
+        }, onPreview({ frame }) {
+          if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) return;
+          const { png, ...metadata } = frame;
+          const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
+          liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
+          livePreview.value = liveGallery.entries()[0];
+          if (keepPreviews.value) {
+            const saved = snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: { ...entry, request: imageSnapshot.request } });
+            runPreviewIds.add(saved.id);
+            previewSnapshots.value = snapshotGallery.entries();
+          }
+        } });
+        if (disposed || operation.signal.aborted) break;
+        progress.value = undefined;
+        if ('cancelled' in result) {
+          modelResident.value = result.modelResident;
+          stopRequested = true;
+          break;
+        }
+        finalImageReceived = true;
+        const elapsedMs = Math.max(0, now() - generateStartedAt);
+        form.latestRun.value = { ...runDimensions, status: 'succeeded' };
+        const finalEntry = finalGallery.add({ blob: result.png, width: result.width, height: result.height,
+          metadata: { parameters: parametersSchema.parse(imageRequest.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs, request: imageSnapshot.request, image: { kind: 'final', width: result.width, height: result.height } } });
+        results.value = finalGallery.entries();
+        prunePendingHistory();
+        modelResident.value = true;
+        if (submission || saveThisGeneration && historySaving.supported.value) {
+          const previews: PreviewFrame[] = snapshotGallery.entries().flatMap(entry => {
+            if (!runPreviewIds.has(entry.id)) return [];
+            const png = snapshotGallery.getBlob({ id: entry.id });
+            const { id: _id, url: _url, elapsedMs: _elapsedMs, request: _request, ...frame } = entry;
+            return png ? [{ ...frame, png }] : [];
+          });
+          const output = finishImageGenerationSnapshot({ snapshot: imageSnapshot, result, previews, elapsedMs });
+          if (submission) await submission.output({ index, ...output });
+          else {
+            pendingSaves.set(finalEntry.id, output);
+            historySaving.pendingCount.value = pendingSaves.size;
+            await retryHistorySave();
           }
         }
-      }, onPreview({ frame }) {
-        if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) return;
-        const { png, ...metadata } = frame;
-        const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
-        liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
-        livePreview.value = liveGallery.entries()[0];
-        if (keepPreviews.value) {
-          // Keep only serializable settings, not the run's model/input Files.
-          const saved = snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: { ...entry, request: snapshot.request } });
-          runPreviewIds.add(saved.id);
-          previewSnapshots.value = snapshotGallery.entries();
-        }
-      } });
-      if (disposed) return;
-      if (operation.signal.aborted) {
-        cancelled.value = true;
-        form.latestRun.value = { ...runDimensions, status: 'cancelled' };
-        return;
+        if (index === seeds.length - 1) completion = { type: 'completed' };
       }
-      // Inference stop controls cannot interrupt the subsequent OPFS save.
-      // Keep the operation busy until saving settles, but end its progress now.
-      progress.value = undefined; stopping.value = false;
-      if ('cancelled' in result) {
-        form.latestRun.value = { ...runDimensions, status: 'cancelled' };
-        cancelled.value = true; modelResident.value = result.modelResident;
-        if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
-        return;
-      }
-      finalImageReceived = true;
-      form.latestRun.value = { ...runDimensions, status: 'succeeded' };
-      const finalEntry = finalGallery.add({ blob: result.png, width: result.width, height: result.height,
-        metadata: { parameters: parametersSchema.parse(parsed.data.parameters), modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs: Math.max(0, now() - generateStartedAt), request: snapshot.request, image: { kind: 'final', width: result.width, height: result.height } } });
-      results.value = finalGallery.entries();
-      prunePendingHistory();
-      modelResident.value = true;
-      if (!retainModel.value) releaseFor({ reason: 'retention-disabled' });
-      if (saveThisGeneration && historySaving.supported.value) {
-        const previews: PreviewFrame[] = snapshotGallery.entries().flatMap(entry => {
-          if (!runPreviewIds.has(entry.id)) return [];
-          const png = snapshotGallery.getBlob({ id: entry.id });
-          const { id: _id, url: _url, elapsedMs: _elapsedMs, request: _request, ...frame } = entry;
-          return png ? [{ ...frame, png }] : [];
-        });
-        pendingSaves.set(finalEntry.id, finishImageGenerationSnapshot({ snapshot, result, previews, elapsedMs: Math.max(0, now() - generateStartedAt) }));
-        historySaving.pendingCount.value = pendingSaves.size;
-        await retryHistorySave();
+      switch (completion.type) {
+      case 'completed': break;
+      case 'cancelled': cancelled.value = true; form.latestRun.value = { ...runDimensions, status: 'cancelled' }; break;
+      default: { const exhaustive: never = completion; throw new Error(String(exhaustive)); }
       }
     } catch (error) {
       releaseFor({ reason: 'failed' });
+      if (operation.signal.aborted || disposed) completion = { type: 'cancelled' };
+      else completion = { type: 'failed', message: (error instanceof Error ? error.message : String(error)).slice(-32768) };
       if (!disposed) {
-        if (operation.signal.aborted) {
+        switch (completion.type) {
+        case 'cancelled':
           cancelled.value = true;
           if (!finalImageReceived) form.latestRun.value = { ...runDimensions, status: 'cancelled' };
-        } else {
-          failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
+          break;
+        case 'failed':
+          failure.value = completion.message;
           if (!finalImageReceived) form.latestRun.value = { ...runDimensions, status: 'failed', failure: failure.value };
+          break;
+        default: { const exhaustive: never = completion; throw new Error(String(exhaustive)); }
         }
       }
     } finally {
-      if (!disposed) {
-        controller.value = undefined; progress.value = undefined; stopping.value = false;
-        engineState.afterRun();
+      // End native progress before saving terminal metadata. Partial outputs and
+      // failed-save buffers belong to the consumer, even when the page is leaving.
+      progress.value = undefined;
+      try {
+        await submission?.finished({ completion });
+      } catch (error) {
+        if (!disposed) failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
+      } finally {
+        submissionActive = false;
+        if (!disposed) {
+          controller.value = undefined; stopping.value = false;
+          // Retention is a run-level policy, not a per-image policy.
+          if (!retainModel.value && modelResident.value) releaseFor({ reason: 'retention-disabled' });
+          engineState.afterRun();
+        }
       }
     }
   }
   function cancel(): void {
-    if (!busy.value || !progress.value || stopping.value) return;
-    stopping.value = true; client?.cancel();
+    if (!busy.value || (!progress.value && !submissionActive) || stopping.value) return;
+    stopRequested = true; stopping.value = true;
+    if (progress.value) client?.cancel();
   }
   function forceCancel(): void {
-    if (!busy.value || !progress.value) return;
-    controller.value?.abort();
+    if (!busy.value || (!progress.value && !submissionActive)) return;
+    stopRequested = true; controller.value?.abort();
   }
   const { settings, initialized, updateExperimental } = useSettings();
   const { addErrorEvent } = useGlobalEvents();
@@ -664,7 +809,7 @@ export function useImageGeneration(): ImageGenerationView {
     savedHistoryIds.value.clear();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, captureDraft, restoreDraft, resetDraft, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

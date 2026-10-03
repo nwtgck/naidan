@@ -981,3 +981,120 @@ it('clears only preference-restoration missing files when a usable base model is
   expect(view.historyActions.missingFiles.value).toEqual([]);
   await view.generate(); expect(mocks.generate).toHaveBeenCalledOnce();
 });
+
+describe('Image Generation submission and draft integration', () => {
+  function submission({ count }: { count: number }) {
+    return { count, accepted: vi.fn<import('./generation-submission').ImageGenerationSubmission['accepted']>().mockResolvedValue(),
+      output: vi.fn<import('./generation-submission').ImageGenerationSubmission['output']>().mockResolvedValue(),
+      finished: vi.fn<import('./generation-submission').ImageGenerationSubmission['finished']>().mockResolvedValue() };
+  }
+  it('accepts one immutable plan, publishes consecutive actual seeds and releases the model only after the run', async () => {
+    const view = open(), sink = submission({ count: 3 });
+    view.seedMode.value = 'fixed'; view.parameters.value.seed = '9007199254740993'; view.retainModel.value = false;
+    await nextTick(); mocks.release.mockClear();
+    sink.output.mockImplementation(async () => {
+      expect(mocks.release).not.toHaveBeenCalled();
+      view.parameters.value = { ...view.parameters.value, prompt: 'next draft', width: 512 };
+    });
+    await view.generate({ submission: sink });
+    expect(sink.accepted).toHaveBeenCalledOnce();
+    expect(sink.accepted.mock.calls[0]?.[0].seeds).toEqual(['9007199254740993', '9007199254740994', '9007199254740995']);
+    expect(mocks.generate).toHaveBeenCalledTimes(3);
+    expect(mocks.generate.mock.calls.map(call => call[0].request.parameters)).toEqual(['9007199254740993', '9007199254740994', '9007199254740995'].map(seed => ({ ...parametersFixture(), seed })));
+    expect(sink.output.mock.calls.map(call => [call[0].index, call[0].record.request.parameters.seed])).toEqual([[0, '9007199254740993'], [1, '9007199254740994'], [2, '9007199254740995']]);
+    expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'completed' } });
+    expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.release).toHaveBeenCalledOnce();
+    expect(view.parameters.value.prompt).toBe('next draft'); expect(view.busy.value).toBe(false);
+  });
+  it('shows each new image as running instead of retaining the previous completed preview', async () => {
+    const view = open(), sink = submission({ count: 3 });
+    const generate = mocks.generate.getMockImplementation(); if (!generate) throw new Error('Missing native fixture.');
+    const phases: (string | undefined)[] = [];
+    mocks.generate.mockImplementation(async (...args) => {
+      phases.push(view.latestRun.value?.status);
+      expect(view.livePreview.value).toBeUndefined();
+      return generate(...args);
+    });
+    sink.output.mockImplementation(async () => {
+      expect(view.latestRun.value?.status).toBe('succeeded');
+    });
+    await view.generate({ submission: sink });
+    expect(phases).toEqual(['running', 'running', 'running']);
+    expect(view.latestRun.value?.status).toBe('succeeded');
+  });
+  it('keeps earlier images but reports failure of a later image rather than leaving it running', async () => {
+    const view = open(), sink = submission({ count: 3 });
+    const generate = mocks.generate.getMockImplementation(); if (!generate) throw new Error('Missing native fixture.');
+    mocks.generate.mockImplementationOnce(generate).mockRejectedValueOnce(new Error('second image failed'));
+    await view.generate({ submission: sink });
+    expect(view.results.value).toHaveLength(1);
+    expect(view.latestRun.value).toMatchObject({ status: 'failed', failure: 'second image failed' });
+    expect(view.busy.value).toBe(false);
+    expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'second image failed' } });
+  });
+  it('does not start inference when the accepted request cannot be persisted', async () => {
+    const view = open(), sink = submission({ count: 4 });
+    sink.accepted.mockRejectedValueOnce(new Error('storage full'));
+    await view.generate({ submission: sink });
+    expect(mocks.generate).not.toHaveBeenCalled(); expect(sink.output).not.toHaveBeenCalled();
+    expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'storage full' } });
+    expect(view.failure.value).toBe('storage full'); expect(view.busy.value).toBe(false);
+  });
+  it('waits for each save and permits cancellation between native calls', async () => {
+    const view = open(), sink = submission({ count: 4 }), saving = Promise.withResolvers<void>();
+    sink.output.mockReturnValueOnce(saving.promise);
+    const running = view.generate({ submission: sink }); await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce(); expect(view.busy.value).toBe(true);
+    view.cancel(); saving.resolve(); await running;
+    expect(mocks.generate).toHaveBeenCalledOnce(); expect(sink.output).toHaveBeenCalledOnce();
+    expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'cancelled' } });
+    expect(view.cancelled.value).toBe(true);
+  });
+  it('does not automatically retry inference after an output-save failure', async () => {
+    const view = open(), sink = submission({ count: 4 });
+    sink.output.mockRejectedValueOnce(new Error('save failed'));
+    await view.generate({ submission: sink });
+    expect(mocks.generate).toHaveBeenCalledOnce(); expect(sink.output).toHaveBeenCalledOnce();
+    expect(view.results.value).toHaveLength(1);
+    expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'save failed' } });
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it('rejects seed overflow before accepting a run or starting native execution', async () => {
+    const view = open(), sink = submission({ count: 2 });
+    view.seedMode.value = 'fixed'; view.parameters.value.seed = '9223372036854775807';
+    await view.generate({ submission: sink });
+    expect(mocks.generate).not.toHaveBeenCalled(); expect(sink.accepted).not.toHaveBeenCalled();
+    expect(view.invalid.value).toBe(true);
+  });
+  it('rejects a second generate click while request persistence is pending', async () => {
+    const view = open(), sink = submission({ count: 2 }), accepted = Promise.withResolvers<void>();
+    sink.accepted.mockReturnValueOnce(accepted.promise);
+    const running = view.generate({ submission: sink }); await flushPromises();
+    await view.generate({ submission: sink }); expect(sink.accepted).toHaveBeenCalledOnce();
+    accepted.resolve(); await running; expect(mocks.generate).toHaveBeenCalledTimes(2);
+  });
+  it('restores an incomplete draft including an empty prompt, partial seed, layout and a disabled adapter strength', async () => {
+    const view = open(); view.layout.value = 'components';
+    view.parameters.value.prompt = ''; view.parameters.value.seed = '';
+    view.parameters.value.width = 0; view.seedMode.value = 'fixed';
+    const file = ggufFile();
+    view.loras.value = [{ enabled: false, strength: 0.75, file, path: 'draft-adapter.gguf', sourceLabel: 'Draft adapter' }];
+    const draft = view.captureDraft?.(); if (!draft) throw new Error('Expected hosted draft capture');
+    view.parameters.value.prompt = 'unrelated'; view.parameters.value.seed = '42';
+    view.loras.value = []; view.layout.value = 'checkpoint';
+    await view.restoreDraft?.({ draft });
+    expect(view.historyActions.error.value).toBe('');
+    expect(view.parameters.value).toMatchObject({ prompt: '', seed: '', width: 0 });
+    expect(view.layout.value).toBe('components'); expect(view.seedMode.value).toBe('fixed');
+    expect(view.loras.value).toMatchObject([{ enabled: false, strength: 0.75, path: 'draft-adapter.gguf' }]);
+    await view.generate(); expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it('preserves draft input binary identities and the bytes without relying on the global history', async () => {
+    const view = open(); view.imageInputs.value.initImage = new File(['original'], 'initial.png', { type: 'image/png' });
+    const first = view.captureDraft?.(); if (!first) throw new Error('Expected draft');
+    await view.restoreDraft?.({ draft: first });
+    const second = view.captureDraft?.();
+    expect(second?.request.imageInputs.initImage?.binaryObjectId).toBe(first.request.imageInputs.initImage?.binaryObjectId);
+    expect(second?.files[0]?.blob.size).toBe(8); expect(mocks.getFile).not.toHaveBeenCalled();
+  });
+});

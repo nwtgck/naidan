@@ -10,7 +10,7 @@ import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
 import ImageEngineState from './ImageEngineState.vue';
-const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
+const props = defineProps<{ view: ImageGenerationView, active: boolean, persistence?: 'history' | 'workspace', presentation?: 'full' | 'settings' }>();
 const emit = defineEmits<{ openHistory: [value: { id: ImageGenerationId | undefined }], prepare: [] }>();
 const saveHistory = props.view.historySaving.enabled;
 const historyHelpOpen = ref(false);
@@ -77,7 +77,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <div tw-class="min-w-0 flex flex-col gap-5" data-testid="image-results-workspace">
-    <section tw-class="space-y-3">
+    <section v-if="presentation !== 'settings'" tw-class="space-y-3">
       <div v-if="!results.length && !pendingImage && !unfinishedImage" tw-class="min-h-64 flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/20 p-8 text-center" data-testid="image-results-empty">
         <ImageIcon tw-class="w-10 h-10 text-gray-300 dark:text-gray-600" />
         <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__no_images_yet() }}</p>
@@ -114,8 +114,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </article>
       </div>
     </section>
-    <ImageGenerationPreview :view="view" :active="active" :live-placement="pendingImage || currentResultArrived ? 'result' : 'panel'" />
-    <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 px-3" data-testid="image-history-saving">
+    <ImageGenerationPreview :view="view" :active="active" :live-placement="presentation === 'settings' || pendingImage || currentResultArrived ? 'result' : 'panel'" />
+    <section v-if="props.persistence !== 'workspace'" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 px-3" data-testid="image-history-saving">
       <div tw-class="flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1.5">
         <label tw-class="inline-flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium leading-tight">
           <input v-model="saveHistory" :disabled="view.draftDisabled.value || !view.historySaving.supported.value" type="checkbox" role="switch" data-testid="image-save-history" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" /><span>{{ lazyStrings.ImageGenerationResults__save_generation_history() }}</span></label>
@@ -145,7 +145,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
     </section>
-    <ImageSettingsSection :title="lazyStrings.ImageGenerationResults__display_settings()" :summary="maxResults.toString()">
+    <ImageSettingsSection v-if="presentation !== 'settings'" :title="lazyStrings.ImageGenerationResults__display_settings()" :summary="maxResults.toString()">
       <div tw-class="flex flex-wrap items-center gap-3 text-xs">
         <label tw-class="inline-flex gap-2 items-center">
           <span>{{ lazyStrings.ImageGenerationResults__images_kept_on_screen() }}</span>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
+import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
 
@@ -10,6 +11,8 @@ const props = defineProps<{
   postStartupFeatures: PostStartupFeatureActivation,
 }>();
 
+const { active: generationNavigation } = useImageGenerationWorkspaceNavigation();
+const ImageGenerationSidebar = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue'));
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));
 
 const { isSidebarOpen, isDebugOpen } = useLayout();
@@ -43,7 +46,8 @@ defineExpose({
 <template>
   <MainLayoutFrame :sidebar-width="sidebarWidth">
     <template #sidebar>
-      <Sidebar />
+      <ImageGenerationSidebar v-if="generationNavigation" :navigation="generationNavigation" />
+      <Sidebar v-else />
     </template>
 
     <template #main>
