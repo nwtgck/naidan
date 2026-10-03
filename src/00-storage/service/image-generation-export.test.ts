@@ -53,3 +53,16 @@ it.each(['draft', 'asset', 'annotations'])('fails explicitly on unknown %s metad
   await expect(collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id })).rejects.toThrow();
   expect(file.text).toContain('future');
 });
+it('excludes translation destinations and authentication from shareable session exports', async () => {
+  const h = await setup();
+  const translation = { endpoint: { type: 'openai' as const, url: 'https://private-translator.test', httpHeaders: [['Authorization', 'private-secret']] as [string, string][] }, modelId: 'private-model' };
+  const catalog = await service.loadImageGenerationCatalog({ store: h.store });
+  await service.saveImageGenerationCatalog({ store: h.store, expectedRevision: catalog.revision, catalog: { ...catalog, revision: catalog.revision + 1, preferences: { ...catalog.preferences, translation } } });
+  await service.saveImageGenerationSession({ store: h.store, session: { ...h.session, revision: 1, translation }, expectedRevision: 0 });
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  for (const entry of snapshot.metadata) {
+    const text = await entry.blob.text();
+    expect(text).not.toContain('private-secret'); expect(text).not.toContain('private-translator'); expect(text).not.toContain('private-model');
+  }
+  expect((await service.loadImageGenerationCatalog({ store: h.store })).preferences.translation).toEqual(translation);
+});

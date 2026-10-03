@@ -358,7 +358,7 @@ describe('ChatPane Group Inheritance UI', () => {
     // Header badge should show the specific model without suffix
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
     expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('Chat: specific-model');
-    expect(modelBadge.text()).toContain('Model and chat settings');
+    expect(modelBadge.attributes('aria-label')).toBe('Model and chat settings');
     expect(modelBadge.text()).not.toContain('Global:');
     expect(modelBadge.text()).not.toContain('Chat Group:');
 

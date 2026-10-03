@@ -47,7 +47,7 @@ export async function imageGenerationSessionDirectory({ directory, sessionId }: 
   }
   // A directory is not a session without a validated canonical session record.
   const session = await (await imageGenerationSessionTable({ directory, create: false })).load({ id: sessionId });
-  return session ? parent : undefined;
+  return session && session.state !== 'deleted' && session.state !== 'deleting' ? parent : undefined;
 }
 
 export async function imageGenerationRunTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {

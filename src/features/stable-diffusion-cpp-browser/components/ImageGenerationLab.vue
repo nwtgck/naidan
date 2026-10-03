@@ -4,7 +4,7 @@ import { ImageIcon, FolderOpenIcon, HistoryIcon, SlidersHorizontalIcon } from 'l
 import { lazyStrings } from '@/strings';
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark';
-import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
+import type { BinaryObjectId, ImageGenerationId, ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 import ImageGenerationHistory from './ImageGenerationHistory.vue';
 import ImageGenerationEditor from './ImageGenerationEditor.vue';
@@ -14,7 +14,9 @@ import ImageModelCatalog from './ImageModelCatalog.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageBenchmark from './ImageBenchmark.vue';
-const props = defineProps<{ workspace?: boolean }>();
+const props = defineProps<{ workspace?: boolean, sessionId?: ImageGenerationSessionId }>();
+const emit = defineEmits<{ openGeneration: [] }>();
+const ImageGenerationTranslationDefaults = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationDefaults.vue'));
 const ImageGenerationWorkspace = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue'));
 const id = useId();
 const view = useImageGeneration();
@@ -47,6 +49,11 @@ const tabs = computed(() => [
   { id: 'measure' as const, label: lazyStrings.imageBenchmark__diagnostics(), icon: SlidersHorizontalIcon },
 ]);
 function openTab({ tab }: { tab: typeof activeTab.value }): void {
+  // A different session can still be the same generate tab. Do not lose its URL
+  // change to defineModel's same-value suppression.
+  if (props.workspace && tab === 'generate') {
+    emit('openGeneration'); return;
+  }
   activeTab.value = tab;
 }
 function tabKey({ event }: { event: KeyboardEvent }): void {
@@ -116,7 +123,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
       <div :tw-class="props.workspace && activeTab === 'generate' ? 'flex-1 min-h-0' : 'space-y-6'">
         <div :tw-class="['min-w-0 w-full', props.workspace && activeTab === 'generate' ? 'h-full' : 'flex-1']">
           <!-- Pane visibility must not own the form, generation, downloads, or result URLs. -->
-          <ImageGenerationWorkspace v-if="props.workspace" v-show="activeTab === 'generate'" :generation="view" :active="activeTab === 'generate'" @models="openTab({ tab: 'models' })" @diagnostics="openTab({ tab: 'measure' })" @workspace="openTab({ tab: 'generate' })" />
+          <ImageGenerationWorkspace :session-id="props.sessionId" v-if="props.workspace" v-show="activeTab === 'generate'" :generation="view" :active="activeTab === 'generate'" @models="openTab({ tab: 'models' })" @diagnostics="openTab({ tab: 'measure' })" @workspace="openTab({ tab: 'generate' })" />
           <div v-if="!props.workspace" v-show="activeTab === 'generate'" role="tabpanel" :id="id + '-panel-generate'" :aria-labelledby="id + '-tab-generate'" tw-class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(28rem,0.9fr)_minmax(0,1.1fr)] gap-6 xl:gap-10 items-start">
             <ImageGenerationEditor :view="view" :active="activeTab === 'generate'" @manage-models="openTab({ tab: 'models' })" />
             <div tw-class="min-w-0">
@@ -139,6 +146,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               </div>
               <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
+            <ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" />
             <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
               <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
             </ImageSettingsSection>

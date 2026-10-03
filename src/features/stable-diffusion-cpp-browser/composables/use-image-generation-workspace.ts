@@ -1,11 +1,11 @@
-import { computed, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import { type Ref, computed, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { storageService } from '@/00-storage/service';
 import * as persistence from '@/00-storage/service/image-generation';
 import { listImageGenerationRunAssets, setImageGenerationAssetState } from '@/00-storage/service/image-generation-curation';
 import type { ImageGenerationStoreAccess } from '@/00-storage/service/image-generation';
 import { generateId } from '@/01-models/id';
 import type { BinaryObjectId, ChatId, ImageGenerationAssetId, ImageGenerationRunId, ImageGenerationDraftRevisionId, ImageGenerationSessionId, ImageGenerationTagId } from '@/01-models/ids';
-import type { ImageGenerationAsset, ImageGenerationAssetPage, ImageGenerationCatalog, ImageGenerationSessionDraft, ImageGenerationRun, ImageGenerationRunSummary, ImageGenerationSession, ImageGenerationSource, ImageGenerationTagReference } from '@/01-models/image-generation';
+import type { ImageGenerationAsset, ImageGenerationAssetPage, ImageGenerationCatalog, ImageGenerationSessionDraft, ImageGenerationRun, ImageGenerationRunSummary, ImageGenerationSession, ImageGenerationSource, ImageGenerationTagReference, ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { imageGenerationTagNameSchema, imageGenerationTagReferenceKey } from '@/01-models/image-generation';
 import { promiseAllKeyed } from '@/utils/promise';
 import { ensureStrings } from '@/strings';
@@ -20,7 +20,10 @@ type DraftCheckpoint = { value: ImageGenerationDraft, count: number, revision: n
 
 /** The page owns generation; selection owns only the visible session. In-flight
  * publication always uses the store and session captured by its run sink. */
-export function useImageGenerationWorkspace({ generation }: { generation: ImageGenerationView }) {
+export function useImageGenerationWorkspace({ generation, requestedSessionId }: {
+  generation: ImageGenerationView, requestedSessionId: Readonly<Ref<ImageGenerationSessionId | undefined>> | undefined,
+}) {
+  const initialized = ref(false);
   const sessions = shallowRef<ImageGenerationSession[]>([]);
   const catalog = shallowRef<ImageGenerationCatalog>();
   const store = shallowRef<ImageGenerationStoreAccess>();
@@ -47,7 +50,9 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
   const inspectLoading = ref(false), inspectFailure = ref('');
   const draftStatus = ref<'saved' | 'dirty' | 'saving' | 'failed'>('saved');
   const draftFailure = ref('');
-  const draftRevision = ref(generateId<ImageGenerationDraftRevisionId>());
+  // IDs are primitive runtime values; deep Ref unwrapping expands the private brand
+  // and makes declaration emit fail (TS4058/TS4023). Keep the public alias intact.
+  const draftRevision = shallowRef<ImageGenerationDraftRevisionId>(generateId<ImageGenerationDraftRevisionId>());
   const storageRevision = ref(0), runRevision = ref(0);
   let disposed = false, epoch = 0, queryEpoch = 0, detailEpoch = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,9 +72,10 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
       return false;
     }
   });
+  const assistantVisibility = computed(() => catalog.value?.preferences.assistantVisibility ?? 'closed');
   const assistantLayout = computed(() => catalog.value?.preferences.assistantLayout ?? 'floating');
   const experimentalNoticeVisible = computed(() => hasGeneratedImages.value && catalog.value !== undefined && catalog.value.preferences.experimentalNoticeDismissedAt === undefined);
-  const currentSession = computed(() => sessions.value.find(session => session.id === selectedSessionId.value));
+  const currentSession = computed(() => sessions.value.find(session => session.id === selectedSessionId.value && session.state !== 'deleting' && session.state !== 'deleted'));
   const editorReady = computed(() => !switching.value && !starting.value && editingSessionId.value === selectedSessionId.value);
   const runState = computed(() => {
     void runRevision.value; return owner?.snapshot();
@@ -237,6 +243,12 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
     selection.value = []; closeDetails();
     text.value = ''; onlyFavorite.value = false; filterTagId.value = undefined; visibility.value = 'active'; pendingDeletions.value = []; deletedAssetIds.value = [];
     nextCursor.value = undefined; tiles.value = []; runs.value = []; runsWithAssets.value = [];
+    total.value = 0; failure.value = '';
+    if (!sessions.value.some(session => session.id === sessionId && session.state !== 'deleting' && session.state !== 'deleted')) {
+      editingSessionId.value = undefined;
+      failure.value = await ensureStrings.imageGeneration__session_unavailable();
+      return;
+    }
     await refresh({ append: false });
     await restoreActiveDraft();
   }
@@ -253,7 +265,7 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
       const title = preserveDraft && generation.parameters.value.prompt.trim()
         ? Array.from(generation.parameters.value.prompt.trim().replace(/\s+/g, ' ')).slice(0, 80).join('')
         : await ensureStrings.imageGeneration__new_session();
-      const session: ImageGenerationSession = { assistantChatId: undefined, id: generateId<ImageGenerationSessionId>(), revision: 0, title, createdAt: now, updatedAt: now, state: 'active' };
+      const session: ImageGenerationSession = { translation: undefined, assistantChatId: undefined, id: generateId<ImageGenerationSessionId>(), revision: 0, title, createdAt: now, updatedAt: now, state: 'active' };
       await persistence.saveImageGenerationSession({ store: target, session, expectedRevision: undefined });
       if (disposed || token !== epoch) return undefined;
       sessions.value = [session, ...sessions.value]; selectedSessionId.value = session.id;
@@ -282,12 +294,16 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
       const target = await openStore({ creation: 'forbid' });
       if (!target) return;
       await refreshSessions();
-      if (!selectedSessionId.value) {
+      if (requestedSessionId?.value && requestedSessionId.value !== selectedSessionId.value) {
+        await selectSession({ sessionId: requestedSessionId.value });
+      } else if (!selectedSessionId.value) {
         const first = sessions.value.find(session => session.state === 'active');
         if (first) await selectSession({ sessionId: first.id });
       } else await refresh({ append: false });
     } catch (error) {
       if (!disposed) failure.value = errorText({ error });
+    } finally {
+      if (!disposed) initialized.value = true;
     }
   }
   async function renameSession({ sessionId, title }: { sessionId: ImageGenerationSessionId, title: string }): Promise<void> {
@@ -306,7 +322,9 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
   }
   async function updatePreferences({ change }: { change:
     | { type: 'dismiss-notice' }
-    | { type: 'assistant-layout', layout: 'floating' | 'docked' },
+    | { type: 'assistant-layout', layout: 'floating' | 'docked' }
+    | { type: 'assistant-visibility', visibility: 'open' | 'closed' }
+    | { type: 'translation', translation: ImageGenerationTranslationOverride | undefined },
   }): Promise<boolean> {
     if (disposed || busy.value || !available.value) return false;
     const token = epoch;
@@ -321,6 +339,8 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
       switch (change.type) {
       case 'dismiss-notice': preferences.experimentalNoticeDismissedAt ??= Date.now(); break;
       case 'assistant-layout': preferences.assistantLayout = change.layout; break;
+      case 'assistant-visibility': preferences.assistantVisibility = change.visibility; break;
+      case 'translation': preferences.translation = change.translation; break;
       default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
       }
       if (disposed || token !== epoch || store.value?.storeId !== target.storeId) return false;
@@ -331,6 +351,67 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
       return true;
     } catch (error) {
       if (!disposed && token === epoch) failure.value = errorText({ error });
+      return false;
+    } finally {
+      mutation.value = false;
+    }
+  }
+  async function updateSessionTranslation({ translation }: { translation: ImageGenerationTranslationOverride | undefined }): Promise<boolean> {
+    if (disposed || busy.value) return false;
+    const token = epoch;
+    const selected = currentSession.value ?? await newSession({ preserveDraft: true });
+    const target = store.value;
+    if (!selected || !target || token !== epoch || disposed || mutation.value) return false;
+    mutation.value = true; failure.value = '';
+    try {
+      // Read latest metadata before changing one field, then guard its revision.
+      const previous = await persistence.loadImageGenerationSession({ store: target, sessionId: selected.id });
+      if (!previous) throw new Error(await ensureStrings.imageGeneration__session_unavailable());
+      if (disposed || token !== epoch || selectedSessionId.value !== selected.id) return false;
+      const next = { ...previous, translation, revision: previous.revision + 1, updatedAt: Date.now() };
+      await persistence.saveImageGenerationSession({ store: target, session: next, expectedRevision: previous.revision });
+      if (disposed || token !== epoch) return false;
+      sessions.value = sessions.value.map(item => item.id === next.id ? next : item);
+      return true;
+    } catch (error) {
+      if (!disposed && token === epoch) failure.value = errorText({ error });
+      return false;
+    } finally {
+      mutation.value = false;
+    }
+  }
+  async function deleteSession({ sessionId }: { sessionId: ImageGenerationSessionId }): Promise<boolean> {
+    const target = store.value, previous = sessions.value.find(session => session.id === sessionId), token = epoch;
+    if (!target || !previous || busy.value || disposed) return false;
+    if (runState.value?.run?.sessionId === sessionId && (generation.busy.value || hasPendingSave.value)) {
+      failure.value = await ensureStrings.imageGeneration__finish_session_work_before_deleting(); return false;
+    }
+    mutation.value = true; failure.value = '';
+    try {
+      // Let accepted writes finish before the tombstone. Deleting another
+      // session must not cancel the current draft's pending autosave.
+      if (editingSessionId.value !== sessionId) await saveDraft();
+      else {
+        clearTimeout(timer); await draftWriting;
+      }
+      await persistence.deleteImageGenerationSession({ store: target, sessionId, expectedRevision: previous.revision });
+      if (disposed || token !== epoch) return false;
+      drafts.delete(sessionId); attempts.delete(sessionId); sources.delete(sessionId);
+      sessions.value = sessions.value.filter(session => session.id !== sessionId);
+      if (selectedSessionId.value === sessionId) {
+        queryEpoch++; clearTimeout(searchTimer); selectedSessionId.value = undefined; editingSessionId.value = undefined;
+        selection.value = []; closeDetails(); tiles.value = []; runs.value = []; runsWithAssets.value = []; nextCursor.value = undefined; total.value = 0;
+        pendingDeletions.value = []; deletedAssetIds.value = []; draftStatus.value = 'saved'; draftFailure.value = ''; touchDraft();
+        if (!generation.formDisabled.value) generation.resetDraft?.();
+      }
+      return true;
+    } catch (error) {
+      if (!disposed && token === epoch) {
+        failure.value = errorText({ error });
+        try {
+          await refreshSessions();
+        } catch { /* Keep the original deletion failure and permit retry. */ }
+      }
       return false;
     } finally {
       mutation.value = false;
@@ -636,7 +717,7 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
     }
     return true;
   }
-  const editor = { ...generation, generate,
+  const editor: ImageGenerationView = { ...generation, generate,
     formDisabled: computed(() => generation.formDisabled.value || busy.value || !editorReady.value || hasPendingSave.value),
     draftDisabled: computed(() => generation.draftDisabled.value || busy.value || !editorReady.value),
   };
@@ -668,6 +749,7 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
     case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'binary_objects': return;
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
     }
+    initialized.value = false;
     epoch++; queryEpoch++; detailEpoch++; storageRevision.value++; touchDraft();
     void queries.dispose(); queries = createImageGenerationQueryClient(); clearTimeout(searchTimer);
     store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
@@ -682,7 +764,7 @@ export function useImageGenerationWorkspace({ generation }: { generation: ImageG
   onScopeDispose(() => {
     rememberDraft(); void saveDraft(); disposed = true; queryEpoch++; detailEpoch++; clearTimeout(timer); clearTimeout(searchTimer); void queries.dispose(); unsubscribe();
   });
-  return { assistantLayout, experimentalNoticeVisible, updatePreferences, available, catalog, store, sessions, currentSession, selectedSessionId, editorReady, count, loading, switching, starting, mutation, busy,
+  return { initialized, assistantVisibility, deleteSession, updateSessionTranslation, assistantLayout, experimentalNoticeVisible, updatePreferences, available, catalog, store, sessions, currentSession, selectedSessionId, editorReady, count, loading, switching, starting, mutation, busy,
     failure, warnings, text, visibility, pendingDeletions, deletedAssetIds, operationProgress, curate, retryDeletions, runAssets, connectChat, onlyFavorite, filterTagId, userTags, mode, runs, runsWithAssets, tiles, nextCursor, total, selection, details, draftStatus, draftFailure, draftRevision,
     inspectedTile, inspectLoading, inspectFailure, runState, hasPendingSave, editor, reload, refresh, selectSession, newSession, renameSession, generate, retrySave, editTag, getImage, hasTag, toggleTag, toggleSelection, inspect, closeDetails, setPromptDraft, reuse, saveDraft, flushDraft,
     ...((__BUILD_MODE_IS_TEST__ && {

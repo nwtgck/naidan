@@ -1,4 +1,4 @@
-import type { BrowserImageModelSelection } from './types';
+import type { BrowserImageModelSelection, Endpoint } from './types';
 import { z } from 'zod';
 import type { ImageGenerationRecord } from './image-generation-history';
 import { idToRaw, type ChatId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId, type ImageGenerationStoreId, type ImageGenerationTagId } from './ids';
@@ -17,7 +17,15 @@ export type ImageGenerationTagReference =
   | { type: 'system', key: 'favorite' }
   | { type: 'user', tagId: ImageGenerationTagId };
 
+/** Each field inherits independently: session, image-generation defaults, global settings. */
+export type ImageGenerationTranslationOverride = {
+  endpoint: Endpoint | undefined,
+  modelId: string | undefined,
+};
+
 export type ImageGenerationPreferences = {
+  assistantVisibility: 'open' | 'closed',
+  translation: ImageGenerationTranslationOverride | undefined,
   experimentalNoticeDismissedAt: number | undefined,
   assistantLayout: 'floating' | 'docked',
 };
@@ -31,13 +39,14 @@ export type ImageGenerationCatalog = {
 };
 
 export type ImageGenerationSession = {
+  translation: ImageGenerationTranslationOverride | undefined,
   assistantChatId: ChatId | undefined,
   id: ImageGenerationSessionId,
   revision: number,
   title: string,
   createdAt: number,
   updatedAt: number,
-  state: 'active' | 'archived',
+  state: 'active' | 'archived' | 'deleting' | 'deleted',
 };
 
 /** An editable checkpoint, independent of immutable generation requests. */

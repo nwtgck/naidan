@@ -13,7 +13,7 @@ import {
 } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationAnnotationsToDomain, imageGenerationAssetSummaryToDomain, imageGenerationAssetToDomain, imageGenerationAssetToDto, imageGenerationCatalogToDomain, imageGenerationCatalogToDto, imageGenerationRunSummaryToDomain, imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationSessionToDomain, imageGenerationSessionToDto, imageGenerationTagReferenceToDto } from '@/00-storage/mapper/image-generation';
 import { assertImageGenerationReplacement, openImageGenerationCatalogDto, withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
-import { imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './image-generation/files';
+import { imageGenerationRawIdSchema, imageGenerationIsNotFound, readImageGenerationText, writeImageGenerationText } from './image-generation/files';
 import { imageGenerationAnnotationsTable, imageGenerationAssetTable, imageGenerationRunTable, imageGenerationSessionDirectory, imageGenerationSessionTable } from './image-generation/tables';
 
 export type { ImageGenerationStoreAccess } from './image-generation/context';
@@ -47,23 +47,67 @@ export async function listImageGenerationSessions({ store }: { store: ImageGener
   return withImageGenerationStore({ store, operation: async ({ directory }) => {
     const result = await (await imageGenerationSessionTable({ directory, create: false })).list();
     result.items.sort((a, b) => b.updatedAt - a.updatedAt || compareIds({ a: a.id, b: b.id }));
-    return { ...result, items: result.items.map(dto => imageGenerationSessionToDomain({ dto })) };
+    return { ...result, items: result.items.filter(dto => dto.state !== 'deleted').map(dto => imageGenerationSessionToDomain({ dto })) };
   } });
 }
 export async function loadImageGenerationSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationSession | undefined> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
   return withImageGenerationStore({ store, operation: async ({ directory }) => {
     const dto = await (await imageGenerationSessionTable({ directory, create: false })).load({ id });
-    return dto && imageGenerationSessionToDomain({ dto });
+    return dto && dto.state !== 'deleted' && dto.state !== 'deleting' ? imageGenerationSessionToDomain({ dto }) : undefined;
   } });
 }
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<void> {
   const next = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
   await withImageGenerationStore({ store, operation: async ({ directory }) => {
+    if (next.state === 'deleted' || next.state === 'deleting') throw new Error('Use the explicit session deletion operation.');
     await (await imageGenerationSessionTable({ directory, create: true })).write({ record: next, assertCurrent({ current }) {
+      if (current?.state === 'deleted' || current?.state === 'deleting') throw new Error('The session has been deleted.');
       if (current && next.createdAt !== current.createdAt) throw new Error('Session creation time is immutable.');
       assertImageGenerationReplacement({ current, next, expectedRevision });
     }, async beforeCommit() {} });
+  } });
+}
+
+/** Delete only session metadata. Stable BinaryObjects may be shared by chats and
+ * intentionally survive. Keep a minimal tombstone so stale writers cannot revive
+ * the session; cleanup can be retried after any interrupted directory removal. */
+export async function deleteImageGenerationSession({ store, sessionId, expectedRevision }: {
+  store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, expectedRevision: number,
+}): Promise<void> {
+  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  await withImageGenerationStore({ store, operation: async ({ directory }) => {
+    const table = await imageGenerationSessionTable({ directory, create: false });
+    let current = await table.load({ id });
+    if (!current) throw new Error('The session no longer exists.');
+    switch (current.state) {
+    case 'deleted': return;
+    case 'deleting': break;
+    case 'active': case 'archived': {
+      if (current.revision !== expectedRevision) throw new Error('Image Generation revision conflict. Reload before deleting.');
+      const next = { ...current, revision: current.revision + 1, updatedAt: Date.now(), state: 'deleting' as const,
+        assistantChatId: undefined, translation: undefined };
+      await table.write({ record: next, assertCurrent: ({ current }) => assertImageGenerationReplacement({ current, next, expectedRevision }), async beforeCommit() {} });
+      current = next;
+      break;
+    }
+    default: { const exhaustive: never = current.state; throw new Error(String(exhaustive)); }
+    }
+    // Open the directory directly: ordinary readers intentionally reject tombstones.
+    let location = directory;
+    for (const name of ['sessions', id.slice(-2).toLowerCase(), id]) location = await location.getDirectoryHandle(name);
+    const names: string[] = [];
+    for await (const [name] of location.entries()) if (name !== 'session.json') names.push(name);
+    for (const name of names) {
+      try {
+        await location.removeEntry(name, { recursive: true });
+      } catch (error) {
+        if (!imageGenerationIsNotFound({ error })) throw error;
+      }
+    }
+    const next = { ...current, revision: current.revision + 1, updatedAt: Date.now(), state: 'deleted' as const, title: 'Deleted session' };
+    const expected = current.revision;
+    await table.write({ record: next, assertCurrent: ({ current }) => assertImageGenerationReplacement({ current, next, expectedRevision: expected }), async beforeCommit() {} });
   } });
 }
 
@@ -115,6 +159,7 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
     switch (session.state) {
     case 'active': break;
     case 'archived': throw new Error('Cannot generate into an archived session.');
+    case 'deleting': case 'deleted': throw new Error('The session has been deleted.');
     default: { const exhaustive: never = session.state; throw new Error(String(exhaustive)); }
     }
     for (const source of next.sources) {

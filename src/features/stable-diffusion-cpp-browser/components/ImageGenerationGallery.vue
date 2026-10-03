@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, defineAsyncComponent } from 'vue';
-import { StarIcon, ChevronDownIcon, TagsIcon } from 'lucide-vue-next';
+import { StarIcon, ChevronDownIcon, TagsIcon, ArchiveIcon, ArchiveRestoreIcon } from 'lucide-vue-next';
 import { usePrompt } from '@/composables/usePrompt';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { idToRaw, type ImageGenerationRunId, type ImageGenerationTagId } from '@/01-models/ids';
@@ -93,11 +93,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-if="mode === 'gallery'" tw-class="grid grid-cols-2 @[30rem]/gallery:grid-cols-3 @[46rem]/gallery:grid-cols-4 gap-3"><ImageGenerationAssetCard :prompt="runById.get(tile.runId)?.prompt" v-for="tile in view.tiles.value" :key="idToRaw({ id: tile.id })" :tile="tile" :view="view" /></div>
       <div v-else tw-class="space-y-5">
         <section v-for="group in groupedRuns" :key="idToRaw({ id: group.run.id })" tw-class="space-y-3" data-testid="workspace-run">
-          <header tw-class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-1"><div tw-class="flex items-start gap-2"><p tw-class="min-w-0 flex-1 line-clamp-2 text-sm leading-relaxed font-medium break-words select-text">{{ group.run.prompt }}</p><ImageGenerationCopyButton :text="group.run.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="workspace-copy-run-prompt" /></div><p tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ group.run.modelName }} · {{ statusLabel({ execution: group.run.execution }) }} · {{ group.run.requestedCount }}</p><p v-if="group.run.execution.type === 'running' || group.run.execution.type === 'queued'" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__interrupted_help() }}</p><p v-if="group.run.execution.type === 'failed'" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ group.run.execution.message }}</p>
-            <div v-if="group.run.execution.type !== 'running' && group.run.execution.type !== 'queued'" tw-class="flex gap-2">
-              <button type="button" @click="curateRun({ runId: group.run.id, action: 'archive' })" :disabled="view.mutation.value" data-testid="workspace-archive-run" tw-class="rounded-lg px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40">{{ lazyStrings.imageGeneration__archive_run() }}</button>
-              <button type="button" @click="curateRun({ runId: group.run.id, action: 'restore' })" :disabled="view.mutation.value" tw-class="rounded-lg px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40">{{ lazyStrings.imageGeneration__restore_run() }}</button>
+          <header tw-class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-1"><div tw-class="flex items-start gap-2"><p tw-class="min-w-0 flex-1 line-clamp-2 text-sm leading-relaxed font-medium break-words select-text">{{ group.run.prompt }}</p><ImageGenerationCopyButton :text="group.run.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="workspace-copy-run-prompt" /></div><div tw-class="flex items-center gap-2 min-w-0">
+            <p tw-class="min-w-0 flex-1 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="group.run.modelName">{{ group.run.modelName }} · {{ statusLabel({ execution: group.run.execution }) }} · {{ group.run.requestedCount }}</p>
+            <div v-if="group.run.execution.type !== 'running' && group.run.execution.type !== 'queued'" tw-class="flex shrink-0 items-center gap-1" data-testid="generation-run-actions">
+              <button type="button" @click="curateRun({ runId: group.run.id, action: 'archive' })" :disabled="view.mutation.value" :aria-label="lazyStrings.imageGeneration__archive_run()" :title="lazyStrings.imageGeneration__archive_run()" data-testid="workspace-archive-run" tw-class="rounded-lg p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><ArchiveIcon tw-class="w-4 h-4" /></button>
+              <button type="button" @click="curateRun({ runId: group.run.id, action: 'restore' })" :disabled="view.mutation.value" :aria-label="lazyStrings.imageGeneration__restore_run()" :title="lazyStrings.imageGeneration__restore_run()" tw-class="rounded-lg p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><ArchiveRestoreIcon tw-class="w-4 h-4" /></button>
             </div>
+          </div><p v-if="group.run.execution.type === 'running' || group.run.execution.type === 'queued'" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__interrupted_help() }}</p><p v-if="group.run.execution.type === 'failed'" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ group.run.execution.message }}</p>
+
           </header>
           <div tw-class="grid grid-cols-2 @[30rem]/gallery:grid-cols-3 @[46rem]/gallery:grid-cols-4 gap-3"><ImageGenerationAssetCard v-for="tile in group.images" :key="idToRaw({ id: tile.id })" :tile="tile" :view="view" /></div>
         </section>

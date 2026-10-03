@@ -1,0 +1,1 @@
+export const imageGeneration__delete_session_notice = ({ title }: { title: string }): string => `Delete the generation history, draft and image annotations in “${title}”? Image files and the connected chat will remain. This cannot be undone. Export anything you need first.`;

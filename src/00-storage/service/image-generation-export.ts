@@ -33,7 +33,7 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       if (request.imageInputs.initImage) ids.add(request.imageInputs.initImage.binaryObjectId);
       for (const image of request.imageInputs.referenceImages) ids.add(image.binaryObjectId);
     }
-    await retain({ path: 'session.json' });
+    metadata.push({ path: 'session.json', blob: new Blob([JSON.stringify({ ...session, translation: undefined }, undefined, 2)], { type: 'application/json' }) });
     const draftText = await readImageGenerationText({ directory: location, name: 'draft.json' });
     if (draftText !== undefined) {
       const draft = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(draftText));
@@ -79,7 +79,7 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       await retain({ path: `annotations/${annotation.assetId.slice(-2).toLowerCase()}/${annotation.assetId}.json` });
     }
     // Other sessions' tag names are not leaked through a session-only export.
-    metadata.push({ path: 'catalog.json', blob: new Blob([JSON.stringify({ ...catalog, tags: catalog.tags.filter(tag => tags.has(tag.id)) }, undefined, 2)], { type: 'application/json' }) });
+    metadata.push({ path: 'catalog.json', blob: new Blob([JSON.stringify({ ...catalog, preferences: { ...catalog.preferences, translation: undefined }, tags: catalog.tags.filter(tag => tags.has(tag.id)) }, undefined, 2)], { type: 'application/json' }) });
     const binaryObjectIds: BinaryObjectId[] = [];
     for (const raw of ids) {
       const marker = await readImageGenerationBinaryDeletion({ directory, id: raw });

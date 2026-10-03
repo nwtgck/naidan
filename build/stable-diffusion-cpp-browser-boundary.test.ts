@@ -9,7 +9,6 @@ import { createStandaloneFacadeAliases } from './standalone-facades.js';
 import { createTwClassNodeTransform } from './static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './static-tailwind/tw-class-vite-plugin';
 import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild } from '../src/features/stable-diffusion-cpp-browser/build-runtime';
-import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 
 const root = process.cwd();
 const feature = 'src/features/stable-diffusion-cpp-browser/';
@@ -21,16 +20,22 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
   const fixture: Plugin = {
     name: 'image-ui-boundary-fixture',
     resolveId(id) {
-      if (id === 'virtual:image-view' || id === 'virtual:image-strings') return '\0' + id;
+      if (id === 'virtual:image-view' || id === 'virtual:image-strings' || id.startsWith('virtual:llama-cpp-browser-core/')) return '\0' + id;
       return undefined;
     },
     load(id) {
+      // This is an image UI/module-boundary test, not a native llama packaging
+      // test. Keep real JS Worker graphs but do not transform every multi-MB
+      // llama artifact merely because the attached Chat can select that provider.
+      // The reviewed native resolver is independently tested in build-core.test.
+      if (id.startsWith('\0virtual:llama-cpp-browser-core/')) return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
       if (id === '\0virtual:image-view') return entrySource ?? "export { default } from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';";
       // The dedicated realStrings cases below cover locale packaging. This
       // build-only fixture also supplies settings' locale lifecycle imports.
       if (id === '\0virtual:image-strings') return `\
 export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } });
 export const ensureStrings = lazyStrings;
+export const currentLocale = { value: "en" };
 export async function prepareLocale() {}
 export async function setLocale() {}
 export const resolveBrowserLocale = () => 'en';
@@ -53,8 +58,11 @@ export const resolveBrowserLocale = () => 'en';
       createTwClassVitePlugin({ projectRoot: root, sourceRoot: path.resolve(root, 'src'), entryModule: path.resolve(root, feature, 'components/ImageGenerationLab.vue'), tailwindCssPath: path.resolve(root, 'src/style.css'), debugOutputDirectory: undefined, outputMode: 'split', cssPlanning: 'disabled', maxSplitCssGroups: 256 }),
       vue({ template: { compilerOptions: { nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })] } } }),
     ],
-    // Match the native virtual-module resolver used by the application's Worker builds.
-    worker: { format: 'es', plugins: () => [createLlamaCppBrowserBuild({ rootDir: root, mode }).corePlugin, { name: 'image-worker-boundary-trace', generateBundle(_options, bundle) {
+    // Vite Worker graphs have their own plugin container. A strings alias
+    // without its resolver here fails only in the hosted graph (CI shard 4).
+    // Match production: real locale packs are registered by the UI plugin,
+    // not by rescanning the entire catalog separately in every Worker graph.
+    worker: { format: 'es', plugins: () => [fixture, { name: 'image-worker-boundary-trace', generateBundle(_options, bundle) {
       for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
     } }] },
     build: { write: false, minify: false, emptyOutDir: false, reportCompressedSize: false,
@@ -74,7 +82,7 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['benchmark-form.ts', 'component-label.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageDownloadMenu.vue', 'components/ImageEngineState.vue', 'components/ImageGenerationCopyButton.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageGenerationProgress.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationUnavailable.vue', 'components/ImageGenerationViewer.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelConfiguration.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'components/ImageSettingsSection.vue', 'dialog-keyboard.ts', 'form-options.ts', 'form.ts', 'image-input-clipboard.ts', 'image-input-form.ts', 'library-standalone.ts', 'lora-catalog.ts', 'model-recipes.ts', 'preview-presentation.ts', 'session/navigation.ts', 'use-image-benchmark-standalone.ts', 'use-image-generation-standalone.ts']);
+    expect(local).toEqual(['benchmark-form.ts', 'component-label.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageDownloadMenu.vue', 'components/ImageEngineState.vue', 'components/ImageGenerationCopyButton.vue', 'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationPreview.vue', 'components/ImageGenerationProgress.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationTranslationUnavailable.vue', 'components/ImageGenerationUnavailable.vue', 'components/ImageGenerationViewer.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageInputControls.vue', 'components/ImageLoraControls.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelConfiguration.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'components/ImageSettingsSection.vue', 'dialog-keyboard.ts', 'form-options.ts', 'form.ts', 'image-input-clipboard.ts', 'image-input-form.ts', 'library-standalone.ts', 'lora-catalog.ts', 'model-recipes.ts', 'preview-presentation.ts', 'session/navigation.ts', 'use-image-benchmark-standalone.ts', 'use-image-generation-standalone.ts']);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');

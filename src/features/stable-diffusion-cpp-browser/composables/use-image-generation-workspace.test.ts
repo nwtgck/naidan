@@ -1,7 +1,7 @@
 import { selectImageGenerationAssets } from '@/features/stable-diffusion-cpp-browser/session/asset-query';
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, h, ref } from 'vue';
+import { type Ref, computed, defineComponent, h, ref } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ImageGeneration from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue';
 import ImageGenerationEditor from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationEditor.vue';
@@ -36,6 +36,14 @@ import { createImageGenerationStorageHarness, generationRunFixture } from '@/00-
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { publishImageGenerationBinaries } from '@/00-storage/service/image-generation-binaries';
 import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
+import ImageGenerationTranslationButton from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationButton.vue';
+import ImageGenerationTranslationSettings from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationTranslationSettings.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
+import { useSettings } from '@/composables/useSettings';
+import type { ImageGenerationSessionId } from '@/01-models/ids';
+const translationMocks = vi.hoisted(() => ({ translate: vi.fn(), provider: vi.fn() }));
+vi.mock('../translation/request', () => ({ translateImagePrompt: translationMocks.translate }));
+vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: translationMocks.provider }));
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { Chat, ChatSummary, StorageType } from '@/01-models/types';
 import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation-standalone';
@@ -92,7 +100,7 @@ afterEach(async () => {
   }
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
-function open() {
+function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGenerationSessionId | undefined>> | undefined } = { requestedSessionId: undefined }) {
   const base = useImageGeneration(); const busy = ref(false), cancelled = ref(false);
   const native = vi.fn(async () => {}); const restored = vi.fn();
   const original = generationRunFixture({ id: 'fixture-aa', sessionId: toImageGenerationSessionId({ raw: 'fixture-aa' }), count: 1, seed: '42' }).request;
@@ -143,7 +151,7 @@ function open() {
   generation.parameters.value = { ...original.parameters }; generation.seedMode.value = 'fixed';
   let view: ImageGenerationWorkspaceView | undefined;
   const wrapper = mount(defineComponent({ setup() {
-    view = useImageGenerationWorkspace({ generation }); return () => h('div');
+    view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
   } }));
   if (!view) throw new Error('Missing Workspace.');
   views.push({ wrapper, view });
@@ -773,6 +781,153 @@ describe('global experimental preferences and compact creation controls', () => 
       expect(fixture.view.currentSession.value?.assistantChatId).toBe(a.id);
       chatChoices.value = [a]; await vi.dynamicImportSettled(); await flushPromises();
       expect(surface.get('[data-testid="existing-chat-pane"]').attributes('data-chat-id')).toBe(idToRaw({ id: a.id }));
+    } finally {
+      surface.unmount();
+    }
+  });
+});
+
+describe('session navigation, deletion and persisted chat visibility', () => {
+  it('loads a requested session instead of whichever was most recently updated', async () => {
+    const fixture = await ready(); const a = await fixture.view.newSession({ preserveDraft: true });
+    const b = await fixture.view.newSession({ preserveDraft: false }); if (!a || !b) throw new Error('Missing sessions.');
+    const opened = open({ requestedSessionId: ref(a.id) }); await flushPromises();
+    expect(opened.view.currentSession.value?.id).toBe(a.id);
+    const missing = open({ requestedSessionId: ref(toImageGenerationSessionId({ raw: 'missing-session' })) }); await flushPromises();
+    expect(missing.view.currentSession.value).toBeUndefined(); expect(missing.view.failure.value).toContain('unavailable');
+    expect(missing.view.editor.draftDisabled.value).toBe(true);
+  });
+  it('removes a session and its metadata without deleting generated BinaryObjects', async () => {
+    const fixture = await ready(); await fixture.view.generate();
+    const sessionId = fixture.view.selectedSessionId.value!, image = fixture.view.tiles.value[0]!;
+    await fixture.view.inspect({ tile: image });
+    expect(await fixture.view.deleteSession({ sessionId })).toBe(true);
+    expect(fixture.view.currentSession.value).toBeUndefined(); expect(fixture.view.tiles.value).toEqual([]);
+    expect(fixture.view.inspectedTile.value).toBeUndefined(); expect(mocks.remove).not.toHaveBeenCalled();
+    expect(await provider.getFile({ binaryObjectId: image.binaryObjectId })).toBeTruthy();
+    await fixture.view.reload(); expect(fixture.view.sessions.value).toEqual([]);
+  });
+  it('does not lose the current draft autosave when deleting a different session', async () => {
+    const fixture = await ready();
+    const removed = await fixture.view.newSession({ preserveDraft: true });
+    const retained = await fixture.view.newSession({ preserveDraft: false });
+    if (!removed || !retained || !fixture.view.store.value) throw new Error('No sessions.');
+    await fixture.view.flushDraft();
+    fixture.generation.parameters.value.prompt = 'pending autosave survives unrelated deletion';
+    expect(fixture.view.draftStatus.value).toBe('dirty');
+    expect(await fixture.view.deleteSession({ sessionId: removed.id })).toBe(true);
+    const restored = await persistence.loadImageGenerationDraft({ store: fixture.view.store.value, sessionId: retained.id });
+    expect(restored?.request.parameters.prompt).toBe('pending autosave survives unrelated deletion');
+    expect(fixture.view.currentSession.value?.id).toBe(retained.id);
+  });
+  it('refuses to delete the executing session or outputs awaiting publication', async () => {
+    const fixture = await ready(); const session = await fixture.view.newSession({ preserveDraft: true }); if (!session) throw new Error('No session.');
+    const gate = Promise.withResolvers<void>(); fixture.native.mockReturnValueOnce(gate.promise);
+    const operation = fixture.view.generate(); await vi.waitFor(() => expect(fixture.native).toHaveBeenCalled());
+    try {
+      expect(await fixture.view.deleteSession({ sessionId: session.id })).toBe(false);
+    } finally {
+      gate.resolve(); await operation;
+    }
+    mocks.publish.mockRejectedValueOnce(new Error('quota'));
+    await fixture.view.generate(); expect(fixture.view.hasPendingSave.value).toBe(true);
+    expect(await fixture.view.deleteSession({ sessionId: session.id })).toBe(false);
+    await fixture.view.retrySave();
+  });
+  it('keeps a closed attached chat closed after remount even when its layout is docked', async () => {
+    const fixture = await ready(); await fixture.view.connectChat({ chatId: toChatId({ raw: 'remembered-chat' }) });
+    await fixture.view.updatePreferences({ change: { type: 'assistant-layout', layout: 'docked' } });
+    await fixture.view.updatePreferences({ change: { type: 'assistant-visibility', visibility: 'open' } });
+    await fixture.view.updatePreferences({ change: { type: 'assistant-visibility', visibility: 'closed' } });
+    const reopened = await ready();
+    expect(reopened.view.assistantLayout.value).toBe('docked'); expect(reopened.view.assistantVisibility.value).toBe('closed');
+    expect(reopened.view.currentSession.value?.assistantChatId).toBe(toChatId({ raw: 'remembered-chat' }));
+    vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(reopened.view);
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: reopened.generation, active: true } }] });
+    await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
+    try {
+      await vi.dynamicImportSettled(); await flushPromises();
+      expect(surface.get('[data-testid="workspace-open-chat"]').text()).toBe('Open chat');
+      expect(surface.get('[data-testid="workspace-open-chat"]').attributes('aria-expanded')).toBe('false');
+      expect(document.querySelector('[data-testid="image-generation-assistant"]')).toBeNull();
+    } finally {
+      surface.unmount();
+    }
+  });
+});
+
+describe('read-only translation controls', () => {
+  it.each(['prompt', 'negativePrompt'] as const)('views and copies %s translation without editing or persisting a chat', async field => {
+    const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
+    const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, endpoint: { type: 'ollama', url: 'http://translator.test', httpHeaders: undefined }, defaultModelId: 'translator' } });
+    await ensureAllStringsForTest({ locale: 'ja' });
+    const original = `\
+  soft colors 🐈
+(weight:1.2)  `, before = { ...fixture.generation.parameters.value };
+    translationMocks.translate.mockResolvedValue('柔らかな色');
+    const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: original, field, active: true } });
+    const published = mocks.publish.mock.calls.length;
+    try {
+      await surface.get('[data-testid="view-prompt-translation"]').trigger('click'); await flushPromises();
+      const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+      expect(dialog.get('select[data-testid="translation-language"]').element).toHaveProperty('value', 'ja');
+      expect(translationMocks.translate).not.toHaveBeenCalled();
+      await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+      expect(translationMocks.translate).toHaveBeenCalledWith(expect.objectContaining({ prompt: original, language: 'ja', modelId: 'translator' }));
+      expect(dialog.get('[data-testid="translation-result"]').text()).toContain('柔らかな色');
+      await dialog.get('[data-testid="translation-result"] button').trigger('click'); await flushPromises();
+      expect(writeText).toHaveBeenCalledWith('柔らかな色');
+      expect(fixture.generation.parameters.value).toEqual(before); expect(mocks.publish.mock.calls.length).toBe(published);
+      expect(chatChoices.value).toEqual([]);
+    } finally {
+      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+    }
+  });
+  it('cancels and discards late translation when the prompt, language, endpoint or session changes', async () => {
+    const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
+    const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
+    const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'before', field: 'prompt', active: true } });
+    try {
+      await surface.get('button').trigger('click'); await flushPromises();
+      const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+      const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
+      await dialog.get('[data-testid="translation-start"]').trigger('click');
+      const signal: AbortSignal = translationMocks.translate.mock.calls[0]![0].signal;
+      await surface.setProps({ text: 'after' }); expect(signal.aborted).toBe(true);
+      gate.resolve('stale'); await flushPromises(); expect(dialog.find('[data-testid="translation-result"]').exists()).toBe(false);
+      const later = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(later.promise);
+      await dialog.get('[data-testid="translation-start"]').trigger('click');
+      await fixture.view.newSession({ preserveDraft: false });
+      expect(translationMocks.translate.mock.calls[1]![0].signal.aborted).toBe(true);
+      later.resolve('other session'); await flushPromises(); expect(dialog.text()).not.toContain('other session');
+      await dialog.get('[data-testid="translation-close"]').trigger('click'); expect(document.querySelector('[data-testid="prompt-translation-dialog"]')).toBeNull();
+    } finally {
+      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+    }
+  });
+  it('persists workspace defaults and independent session model overrides without changing global connection settings', async () => {
+    const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
+    const { settings, availableModels } = useSettings(); const endpoint = settings.value.endpoint, modelId = settings.value.defaultModelId;
+    const globalModels = [...availableModels.value];
+    const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' } });
+    try {
+      await surface.get('[data-testid="translation-endpoint-choice"]').setValue('ollama');
+      await surface.get('[data-testid="translation-endpoint-url"]').setValue('http://workspace.test');
+      await surface.get('[data-testid="translation-model-input"]').setValue('workspace-model');
+      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'ollama', url: 'http://workspace.test', httpHeaders: undefined }, modelId: 'workspace-model' });
+      await surface.setProps({ scope: 'session' });
+      await surface.get('[data-testid="translation-model-input"]').setValue('session-model');
+      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+      expect(fixture.view.currentSession.value?.translation).toEqual({ endpoint: undefined, modelId: 'session-model' });
+      await fixture.view.reload(); expect(fixture.view.currentSession.value?.translation?.modelId).toBe('session-model');
+      translationMocks.provider.mockResolvedValue({ listModels: vi.fn(async () => ['private-model']) });
+      surface.getComponent(ModelSelector).vm.$emit('refresh'); await flushPromises();
+      expect(surface.getComponent(ModelSelector).props('models')).toEqual(['private-model']);
+      expect(availableModels.value).toEqual(globalModels); expect(settings.value.endpoint).toEqual(endpoint); expect(settings.value.defaultModelId).toBe(modelId);
     } finally {
       surface.unmount();
     }

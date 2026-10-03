@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EndpointSchemaDto } from './dto';
 import { imageGenerationTagNameKey, imageGenerationTagNameSchema, normalizeImageGenerationTagName, planImageGenerationSeeds, IMAGE_GENERATION_MAX_RUN_IMAGES } from '@/01-models/image-generation';
 import { ExperimentalImageGenerationSchemaDto, BrowserImageModelSelectionSchemaDto } from './experimental.dto';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
@@ -16,7 +17,15 @@ export const ExperimentalImageGenerationTagReferenceSchemaDto = z.discriminatedU
 ]);
 export type ExperimentalImageGenerationTagReferenceDto = z.infer<typeof ExperimentalImageGenerationTagReferenceSchemaDto>;
 
+export const ExperimentalImageGenerationTranslationOverrideSchemaDto = resolveMissingAsUndefined(z.object({
+  endpoint: missingAsUndefined(EndpointSchemaDto),
+  modelId: missingAsUndefined(z.string().min(1).max(4096)),
+}).strict());
+export type ExperimentalImageGenerationTranslationOverrideDto = z.infer<typeof ExperimentalImageGenerationTranslationOverrideSchemaDto>;
+
 export const ExperimentalImageGenerationPreferencesSchemaDto = resolveMissingAsUndefined(z.object({
+  assistantVisibility: missingAsUndefined(z.enum(['open', 'closed'])),
+  translation: missingAsUndefined(ExperimentalImageGenerationTranslationOverrideSchemaDto),
   experimentalNoticeDismissedAt: missingAsUndefined(ExperimentalImageGenerationTimestampSchemaDto),
   assistantLayout: z.enum(['floating', 'docked']),
 }).strict());
@@ -47,13 +56,14 @@ export const ExperimentalImageGenerationCatalogSchemaDto = z.object({
 export type ExperimentalImageGenerationCatalogDto = z.infer<typeof ExperimentalImageGenerationCatalogSchemaDto>;
 
 export const ExperimentalImageGenerationSessionSchemaDto = resolveMissingAsUndefined(z.object({
+  translation: missingAsUndefined(ExperimentalImageGenerationTranslationOverrideSchemaDto),
   assistantChatId: missingAsUndefined(ExperimentalImageGenerationIdSchemaDto),
   id: ExperimentalImageGenerationIdSchemaDto,
   revision: ExperimentalImageGenerationRevisionSchemaDto,
   title: z.string().min(1).max(512).refine(title => title.trim().length > 0, 'A session title must not be blank.'),
   createdAt: ExperimentalImageGenerationTimestampSchemaDto,
   updatedAt: ExperimentalImageGenerationTimestampSchemaDto,
-  state: z.enum(['active', 'archived']),
+  state: z.enum(['active', 'archived', 'deleting', 'deleted']),
 }).strict());
 export type ExperimentalImageGenerationSessionDto = z.infer<typeof ExperimentalImageGenerationSessionSchemaDto>;
 

@@ -147,7 +147,7 @@ defineExpose({
 
 <template>
   <div tw-class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-    <div tw-class="flex items-center gap-3 overflow-hidden min-h-[34px]">
+    <div tw-class="flex-1 min-w-0 flex items-center gap-3 overflow-hidden min-h-[34px]">
       <div tw-class="flex flex-col overflow-hidden">
         <template v-if="chat">
           <div tw-class="flex items-center gap-2">
@@ -207,20 +207,19 @@ defineExpose({
 
             <button
               @click="emit('update:show-chat-settings', !showChatSettings)"
-              tw-class="flex items-center gap-1.5 min-w-0 w-fit group"
+              tw-class="flex items-center gap-1.5 min-w-0 max-w-full group"
               :title="lazyStrings.ChatPaneHeader__chat_settings_and_model_override()"
               :aria-label="lazyStrings.ChatPaneHeader__model_and_chat_settings()"
               data-testid="model-trigger"
             >
               <div
-                :tw-class="['px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5 min-w-0', showChatSettings
+                :tw-class="['px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5 min-w-0 max-w-full whitespace-nowrap', showChatSettings
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200']"
               >
                 <span data-testid="chat-model-name" tw-class="truncate max-w-[120px] sm:max-w-[200px]">
                   {{ modelLabel || lazyStrings.ChatPaneHeader__model_and_chat_settings() }}
                 </span>
-                <span v-if="modelLabel" tw-class="hidden sm:inline">{{ lazyStrings.ChatPaneHeader__model_and_chat_settings() }}</span>
                 <Settings2Icon :tw-class="['w-3 h-3 shrink-0', { 'animate-pulse': showChatSettings }]" />
               </div>
               <div
@@ -235,7 +234,7 @@ defineExpose({
       </div>
     </div>
 
-    <div ref="actionsMenuRoot" tw-class="flex items-center gap-0.5 relative">
+    <div ref="actionsMenuRoot" tw-class="shrink-0 flex items-center gap-0.5 relative">
       <div v-if="chat" tw-class="flex items-center gap-0.5">
         <button
           v-if="activeMessageCount > 0"

@@ -106,6 +106,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 }
 
 const standaloneUiFiles = new Set([
+  'components/ImageGenerationTranslationUnavailable.vue',
   'components/ImageGenerationCopyButton.vue', 'components/ImageGenerationUnavailable.vue', 'components/ImageGenerationSidebar.vue', 'components/ImageGenerationPromptApprovalPreview.vue',
   'session/navigation.ts', 'session/assistant-registry.ts',
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',

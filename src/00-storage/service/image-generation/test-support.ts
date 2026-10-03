@@ -108,7 +108,7 @@ export function createImageGenerationStorageHarness() {
 }
 
 export function generationSessionFixture({ id }: { id: string }): ImageGenerationSession {
-  return { assistantChatId: undefined, id: toImageGenerationSessionId({ raw: id }), revision: 0, title: '雨の夜景', createdAt: 1, updatedAt: 1, state: 'active' };
+  return { translation: undefined, assistantChatId: undefined, id: toImageGenerationSessionId({ raw: id }), revision: 0, title: '雨の夜景', createdAt: 1, updatedAt: 1, state: 'active' };
 }
 export function generationRunFixture({ id, sessionId, count, seed }: { id: string, sessionId: ImageGenerationSessionId, count: number, seed: string }): ImageGenerationRun {
   return {

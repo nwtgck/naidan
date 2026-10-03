@@ -63,14 +63,14 @@ it.each(['memory', 'local'] as const)('refreshes visible history when OPFS retur
   expect(history.items.value).toHaveLength(1);
   history.setQuery({ text: 'forest' }); await history.reload();
   await history.goToPage({ page: 2 });
-  expect(mocks.query).toHaveBeenLastCalledWith({ query: { visibility: 'active' as const, text: 'forest', offset: 40, limit: 40 } });
+  expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: 'forest', offset: 40, limit: 40 } });
   mocks.query.mockClear();
   await migrate({ type });
   expect(history.available.value).toBe(false);
   expect(history.items.value).toEqual([]);
   expect(mocks.query).not.toHaveBeenCalled();
   await migrate({ type: 'opfs' });
-  expect(mocks.query).toHaveBeenCalledExactlyOnceWith({ query: { visibility: 'active' as const, text: 'forest', offset: 0, limit: 40 } });
+  expect(mocks.query).toHaveBeenCalledExactlyOnceWith({ query: { text: 'forest', offset: 0, limit: 40 } });
   expect(history.items.value[0]?.prompt).toBe('saved forest');
   expect(history.currentPage.value).toBe(1);
   expect(wrapper.get('[data-testid="image-history-workspace"]').text()).toContain('saved forest');

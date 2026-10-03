@@ -20,6 +20,40 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/es';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/es';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/es';
+import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/es';
+import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/es';
+import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/es';
+import { imageGeneration__show_connected_chat } from '@/strings/messages/imageGeneration__show_connected_chat/es';
+import { imageGeneration__delete_session } from '@/strings/messages/imageGeneration__delete_session/es';
+import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/es';
+import { imageGeneration__translation_priority } from '@/strings/messages/imageGeneration__translation_priority/es';
+import { imageGeneration__translation_profile } from '@/strings/messages/imageGeneration__translation_profile/es';
+import { imageGeneration__translation_inherit } from '@/strings/messages/imageGeneration__translation_inherit/es';
+import { imageGeneration__translation_endpoint } from '@/strings/messages/imageGeneration__translation_endpoint/es';
+import { imageGeneration__translation_model } from '@/strings/messages/imageGeneration__translation_model/es';
+import { imageGeneration__translation_headers } from '@/strings/messages/imageGeneration__translation_headers/es';
+import { imageGeneration__translation_header_name } from '@/strings/messages/imageGeneration__translation_header_name/es';
+import { imageGeneration__translation_header_value } from '@/strings/messages/imageGeneration__translation_header_value/es';
+import { imageGeneration__translation_add_header } from '@/strings/messages/imageGeneration__translation_add_header/es';
+import { imageGeneration__translation_remove_header } from '@/strings/messages/imageGeneration__translation_remove_header/es';
+import { imageGeneration__translation_effective } from '@/strings/messages/imageGeneration__translation_effective/es';
+import { imageGeneration__translation_save_settings } from '@/strings/messages/imageGeneration__translation_save_settings/es';
+import { imageGeneration__translation_reset } from '@/strings/messages/imageGeneration__translation_reset/es';
+import { imageGeneration__translation_settings_not_saved } from '@/strings/messages/imageGeneration__translation_settings_not_saved/es';
+import { imageGeneration__translation_read_only } from '@/strings/messages/imageGeneration__translation_read_only/es';
+import { imageGeneration__translation_source_text } from '@/strings/messages/imageGeneration__translation_source_text/es';
+import { imageGeneration__translation_language } from '@/strings/messages/imageGeneration__translation_language/es';
+import { imageGeneration__translation_start } from '@/strings/messages/imageGeneration__translation_start/es';
+import { imageGeneration__translation_running } from '@/strings/messages/imageGeneration__translation_running/es';
+import { imageGeneration__translation_result } from '@/strings/messages/imageGeneration__translation_result/es';
+import { imageGeneration__translation_copy } from '@/strings/messages/imageGeneration__translation_copy/es';
+import { imageGeneration__translation_choose_model } from '@/strings/messages/imageGeneration__translation_choose_model/es';
+import { imageGeneration__translation_session_settings } from '@/strings/messages/imageGeneration__translation_session_settings/es';
+import { imageGeneration__translation_default_settings } from '@/strings/messages/imageGeneration__translation_default_settings/es';
+import { imageGeneration__translation_defaults_help } from '@/strings/messages/imageGeneration__translation_defaults_help/es';
+import { imageGeneration__translation_close } from '@/strings/messages/imageGeneration__translation_close/es';
+import { imageGeneration__translation_cancelled } from '@/strings/messages/imageGeneration__translation_cancelled/es';
+import { imageGeneration__delete_session_notice } from '@/strings/messages/imageGeneration__delete_session_notice/es';
 import { imageGeneration__add_tag } from '@/strings/messages/imageGeneration__add_tag/es';
 import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/es';
 import { imageGeneration__notice_dismiss } from '@/strings/messages/imageGeneration__notice_dismiss/es';
@@ -2568,6 +2602,40 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  imageGeneration__session_deletion_pending,
+  imageGeneration__session_unavailable,
+  imageGeneration__finish_session_work_before_deleting,
+  imageGeneration__show_connected_chat,
+  imageGeneration__delete_session,
+  imageGeneration__view_translation,
+  imageGeneration__translation_priority,
+  imageGeneration__translation_profile,
+  imageGeneration__translation_inherit,
+  imageGeneration__translation_endpoint,
+  imageGeneration__translation_model,
+  imageGeneration__translation_headers,
+  imageGeneration__translation_header_name,
+  imageGeneration__translation_header_value,
+  imageGeneration__translation_add_header,
+  imageGeneration__translation_remove_header,
+  imageGeneration__translation_effective,
+  imageGeneration__translation_save_settings,
+  imageGeneration__translation_reset,
+  imageGeneration__translation_settings_not_saved,
+  imageGeneration__translation_read_only,
+  imageGeneration__translation_source_text,
+  imageGeneration__translation_language,
+  imageGeneration__translation_start,
+  imageGeneration__translation_running,
+  imageGeneration__translation_result,
+  imageGeneration__translation_copy,
+  imageGeneration__translation_choose_model,
+  imageGeneration__translation_session_settings,
+  imageGeneration__translation_default_settings,
+  imageGeneration__translation_defaults_help,
+  imageGeneration__translation_close,
+  imageGeneration__translation_cancelled,
+  imageGeneration__delete_session_notice,
   imageGeneration__add_tag,
   imageGeneration__manage_tags,
   imageGeneration__notice_dismiss,

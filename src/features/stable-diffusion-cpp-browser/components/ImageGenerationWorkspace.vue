@@ -5,7 +5,7 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCwIcon, MessageSquareIcon, DownloadIcon, InfoIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { storageService } from '@/00-storage/service';
-import { idToRaw } from '@/01-models/ids';
+import { idToRaw, type ImageGenerationSessionId } from '@/01-models/ids';
 import { IMAGE_GENERATION_MAX_RUN_IMAGES } from '@/01-models/image-generation';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { downloadReadableStream } from '@/utils/stream-download';
@@ -20,27 +20,40 @@ import ImageGenerationAssetViewer from './ImageGenerationAssetViewer.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageGenerationDebugToggle from './ImageGenerationDebugToggle.vue';
 import ImageGenerationMonitor from './ImageGenerationMonitor.vue';
+const ImageGenerationTranslationButton = defineAsyncComponent(() => import('./ImageGenerationTranslationButton.vue'));
 const ImageGenerationAssistant = defineAsyncComponent(() => import('./ImageGenerationAssistant.vue'));
-const props = defineProps<{ generation: ImageGenerationView, active: boolean }>();
+const props = defineProps<{ generation: ImageGenerationView, active: boolean, sessionId?: ImageGenerationSessionId }>();
 const emit = defineEmits<{ models: [], diagnostics: [], workspace: [] }>();
-const view = useImageGenerationWorkspace({ generation: props.generation });
+const requestedSessionId = computed(() => props.sessionId);
+const view = useImageGenerationWorkspace({ generation: props.generation, requestedSessionId });
+// Keep only the latest deep-link request while an earlier restore is settling.
+let pendingSession: { id: ImageGenerationSessionId } | undefined;
+watch(requestedSessionId, id => {
+  pendingSession = id ? { id } : undefined;
+  void drainSessionRoute();
+}, { immediate: true });
+watch([view.initialized, view.busy], () => {
+  void drainSessionRoute();
+});
+async function drainSessionRoute(): Promise<void> {
+  if (!view.initialized.value || view.busy.value || !pendingSession) return;
+  const request = pendingSession; pendingSession = undefined;
+  await view.selectSession({ sessionId: request.id });
+}
 const { count } = view;
 const countHelpOpen = ref(false);
 const container = ref<HTMLElement>();
 const { width } = useElementSize(container);
 const assistantPresentation = computed(() => view.assistantLayout.value === 'docked' && width.value >= 960 ? 'docked' as const : 'floating' as const);
-const inputId = useId(), assistantOpen = ref(false), exporting = ref(false), exportFailure = ref('');
+const assistantOpen = computed(() => view.assistantVisibility.value === 'open');
+const inputId = useId(), exporting = ref(false), exportFailure = ref('');
 const assistantVisited = ref(false);
-watch(view.assistantLayout, layout => {
-  switch (layout) {
-  case 'docked': assistantOpen.value = true; break;
-  case 'floating': break;
-  default: { const exhaustive: never = layout; throw new Error(String(exhaustive)); }
-  }
-}, { immediate: true });
 watch(assistantOpen, value => {
   if (value) assistantVisited.value = true;
-});
+}, { immediate: true });
+async function setAssistantOpen({ open }: { open: boolean }): Promise<void> {
+  await view.updatePreferences({ change: { type: 'assistant-visibility', visibility: open ? 'open' : 'closed' } });
+}
 const { showConfirm } = useConfirm();
 let exportAbort: AbortController | undefined;
 const unregister = registerImageGenerationNavigation({ navigation: { view, openModels: () => emit('models'), openDiagnostics: () => emit('diagnostics'), openGeneration: () => emit('workspace') } });
@@ -83,8 +96,8 @@ async function exportSession(): Promise<void> {
 }
 const unsafeToLeave = computed(() => props.generation.busy.value || view.hasPendingSave.value || exporting.value || view.draftStatus.value !== 'saved');
 onBeforeRouteLeave(async to => {
-  // All existing model/diagnostic aliases share this runtime owner.
-  if (['/image-generation', '/image-generation/models', '/image-generation/diagnostics'].includes(to.path.replace(/\/+$/, ''))) return true;
+  // All nested model, diagnostic and session locations share this runtime owner.
+  if (to.matched.some(record => record.path === '/image-generation')) return true;
   await view.flushDraft();
   return !unsafeToLeave.value || await showConfirm({ message: await ensureStrings.imageGeneration__leave_warning() });
 });
@@ -109,7 +122,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
             <button type="button" @click="view.reload" :disabled="view.busy.value || view.loading.value" :title="lazyStrings.imageGeneration__refresh()" :aria-label="lazyStrings.imageGeneration__refresh()" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><RefreshCwIcon tw-class="w-4 h-4" /></button>
             <button type="button" @click="exportSession" :disabled="!view.currentSession.value || view.busy.value || generation.busy.value || view.hasPendingSave.value || exporting" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><DownloadIcon tw-class="w-3.5 h-3.5" />{{ exporting ? lazyStrings.imageGeneration__exporting() : lazyStrings.imageGeneration__export_session() }}</button>
             <button v-if="exporting" type="button" @click="exportAbort?.abort()" tw-class="min-h-8 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.SHARED__cancel() }}</button>
-            <button type="button" @click="assistantOpen = !assistantOpen" data-testid="workspace-open-chat" :aria-expanded="assistantOpen" :aria-controls="inputId + '-assistant'" :tw-class="['inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', assistantOpen ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800']"><MessageSquareIcon tw-class="w-3.5 h-3.5" />{{ assistantOpen ? lazyStrings.imageGeneration__close_chat() : lazyStrings.imageGeneration__open_assistant_chat() }}</button>
+            <button type="button" @click="setAssistantOpen({ open: !assistantOpen })" :disabled="view.busy.value" data-testid="workspace-open-chat" :aria-expanded="assistantOpen" :aria-controls="inputId + '-assistant'" :tw-class="['inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', assistantOpen ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800']"><MessageSquareIcon tw-class="w-3.5 h-3.5" />{{ assistantOpen ? lazyStrings.imageGeneration__close_chat() : view.currentSession.value?.assistantChatId ? lazyStrings.imageGeneration__show_connected_chat() : lazyStrings.imageGeneration__open_assistant_chat() }}</button>
           </div>
         </header>
         <p v-if="!view.available.value" role="status" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300">{{ lazyStrings.imageGeneration__storage_required() }}</p>
@@ -128,7 +141,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
               <p v-if="countHelpOpen" :id="inputId + '-count-help'" tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__count_help() }}</p>
             </div>
             <p v-if="!view.editorReady.value" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
-            <ImageGenerationEditor :view="view.editor" :active="active" @manage-models="emit('models')" />
+            <ImageGenerationEditor :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active" /></template></ImageGenerationEditor>
             <ImageSettingsSection :open="!!generation.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>
               <ImageGenerationResults :view="generation" :active="active" :presentation="view.available.value ? 'settings' : 'full'" persistence="workspace" @prepare="emit('models')" />
             </ImageSettingsSection>
@@ -148,6 +161,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
       </div>
     </div>
     <ImageGenerationAssetViewer :view="view" :active="active" />
-    <ImageGenerationAssistant v-if="assistantVisited" :id="inputId + '-assistant'" :workspace="view" :presentation="assistantPresentation" :active="active && assistantOpen" @close="assistantOpen = false" />
+    <ImageGenerationAssistant v-if="assistantVisited" :id="inputId + '-assistant'" :workspace="view" :presentation="assistantPresentation" :active="active && assistantOpen" @close="setAssistantOpen({ open: false })" />
   </section>
 </template>

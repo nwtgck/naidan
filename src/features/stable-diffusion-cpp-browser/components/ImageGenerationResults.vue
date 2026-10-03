@@ -49,7 +49,8 @@ const displayedFailure = computed(() => {
   default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
   }
 });
-const diagnosticsOpen = ref(false);
+// The outer execution section owns visibility; its first expansion should show diagnostics.
+const diagnosticsOpen = ref(props.presentation === 'settings');
 const diagnosticsRegion = ref<HTMLElement>();
 async function showDiagnostics(): Promise<void> {
   diagnosticsOpen.value = true;

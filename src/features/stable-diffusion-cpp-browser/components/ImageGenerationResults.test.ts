@@ -362,3 +362,10 @@ it('edits the next history policy during generation or saving, while protecting 
   restoring.value = false;
   supported.value = false; await flushPromises(); expect(toggle.element.disabled).toBe(true);
 });
+
+it('opens diagnostics inside the workspace execution disclosure without changing the legacy full view default', async () => {
+  const view = useImageGeneration();
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true, presentation: 'settings', persistence: 'workspace' } });
+  const diagnostics = wrapper.findAll('details').find(details => details.text().includes('Diagnostics'));
+  expect(diagnostics?.attributes('open')).toBeDefined();
+});

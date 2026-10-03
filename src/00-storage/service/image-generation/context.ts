@@ -56,7 +56,7 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
     }
     directory ??= await imageGenerationRoot({ create: true });
     if (!directory) throw new Error('Image Generation directory is unavailable.');
-    const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating' } });
+    const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
     await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
     return catalog;
   } });

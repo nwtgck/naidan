@@ -1,3 +1,6 @@
+import { endpointToDomain, endpointToDto } from './mappers';
+import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
+import type { ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import type { ExperimentalImageGenerationDraftDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -16,19 +19,32 @@ export function imageGenerationDraftToDomain({ dto }: { dto: ExperimentalImageGe
   return exactObject<ImageGenerationSessionDraft>()({ ...metadata, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), loraStates: loraStates.map(state => ({ ...state })), sessionId: toImageGenerationSessionId({ raw: sessionId }), request: imageGenerationRequestToDomain({ request }) });
 }
 
+export function imageGenerationTranslationToDto({ value }: { value: ImageGenerationTranslationOverride | undefined }): ExperimentalImageGenerationTranslationOverrideDto | undefined {
+  if (!value) return undefined;
+  const { endpoint, modelId, ...unhandled } = value;
+  unhandled satisfies Record<PropertyKey, never>;
+  return { endpoint: endpoint && endpointToDto({ endpoint }), modelId };
+}
+export function imageGenerationTranslationToDomain({ value }: { value: ExperimentalImageGenerationTranslationOverrideDto | undefined }): ImageGenerationTranslationOverride | undefined {
+  if (!value) return undefined;
+  const { endpoint, modelId, ...unhandled } = value;
+  unhandled satisfies Record<PropertyKey, never>;
+  return { endpoint: endpoint && endpointToDomain({ dto: endpoint }), modelId };
+}
+
 export function imageGenerationCatalogToDto({ catalog }: { catalog: ImageGenerationCatalog }): ExperimentalImageGenerationCatalogDto {
-  const { id, tags, ...metadata } = catalog;
-  return exactObject<ExperimentalImageGenerationCatalogDto>()({ ...metadata, version: 1, id: idToRaw({ id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: idToRaw({ id }) })) });
+  const { id, tags, preferences, ...metadata } = catalog;
+  return exactObject<ExperimentalImageGenerationCatalogDto>()({ ...metadata, preferences: { ...preferences, translation: imageGenerationTranslationToDto({ value: preferences.translation }) }, version: 1, id: idToRaw({ id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: idToRaw({ id }) })) });
 }
 export function imageGenerationCatalogToDomain({ dto }: { dto: ExperimentalImageGenerationCatalogDto }): ImageGenerationCatalog {
-  const { version: _version, id, tags, ...metadata } = dto;
-  return exactObject<ImageGenerationCatalog>()({ ...metadata, id: toImageGenerationStoreId({ raw: id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: toImageGenerationTagId({ raw: id }) })) });
+  const { version: _version, id, tags, preferences, ...metadata } = dto;
+  return exactObject<ImageGenerationCatalog>()({ ...metadata, preferences: { ...preferences, assistantVisibility: preferences.assistantVisibility ?? 'closed', translation: imageGenerationTranslationToDomain({ value: preferences.translation }) }, id: toImageGenerationStoreId({ raw: id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: toImageGenerationTagId({ raw: id }) })) });
 }
 export function imageGenerationSessionToDto({ session }: { session: ImageGenerationSession }): ExperimentalImageGenerationSessionDto {
-  return exactObject<ExperimentalImageGenerationSessionDto>()({ ...session, id: idToRaw({ id: session.id }), assistantChatId: session.assistantChatId && idToRaw({ id: session.assistantChatId }) });
+  return exactObject<ExperimentalImageGenerationSessionDto>()({ ...session, translation: imageGenerationTranslationToDto({ value: session.translation }), id: idToRaw({ id: session.id }), assistantChatId: session.assistantChatId && idToRaw({ id: session.assistantChatId }) });
 }
 export function imageGenerationSessionToDomain({ dto }: { dto: ExperimentalImageGenerationSessionDto }): ImageGenerationSession {
-  return exactObject<ImageGenerationSession>()({ ...dto, id: toImageGenerationSessionId({ raw: dto.id }), assistantChatId: dto.assistantChatId === undefined ? undefined : toChatId({ raw: dto.assistantChatId }) });
+  return exactObject<ImageGenerationSession>()({ ...dto, translation: imageGenerationTranslationToDomain({ value: dto.translation }), id: toImageGenerationSessionId({ raw: dto.id }), assistantChatId: dto.assistantChatId === undefined ? undefined : toChatId({ raw: dto.assistantChatId }) });
 }
 
 export function imageGenerationRunToDto({ run }: { run: ImageGenerationRun }): ExperimentalImageGenerationRunDto {

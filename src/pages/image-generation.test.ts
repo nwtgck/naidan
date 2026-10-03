@@ -38,7 +38,9 @@ async function open({ path }: { path: string }): Promise<Router> {
   const records = routes.filter(route => route.path === '/image-generation');
   expect(records).toHaveLength(1);
   expect(routes.some(route => route.path.startsWith('/image-studio'))).toBe(false);
-  expect(records[0]!.alias).toEqual(['/image-generation/diagnostics', '/image-generation/models']);
+  expect(records[0]!.alias).toBeUndefined();
+  expect(records[0]!.children?.map(child => child.path).sort()).toEqual(['diagnostics', 'models', 'session']);
+  expect(records[0]!.children?.find(child => child.path === 'session')?.children?.map(child => child.path)).toEqual([':sessionId']);
   const router = createRouter({ history: createMemoryHistory(), routes: records });
   await router.push(path); await router.isReady();
   const surface = defineComponent({ setup() {
