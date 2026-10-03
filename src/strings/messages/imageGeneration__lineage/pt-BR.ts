@@ -1,1 +1,1 @@
-export { imageGeneration__lineage } from './en';
+export const imageGeneration__lineage = (): string => "Sources";

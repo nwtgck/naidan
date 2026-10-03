@@ -1,1 +1,1 @@
-export { imageGeneration__interrupted } from './en';
+export const imageGeneration__interrupted = (): string => "Interrupted";

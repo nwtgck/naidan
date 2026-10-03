@@ -1,1 +1,1 @@
-export { imageGeneration__queued } from './en';
+export const imageGeneration__queued = (): string => "Queued";

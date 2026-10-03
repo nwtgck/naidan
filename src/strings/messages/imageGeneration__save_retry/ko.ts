@@ -1,1 +1,1 @@
-export { imageGeneration__save_retry } from './en';
+export const imageGeneration__save_retry = (): string => "Retry saving without regenerating";

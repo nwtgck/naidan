@@ -1,1 +1,1 @@
-export { imageGeneration__refresh } from './en';
+export const imageGeneration__refresh = (): string => "Refresh";

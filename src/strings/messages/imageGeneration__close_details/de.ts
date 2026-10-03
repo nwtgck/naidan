@@ -1,1 +1,1 @@
-export { imageGeneration__close_details } from './en';
+export const imageGeneration__close_details = (): string => "Close details";

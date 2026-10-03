@@ -1,1 +1,1 @@
-export { imageGeneration__prompt_edit } from './en';
+export const imageGeneration__prompt_edit = (): string => "Edit Image Generation prompt";

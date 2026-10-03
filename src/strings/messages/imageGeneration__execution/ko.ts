@@ -1,1 +1,1 @@
-export { imageGeneration__execution } from './en';
+export const imageGeneration__execution = (): string => "Execution, previews and temporary results";

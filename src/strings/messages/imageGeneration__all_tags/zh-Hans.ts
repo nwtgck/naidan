@@ -1,1 +1,1 @@
-export { imageGeneration__all_tags } from './en';
+export const imageGeneration__all_tags = (): string => "All tags";

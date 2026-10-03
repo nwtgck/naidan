@@ -1,1 +1,1 @@
-export { imageGeneration__draft_saved } from './en';
+export const imageGeneration__draft_saved = (): string => "Draft saved";

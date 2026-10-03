@@ -1,1 +1,1 @@
-export { imageGeneration__rename } from './en';
+export const imageGeneration__rename = (): string => "Rename";

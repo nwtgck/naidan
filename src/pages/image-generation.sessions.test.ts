@@ -14,6 +14,12 @@ import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusi
 import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
 import { createImageGenerationQueryWorker } from '@/features/stable-diffusion-cpp-browser/session/query-worker/impl';
 import { generationQueryResultSchema } from '@/features/stable-diffusion-cpp-browser/session/query-worker/types';
+// Compile the actual surfaces during module collection, like other component
+// integration tests. A route's first lazy import must not charge the whole UI
+// transform graph to the first session-navigation test's 5-second deadline.
+// Keep the generated routes and the real workspace/storage/controller below.
+import ImageGenerationPage from './image-generation.vue';
+import ImageGenerationWorkspace from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), publish: vi.fn(), restore: vi.fn(), confirm: vi.fn(), owners: 0, disposed: 0 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
@@ -71,10 +77,10 @@ async function open({ path }: { path: string }) {
   await vi.dynamicImportSettled(); await flushPromises();
   const view = useImageGenerationWorkspaceNavigation().active.value?.view;
   if (!view) throw new Error('Missing workspace owner.');
-  return { router, view };
+  return { router, view, page: wrapper.getComponent(ImageGenerationPage).vm, workspace: wrapper.getComponent(ImageGenerationWorkspace).vm };
 }
 it('opens an exact session URL, preserves one owner through models and gives new sessions their own URL', async () => {
-  const { router, view } = await open({ path: '/image-generation/session/session-aa' });
+  const { router, view, page, workspace } = await open({ path: '/image-generation/session/session-aa' });
   await vi.waitFor(() => expect(view.currentSession.value?.id).toBe(a.id));
   expect(view.editor.parameters.value.prompt).toBe('first draft'); expect(mocks.owners).toBe(1);
   await wrapper!.get('[data-testid="workspace-nav-models"]').trigger('click'); await vi.dynamicImportSettled(); await flushPromises();
@@ -84,6 +90,8 @@ it('opens an exact session URL, preserves one owner through models and gives new
   await wrapper!.get('[data-testid="workspace-new-session"]').trigger('click'); await flushPromises();
   expect(view.currentSession.value?.id).not.toBe(a.id); expect(view.currentSession.value?.id).not.toBe(b.id);
   expect(router.currentRoute.value.path).toBe('/image-generation/session/' + idToRaw({ id: view.currentSession.value!.id }));
+  expect(wrapper!.getComponent(ImageGenerationPage).vm.$.uid).toBe(page.$.uid);
+  expect(wrapper!.getComponent(ImageGenerationWorkspace).vm.$.uid).toBe(workspace.$.uid);
   expect(mocks.owners).toBe(1); expect(mocks.disposed).toBe(0);
 });
 it('loads the explicit session on reload and never redirects a missing session to unrelated work', async () => {

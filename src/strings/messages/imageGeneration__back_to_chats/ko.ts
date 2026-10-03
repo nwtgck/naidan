@@ -1,1 +1,1 @@
-export { imageGeneration__back_to_chats } from './en';
+export const imageGeneration__back_to_chats = (): string => "Back to chats";

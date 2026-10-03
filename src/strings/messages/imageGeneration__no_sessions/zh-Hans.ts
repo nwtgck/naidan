@@ -1,1 +1,1 @@
-export { imageGeneration__no_sessions } from './en';
+export const imageGeneration__no_sessions = (): string => "Start generating to create your first session.";

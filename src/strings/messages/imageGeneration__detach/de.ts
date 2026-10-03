@@ -1,1 +1,1 @@
-export { imageGeneration__detach } from './en';
+export const imageGeneration__detach = (): string => "Disconnect chat";

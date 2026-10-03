@@ -1,1 +1,1 @@
-export { imageGeneration__cancelled } from './en';
+export const imageGeneration__cancelled = (): string => "Cancelled";

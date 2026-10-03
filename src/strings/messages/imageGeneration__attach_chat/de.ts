@@ -1,1 +1,1 @@
-export { imageGeneration__attach_chat } from './en';
+export const imageGeneration__attach_chat = (): string => "Connect an existing chat";

@@ -1,1 +1,1 @@
-export { imageGeneration__run_status } from './en';
+export const imageGeneration__run_status = (): string => "Run status";

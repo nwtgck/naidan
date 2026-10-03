@@ -1,1 +1,1 @@
-export { imageGeneration__actual_seed } from './en';
+export const imageGeneration__actual_seed = (): string => "Actual seed";

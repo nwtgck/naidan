@@ -1,1 +1,1 @@
-export { imageGeneration__favorite } from './en';
+export const imageGeneration__favorite = (): string => "Favorite";

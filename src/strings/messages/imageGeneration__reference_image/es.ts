@@ -1,1 +1,1 @@
-export { imageGeneration__reference_image } from './en';
+export const imageGeneration__reference_image = (): string => "Use as reference image";

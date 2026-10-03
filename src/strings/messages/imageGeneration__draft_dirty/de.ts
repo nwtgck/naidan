@@ -1,1 +1,1 @@
-export { imageGeneration__draft_dirty } from './en';
+export const imageGeneration__draft_dirty = (): string => "Draft has unsaved changes";

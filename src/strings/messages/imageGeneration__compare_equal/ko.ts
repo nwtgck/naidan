@@ -1,1 +1,1 @@
-export { imageGeneration__compare_equal } from './en';
+export const imageGeneration__compare_equal = (): string => "Include identical settings";

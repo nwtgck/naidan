@@ -1,1 +1,1 @@
-export { imageGeneration__failed } from './en';
+export const imageGeneration__failed = (): string => "Failed";

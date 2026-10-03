@@ -1,1 +1,1 @@
-export { imageGeneration__select_compare } from './en';
+export const imageGeneration__select_compare = (): string => "Select for comparison (up to two)";

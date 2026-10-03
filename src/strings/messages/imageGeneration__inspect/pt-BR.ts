@@ -1,1 +1,1 @@
-export { imageGeneration__inspect } from './en';
+export const imageGeneration__inspect = (): string => "Image details";

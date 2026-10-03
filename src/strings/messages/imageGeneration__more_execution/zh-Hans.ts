@@ -1,1 +1,1 @@
-export { imageGeneration__more_execution } from './en';
+export const imageGeneration__more_execution = (): string => "View previews, temporary results and diagnostics";

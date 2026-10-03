@@ -1,1 +1,1 @@
-export { imageGeneration__before } from './en';
+export const imageGeneration__before = (): string => "Before";

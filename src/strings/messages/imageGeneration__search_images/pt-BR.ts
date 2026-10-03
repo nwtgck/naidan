@@ -1,1 +1,1 @@
-export { imageGeneration__search_images } from './en';
+export const imageGeneration__search_images = (): string => "Search prompts or models";

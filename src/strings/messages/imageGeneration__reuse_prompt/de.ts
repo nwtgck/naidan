@@ -1,1 +1,1 @@
-export { imageGeneration__reuse_prompt } from './en';
+export const imageGeneration__reuse_prompt = (): string => "Reuse prompt only";

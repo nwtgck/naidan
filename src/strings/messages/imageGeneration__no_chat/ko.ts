@@ -1,1 +1,1 @@
-export { imageGeneration__no_chat } from './en';
+export const imageGeneration__no_chat = (): string => "Not connected";

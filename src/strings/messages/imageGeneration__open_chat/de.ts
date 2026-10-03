@@ -1,1 +1,1 @@
-export { imageGeneration__open_chat } from './en';
+export const imageGeneration__open_chat = (): string => "Open regular chat";

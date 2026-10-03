@@ -1,1 +1,1 @@
-export { imageGeneration__compare } from './en';
+export const imageGeneration__compare = (): string => "Compare";

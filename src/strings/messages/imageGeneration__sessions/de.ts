@@ -1,1 +1,1 @@
-export { imageGeneration__sessions } from './en';
+export const imageGeneration__sessions = (): string => "Sessions";

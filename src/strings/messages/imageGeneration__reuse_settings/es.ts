@@ -1,1 +1,1 @@
-export { imageGeneration__reuse_settings } from './en';
+export const imageGeneration__reuse_settings = (): string => "Reuse saved settings";
