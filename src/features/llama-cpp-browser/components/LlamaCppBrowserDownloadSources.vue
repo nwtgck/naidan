@@ -55,7 +55,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </button>
     <Transition name="sources">
       <section v-if="open" :id="panelId" :aria-labelledby="triggerId" data-testid="model-download-sources-panel" tw-class="mt-1 min-w-0 space-y-3 border-l-2 border-blue-100 dark:border-blue-900/50 pl-3 sm:pl-4 py-2">
-        <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadSources__request_urls_help() }}</p>
+        <p data-testid="model-download-sources-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadSources__request_urls_help() }}</p>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ lazyStrings.LlamaCppBrowserDownloadSources__revision() }} <code tw-class="font-mono text-[11px] select-text">{{ selection.revision }}</code></p>
         <ol tw-class="max-h-72 overflow-y-auto overscroll-contain space-y-4 pr-1">
           <li v-for="(file, index) in files" :key="file.path" :data-current="currentFileIndex === index ? 'true' : undefined" tw-class="min-w-0 space-y-1.5">

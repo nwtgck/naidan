@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { lazyStrings } from '@/strings';
 import type { DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { modelDownloadUrl } from '@/features/llama-cpp-browser/hugging-face/download-url';
 import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue';
@@ -25,7 +26,8 @@ describe('download source disclosure', () => {
     expect(wrapper.get('[data-testid="model-download-sources-panel"]').attributes('id')).toBe(toggle.attributes('aria-controls'));
     expect(wrapper.findAll('[data-testid="model-download-url"]').map(node => node.text())).toEqual(source.selection!.files.map(file => modelDownloadUrl({ ...source.selection!, file })));
     expect(wrapper.get('[data-current="true"]').text()).toContain('00002');
-    expect(wrapper.text()).toContain('may redirect'); expect(copy).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="model-download-sources-help"]').text()).toBe(lazyStrings.LlamaCppBrowserDownloadSources__request_urls_help());
+    expect(copy).not.toHaveBeenCalled();
     await wrapper.setProps({ job: { ...source, status: 'paused' } });
     expect(wrapper.find('[data-current="true"]').exists()).toBe(false); wrapper.unmount();
   });

@@ -1,1 +1,1 @@
-export const LlamaCppBrowserModelLaunch__ready_when_you_are = (): string => "이제 편하게 이야기해 보세요.";
+export const LlamaCppBrowserModelLaunch__ready_when_you_are = (): string => "채팅할 준비가 되었습니다.";

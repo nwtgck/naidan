@@ -3,6 +3,7 @@ import type { ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
 import { createRouter, createMemoryHistory } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { lazyStrings } from '@/strings';
 import { computed, effectScope, ref, shallowRef } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -157,11 +158,13 @@ describe('model launch card rendering', () => {
     expect(wrapper.find('[data-testid="model-launch-fixed-quantization"]').text()).toContain('Q4_K_M');
     wrapper.unmount();
   });
-  it('renders file readiness without claiming the model is already loaded', async () => {
+  it('renders the ready status for verified local files without downloading', async () => {
     installed.add(base.target.modelId);
-    const { wrapper } = await renderCard();
-    expect(wrapper.find('[data-testid="model-launch-ready"]').text()).toBe('Ready when you are.');
+    const { wrapper, state } = await renderCard();
+    expect(wrapper.get('[data-testid="model-launch-ready"]').text()).toBe(lazyStrings.LlamaCppBrowserModelLaunch__ready_when_you_are());
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
+    expect(state.maySend.value).toBe(true);
+    expect(download).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

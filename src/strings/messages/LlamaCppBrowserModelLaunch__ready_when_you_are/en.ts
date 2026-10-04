@@ -1,1 +1,1 @@
-export const LlamaCppBrowserModelLaunch__ready_when_you_are = (): string => "Ready when you are.";
+export const LlamaCppBrowserModelLaunch__ready_when_you_are = (): string => "Ready to chat.";
