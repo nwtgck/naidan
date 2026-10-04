@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, toRaw } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/features/theme/composables/useTheme';
 import { transformersJsService } from '@/features/transformers-js';
 import TransformersJsManager from '@/features/transformers-js/components/TransformersJsManager.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
 
 // --- Mocks ---
 const mockAddToast = vi.fn();
@@ -85,13 +86,17 @@ vi.mock('lucide-vue-next', () => ({
 
 describe('Transformers.js Onboarding Integration', () => {
   const mockSave = vi.fn();
-  const mockSettings = { value: { endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true } };
+  function createMockSettings(): Settings {
+    return { ...structuredClone(DEFAULT_SETTINGS), endpoint: { type: 'openai', url: '' }, storageType: 'memory' };
+  }
+  const mockSettings = ref(createMockSettings());
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<any>(null);
 
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    mockSettings.value = createMockSettings();
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
     (useSettings as unknown as Mock).mockReturnValue({
@@ -269,7 +274,22 @@ describe('Transformers.js Onboarding Integration', () => {
     expect((getStartedBtn?.element as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('saves correct settings when "Get Started" is clicked in Transformers.js mode', async () => {
+  it.each(['fresh', 'unspecified', 'high', 'disabled', 'same_scope'] as const)('saves Transformers.js settings while preserving %s title preferences', async preference => {
+    switch (preference) {
+    case 'fresh': break;
+    case 'unspecified': case 'high':
+      mockSettings.value.titleGeneration = {
+        endpoint: 'same_scope', model: { id: 'previous-title-model' },
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: preference === 'high' ? 'high' : undefined } },
+      };
+      break;
+    case 'disabled': mockSettings.value.titleGeneration = 'disabled'; break;
+    case 'same_scope':
+      mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' };
+      break;
+    default: { const exhaustive: never = preference; throw new Error(String(exhaustive)); }
+    }
+    const originalTitle = structuredClone(toRaw(mockSettings.value).titleGeneration);
     const wrapper = mountModal();
 
     // Switch to TF.js
@@ -295,9 +315,16 @@ describe('Transformers.js Onboarding Integration', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'transformers_js' },
         defaultModelId: 'downloaded-model',
+        titleGeneration: originalTitle === 'disabled' ? 'disabled' : {
+          endpoint: 'same_scope', model: 'same_scope', lmParameters: originalTitle.lmParameters,
+        },
       }),
       modelRefresh: 'await',
     });
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(mockIsOnboardingDismissed.value).toBe(true);
+    expect(mockSettings.value.titleGeneration).toEqual(originalTitle);
+    wrapper.unmount();
   });
 
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {

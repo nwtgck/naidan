@@ -53,6 +53,19 @@ describe('title-only thinking fallback', () => {
     expect(off.reasoning.effort).toBe('none');
   });
 
+  it('retries a structured invalid enum only when it identifies reasoning_effort', async () => {
+    const endpoint = { type: 'openai' as const, url: 'https://example.test' };
+    const provider = new OpenAIProvider({ endpoint: endpoint.url, fetcher });
+    fetcher.mockResolvedValueOnce(Response.json({ error: {
+      code: 'invalid_enum_value', param: 'reasoning_effort', message: "Expected one of 'low', 'medium', 'high'.",
+    } }, { status: 422 }));
+    fetcher.mockResolvedValueOnce(new Response(openAiDone));
+    expect((await collect({ provider, endpoint, parameters: off, signal: new AbortController().signal })).text).toBe('Title');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(body({ index: 0 }).reasoning_effort).toBe('none');
+    expect(Object.hasOwn(body({ index: 1 }), 'reasoning_effort')).toBe(false);
+  });
+
   it.each(['openai', 'ollama'] as const)('handles an initial %s streaming rejection without assuming HTTP failure', async type => {
     const endpoint = { type, url: 'https://example.test' };
     const provider = type === 'openai' ? new OpenAIProvider({ endpoint: endpoint.url, fetcher }) : new OllamaProvider({ endpoint: endpoint.url, fetcher });

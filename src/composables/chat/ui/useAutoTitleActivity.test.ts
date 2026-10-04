@@ -28,6 +28,24 @@ describe('input activity lifetime', () => {
     scope.stop();
   });
 
+  it('ignores async continuations after the input scope has been disposed', async () => {
+    const scope = effectScope();
+    const activity = scope.run(useAutoTitleActivity)!;
+    scope.stop();
+    const run = vi.fn().mockResolvedValue(undefined);
+    autoTitleScheduler.schedule({ chatId: toChatId({ raw: 'new-input' }), run });
+    await vi.advanceTimersByTimeAsync(2400);
+    const finishLateAttachment = activity.hold();
+    activity.beginComposition();
+    activity.noteActivity();
+    try {
+      await vi.advanceTimersByTimeAsync(100);
+      expect(run).toHaveBeenCalledOnce();
+    } finally {
+      finishLateAttachment(); activity.endComposition();
+    }
+  });
+
   it('releases every sustained activity on unmount and tolerates late cleanup', async () => {
     const scope = effectScope();
     const activity = scope.run(useAutoTitleActivity)!;

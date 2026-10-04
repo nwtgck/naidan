@@ -130,6 +130,129 @@ describe('title lifecycle with real memory persistence', () => {
     expect(getLiveChatById({ chatId: chat.id })).toBeNull();
   });
 
+  it('does not overwrite a newer live chat when a background read finishes late', async () => {
+    const chat = await savedChat({ name: 'late-read', selected: false });
+    const stale = await storageService.loadChat({ id: chat.id });
+    if (stale === null) throw new Error('Missing persisted chat');
+    unregisterLiveInstance({ chatId: chat.id });
+    const read = Promise.withResolvers<Chat | null>();
+    vi.spyOn(storageService, 'loadChat').mockImplementationOnce(() => read.promise);
+    scheduleAutoTitleForChat({ chatId: chat.id });
+    await vi.advanceTimersByTimeAsync(2500);
+
+    // Opening and renaming the chat must win over the earlier background read.
+    const latest = { ...stale, title: 'Renamed while loading', updatedAt: Date.now() };
+    registerLiveInstance({ chat: latest });
+    currentChatRef.value = getLiveChatById({ chatId: chat.id });
+    await storageService.updateChatMeta({ id: chat.id, updater: () => latest });
+    read.resolve(stale);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(chatRequest).not.toHaveBeenCalled();
+    expect(currentChatRef.value?.title).toBe('Renamed while loading');
+    expect(getLiveChatById({ chatId: chat.id })?.title).toBe('Renamed while loading');
+  });
+
+  it('keeps persisted and live title timestamps monotonic', async () => {
+    const chat = await savedChat({ name: 'timestamp', selected: true });
+    const newerTimestamp = Date.now() + 10000;
+    chat.updatedAt = newerTimestamp;
+    await storageService.updateChatMeta({ id: chat.id, updater: ({ current }) => {
+      if (current === null) throw new Error('Missing persisted metadata');
+      return { ...current, updatedAt: newerTimestamp };
+    } });
+    await generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
+    const persisted = await storageService.loadChatMeta({ id: chat.id });
+    expect(persisted?.updatedAt).toBe(newerTimestamp + 1);
+    expect(chat.updatedAt).toBe(persisted?.updatedAt);
+  });
+
+  it.each(['activity', 'rename'] as const)('reflects an accepted durable title without undoing later %s', async action => {
+    const chat = await savedChat({ name: `commit-${action}`, selected: true });
+    const update = storageService.updateChatMeta.bind(storageService);
+    vi.spyOn(storageService, 'updateChatMeta').mockImplementationOnce(async request => {
+      await update(request);
+      // The write is already durable. A subsequent abort cannot roll it back.
+      autoTitleScheduler.noteActivity();
+      if (action === 'rename') {
+        chat.title = 'Later manual title';
+        chat.updatedAt = Date.now() + 10000;
+        await update({ id: chat.id, updater: ({ current }) => current === null ? undefined : {
+          ...current, title: chat.title, updatedAt: chat.updatedAt,
+        } });
+      }
+    });
+    scheduleAutoTitleForChat({ chatId: chat.id });
+    await vi.advanceTimersByTimeAsync(2500);
+    const persisted = await storageService.loadChatMeta({ id: chat.id });
+    expect(persisted?.title).toBe(action === 'activity' ? 'Generated Title' : 'Later manual title');
+    expect(chat.title).toBe(persisted?.title);
+    expect(chat.updatedAt).toBe(persisted?.updatedAt);
+  });
+
+  it('still rejects an aborted title while it is waiting to acquire the metadata lock', async () => {
+    const chat = await savedChat({ name: 'lock-wait', selected: true });
+    const entered = Promise.withResolvers<void>();
+    const unlocked = Promise.withResolvers<void>();
+    const blocking = storageService.updateChatMeta({ id: chat.id, updater: async ({ current }) => {
+      entered.resolve();
+      await unlocked.promise;
+      return current ?? undefined;
+    } });
+    await entered.promise;
+    try {
+      scheduleAutoTitleForChat({ chatId: chat.id });
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(chatRequest).toHaveBeenCalledOnce();
+      autoTitleScheduler.noteActivity();
+    } finally {
+      unlocked.resolve();
+      await blocking;
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await storageService.loadChatMeta({ id: chat.id }))?.title).toBeNull();
+    expect(chat.title).toBeNull();
+  });
+
+  it('does not change live metadata when the durable title write fails', async () => {
+    const chat = await savedChat({ name: 'save-failure', selected: true });
+    vi.spyOn(storageService, 'updateChatMeta').mockRejectedValueOnce(new Error('Write failed'));
+    await expect(generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined }))
+      .rejects.toThrow('Write failed');
+    expect(chat.title).toBeNull();
+    expect(chat.updatedAt).toBe(1);
+    expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(false);
+  });
+
+  it('does not let cleanup from before a runtime reset finish a newer title task', async () => {
+    const chat = await savedChat({ name: 'reset-ownership', selected: false });
+    const firstReady = Promise.withResolvers<void>();
+    const secondReady = Promise.withResolvers<void>();
+    chatRequest.mockImplementationOnce(() => titleItems({ text: 'Old title', ready: firstReady.promise }));
+    chatRequest.mockImplementationOnce(() => titleItems({ text: 'New title', ready: secondReady.promise }));
+    const first = generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
+    // Observe cancellation immediately, even while the provider ignores it.
+    const firstSettled = first.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    chatRuntimeStore.getActiveTitleGeneration({ chatId: chat.id })?.abort();
+    chatRuntimeStore.activeTitleGenerations.clear();
+    chatRuntimeStore.clearActiveTaskCounts();
+    const second = generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      firstReady.resolve();
+      await firstSettled;
+      expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(true);
+      expect(getLiveChatById({ chatId: chat.id })).not.toBeNull();
+      secondReady.resolve();
+      expect(await second).toBe('New title');
+      expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(false);
+    } finally {
+      firstReady.resolve(); secondReady.resolve();
+      await Promise.allSettled([first, second]);
+    }
+  });
+
   it('does not start work for a chat removed from the hierarchy during its undo window', async () => {
     const chat = await savedChat({ name: 'undo-window', selected: true });
     await storageService.updateHierarchy({ updater: () => ({ items: [] }) });

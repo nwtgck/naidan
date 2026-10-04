@@ -5,7 +5,12 @@ import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime
 export function useAutoTitleActivity() {
   const releases = new Set<() => void>();
   let releaseComposition: (() => void) | undefined;
+  let disposed = false;
+  function noteActivity(): void {
+    if (!disposed) autoTitleScheduler.noteActivity();
+  }
   function hold(): () => void {
+    if (disposed) return () => {};
     const release = autoTitleScheduler.hold();
     const stop = () => {
       if (releases.delete(stop)) release();
@@ -18,10 +23,12 @@ export function useAutoTitleActivity() {
     releaseComposition = undefined;
   }
   onScopeDispose(() => {
+    disposed = true;
+    releaseComposition = undefined;
     for (const release of releases) release();
   });
   return {
-    noteActivity: autoTitleScheduler.noteActivity,
+    noteActivity,
     hold,
     beginComposition(): void {
       if (releaseComposition === undefined) releaseComposition = hold();

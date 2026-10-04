@@ -48,6 +48,17 @@ describe('positive reasoning rejection classification', () => {
     expect(reconstructed).not.toBeInstanceOf(UnsupportedReasoningError);
     expect(isUnsupportedReasoningError({ error: reconstructed })).toBe(true);
   });
+  it.each(['invalid_value', 'invalid_enum_value', 'invalid_type'])('recognizes a structured %s identifying the reasoning parameter', code => {
+    expect(isReasoningErrorEnvelope({ value: { error: {
+      code, param: 'reasoning_effort', message: "Expected one of 'low', 'medium', 'high'.",
+    } }, parameter: 'reasoning_effort' })).toBe(true);
+    expect(isReasoningErrorEnvelope({ value: { error: {
+      code, param: 'model', message: 'Invalid model.',
+    } }, parameter: 'reasoning_effort' })).toBe(false);
+  });
+  it.each([null, 'error', {}, { choices: [{ delta: { content: 'Title' } }] }])('ignores ordinary streaming data: %j', value => {
+    expect(isReasoningErrorEnvelope({ value, parameter: 'reasoning_effort' })).toBe(false);
+  });
   it('does not reinterpret a streaming rate-limit code as a reasoning validation failure', () => {
     expect(isReasoningErrorEnvelope({ value: { error: { code: 'rate_limit_exceeded', message: 'reasoning_effort is not supported', param: 'reasoning_effort' } }, parameter: 'reasoning_effort' })).toBe(false);
   });

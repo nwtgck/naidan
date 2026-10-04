@@ -19,11 +19,13 @@ export type ChatRuntimeStore = {
   activeTitleGenerations: Map<ChatId, AbortController>,
   externalGenerations: Set<ChatId>,
 
+  // Call the returned release function OR finishTask. The release function is
+  // idempotent and cannot decrement tasks created after a clear/reset.
   startTask({
     key,
   }: {
     key: ChatRuntimeTaskKey,
-  }): void,
+  }): () => void,
 
   finishTask({
     key,
@@ -157,14 +159,24 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
   const activeTitleGenerations = reactive(new Map<ChatId, AbortController>());
   const externalGenerations = reactive(new Set<ChatId>());
   const activeTaskCounts = reactive(new Map<string, number>());
+  const taskEpochs = new Map<string, symbol>();
 
   function startTask({
     key,
   }: {
     key: ChatRuntimeTaskKey,
   }) {
-    const serializedKey = serializeTaskKey({ key });
+    const ownedKey = { ...key };
+    const serializedKey = serializeTaskKey({ key: ownedKey });
+    const epoch = taskEpochs.get(serializedKey) ?? Symbol();
+    taskEpochs.set(serializedKey, epoch);
     activeTaskCounts.set(serializedKey, (activeTaskCounts.get(serializedKey) || 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (taskEpochs.get(serializedKey) === epoch) finishTask({ key: ownedKey });
+    };
   }
 
   function finishTask({
@@ -175,6 +187,7 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     const serializedKey = serializeTaskKey({ key });
     const nextValue = (activeTaskCounts.get(serializedKey) || 0) - 1;
     if (nextValue <= 0) {
+      taskEpochs.delete(serializedKey);
       activeTaskCounts.delete(serializedKey);
       return;
     }
@@ -194,7 +207,9 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
   }: {
     key: ChatRuntimeTaskKey,
   }) {
-    activeTaskCounts.delete(serializeTaskKey({ key }));
+    const serializedKey = serializeTaskKey({ key });
+    taskEpochs.delete(serializedKey);
+    activeTaskCounts.delete(serializedKey);
   }
 
   function clearTasksForChat({
@@ -204,6 +219,7 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
   }) {
     for (const serializedKey of Array.from(activeTaskCounts.keys())) {
       if (isChatScopedTaskKey({ serializedKey, chatId })) {
+        taskEpochs.delete(serializedKey);
         activeTaskCounts.delete(serializedKey);
       }
     }
@@ -342,6 +358,7 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
   }
 
   function clearActiveTaskCounts() {
+    taskEpochs.clear();
     activeTaskCounts.clear();
   }
 

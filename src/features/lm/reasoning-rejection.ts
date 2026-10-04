@@ -30,6 +30,9 @@ export function isReasoningErrorEnvelope({ value, parameter }: {
   value: unknown,
   parameter: 'reasoning_effort' | 'think',
 }): boolean {
+  // Most calls are ordinary streamed tokens. Do not construct validation
+  // failures for every token just because the request opted out of thinking.
+  if (typeof value !== 'object' || value === null || !Object.hasOwn(value, 'error')) return false;
   const parsed = ErrorEnvelopeSchema.safeParse(value);
   if (!parsed.success) return false;
   const error = parsed.data.error;
@@ -40,7 +43,11 @@ export function isReasoningErrorEnvelope({ value, parameter }: {
   ].includes(error.code)) return false;
   if (typeof error !== 'string' && error.param != null) {
     if (error.param !== parameter) return false;
-    if (error.code === 'unsupported_parameter' || error.code === 'unsupported_value') return true;
+    // A structured value/type rejection naming this exact control is enough;
+    // its human-readable message need not repeat the parameter name.
+    if (error.code != null && [
+      'unsupported_parameter', 'unsupported_value', 'invalid_value', 'invalid_enum_value', 'invalid_type',
+    ].includes(error.code)) return true;
   }
   const namesControl = (() => {
     switch (parameter) {

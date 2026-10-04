@@ -44,6 +44,49 @@ describe('createChatRuntimeStore', () => {
     expect(store.isTaskRunning({ chatId: toChatId({ raw: 'chat-1' }) })).toBe(false);
   });
 
+  it('releases overlapping owned tasks idempotently', () => {
+    const store = createChatRuntimeStore();
+    const key = { kind: 'title' as const, chatId: toChatId({ raw: 'overlap' }) };
+    const first = store.startTask({ key });
+    const second = store.startTask({ key });
+    expect(store.getTaskCount({ key })).toBe(2);
+    first(); first();
+    expect(store.getTaskCount({ key })).toBe(1);
+    second(); second();
+    expect(store.getTaskCount({ key })).toBe(0);
+  });
+
+  it.each(['task', 'chat', 'all'] as const)('ignores late release after clearing %s tasks', clearing => {
+    const store = createChatRuntimeStore();
+    const chatId = toChatId({ raw: 'clear' });
+    const key = { kind: 'title' as const, chatId };
+    const stale = store.startTask({ key });
+    switch (clearing) {
+    case 'task': store.clearTask({ key }); break;
+    case 'chat': store.clearTasksForChat({ chatId }); break;
+    case 'all': store.clearActiveTaskCounts(); break;
+    default: { const exhaustive: never = clearing; throw new Error(String(exhaustive)); }
+    }
+    const current = store.startTask({ key });
+    stale(); stale();
+    expect(store.getTaskCount({ key })).toBe(1);
+    current();
+    expect(store.getTaskCount({ key })).toBe(0);
+  });
+
+  it('captures a task key rather than reading a later caller mutation on release', () => {
+    const store = createChatRuntimeStore();
+    const firstId = toChatId({ raw: 'first' });
+    const key = { kind: 'title' as const, chatId: firstId };
+    const first = store.startTask({ key });
+    key.chatId = toChatId({ raw: 'second' });
+    const second = store.startTask({ key });
+    first();
+    expect(store.getTaskCount({ key: { kind: 'title', chatId: firstId } })).toBe(0);
+    expect(store.getTaskCount({ key })).toBe(1);
+    second();
+  });
+
   it('clears all tasks for one chat without touching another chat', () => {
     const store = createChatRuntimeStore();
 
