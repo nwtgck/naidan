@@ -1128,6 +1128,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     }));
 
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(async ({ updater }) => {
+      await updater({ current: { ...chatObj, id: toChatId({ raw: chatObj.id }) } });
+    });
     const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
     await promise;
@@ -1237,7 +1240,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     }));
 
-    chatObj.title = null; // Clear title to allow auto-generation to proceed
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(async ({ updater }) => {
+      await updater({ current: { ...chatObj, id: chatObj.id } });
+    });
     await generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
 
     expect(chatObj.title).toBe('New Better Title');

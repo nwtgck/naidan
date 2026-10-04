@@ -1,3 +1,4 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
@@ -164,6 +165,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     id: ChatId,
     injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
   }): Promise<void> {
+    autoTitleScheduler.cancel({ chatId: id });
+    chatRuntimeStore.getActiveTitleGeneration({ chatId: id })?.abort();
+    chatRuntimeStore.deleteActiveTitleGeneration({ chatId: id });
     const chat = await storageService.loadChat({ id });
     if (chat === null) {
       return;
@@ -262,6 +266,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   }
 
   async function deleteAllChats(): Promise<void> {
+    autoTitleScheduler.reset();
+    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) controller.abort();
+    chatRuntimeStore.activeTitleGenerations.clear();
     for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
       item.controller.abort();
     }

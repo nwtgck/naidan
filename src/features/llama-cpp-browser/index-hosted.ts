@@ -131,7 +131,7 @@ async function run<T>({ signal, operation, kind }: {
       case 'operation': break;
       default: { const exhaustive: never = kind; throw new Error(`Unhandled operation kind: ${exhaustive}`); }
       }
-      const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported') && client?.canReuse();
+      const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported' || failure === 'reasoning-unsupported') && client?.canReuse();
       if (!reusable) {
         client?.dispose(); client = undefined; invalidateProfiles();
       }
@@ -142,7 +142,7 @@ async function run<T>({ signal, operation, kind }: {
         logDiagnostic({ diagnostic: { event: 'cancelled' } });
         break;
       case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model':
-      case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'context-full':
+      case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'context-full':
       case 'unsupported-input': case 'busy': case 'worker-failed':
       case 'audio-model-unsupported': case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty':
         publish({ next: { status: 'error', code } });

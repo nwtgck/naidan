@@ -3,7 +3,7 @@ import { MemoryStorageProvider } from './memory-storage';
 import { prepareModelLaunchChat, readModelLaunch, restoreModelLaunch, TEST_ONLY, detachRemovedModelLaunchOwners, type ModelLaunchChatRequest } from './model-launch';
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
 import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
-import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { hierarchyToDomain } from '@/00-storage/mapper/mappers';
 function request({ suffix, quant }: { suffix: string, quant: string }): ModelLaunchChatRequest {
   const repository = 'owner/Model-GGUF'; const mainFilePath = `Model-${quant}.gguf`;
@@ -38,7 +38,26 @@ describe('recoverable model launch persistence', () => {
     const chat = await prepareModelLaunchChat({ provider, request: req });
     expect(chat.root.items).toEqual([]); expect(chat.endpoint).toBeUndefined(); expect(chat.modelId).toBeUndefined();
     expect(readModelLaunch({ provider, chatId: chat.id })?.phase).toBe('active');
-    expect(await provider.loadChatGroup({ id: readModelLaunch({ provider, chatId: req.chatId })!.chatGroupId })).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, modelId: req.target.modelId, titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' } });
+    expect(await provider.loadChatGroup({ id: readModelLaunch({ provider, chatId: req.chatId })!.chatGroupId })).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, modelId: req.target.modelId, titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS } });
+  });
+  it('uses thinking off for a fresh user without inheriting normal chat parameters', async () => {
+    const provider = new MemoryStorageProvider();
+    const req = { ...request({ suffix: 'fresh', quant: 'Q4_K_M' }), titleGeneration: DEFAULT_SETTINGS.titleGeneration };
+    const chat = await prepareModelLaunchChat({ provider, request: req });
+    expect(await provider.loadChatGroup({ id: chat.groupId! })).toMatchObject({
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { reasoning: { effort: 'none' } } },
+    });
+  });
+  it.each([undefined, 'high'] as const)('does not rewrite a reused group with saved reasoning %s', async effort => {
+    const provider = new MemoryStorageProvider();
+    const first = request({ suffix: 'saved', quant: 'Q4_K_M' });
+    first.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } };
+    const chat = await prepareModelLaunchChat({ provider, request: first });
+    const before = await provider.loadChatGroup({ id: chat.groupId! });
+    await prepareModelLaunchChat({ provider, request: { ...request({ suffix: 'next', quant: 'Q4_K_M' }), titleGeneration: DEFAULT_SETTINGS.titleGeneration } });
+    const after = await provider.loadChatGroup({ id: chat.groupId! });
+    expect(after?.titleGeneration).toEqual(before?.titleGeneration);
+    expect(after?.items).toHaveLength(2);
   });
   it('preserves disabled title generation', async () => {
     const provider = new MemoryStorageProvider(); const req = { ...request({ suffix: 'one', quant: 'Q4_K_M' }), titleGeneration: 'disabled' as const };

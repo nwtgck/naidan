@@ -13,7 +13,7 @@ import { SettingsIcon } from 'lucide-vue-next';
 import * as openaiModule from '@/features/lm/openai';
 import * as ollamaModule from '@/features/lm/ollama';
 import { TransformersJsProvider } from '@/features/transformers-js/provider';
-import { type EndpointType } from '@/01-models/types';
+import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 import {
   TEST_ONLY as promptApiRuntimeTestOnly,
@@ -62,7 +62,7 @@ beforeEach(async () => {
 
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
-  const mockSettings = {
+  const mockSettings: { value: Pick<Settings, 'endpoint' | 'titleGeneration' | 'defaultModelId'> } = {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
       titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -341,6 +341,52 @@ describe('OnboardingModal.vue', () => {
       url: 'http://api.openai.com', // Normalized URL
       selectedModel: 'model-y',      // Selected model
     }));
+  });
+
+  it.each(['openai', 'ollama', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm'] as const)('keeps the new-user title default off through %s onboarding', async type => {
+    mockSettings.value.titleGeneration = DEFAULT_SETTINGS.titleGeneration;
+    mockOnboardingDraft.value = { url: 'https://example.test', type, headers: [], models: ['model-1'], selectedModel: 'model-1' };
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'), create: vi.fn(),
+    }));
+    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([
+      { id: 'model-1', name: 'model-1', size: 128, importedAt: 1 },
+    ]);
+    const wrapper = mount(OnboardingModal, { global: { stubs: {
+      LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
+      TransformersJsManager: true,
+    } } });
+    try {
+      await flushPromises();
+      if (type === 'llama_cpp_browser') {
+        wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);
+        await flushPromises();
+      }
+      const selector = type === 'llama_cpp_browser' || type === 'transformers_js'
+        ? '[data-testid="onboarding-local-start"]'
+        : '[data-testid="onboarding-finish-button"]';
+      expect(wrapper.get(selector).attributes('disabled')).toBeUndefined();
+      await wrapper.get(selector).trigger('click');
+      await flushPromises();
+      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+        patch: expect.objectContaining({ titleGeneration: expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort: 'none' } }) }) }),
+      }));
+    } finally {
+      wrapper.unmount(); list.mockRestore();
+    }
+  });
+
+  it.each([undefined, 'high'] as const)('preserves a saved title thinking preference %s through onboarding', async effort => {
+    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } };
+    mockOnboardingDraft.value = { url: 'https://example.test', type: 'openai', headers: [], models: ['model-1'], selectedModel: 'model-1' };
+    const wrapper = mount(OnboardingModal);
+    await flushPromises();
+    await wrapper.get('[data-testid="onboarding-finish-button"]').trigger('click');
+    await flushPromises();
+    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+      patch: expect.objectContaining({ titleGeneration: expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort } }) }) }),
+    }));
+    wrapper.unmount();
   });
 
   it('proceeds to Step 2 and persists settings only on "Get Started"', async () => {

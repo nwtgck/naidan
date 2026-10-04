@@ -1,3 +1,4 @@
+import { renderThinkingTemplate } from '@/features/lm/reasoning-rejection';
 import type { InferenceGenerationEvent } from './generation-events';
 import { NativeProtocolStreamer } from './models/native-protocol-streamer';
 import { createStandardGeneration, resolveStandardGenerationFraming } from './models/standard-generation';
@@ -580,11 +581,12 @@ const gemma4GenerationStrategy: GenerationStrategy = {
 
     for (const tool of tools ?? []) validateGemma4ToolName({ name: tool.function.name });
     const { images, templateMessages } = await buildGemma4TemplateInput({ messages });
-    const prompt = runtimeState.gemma4Processor.apply_chat_template(templateMessages, {
+    const processor = runtimeState.gemma4Processor;
+    const prompt = renderThinkingTemplate({ offRequested: params?.reasoning.effort === 'none', render: () => processor.apply_chat_template(templateMessages, {
       add_generation_prompt: true,
       ...getGemma4ThinkingTemplateOptions({ parameters: params }),
       ...(tools?.length ? { tools } : {}),
-    });
+    }) });
     const inputs = await runtimeState.gemma4Processor(
       prompt,
       images.length > 0 ? images : null,

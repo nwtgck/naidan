@@ -105,7 +105,7 @@ const endpointType = computed<Endpoint['type']>({
     case 'browser_provided_lm':
       form.value.endpoint = { type };
       form.value.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
       return;
     case 'unsupported_experimental_endpoint':
       return;
@@ -303,7 +303,7 @@ function currentSettingsTitleGeneration(): SettingsTitleGeneration {
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
   if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
-  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
 function resetModelsWhenEndpointNamespaceChanges({
@@ -642,7 +642,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
 function clearBrowserProvidedTitleModelOverride(): void {
   const titleGeneration = currentSettingsTitleGeneration();
   if (titleGeneration !== 'disabled' && titleGeneration.model !== 'same_scope' && titleGeneration.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
-    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
     return;
   }
 }
@@ -762,7 +762,7 @@ async function fetchModels() {
         && titleGeneration.model !== 'same_scope'
         && !models.includes(titleGeneration.model.id)
       ) {
-        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
+        updatedForm.titleGeneration = { ...titleGeneration, model: 'same_scope' };
         changed = true;
       }
     }
@@ -860,8 +860,8 @@ function handleQuickProviderProfileChange() {
     form.value.defaultModelId = providerProfile.defaultModelId;
     setFormTitleGeneration({
       titleGeneration: providerProfile.titleModelId === undefined || providerProfile.titleModelId === ''
-        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
-        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyLmParameters() },
+        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined }
+        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: undefined },
     });
     form.value.systemPrompt = providerProfile.systemPrompt;
     form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;

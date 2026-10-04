@@ -1,3 +1,4 @@
+import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import type { IStorageProvider } from './interface';
 import type { Chat, ChatGroup, Hierarchy, SettingsTitleGeneration } from '@/01-models/types';
 import { idToRaw, toChatGroupId, type ChatId, type ChatGroupId } from '@/01-models/ids';
@@ -111,7 +112,7 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     chatGroup = reserved ?? {
       id: launch.chatGroupId, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
       endpoint: { type: 'llama_cpp_browser' }, modelId: launch.target.modelId,
-      titleGeneration: titleGeneration === 'disabled' ? 'disabled' : { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' },
+      titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reserved === null;
     break;
@@ -146,7 +147,7 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     chatGroup = reusable ?? {
       id, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
       endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId,
-      titleGeneration: titleGeneration === 'disabled' ? 'disabled' : { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' },
+      titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reusable === undefined;
     launch = { version: 1, input, requestedVariant, target, chatGroupId: chatGroup.id, phase: 'reserved' };

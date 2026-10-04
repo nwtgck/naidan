@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
@@ -528,19 +529,19 @@ async function handleFinish() {
         return {
           defaultModelId: selectedModel.value || undefined,
           titleGeneration: selectedModel.value === ''
-            ? { endpoint: 'same_scope' as const, model: 'same_scope' as const, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }
-            : { endpoint: 'same_scope' as const, model: { id: selectedModel.value }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+            ? retargetTitleGenerationToSameScope({ source: settings.value.titleGeneration, model: 'same_scope' })
+            : retargetTitleGenerationToSameScope({ source: settings.value.titleGeneration, model: { id: selectedModel.value } }),
         };
       case 'llama_cpp_browser':
       case 'transformers_js':
         return {
           defaultModelId: selectedModel.value || undefined,
-          titleGeneration: { endpoint: 'same_scope' as const, model: 'same_scope' as const , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+          titleGeneration: retargetTitleGenerationToSameScope({ source: settings.value.titleGeneration, model: 'same_scope' }),
         };
       case 'browser_provided_lm':
         return {
           defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
-          titleGeneration: { endpoint: 'same_scope' as const, model: 'same_scope' as const , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+          titleGeneration: retargetTitleGenerationToSameScope({ source: settings.value.titleGeneration, model: 'same_scope' }),
         };
       default: {
         const _ex: never = type;

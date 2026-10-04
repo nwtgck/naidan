@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS } from '@/01-models/types';
+import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { flushPromises } from '@vue/test-utils';
 import {
@@ -111,6 +111,26 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('uses thinking off only when no settings have been saved, without persisting a migration', async () => {
+    mocks.loadSettings.mockResolvedValue(null);
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    expect(settings.value.titleGeneration).toMatchObject({ lmParameters: { reasoning: { effort: 'none' } } });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('loads saved title reasoning %s verbatim without a migration', async effort => {
+    const saved: Settings = {
+      ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } },
+    };
+    mocks.loadSettings.mockResolvedValue(saved);
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    expect(settings.value.titleGeneration).toEqual(saved.titleGeneration);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it('does not schedule provider prefetch before settings initialization completes', async () => {

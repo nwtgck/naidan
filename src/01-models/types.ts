@@ -497,7 +497,8 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
-  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  // Fresh settings only. Persisted/legacy settings retain their own reasoning values.
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } },
   providerProfiles: [],
   mounts: [],
   heavyContentAlertDismissed: false,

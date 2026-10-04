@@ -1,3 +1,4 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -511,6 +512,50 @@ describe('ChatInput Integration', () => {
         },
       },
     },
+  });
+
+  it('reports actual input but not programmatic draft changes or focus', async () => {
+    const noteActivity = vi.spyOn(autoTitleScheduler, 'noteActivity');
+    const wrapper = getWrapper();
+    await flushPromises();
+    noteActivity.mockClear();
+    wrapper.vm.input = 'Restored draft';
+    await nextTick();
+    await wrapper.get('[data-testid="chat-input"]').trigger('focus');
+    expect(noteActivity).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="chat-input"]').setValue('User text');
+    expect(noteActivity).toHaveBeenCalled();
+    wrapper.unmount();
+    noteActivity.mockRestore();
+  });
+
+  it('keeps Send available while an automatic title is running and preempts it on input', async () => {
+    const wrapper = getWrapper();
+    await flushPromises();
+    vi.useFakeTimers();
+    const finished = Promise.withResolvers<void>();
+    let titleSignal: AbortSignal | undefined;
+    try {
+      autoTitleScheduler.schedule({ chatId: toChatId({ raw: 'title-chat' }), run: ({ signal }) => {
+        titleSignal = signal;
+        return finished.promise;
+      } });
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(titleSignal?.aborted).toBe(false);
+      expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="abort-button"]').exists()).toBe(false);
+      await wrapper.get('[data-testid="chat-input"]').setValue('Next message');
+      expect(titleSignal?.aborted).toBe(true);
+      await wrapper.get('[data-testid="send-button"]').trigger('click');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    } finally {
+      autoTitleScheduler.reset();
+      finished.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it('waits to auto-send until onboarding no longer blocks interaction', async () => {

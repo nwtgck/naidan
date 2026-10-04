@@ -282,6 +282,18 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
   });
 
+  it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('preserves title reasoning %s when a changed endpoint invalidates its model', async effort => {
+    mockGroup.titleGeneration = { endpoint: 'same_scope', model: { id: 'old-title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.4, reasoning: { effort } } };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('ollama');
+    await flushPromises();
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: 0.4, reasoning: { effort } },
+    });
+    wrapper.unmount();
+  });
+
   it('shows detailed error message when refresh fails', async () => {
     const errorMessage = 'CORS error: OLLAMA_ORIGINS="*"';
     mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));

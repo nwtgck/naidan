@@ -369,6 +369,18 @@ describe('ChatSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('preserves title reasoning %s when a changed endpoint invalidates its model', async effort => {
+    mockCurrentChat.value.titleGeneration = { endpoint: 'same_scope', model: { id: 'old-title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.4, reasoning: { effort } } };
+    const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-setting-endpoint-type-select"]').setValue('ollama');
+    await flushPromises();
+    expect(mockCurrentChat.value.titleGeneration).toMatchObject({
+      endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: 0.4, reasoning: { effort } },
+    });
+    wrapper.unmount();
+  });
+
   it('uses the inherited HTTP endpoint when switching from transformers_js to HTTP', async () => {
     mockSettings.value.endpoint = {
       type: 'openai',

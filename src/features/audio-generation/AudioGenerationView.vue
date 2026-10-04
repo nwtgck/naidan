@@ -118,7 +118,7 @@ const errorMessage = computed(() => {
   case 'context-full': return lazyStrings.audioGeneration__context_full();
   case undefined: return undefined;
   case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
-  case 'runtime-error': case 'template-unsupported': case 'unsupported-input': case 'busy': case 'aborted': case 'worker-failed':
+  case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'unsupported-input': case 'busy': case 'aborted': case 'worker-failed':
     return lazyStrings.audioGeneration__generation_failed();
   default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
   }

@@ -24,7 +24,7 @@ function failureOutcome({ error }: { error: unknown }): 'aborted' | 'failed' {
   switch (code) {
   case 'aborted': return 'aborted';
   case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model':
-  case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'context-full':
+  case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'context-full':
   case 'unsupported-input': case 'busy': case 'worker-failed': case 'audio-model-unsupported':
   case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty': return 'failed';
   default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }

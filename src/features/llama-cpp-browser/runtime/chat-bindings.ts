@@ -1,3 +1,5 @@
+import { isUnsupportedReasoningError } from '@/01-models/lm-errors';
+import { renderThinkingTemplate } from '@/features/lm/reasoning-rejection';
 import type { MainModule, common_chat_params, common_chat_parser_params, common_chat_templates_inputs, common_chat_msg } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
 import { LlamaCppBrowserError, type GenerateInput, type GenerationResult } from '@/features/llama-cpp-browser/types';
 import { logFailure } from '@/features/llama-cpp-browser/debug-log';
@@ -130,7 +132,7 @@ export function bindNativeChat<
           default: { const exhaustive: never = effort; throw new Error(`Unknown reasoning effort: ${exhaustive}`); }
           }
           inputs.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
-          params = templates.apply(inputs);
+          params = renderThinkingTemplate({ offRequested: effort === 'none', render: () => templates.apply(inputs) });
         } finally {
           inputs.delete();
         }
@@ -186,7 +188,7 @@ export function bindNativeChat<
         // Keep the original failure so the service retires the resident runtime
         // instead of reusing its cached template and native state.
         if (error instanceof WebAssembly.RuntimeError) throw error;
-        throw new LlamaCppBrowserError({ code: 'template-unsupported' });
+        throw new LlamaCppBrowserError({ code: isUnsupportedReasoningError({ error }) ? 'reasoning-unsupported' : 'template-unsupported' });
       }
     }
   };

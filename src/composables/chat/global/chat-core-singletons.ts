@@ -1,4 +1,5 @@
 import { ref, toRaw, triggerRef } from 'vue';
+import { autoTitleScheduler, observeAutoTitleForeground } from './auto-title-runtime';
 import { type ContextCompactProgress } from '@/logic/context-compact';
 import { createChatDataStore } from './chat-data-store';
 import { createChatRuntimeFacade } from './chat-runtime-facade';
@@ -15,6 +16,7 @@ import {
 } from './chat-tmp-directory-store';
 
 export const chatRuntimeStore = createChatRuntimeStore();
+observeAutoTitleForeground({ isBusy: () => chatRuntimeStore.hasForegroundTasks() });
 export const contextCompactRuntime = createContextCompactRuntime();
 export const chatVolatileState = createChatVolatileState();
 export const availableModels = ref<string[]>([]);
@@ -68,6 +70,9 @@ export const chatDataStore = createChatDataStore({
     chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
   },
   onMigration: () => {
+    autoTitleScheduler.reset();
+    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) controller.abort();
+    chatRuntimeStore.activeTitleGenerations.clear();
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
     chatRuntimeStore.clearActiveGenerations();
     chatRuntimeStore.clearActiveTaskCounts();

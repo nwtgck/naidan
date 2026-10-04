@@ -1517,7 +1517,7 @@ function clearBrowserProvidedLmModelOverrides(): void {
   }
   const titleGeneration = localSettings.value.titleGeneration;
   if (typeof titleGeneration !== 'string' && titleGeneration?.model !== 'same_scope' && titleGeneration?.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
-    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
   }
 }
 function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
@@ -1530,7 +1530,7 @@ function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
   if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
   const titleGeneration = localSettings.value.titleGeneration;
   if (titleGeneration === undefined || typeof titleGeneration === 'string' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
-  setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+  setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
 function resetLocalModelsWhenEndpointNamespaceChanges({
@@ -1567,7 +1567,7 @@ async function updateEndpointType({
   case 'browser_provided_lm':
     localSettings.value.endpoint = { type: endpointType };
     localSettings.value.modelId = BROWSER_PROVIDED_LM_MODEL_ID;
-    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
     break;
   case 'openai':
   case 'ollama': {
@@ -1605,11 +1605,12 @@ async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number]
 async function handleQuickProviderProfileChange() {
   const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
+    const titleLmParameters = materializedLocalLmParameters() ?? emptyLmParameters();
     localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
     localSettings.value.titleGeneration = providerProfile.titleModelId === undefined
-      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
-      : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyLmParameters() };
+      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: titleLmParameters }
+      : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: titleLmParameters };
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
       : undefined;
@@ -1667,7 +1668,7 @@ async function fetchModels() {
       && titleGeneration.model !== 'same_scope'
       && !models.includes(titleGeneration.model.id)
     ) {
-      updateLocalTitleGenerationDraft({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+      updateLocalTitleGenerationDraft({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
       changed = true;
     }
     if (changed) {

@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { createChatRuntimeStore } from './chat-runtime-store';
 
 describe('createChatRuntimeStore', () => {
+  it('counts foreground work across chats without counting title or model-list tasks', () => {
+    const store = createChatRuntimeStore();
+    const chatId = toChatId({ raw: 'activity' });
+    store.startTask({ key: { kind: 'title', chatId } });
+    store.startTask({ key: { kind: 'fetch', chatId } });
+    expect(store.hasForegroundTasks()).toBe(false);
+    store.startTask({ key: { kind: 'process', chatId } });
+    expect(store.hasForegroundTasks()).toBe(true);
+    store.finishTask({ key: { kind: 'process', chatId } });
+    expect(store.hasForegroundTasks()).toBe(false);
+    const other = toChatId({ raw: 'other' });
+    store.setExternalGeneration({ chatId: other });
+    expect(store.hasForegroundTasks()).toBe(true);
+    store.deleteExternalGeneration({ chatId: other });
+    expect(store.hasForegroundTasks()).toBe(false);
+  });
+
   it('tracks chat-scoped tasks and processing state', () => {
     const store = createChatRuntimeStore();
 

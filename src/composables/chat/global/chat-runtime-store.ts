@@ -125,6 +125,7 @@ export type ChatRuntimeStore = {
     chatId: ChatId,
   }): void,
 
+  hasForegroundTasks(): boolean,
   clearActiveGenerations(): void,
   clearActiveTaskCounts(): void,
 
@@ -331,6 +332,11 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     activeTitleGenerations.delete(chatId);
   }
 
+  function hasForegroundTasks(): boolean {
+    return activeGenerations.size > 0 || externalGenerations.size > 0
+      || Array.from(activeTaskCounts).some(([key, count]) => key.startsWith('process:') && count > 0);
+  }
+
   function clearActiveGenerations() {
     activeGenerations.clear();
   }
@@ -360,6 +366,7 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     setActiveTitleGeneration,
     getActiveTitleGeneration,
     deleteActiveTitleGeneration,
+    hasForegroundTasks,
     clearActiveGenerations,
     clearActiveTaskCounts,
     ...((__BUILD_MODE_IS_TEST__ && {
