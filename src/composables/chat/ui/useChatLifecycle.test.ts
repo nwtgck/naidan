@@ -1,6 +1,10 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
+import { chatRuntimeStore } from '@/composables/chat/global/chat-core-singletons';
+import { storageService } from '@/00-storage/service';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockAddToast,
@@ -58,15 +62,8 @@ vi.mock('@/composables/useToast', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  chatRuntimeStore: {
-    activeGenerations: new Map(),
-    clearActiveGenerations: vi.fn(),
-    clearActiveTaskCounts: vi.fn(),
-    clearTasksForChat: vi.fn(),
-    getActiveGeneration: vi.fn(),
-    deleteActiveGeneration: vi.fn(),
-  },
+vi.mock('@/composables/chat/global/chat-core-singletons', async () => ({
+  chatRuntimeStore: (await import('@/composables/chat/global/chat-runtime-store')).createChatRuntimeStore(),
   clearChatTmpDirectories: vi.fn(),
   creatingChat: mockCreatingChat,
   currentChatGroupRef: mockCurrentChatGroupRef,
@@ -91,8 +88,13 @@ describe('useChatLifecycle', () => {
   const groupId = toChatGroupId({ raw: 'workspace-group' });
   const existingChatId = toChatId({ raw: 'existing-chat' });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    autoTitleScheduler.reset();
+    chatRuntimeStore.clearActiveTaskCounts();
+    chatRuntimeStore.activeTitleGenerations.clear();
+    vi.mocked(storageService.loadChat).mockResolvedValue(null);
     mockCreatingChat.value = false;
     mockCurrentChatGroupRef.value = null;
     mockCurrentChatRef.value = null;
@@ -112,6 +114,44 @@ describe('useChatLifecycle', () => {
       };
       await updater({ current });
     });
+  });
+
+  afterEach(() => {
+    autoTitleScheduler.reset();
+    vi.useRealTimers();
+  });
+
+  it('cancels pending and active titles immediately during the deletion undo window', async () => {
+    vi.useFakeTimers();
+    const chat: Chat = { id: existingChatId, title: null, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat);
+    const controller = new AbortController();
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: existingChatId, controller });
+    const run = vi.fn().mockResolvedValue(undefined);
+    autoTitleScheduler.schedule({ chatId: existingChatId, run });
+    await useChatLifecycle().deleteChat({ id: existingChatId, injectAddToast: () => 'undo-toast' });
+    expect(controller.signal.aborted).toBe(true);
+    expect(chatRuntimeStore.getActiveTitleGeneration({ chatId: existingChatId })).toBeUndefined();
+    expect(storageService.deleteChat).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('clears every pending title and aborts title controllers when deleting all chats', async () => {
+    vi.useFakeTimers();
+    const other = toChatId({ raw: 'other-chat' });
+    const first = new AbortController(); const second = new AbortController();
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: existingChatId, controller: first });
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: other, controller: second });
+    const run = vi.fn().mockResolvedValue(undefined);
+    autoTitleScheduler.schedule({ chatId: existingChatId, run });
+    autoTitleScheduler.schedule({ chatId: other, run });
+    await useChatLifecycle().deleteAllChats();
+    expect(first.signal.aborted).toBe(true);
+    expect(second.signal.aborted).toBe(true);
+    expect(chatRuntimeStore.activeTitleGenerations.size).toBe(0);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('provisions a workspace only for the newly created chat when Shell Execute is effectively enabled', async () => {

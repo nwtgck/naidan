@@ -8,6 +8,8 @@
  * Validation ensures that type errors do not leak into the application logic
  * and that we handle unexpected API behavior gracefully.
  */
+import { isUnsupportedReasoningError, UnsupportedReasoningError } from '@/01-models/lm-errors';
+import { isReasoningErrorEnvelope, isReasoningRejection } from './reasoning-rejection';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { toToolCallId, type BinaryObjectId } from '@/01-models/ids';
@@ -269,7 +271,9 @@ export class OllamaProvider implements LmProvider {
         }
       }
       if (!response.ok) {
+        const unsupportedReasoning = body.think === false && await isReasoningRejection({ response, parameter: 'think' });
         const message = `Ollama API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
+        if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
         addErrorEvent({ source: 'OllamaProvider', message, details: { status: response.status, url } });
         throw new Error(message);
       }
@@ -283,7 +287,12 @@ export class OllamaProvider implements LmProvider {
           if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
             throw new Error('Ollama returned neither generation content nor a completion state.');
           }
-          if (chunk.error !== undefined) throw new Error(chunk.error);
+          if (chunk.error !== undefined) {
+            if (body.think === false && isReasoningErrorEnvelope({ value: { error: chunk.error }, parameter: 'think' })) {
+              throw new UnsupportedReasoningError({ message: chunk.error });
+            }
+            throw new Error(chunk.error);
+          }
           if (chunk.message?.thinking) await writer.text({ type: 'reasoning', text: chunk.message.thinking });
           if (chunk.message?.content) await writer.text({ type: 'text', text: chunk.message.content });
           for (const call of chunk.message?.tool_calls ?? []) {
@@ -308,7 +317,7 @@ export class OllamaProvider implements LmProvider {
         }
         return { type: 'interrupted', reason: 'unknown' };
       } catch (error) {
-        if (!signal.aborted) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
+        if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
         throw error;
       }
     } });

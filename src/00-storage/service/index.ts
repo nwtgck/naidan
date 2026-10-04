@@ -199,14 +199,19 @@ export class StorageService {
 
   // --- Persistence Methods ---
 
-  async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | Promise<ChatMeta> }): Promise<void> {
+  // Returning undefined is a conditional no-op, checked under the metadata lock.
+  // In particular, delayed background work must never recreate a deleted chat.
+  async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | undefined | Promise<ChatMeta | undefined> }): Promise<void> {
     try {
+      let written = false;
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatMeta({ id });
         const updated = await updater({ current: current });
+        if (updated === undefined) return;
         await this.getProvider().saveChatMeta({ meta: updated });
+        written = true;
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
-      this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
+      if (written) this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatMeta' });
       throw e;

@@ -115,6 +115,15 @@ describe('StorageService Synchronization Wrapper', () => {
     await service.init({ type: 'local' });
   });
 
+  it('performs a conditional metadata no-op without writing or notifying', async () => {
+    const updater = vi.fn().mockResolvedValue(undefined);
+    await service.updateChatMeta({ id: toChatId({ raw: 'deleted-chat' }), updater });
+    expect(updater).toHaveBeenCalledExactlyOnceWith({ current: null });
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: LOCK_METADATA }));
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
   it('should wrap deleteChat with lock and notify after success', async () => {
     await service.deleteChat({ id: toChatId({ raw: 'c1' }) });
 

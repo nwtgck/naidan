@@ -59,7 +59,7 @@ import {
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import {
-  generateChatTitleForChat,
+  scheduleAutoTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-flow';
 import {
   abortProcessingForChat,
@@ -672,7 +672,7 @@ export async function generateResponseForAssistant({
         break;
       case 'finished':
         if (mutableChat.title === null && resolved.autoTitleEnabled && !controller.signal.aborted) {
-          await generateChatTitleForChat({ chatId: mutableChat.id, signal: controller.signal, titleModelIdOverride: undefined });
+          scheduleAutoTitleForChat({ chatId: mutableChat.id });
         }
         break;
       default: { const _ex: never = result; throw new Error(`Unhandled generation result: ${_ex}`); }
@@ -685,7 +685,7 @@ export async function generateResponseForAssistant({
   } catch (error) {
     signalReady();
     // Model errors are recorded by the common runner. Failures in storage, tool
-    // observation, disposal, or title generation must not overwrite that outcome.
+    // observation or disposal must not overwrite that outcome.
     const reason: unknown = controller.signal.reason;
     const userStop = controller.signal.aborted && reason instanceof DOMException && reason.name === 'AbortError';
     if (userStop) {

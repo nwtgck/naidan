@@ -134,3 +134,35 @@ describe('cached template failure ownership', () => {
     f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
   });
 });
+
+
+describe('native thinking preference rejection', () => {
+  it('distinguishes rejected off from generic template failure without retiring the template', () => {
+    const f = fixture();
+    f.apply.mockImplementationOnce(() => {
+      throw new Error('enable_thinking must be true');
+    });
+    expect(() => f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, reasoningEffort: 'none' } }))
+      .toThrow('reasoning-unsupported');
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request }).dispose();
+    expect(f.templateConstructed).toHaveBeenCalledTimes(1);
+    f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
+  });
+
+  it('does not turn an unrelated template failure or a trap into a reasoning retry', () => {
+    for (const error of [new Error('Unsupported system role'), new WebAssembly.RuntimeError('enable_thinking is not supported')]) {
+      const f = fixture();
+      f.apply.mockImplementationOnce(() => {
+        throw error;
+      });
+      try {
+        f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, reasoningEffort: 'none' } });
+        throw new Error('Expected template failure');
+      } catch (caught) {
+        expect(errorCode({ error: caught })).not.toBe('reasoning-unsupported');
+        if (error instanceof WebAssembly.RuntimeError) expect(caught).toBe(error);
+      }
+      f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
+    }
+  });
+});

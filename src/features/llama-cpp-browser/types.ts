@@ -27,7 +27,7 @@ export type LocalModel = z.infer<typeof modelSchema>;
 export const modelsSchema = z.array(modelSchema);
 export const errorCodeSchema = z.enum([
   'unavailable', 'invalid-gguf', 'duplicate-model', 'missing-model', 'storage-error',
-  'runtime-error', 'template-unsupported', 'context-full', 'unsupported-input',
+  'runtime-error', 'template-unsupported', 'reasoning-unsupported', 'context-full', 'unsupported-input',
   'busy', 'aborted', 'worker-failed', 'audio-model-unsupported', 'audio-reference-required', 'audio-reference-invalid', 'audio-output-empty',
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;

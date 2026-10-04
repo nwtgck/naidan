@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAutoTitleActivity } from '@/composables/chat/ui/useAutoTitleActivity';
 import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import {
@@ -80,6 +81,8 @@ const emit = defineEmits<{
   (e: 'scroll-to-bottom', force?: boolean): void,
 }>();
 
+const titleActivity = useAutoTitleActivity();
+
 const isFocused = ref(false);
 const isHovered = ref(false);
 
@@ -121,6 +124,7 @@ const currentResolution = computed(() => {
 });
 
 function updateResolution({ width, height }: { width: number, height: number }) {
+  titleActivity.noteActivity();
   chatMedia.updateResolution({ width, height });
 }
 
@@ -129,6 +133,7 @@ const currentCount = computed(() => {
 });
 
 function updateCount({ count }: { count: number }) {
+  titleActivity.noteActivity();
   chatMedia.updateCount({ count });
 }
 
@@ -137,6 +142,7 @@ const currentPersistAs = computed(() => {
 });
 
 function updatePersistAs({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) {
+  titleActivity.noteActivity();
   chatMedia.updatePersistAs({ format });
 }
 
@@ -145,6 +151,7 @@ const currentSteps = computed(() => {
 });
 
 function updateSteps({ steps }: { steps: number | undefined }) {
+  titleActivity.noteActivity();
   chatMedia.updateSteps({ steps });
 }
 
@@ -153,7 +160,13 @@ const currentSeed = computed(() => {
 });
 
 function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
+  titleActivity.noteActivity();
   chatMedia.updateSeed({ seed });
+}
+
+function updateModel({ modelId }: { modelId: string | undefined }) {
+  titleActivity.noteActivity();
+  void chatMetadata.updateModel({ chatId: props.chatId, modelId });
 }
 
 const selectedReasoningEffort = chatMetadata.reasoningEffort({
@@ -161,6 +174,7 @@ const selectedReasoningEffort = chatMetadata.reasoningEffort({
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
+  titleActivity.noteActivity();
   void chatMetadata.updateReasoningEffort({
     chatId: props.chatId,
     effort,
@@ -216,6 +230,7 @@ function closeAdvancedEditor() {
 }
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
+  if (input.value !== newContent) titleActivity.noteActivity();
   input.value = newContent;
 }
 
@@ -278,6 +293,7 @@ function closeImageEditor() {
 }
 
 function saveEditedImage({ blob }: { blob: Blob }) {
+  titleActivity.noteActivity();
   if (!editingAttachment.value) return;
 
   const index = attachments.value.findIndex(a => a.id === editingAttachmentId.value);
@@ -339,6 +355,7 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 async function processFiles({ files }: { files: File[] }) {
+  titleActivity.noteActivity();
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
 
@@ -393,6 +410,7 @@ async function attachCopyAsVolume({ entries, name }: {
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
+  const releaseActivity = titleActivity.hold();
   try {
     const vol = await storageService.createVolumeFromFiles({
       name,
@@ -413,12 +431,14 @@ async function attachCopyAsVolume({ entries, name }: {
       }) });
     }
   } finally {
+    releaseActivity();
     activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
   }
 }
 
 async function attachLinkAsVolume() {
   if (!chat.value) return;
+  const releaseActivity = titleActivity.hold();
   try {
     // @ts-expect-error: File System Access API
     const handle = await window.showDirectoryPicker({ mode: 'read' });
@@ -430,6 +450,8 @@ async function attachLinkAsVolume() {
         errorMessage: (e as Error).message,
       }) });
     }
+  } finally {
+    releaseActivity();
   }
 }
 
@@ -485,83 +507,89 @@ async function collectFilesFromDirectoryEntry(
 // Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
 async function processDropItems({ items }: { items: DataTransferItem[] }) {
+  titleActivity.noteActivity();
   if (!chat.value) return;
 
-  type DropCollected =
-    | { kind: 'fsa-handle', promise: Promise<FileSystemHandle> }
-    | { kind: 'entry', entry: FileSystemEntry }
-    | { kind: 'raw-file', item: DataTransferItem };
+  const releaseActivity = titleActivity.hold();
+  try {
+    type DropCollected =
+      | { kind: 'fsa-handle', promise: Promise<FileSystemHandle> }
+      | { kind: 'entry', entry: FileSystemEntry }
+      | { kind: 'raw-file', item: DataTransferItem };
 
-  // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
-  const collected: DropCollected[] = [];
-  for (const item of items) {
-    if (item.kind !== 'file') continue;
-    if ('getAsFileSystemHandle' in item) {
-      // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
-      collected.push({
-        kind: 'fsa-handle',
-        promise: (item as DataTransferItem & {
-          getAsFileSystemHandle(): Promise<FileSystemHandle>,
-        }).getAsFileSystemHandle(),
-      });
-    } else {
-      const entry = item.webkitGetAsEntry();
-      collected.push(entry ? { kind: 'entry', entry } : { kind: 'raw-file', item });
+    // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
+    const collected: DropCollected[] = [];
+    for (const item of items) {
+      if (item.kind !== 'file') continue;
+      if ('getAsFileSystemHandle' in item) {
+        // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
+        collected.push({
+          kind: 'fsa-handle',
+          promise: (item as DataTransferItem & {
+            getAsFileSystemHandle(): Promise<FileSystemHandle>,
+          }).getAsFileSystemHandle(),
+        });
+      } else {
+        const entry = item.webkitGetAsEntry();
+        collected.push(entry ? { kind: 'entry', entry } : { kind: 'raw-file', item });
+      }
     }
-  }
 
-  // Phase 2: process (can be async now)
-  const plainFiles: File[] = [];
-  for (const c of collected) {
-    switch (c.kind) {
-    case 'fsa-handle': {
-      const handle = await c.promise;
-      switch (handle.kind) {
-      case 'directory': {
-        // Attach as host volume — read permission is already granted by the browser drop gesture
-        const dirHandle = handle as FileSystemDirectoryHandle;
-        const vol = await storageService.createVolume({ name: dirHandle.name, type: 'host', sourceHandle: dirHandle });
-        await finishMount({ volumeId: vol.id, name: vol.name });
+    // Phase 2: process (can be async now)
+    const plainFiles: File[] = [];
+    for (const c of collected) {
+      switch (c.kind) {
+      case 'fsa-handle': {
+        const handle = await c.promise;
+        switch (handle.kind) {
+        case 'directory': {
+          // Attach as host volume — read permission is already granted by the browser drop gesture
+          const dirHandle = handle as FileSystemDirectoryHandle;
+          const vol = await storageService.createVolume({ name: dirHandle.name, type: 'host', sourceHandle: dirHandle });
+          await finishMount({ volumeId: vol.id, name: vol.name });
+          break;
+        }
+        case 'file':
+          plainFiles.push(await (handle as FileSystemFileHandle).getFile());
+          break;
+        default: {
+          const _ex: never = handle.kind;
+          throw new Error(`Unhandled handle kind: ${_ex}`);
+        }
+        }
         break;
       }
-      case 'file':
-        plainFiles.push(await (handle as FileSystemFileHandle).getFile());
+      case 'entry': {
+        const { entry } = c;
+        if (entry.isFile) {
+          const file = await new Promise<File>((resolve, reject) =>
+            (entry as FileSystemFileEntry).file(resolve, reject),
+          );
+          plainFiles.push(file);
+        } else if (entry.isDirectory) {
+          // Non-Chromium fallback: collect files and copy to OPFS
+          const entries = await collectFilesFromDirectoryEntry({ dirEntry: entry as FileSystemDirectoryEntry });
+          await attachCopyAsVolume({ entries, name: entry.name });
+        }
         break;
+      }
+      case 'raw-file': {
+        const file = c.item.getAsFile();
+        if (file) plainFiles.push(file);
+        break;
+      }
       default: {
-        const _ex: never = handle.kind;
-        throw new Error(`Unhandled handle kind: ${_ex}`);
+        const _ex: never = c;
+        throw new Error(`Unhandled drop kind: ${JSON.stringify(_ex)}`);
       }
       }
-      break;
     }
-    case 'entry': {
-      const { entry } = c;
-      if (entry.isFile) {
-        const file = await new Promise<File>((resolve, reject) =>
-          (entry as FileSystemFileEntry).file(resolve, reject),
-        );
-        plainFiles.push(file);
-      } else if (entry.isDirectory) {
-        // Non-Chromium fallback: collect files and copy to OPFS
-        const entries = await collectFilesFromDirectoryEntry({ dirEntry: entry as FileSystemDirectoryEntry });
-        await attachCopyAsVolume({ entries, name: entry.name });
-      }
-      break;
-    }
-    case 'raw-file': {
-      const file = c.item.getAsFile();
-      if (file) plainFiles.push(file);
-      break;
-    }
-    default: {
-      const _ex: never = c;
-      throw new Error(`Unhandled drop kind: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
 
-  if (plainFiles.length > 0) {
-    await onAttachFilesSelected({ files: plainFiles });
+    if (plainFiles.length > 0) {
+      await onAttachFilesSelected({ files: plainFiles });
+    }
+  } finally {
+    releaseActivity();
   }
 }
 
@@ -722,6 +750,7 @@ function removeAttachment({ id }: { id: AttachmentId }) {
 }
 
 function applySuggestion({ text }: { text: string }) {
+  titleActivity.noteActivity();
   input.value = text;
   nextTick(() => {
     adjustTextareaHeight({});
@@ -1146,6 +1175,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
 <template>
   <div
     v-if="chat"
+    @input.capture="titleActivity.noteActivity"
+    @keydown.capture="titleActivity.noteActivity"
+    @pointerdown.capture="titleActivity.noteActivity"
+    @paste.capture="titleActivity.noteActivity"
+    @drop.capture="titleActivity.noteActivity"
+    @compositionstart.capture="titleActivity.beginComposition"
+    @compositionend.capture="titleActivity.endComposition"
+    @focusout.capture="titleActivity.endComposition"
     :tw-class="['absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform', visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0']"
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
@@ -1303,7 +1340,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
           <div tw-class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="chat.modelId"
-              @update:model-value="val => chatMetadata.updateModel({ chatId: props.chatId, modelId: val! })"
+              @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
               :models="sortedAvailableModels"
               :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
               :loading="fetchingModels"
@@ -1375,7 +1412,15 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
         @cancel="closeImageEditor"
         @save="saveEditedImage"
       />
-      <div v-if="isAdvancedEditorOpen" tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
+      <div
+        v-if="isAdvancedEditorOpen"
+        @input.capture="titleActivity.noteActivity"
+        @keydown.capture="titleActivity.noteActivity"
+        @pointerdown.capture="titleActivity.noteActivity"
+        @compositionstart.capture="titleActivity.beginComposition"
+        @compositionend.capture="titleActivity.endComposition"
+        @focusout.capture="titleActivity.endComposition"
+        tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
         <div tw-class="w-full max-w-5xl h-full max-h-[90vh]">
           <AdvancedTextEditor
             :initial-value="input"
