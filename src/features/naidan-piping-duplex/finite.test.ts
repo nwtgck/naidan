@@ -102,8 +102,8 @@ for (const [diagnostic, kind] of [
   ["[ERROR] Another sender has been connected on '/slot'.", 'waiting-sender'],
   ["[ERROR] Connection on '/slot' has been established already.", 'established'],
   ['[ERROR] The number of receivers has reached limits.', 'waiting-receiver'],
-  ["[ERROR] Another sender has been connected on '/other'.", 'fatal'],
-  ['Bad Request', 'fatal'],
+  ["[ERROR] Another sender has been connected on '/other'.", 'transient'],
+  ['Bad Request', 'transient'],
 ] as const) {
   it(`classifies a bounded 400 without guessing from the status alone: ${diagnostic}`, async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(diagnostic, { status: 400 }));

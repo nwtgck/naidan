@@ -48,6 +48,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p role="status" tw-class="text-xs break-words text-amber-800 dark:text-amber-300">{{ entry.state.failure }}</p>
       <p v-if="!entry.state.pending.length" tw-class="text-xs">{{ lazyStrings.ImagePendingRuns__run_information_pending() }}</p>
       <div v-for="output in entry.state.pending" :key="idToRaw({ id: output.asset.id })" tw-class="space-y-1">
+        <p v-if="output.asset.result.confirmation === 'unconfirmed'" data-testid="pending-unconfirmed" tw-class="text-xs text-amber-800 dark:text-amber-300">{{ lazyStrings.ImagePendingRuns__completion_unconfirmed() }}</p>
         <ImageHistoryImage :binary-object-id="output.asset.result.binaryObjectId" :width="output.asset.result.width" :height="output.asset.result.height" :alt="entry.state.run?.request.parameters.prompt || ''" :get-image="getImage" />
         <button type="button" @click="download({ binaryObjectId: output.asset.result.binaryObjectId })" data-testid="pending-download" tw-class="text-xs text-blue-600 dark:text-blue-400">{{ lazyStrings.ImagePendingRuns__download_image() }}</button>
       </div>

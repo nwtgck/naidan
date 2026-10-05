@@ -1,3 +1,4 @@
+import type { ImageExecutionTargetView } from './composables/use-image-execution-target';
 import type { ImageGenerationDraftAccess } from './generation-draft';
 import type { ImageGenerationSubmission } from './generation-submission';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
@@ -29,6 +30,7 @@ export type ImageEngineStateView = {
 };
 
 export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<ImageGenerationDraftAccess> & {
+  executionTarget?: ImageExecutionTargetView;
   engineState: ImageEngineStateView;
   seedMode: Ref<'random' | 'fixed'>;
   randomizeSeed(): void;

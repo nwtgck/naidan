@@ -36,6 +36,7 @@ export const generationQueryResultSchema = z.object({
   pendingDeletions: z.array(z.object({ assetId, sessionId, revision: integer }).strict()),
   page: resolveMissingAsUndefined(z.object({
     items: z.array(resolveMissingAsUndefined(z.object({
+      confirmation: z.literal('unconfirmed').optional(),
       id: assetId, sessionId, runId, index: z.number().int().min(0).max(63), createdAt: integer,
       seed: z.string().max(19).regex(/^(0|[1-9][0-9]*)$/).refine(value => BigInt(value) <= 9223372036854775807n),
       binaryObjectId: rawId.transform(raw => toBinaryObjectId({ raw })), width: z.number().int().positive(), height: z.number().int().positive(), previewCount: z.number().int().min(0).max(100),

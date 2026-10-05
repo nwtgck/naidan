@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import ImageGenerationProgress from './ImageGenerationProgress.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
@@ -77,6 +78,7 @@ function formatElapsed({ elapsedMs }: { elapsedMs: number }): string {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
+  <ImageRecoveredOutputs v-if="presentation !== 'settings'" />
   <div tw-class="min-w-0 flex flex-col gap-5" data-testid="image-results-workspace">
     <section v-if="presentation !== 'settings'" tw-class="space-y-3">
       <div v-if="!results.length && !pendingImage && !unfinishedImage" tw-class="min-h-64 flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/20 p-8 text-center" data-testid="image-results-empty">
@@ -155,7 +157,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button v-if="results.length" type="button" @click="clearResults" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
       </div>
     </ImageSettingsSection>
-    <ImageEngineState :view="view" :active="active" />
+    <ImageEngineState v-if="view.executionTarget?.kind.value !== 'naidan_rpc'" :view="view" :active="active" />
     <div ref="diagnosticsRegion" tabindex="-1" data-testid="image-diagnostics-region" tw-class="space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl">
       <ImageSettingsSection v-model:open="diagnosticsOpen" :title="lazyStrings.stableDiffusionCppBrowser__diagnostics()" :summary="diagnosticStatus" data-testid="image-live-diagnostics">
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>

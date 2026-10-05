@@ -1,3 +1,4 @@
+import { ImageGenerationRuntimeSchemaDto } from './image-generation-runtime.dto';
 import { z } from 'zod';
 
 import { UI_LOCALES } from '@/01-models/ui-locale';
@@ -73,6 +74,7 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
     endpoint: missingAsUndefined(z.union([
+      resolveMissingAsUndefined(z.object({ type: z.literal('naidan_rpc'), connectionId: missingAsUndefined(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)) })),
       resolveMissingAsUndefined(z.object({
         type: z.literal('browser_provided_lm'),
       })),
@@ -195,6 +197,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
   toolConfigPersistence: missingAsUndefined(z.literal('enabled')),
   toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(z.literal('enabled')),
+  naidanRpc: missingAsUndefined(z.literal('enabled')),
   sidebarSendMessageReorder: missingAsUndefined(z.union([
     z.literal('disabled'),
     z.literal('move_sent_chat'),
@@ -327,13 +330,13 @@ export const ExperimentalImageGenerationSchemaDto = z.object({
       sampler: z.enum(['auto', 'euler', 'euler_a', 'heun', 'dpm2', 'dpm++2m', 'lcm']),
       scheduler: z.enum(['auto', 'discrete', 'karras', 'exponential', 'simple', 'sgm_uniform']),
       distilledGuidance: z.number().finite(),
-      vaeTiling: z.boolean(),
-      vaeTileSize: z.number().int().positive(),
-      flashAttention: z.boolean(),
-      bf16WeightType: z.enum(['f32', 'f16']),
-      qwenVaePolicy: z.enum(['bounded', 'native']),
-      conditioningCacheSize: z.number().int().nonnegative(),
-      modelArguments: z.string(),
+      vaeTiling: z.boolean().optional(),
+      vaeTileSize: z.number().int().positive().optional(),
+      flashAttention: z.boolean().optional(),
+      bf16WeightType: z.enum(['f32', 'f16']).optional(),
+      qwenVaePolicy: z.enum(['bounded', 'native']).optional(),
+      conditioningCacheSize: z.number().int().nonnegative().optional(),
+      modelArguments: z.string().optional(),
     }),
     models: z.array(z.object({
       slot: z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']),
@@ -358,21 +361,22 @@ export const ExperimentalImageGenerationSchemaDto = z.object({
       mode: z.enum(['projection', 'vae']),
       maxEdge: z.number().int().nonnegative(),
     }),
-    runtime: resolveMissingAsUndefined(z.object({
-      sourceCommit: z.string(),
-      profile: z.enum(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']),
-      weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
-      gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
-    })),
+    runtime: ImageGenerationRuntimeSchemaDto,
   }),
-  result: z.object({
-    binaryObjectId: ImageHistoryRawIdSchemaDto,
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    modelVersion: z.string(),
-    uniformOutput: z.boolean(),
-    elapsedMs: z.number().finite().nonnegative(),
-  }),
+  result: z.union([
+    z.object({
+      binaryObjectId: ImageHistoryRawIdSchemaDto,
+      width: z.number().int().positive(), height: z.number().int().positive(),
+      elapsedMs: z.number().finite().nonnegative(),
+      confirmation: z.literal('confirmed').optional(), modelVersion: z.string(), uniformOutput: z.boolean(),
+    }).strict(),
+    z.object({
+      binaryObjectId: ImageHistoryRawIdSchemaDto,
+      width: z.number().int().positive(), height: z.number().int().positive(),
+      elapsedMs: z.number().finite().nonnegative(),
+      confirmation: z.literal('unconfirmed'), modelVersion: z.string().optional(), uniformOutput: z.boolean().optional(),
+    }).strict(),
+  ]),
   previews: z.array(z.object({
     binaryObjectId: ImageHistoryRawIdSchemaDto,
     step: z.number().int().positive(),

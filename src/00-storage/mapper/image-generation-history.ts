@@ -1,3 +1,5 @@
+import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+import { ImageGenerationRuntimeSchemaDto } from '@/00-storage/00-dto/image-generation-runtime.dto';
 import type { ImageGenerationModelFile, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import { idToRaw, toBinaryObjectId, toHostModelDirectoryId, toImageGenerationId } from '@/01-models/ids';
 import { exactObject } from '@/utils/exact-object';
@@ -30,7 +32,13 @@ export function imageGenerationRequestToDomain({ request }: { request: Experimen
     ...requestMetadata,
     parameters: exactObject<ImageGenerationRecord['request']['parameters']>()({ ...parameters }),
     preview: exactObject<ImageGenerationRecord['request']['preview']>()({ ...preview }),
-    runtime: exactObject<ImageGenerationRecord['request']['runtime']>()({ ...runtime }),
+    runtime: (() => {
+      switch (runtime.profile) {
+      case 'naidan-rpc': return { ...ImageGenerationRuntimeSchemaDto.options[1].parse(runtime), connectionId: toNaidanRpcConnectionId({ raw: runtime.connectionId }), peerId: toNaidanRpcPeerId({ raw: runtime.peerId }) };
+      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
+      default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+      }
+    })(),
     models: models.map(({ file, companions, ...model }) => exactObject<ImageGenerationRecord['request']['models'][number]>()({
       ...model, file: fileToDomain({ file }), companions: companions.map(({ file, ...companion }) => exactObject<ImageGenerationRecord['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDomain({ file }) })),
     })),
@@ -50,7 +58,7 @@ export function imageGenerationRequestToDto({ request }: { request: ImageGenerat
     ...requestMetadata,
     parameters: exactObject<ExperimentalImageGenerationDto['request']['parameters']>()({ ...parameters }),
     preview: exactObject<ExperimentalImageGenerationDto['request']['preview']>()({ ...preview }),
-    runtime: exactObject<ExperimentalImageGenerationDto['request']['runtime']>()({ ...runtime }),
+    runtime: ImageGenerationRuntimeSchemaDto.parse(runtime),
     models: models.map(({ file, companions, ...model }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]>()({
       ...model, file: fileToDto({ file }), companions: companions.map(({ file, ...companion }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDto({ file }) })),
     })),

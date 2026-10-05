@@ -48,6 +48,7 @@ export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: En
       return endpoint.type;
     }
   }
+  case 'naidan_rpc': return 'Naidan RPC';
   case 'transformers_js': return 'Transformers.js';
   case 'llama_cpp_browser': return 'llama.cpp (browser)';
   case 'browser_provided_lm': return 'Browser';

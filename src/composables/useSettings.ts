@@ -1,3 +1,4 @@
+import { configureRpcFeature } from '@/features/naidan-peer-rpc/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
@@ -37,6 +38,12 @@ const _settings = ref<Settings>({
   storageType: 'local',
   endpoint: { type: 'openai', url: '' },
 } as Settings);
+
+watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
+  void configureRpcFeature({ status, settings: () => _settings.value }).catch(() => {
+    console.warn('[naidan-rpc] stop-confirmation-failed');
+  });
+}, { immediate: true, flush: 'sync' });
 
 let globalDefaultRevision = 0;
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
@@ -171,6 +178,7 @@ watch(
   () => _settings.value.endpoint.type,
   (endpointType, _previousType, onCleanup) => {
     switch (endpointType) {
+    case 'naidan_rpc':
     case 'openai':
     case 'ollama':
       return;

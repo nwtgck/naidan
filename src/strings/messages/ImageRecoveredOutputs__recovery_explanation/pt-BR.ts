@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__recovery_explanation = (): string => "Todos os dados da imagem foram recebidos, mas não foi possível confirmar a conclusão da geração. Salvar ou baixar estas imagens não marca a execução como bem-sucedida. Os dados permanecem ao fechar a área de trabalho, mas não ao fechar esta aba do navegador.";

@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__recovery_explanation = (): string => "Se recibieron todos los datos de la imagen, pero no se pudo confirmar que la generación terminara. Guardar o descargar estas imágenes no marca la ejecución como exitosa. Los datos se conservan al cerrar el espacio de trabajo, pero no al cerrar esta pestaña del navegador.";

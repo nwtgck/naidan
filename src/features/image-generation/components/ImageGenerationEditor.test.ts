@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import { recommendationForSelection } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import ImageGenerationEditor from './ImageGenerationEditor.vue';
 

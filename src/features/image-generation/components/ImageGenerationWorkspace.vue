@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
 import ImagePendingRuns from './ImagePendingRuns.vue';
 import { computed, defineAsyncComponent, onScopeDispose, ref, useId, watch } from 'vue';
 import { useElementSize } from '@vueuse/core';
@@ -136,7 +137,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
             <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
               <div tw-class="flex flex-wrap items-center gap-2">
                 <label :for="inputId + '-count'" tw-class="text-xs font-medium">{{ lazyStrings.imageGeneration__images() }}</label>
-                <input :id="inputId + '-count'" :value="view.available.value ? count : 1" @change="editCount({ event: $event })" type="number" min="1" :max="IMAGE_GENERATION_MAX_RUN_IMAGES" step="1" :disabled="view.editor.formDisabled.value || !view.available.value" data-testid="workspace-image-count" tw-class="w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40" />
+                <input :id="inputId + '-count'" :value="count" @change="editCount({ event: $event })" type="number" min="1" :max="IMAGE_GENERATION_MAX_RUN_IMAGES" step="1" :disabled="view.editor.formDisabled.value" data-testid="workspace-image-count" tw-class="w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40" />
                 <button type="button" @click="countHelpOpen = !countHelpOpen" :aria-expanded="countHelpOpen" :aria-controls="inputId + '-count-help'" :title="lazyStrings.imageGeneration__count_help()" :aria-label="lazyStrings.imageGeneration__count_help()" data-testid="workspace-count-help-toggle" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><InfoIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
                 <div tw-class="ml-auto shrink-0"><ImageGenerationDebugToggle :view="view.editor" /></div>
               </div>
@@ -152,6 +153,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
            regardless of how many model/parameter sections are open on the left. -->
           <div tw-class="min-w-0 space-y-3" data-testid="workspace-results-column">
             <ImagePendingRuns />
+            <ImageRecoveredOutputs />
             <div data-testid="workspace-preview-column" tw-class="min-w-0"><ImageGenerationMonitor :workspace="view" :generation="generation" :active="active" :compact="false" /></div>
             <section v-if="view.experimentalNoticeVisible.value" role="status" data-testid="workspace-experimental-notice" tw-class="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 text-xs space-y-1.5">
               <p tw-class="font-semibold text-blue-800 dark:text-blue-200">{{ lazyStrings.imageGeneration__notice_title() }}</p>

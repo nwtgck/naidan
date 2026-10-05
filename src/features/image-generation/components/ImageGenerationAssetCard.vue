@@ -19,13 +19,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <article tw-class="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden shadow-sm" data-testid="workspace-asset">
+    <p v-if="tile.confirmation === 'unconfirmed'" data-testid="asset-unconfirmed" tw-class="px-2 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">{{ lazyStrings.ImageRecoveredOutputs__unconfirmed() }}</p>
     <button type="button" @click="view.inspect({ tile })" :aria-label="lazyStrings.imageGeneration__inspect()" tw-class="w-full block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">
       <ImageHistoryImage :binary-object-id="tile.binaryObjectId" :width="tile.width" :height="tile.height" :alt="tile.seed" :get-image="view.getImage" thumbnail />
     </button>
     <div tw-class="p-2 space-y-2">
       <div v-if="prompt !== undefined" tw-class="flex items-start gap-1"><p tw-class="min-w-0 flex-1 line-clamp-2 text-xs leading-relaxed text-gray-600 dark:text-gray-300 break-words select-text">{{ prompt }}</p><ImageGenerationCopyButton :text="prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="workspace-copy-card-prompt" /></div>
       <div tw-class="flex items-center justify-between gap-1">
-        <span tw-class="min-w-0 text-[10px] font-mono text-gray-500 dark:text-gray-400 break-all" :title="lazyStrings.imageGeneration__actual_seed()">{{ tile.seed }}</span>
+        <span tw-class="min-w-0 text-[10px] font-mono text-gray-500 dark:text-gray-400 break-all" :title="tile.confirmation === 'unconfirmed' ? lazyStrings.ImageGenerationHistory__requested_seed() : lazyStrings.imageGeneration__actual_seed()">{{ tile.seed }}</span>
         <div tw-class="flex shrink-0">
           <button type="button" @click="view.toggleTag({ tile, tag: { type: 'system', key: 'favorite' } })" :disabled="view.mutation.value || !tile.annotations" :aria-label="lazyStrings.imageGeneration__favorite()" :aria-pressed="view.hasTag({ tile, tag: { type: 'system', key: 'favorite' } })" :tw-class="['p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40', view.hasTag({ tile, tag: { type: 'system', key: 'favorite' } }) ? 'text-amber-500' : 'text-gray-400']"><StarIcon :fill="view.hasTag({ tile, tag: { type: 'system', key: 'favorite' } }) ? 'currentColor' : 'none'" tw-class="w-4 h-4" /></button>
           <button type="button" @click="view.toggleSelection({ tile })" :aria-label="lazyStrings.imageGeneration__select_image()" :aria-pressed="view.selection.value.some(value => value.id === tile.id)" :disabled="view.mutation.value" :tw-class="['p-1.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-30', view.selection.value.some(value => value.id === tile.id) ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800']"><CheckIcon tw-class="w-4 h-4" /></button>

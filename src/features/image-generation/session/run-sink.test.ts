@@ -97,3 +97,29 @@ describe('Workspace run publication ownership', () => {
     expect(h.sink.snapshot().run).toBe(run);
   });
 });
+
+it.each(['interrupted', 'completed', 'cancelled'] as const)('never promotes recovered pixels after a %s completion and save retry', async type => {
+  const h = harness({ count: 1 }); await h.accept();
+  const output = h.output({ index: 0 });
+  output.record.result = { ...output.record.result, confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined };
+  const onPersisted = vi.fn(); h.commit.mockRejectedValueOnce(new Error('lost acknowledgement'));
+  await expect(h.sink.submission.recovered!({ ...output, onPersisted })).rejects.toThrow('lost acknowledgement');
+  expect(h.sink.snapshot()).toMatchObject({ received: 0, recovered: 1 }); expect(onPersisted).not.toHaveBeenCalled();
+  await h.sink.submission.finished({ completion: { type } });
+  const attempted = h.commit.mock.calls[0]![0]; await h.sink.retry();
+  expect(h.commit.mock.calls[1]![0]).toBe(attempted); expect(onPersisted).toHaveBeenCalledOnce();
+  expect(h.sink.snapshot()).toMatchObject({ received: 0, recovered: 1, pending: [], run: { execution: { type: 'interrupted' } } });
+});
+it('rejects recovered pixels through the successful output path', async () => {
+  const h = harness({ count: 1 }); await h.accept(); const output = h.output({ index: 0 });
+  output.record.result = { ...output.record.result, confirmation: 'unconfirmed' };
+  await expect(h.sink.submission.output(output)).rejects.toThrow(); expect(h.commit).not.toHaveBeenCalled();
+});
+it('a recovered final image does not discard earlier confirmed images or accept a later image', async () => {
+  const h = harness({ count: 3 }); await h.accept(); await h.sink.submission.output(h.output({ index: 0 }));
+  const output = h.output({ index: 1 }); output.record.result = { ...output.record.result, confirmation: 'unconfirmed' };
+  await h.sink.submission.recovered!({ ...output, onPersisted: vi.fn() });
+  await expect(h.sink.submission.output(h.output({ index: 2 }))).rejects.toThrow();
+  await h.sink.submission.finished({ completion: { type: 'interrupted' } });
+  expect(h.sink.snapshot()).toMatchObject({ received: 1, recovered: 1, run: { execution: { type: 'interrupted' } } });
+});

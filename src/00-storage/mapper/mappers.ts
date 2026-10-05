@@ -1,3 +1,4 @@
+import { toNaidanRpcConnectionId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 /**
  * Mappers
@@ -867,6 +868,12 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     unhandledExperimental satisfies Record<PropertyKey, never>;
     if (endpoint !== undefined) {
       switch (endpoint.type) {
+      case 'naidan_rpc': {
+        const { type, connectionId, ...rest } = endpoint;
+        rest satisfies Record<PropertyKey, never>;
+        return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({ type,
+          connectionId: connectionId === undefined ? undefined : toNaidanRpcConnectionId({ raw: connectionId }) });
+      }
       case 'browser_provided_lm': {
         const { type, ...unhandledEndpoint } = endpoint;
         unhandledEndpoint satisfies Record<PropertyKey, never>;
@@ -901,6 +908,14 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   switch (endpoint.type) {
+  case 'naidan_rpc': {
+    const { type, connectionId, ...rest } = endpoint;
+    rest satisfies Record<PropertyKey, never>;
+    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({ type,
+      connectionId: connectionId === undefined ? undefined : idToRaw({ id: connectionId }) });
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type',
+      experimental: { endpoint: payload, unreadable: undefined } });
+  }
   case 'openai':
   case 'ollama': {
     const {
@@ -2173,6 +2188,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
+      naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
       browserImageGeneration,
@@ -2210,6 +2226,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigPersistence: toolConfigPersistence ?? 'disabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
+      naidanRpc: naidanRpc ?? 'disabled',
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
@@ -2288,6 +2305,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
+      naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
       browserImageGeneration,
@@ -2326,6 +2344,13 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         persistence: toolConfigPersistence,
       }),
       toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
+      naidanRpc: (() => {
+        switch (naidanRpc) {
+        case 'enabled': return 'enabled';
+        case 'disabled': case undefined: return undefined;
+        default: { const exhaustive: never = naidanRpc; return exhaustive; }
+        }
+      })(),
       fakeLm: fakeLmToExperimentalDto({
         status: fakeLm,
       }),

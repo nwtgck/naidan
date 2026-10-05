@@ -18,15 +18,28 @@ function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto })
   unhandled satisfies Record<PropertyKey, never>;
   return exactObject<ExperimentalImageGenerationRunSummaryDto>()({ id, sessionId, revision, createdAt, execution,
     prompt: request.parameters.prompt,
-    modelName: request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '',
+    modelName: (() => {
+      const runtime = request.runtime;
+      switch (runtime.profile) {
+      case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
+      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
+      default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+      }
+    })(),
     requestedCount: seeds.length,
   });
 }
 function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDto }): ExperimentalImageGenerationAssetSummaryDto {
   const { result, previews, ...metadata } = record;
-  const { binaryObjectId, width, height, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
+  const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
   unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({ ...metadata, binaryObjectId, width, height, previewCount: previews.length });
+  return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({ ...metadata, ...(() => {
+    switch (confirmation) {
+    case 'unconfirmed': return { confirmation };
+    case 'confirmed': case undefined: return {};
+    default: { const exhaustive: never = confirmation; throw new Error(String(exhaustive)); }
+    }
+  })(), binaryObjectId, width, height, previewCount: previews.length });
 }
 
 export async function imageGenerationSessionTable({ directory, create }: { directory: FileSystemDirectoryHandle, create: boolean }) {

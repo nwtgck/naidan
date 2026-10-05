@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { createImageGallery } from '@/features/image-generation/image-gallery';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import type { PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types';
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
 

@@ -385,3 +385,50 @@ it('managed configuration and pins are owned before asynchronous connection work
   }
   expect(relay.occupied).toBe(0);
 });
+
+it('the public pairing API uses a short number, waits for both approvals, and keeps the established session until stopped', async () => {
+  const { relay, stop } = setup();
+  const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const shownA = Promise.withResolvers<Uint8Array>(), shownB = Promise.withResolvers<Uint8Array>();
+  const approveA = Promise.withResolvers<boolean>(), approveB = Promise.withResolvers<boolean>();
+  const settings = { ...options, connectionTimeoutMs: undefined, handshakeRetentionMs: undefined };
+  const first = NaidanPipingDuplexSession.pair({ piping: settings, code: '0017', role: 'initiator', identity: identities.a, signal: stop.signal,
+    verifyPeer: ({ comparison }) => {
+      shownA.resolve(comparison); return approveA.promise;
+    } });
+  const second = NaidanPipingDuplexSession.pair({ piping: settings, code: '0017', role: 'responder', identity: identities.b, signal: stop.signal,
+    verifyPeer: ({ comparison }) => {
+      shownB.resolve(comparison); return approveB.promise;
+    } });
+  const comparisons = await promiseAllKeyed({ a: shownA.promise, b: shownB.promise }); expect(comparisons.a).toEqual(comparisons.b);
+  let ready = 0; void first.then(() => {
+    ready++;
+  }); void second.then(() => {
+    ready++;
+  });
+  approveA.resolve(true); await new Promise(resolve => setTimeout(resolve, 15)); expect(ready).toBe(0);
+  approveB.resolve(true); const sessions = await promiseAllKeyed({ a: first, b: second });
+  expect(sessions.a.peerIdentity).toEqual(identities.b.publicKey);
+  const incoming = sessions.b.incomingStreams[Symbol.asyncIterator]();
+  const left = await sessions.a.openStream({ signal: undefined }), right = await incoming.next();
+  if (right.done) throw new Error('Missing peer stream');
+  relay.interrupt(); const writer = left.writable.getWriter();
+  const reading = readAll({ readable: right.value.readable }); await writer.write(new Uint8Array([7, 1, 9])); await writer.close();
+  expect(await reading).toEqual(new Uint8Array([7, 1, 9])); await right.value.writable.close();
+  await Promise.all([left.closed, right.value.closed]); stop.abort(); await Promise.all([sessions.a.closed, sessions.b.closed]);
+  expect(relay.occupied).toBe(0);
+});
+it('a pairing cancelled while waiting for user comparison never returns a usable late connection', async () => {
+  const { relay, stop } = setup();
+  const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const shown = Promise.withResolvers<void>(), gate = Promise.withResolvers<boolean>();
+  const settings = { ...options, connectionTimeoutMs: undefined, handshakeRetentionMs: undefined };
+  const a = NaidanPipingDuplexSession.pair({ piping: settings, code: '0023', role: 'initiator', identity: identities.a,
+    signal: stop.signal, verifyPeer: () => {
+      shown.resolve(); return gate.promise;
+    } });
+  const b = NaidanPipingDuplexSession.pair({ piping: settings, code: '0023', role: 'responder', identity: identities.b,
+    signal: stop.signal, verifyPeer: async () => true });
+  const failures = [expect(a).rejects.toBeDefined(), expect(b).rejects.toBeDefined()];
+  await shown.promise; stop.abort(); gate.resolve(true); await Promise.all(failures); expect(relay.occupied).toBe(0);
+});

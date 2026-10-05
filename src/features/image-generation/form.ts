@@ -1,3 +1,4 @@
+import type { ImageGenerationParameters } from '@/01-models/image-generation-history';
 import { ref, shallowRef } from 'vue';
 import { defaultPreviewSettings } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { PreviewFrame, PreviewSettings, Artifact, Parameters, WeightResidency, ModelSlot, Progress } from '@/features/stable-diffusion-cpp-browser/types';
@@ -44,7 +45,7 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const invalid = ref(false);
   const cancelled = ref(false);
   const stopping = ref(false);
-  const results = shallowRef<{ url: string, parameters: Parameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
+  const results = shallowRef<{ url: string, parameters: ImageGenerationParameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
   return { imageDownloadPreferences, setImageDownloadPreferences, retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, latestRun, failure, invalid, cancelled, stopping, results };
 }
 

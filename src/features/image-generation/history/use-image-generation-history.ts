@@ -3,10 +3,11 @@ import { storageService } from '@/00-storage/service';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationHistoryPage, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import type { StorageType } from '@/01-models/types';
-import { createImageHistoryClient } from './worker/client-hosted';
+import { createImageHistoryClient } from '@/features/image-generation/history/worker/client';
 import type { ImageHistoryClient } from './worker/types';
 
-/** Hosted-only owner; opening history performs only local OPFS operations. */
+/** Caller-side owner; opening history performs only local OPFS operations,
+ * independently of whether a native inference engine is distributed. */
 export function useImageGenerationHistory({ getStorageType }: { getStorageType: () => StorageType }) {
   const pageSize = 40;
   const items = shallowRef<ImageGenerationSummary[]>([]);

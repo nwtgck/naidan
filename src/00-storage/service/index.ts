@@ -404,7 +404,6 @@ export class StorageService {
    * The returned writer owns persistence, not a component or current settings.
    * A removed/replaced directory is an error; retries must never recreate it. */
   createImageGenerationHistoryWriter() {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const storageType = this.getCurrentType();
     switch (storageType) {
     case 'opfs': break;
@@ -483,7 +482,7 @@ export class StorageService {
       | { type: 'draft', draft: ImageGenerationSessionDraft, expectedRevision: number | undefined },
     files: ImageGenerationBinaryFile[],
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
     const provider = this.getProvider();
     const accepted = structuredClone(publication);
     const images = files.map(file => ({ ...file }));
@@ -520,7 +519,7 @@ export class StorageService {
   async deleteImageGenerationOutput({ store, sessionId, assetId, expectedRevision }: {
     store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: import('@/01-models/ids').ImageGenerationAssetId, expectedRevision: number,
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
     const provider = this.getProvider();
     const { deleteImageGenerationAsset } = await import('./image-generation-curation');
     try {
@@ -535,7 +534,7 @@ export class StorageService {
   }
 
   async captureImageGenerationExport({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationExportSnapshot> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
     const provider = this.getProvider();
     const { collectImageGenerationSessionMetadata } = await import('./image-generation-export');
     return this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'captureImageGenerationExport' }), fn: async () => {
@@ -552,13 +551,11 @@ export class StorageService {
   }
 
   async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { loadImageGenerationRecord } = await import('./image-generation-history');
     return loadImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
 
   async deleteImageGeneration({ id }: { id: ImageGenerationId }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { deleteImageGenerationRecord } = await import('./image-generation-history');
     return deleteImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }

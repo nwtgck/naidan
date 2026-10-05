@@ -1,3 +1,4 @@
+import { ImageGenerationRuntimeSchemaDto } from './image-generation-runtime.dto';
 import { z } from 'zod';
 import { EndpointSchemaDto } from './dto';
 import { imageGenerationTagNameKey, imageGenerationTagNameSchema, normalizeImageGenerationTagName, planImageGenerationSeeds, IMAGE_GENERATION_MAX_RUN_IMAGES } from '@/01-models/image-generation';
@@ -99,18 +100,13 @@ const ExperimentalImageGenerationRequestSchemaDto = ExperimentalImageGenerationL
     strength: z.number().finite(),
     referenceImages: z.array(ExperimentalImageGenerationInputImageSchemaDto),
   }).strict()),
-  runtime: resolveMissingAsUndefined(z.object({
-    sourceCommit: z.string(),
-    profile: z.enum(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']),
-    weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
-    gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
-  }).strict()),
+  runtime: ImageGenerationRuntimeSchemaDto,
 }).strict();
 
 const ExperimentalImageGenerationDraftParametersSchemaDto = ExperimentalImageGenerationLegacyRequestSchemaDto.shape.parameters.extend({
   prompt: z.string().max(4096), negativePrompt: z.string().max(4096), seed: z.string().max(20),
   width: z.number().finite(), height: z.number().finite(), steps: z.number().finite(), guidance: z.number().finite(),
-  vaeTileSize: z.number().finite(), conditioningCacheSize: z.number().finite(),
+  vaeTileSize: z.number().finite().optional(), conditioningCacheSize: z.number().finite().optional(),
 }).strict();
 
 // The legacy preferences schema tolerates future fields. Workspace checkpoints
@@ -188,7 +184,7 @@ export const ExperimentalImageGenerationAssetSchemaDto = z.object({
   index: z.number().int().min(0).max(IMAGE_GENERATION_MAX_RUN_IMAGES - 1),
   createdAt: ExperimentalImageGenerationTimestampSchemaDto,
   seed: z.string().max(19).regex(/^(0|[1-9][0-9]*)$/).refine(value => BigInt(value) <= 9223372036854775807n),
-  result: ExperimentalImageGenerationSchemaDto.shape.result.strict(),
+  result: ExperimentalImageGenerationSchemaDto.shape.result,
   previews: z.array(ExperimentalImageGenerationSchemaDto.shape.previews.element.strict()).max(100),
 }).strict();
 export type ExperimentalImageGenerationAssetDto = z.infer<typeof ExperimentalImageGenerationAssetSchemaDto>;
@@ -222,6 +218,7 @@ export const ExperimentalImageGenerationRunSummarySchemaDto = z.object({
 export type ExperimentalImageGenerationRunSummaryDto = z.infer<typeof ExperimentalImageGenerationRunSummarySchemaDto>;
 
 export const ExperimentalImageGenerationAssetSummarySchemaDto = ExperimentalImageGenerationAssetSchemaDto.omit({ result: true, previews: true }).extend({
+  confirmation: z.literal('unconfirmed').optional(),
   binaryObjectId: ExperimentalImageGenerationIdSchemaDto,
   width: z.number().int().positive(),
   height: z.number().int().positive(),

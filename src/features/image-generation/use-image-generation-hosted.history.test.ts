@@ -13,6 +13,8 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
+const rpcMocks = vi.hoisted(() => ({ manager: vi.fn() }));
+vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ getRpcManager: rpcMocks.manager, subscribeRpcState: () => () => {} }));
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
   let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
@@ -1104,6 +1106,70 @@ describe('Image Generation submission and draft integration', () => {
     expect(second?.files[0]?.blob.size).toBe(8); expect(mocks.getFile).not.toHaveBeenCalled();
   });
 });
+
+function rpcBinding() {
+  const stop = new AbortController();
+  const generateImage = vi.fn<import('@/features/naidan-peer-rpc/contract').NaidanPeerClient['generateImage']>(({ input }) => {
+    const bytes = new Uint8Array(57), view = new DataView(bytes.buffer);
+    bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
+    view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
+    return { result: Promise.resolve({ image: new ReadableStream({ start(controller) {
+      controller.enqueue(bytes); controller.close();
+    } }),
+    events: new ReadableStream({ start(controller) {
+      controller.enqueue({ type: 'completed' as const, seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'remote-version', uniformOutput: false }); controller.close();
+    } }) }),
+    closed: Promise.resolve(), cancel: vi.fn() };
+  });
+  const unexpected = vi.fn((): never => {
+    throw new Error('Unexpected catalogue access');
+  });
+  return { stop, generateImage, unexpected, client: { generateImage, generateChat: unexpected, listImageModels: unexpected, listChatModels: unexpected } };
+}
+async function remoteView() {
+  const { toNaidanRpcConnectionId, toNaidanRpcPeerId } = await import('@/01-models/ids');
+  const binding = rpcBinding();
+  const connection = { id: toNaidanRpcConnectionId({ raw: 'connection-example' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), label: 'Peer example' };
+  rpcMocks.manager.mockResolvedValue({ reload: async () => {}, list: () => [{ connection, phase: 'connected' }], bindClient: () => ({ ...binding, connection, signal: binding.stop.signal }) });
+  const view = open(); view.seedMode.value = 'fixed'; view.parameters.value.seed = '42';
+  view.executionTarget!.kind.value = 'naidan_rpc'; await view.executionTarget!.refresh({ fromStorage: false });
+  view.executionTarget!.chooseConnection({ id: connection.id });
+  view.executionTarget!.selectModel({ value: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/model.gguf' } } }, components: [], loras: [] } });
+  return { ...binding, view, connection };
+}
+it('executes a multi-image submission through the common RPC loop without local inference or model scans', async () => {
+  const h = await remoteView(); const accepted = vi.fn(async () => {}), output = vi.fn(async () => {}), finished = vi.fn(async () => {});
+  await h.view.generate({ submission: { count: 2, accepted, output, finished } });
+  expect(h.generateImage.mock.calls.map(([args]) => args.input.parameters.seed)).toEqual(['42', '43']);
+  expect(mocks.generate).not.toHaveBeenCalled(); expect(h.unexpected).not.toHaveBeenCalled(); expect(mocks.prepareFiles).not.toHaveBeenCalled();
+  expect(output).toHaveBeenCalledTimes(2); expect(accepted).toHaveBeenCalledWith(expect.objectContaining({ seeds: ['42', '43'] }));
+  expect(output).toHaveBeenCalledWith(expect.objectContaining({ record: expect.objectContaining({ request: expect.objectContaining({ runtime: expect.objectContaining({ profile: 'naidan-rpc', peerId: h.connection.peerId }), models: [] }) }) }));
+  expect(finished).toHaveBeenCalledWith({ completion: { type: 'completed' } });
+});
+it('captures and restores an RPC draft without resolving its model as a local file', async () => {
+  const h = await remoteView(); const draft = h.view.captureDraft!()!;
+  expect(draft.request.runtime.profile).toBe('naidan-rpc'); expect(draft.request.models).toEqual([]);
+  h.view.executionTarget!.kind.value = 'local'; mocks.prepareFiles.mockClear();
+  await h.view.restoreDraft!({ draft });
+  expect(h.view.executionTarget!.kind.value).toBe('naidan_rpc'); expect(h.view.executionTarget!.peerId.value).toBe(h.connection.peerId);
+  expect(mocks.prepareFiles).not.toHaveBeenCalled(); expect(h.generateImage).not.toHaveBeenCalled();
+});
+it('retains terminally unconfirmed pixels without publishing a successful image or rerunning inference', async () => {
+  const h = await remoteView(); const original = h.generateImage.getMockImplementation()!;
+  h.generateImage.mockImplementation(args => ({ ...original(args), closed: Promise.reject(new Error('lost terminal')) }));
+  const { imageRecoveryStore } = await import('./execution/recovery'); const output = vi.fn(async () => {}), recovered = vi.fn(async () => {}), finished = vi.fn(async () => {});
+  try {
+    await h.view.generate({ submission: { count: 2, accepted: async () => {}, output, recovered, finished } });
+    expect(h.generateImage).toHaveBeenCalledOnce(); expect(output).not.toHaveBeenCalled(); expect(recovered).toHaveBeenCalledOnce();
+    expect(finished).toHaveBeenCalledWith({ completion: { type: 'interrupted' } });
+    wrapper!.unmount(); wrapper = undefined; expect(imageRecoveryStore.list()).toHaveLength(1);
+    expect(imageRecoveryStore.list()[0]!.record.result.confirmation).toBe('unconfirmed');
+  } finally {
+    for (const entry of imageRecoveryStore.list()) imageRecoveryStore.remove({ id: entry.id });
+  }
+});
+
+
 it('retains a failed direct history save after gallery eviction and unmount without regenerating', async () => {
   mocks.save.mockRejectedValueOnce(new Error('full'));
   const view = open(); await view.generate();
@@ -1141,4 +1207,17 @@ it('updates the original gallery link when another pending-history view saves or
   expect(view.historySaving.pendingCount.value).toBe(0);
   expect(view.historySaving.status.value).toBe('idle');
   expect(mocks.generate).toHaveBeenCalledTimes(2);
+});
+
+it('retains a direct RPC image with its remote provenance without retrying remote generation', async () => {
+  const h = await remoteView(); mocks.save.mockRejectedValueOnce(new Error('full'));
+  await h.view.generate();
+  const retained = pendingImageHistory.list()[0];
+  expect(retained?.record.request.runtime).toMatchObject({ profile: 'naidan-rpc', connectionId: h.connection.id, peerId: h.connection.peerId });
+  expect(retained?.record.request.models).toEqual([]);
+  if (!retained) throw new Error('Missing retained RPC image');
+  wrapper?.unmount(); wrapper = undefined;
+  await pendingImageHistory.retry({ id: retained.record.id });
+  expect(h.generateImage).toHaveBeenCalledOnce(); expect(mocks.generate).not.toHaveBeenCalled();
+  expect(mocks.save).toHaveBeenCalledTimes(2); expect(mocks.save.mock.calls[1]![0]).toBe(mocks.save.mock.calls[0]![0]);
 });

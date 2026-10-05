@@ -4,6 +4,7 @@ import type { HistoryBinaryFile, ImageGenerationSnapshot } from './history/snaps
 export type ImageGenerationCompletion =
   | { type: 'completed' }
   | { type: 'cancelled' }
+  | { type: 'interrupted' }
   | { type: 'failed', message: string };
 
 /** A logical run owns a frozen request and consumes outputs incrementally. The
@@ -14,6 +15,7 @@ export type ImageGenerationSubmission = {
   accepted({ snapshot, seeds }: { snapshot: ImageGenerationSnapshot, seeds: string[] }): Promise<void>,
   output({ index, record, files }: { index: number, record: ImageGenerationRecord, files: HistoryBinaryFile[] }): Promise<void>,
   retry?(): Promise<void>,
+  recovered?({ index, record, files, onPersisted, onDiscarded }: { index: number, record: ImageGenerationRecord, files: HistoryBinaryFile[], onPersisted(): void, onDiscarded?(): void }): Promise<void>,
   finished({ completion }: { completion: ImageGenerationCompletion }): Promise<void>,
 };
 

@@ -772,6 +772,7 @@ const canGenerateImage = computed(() => {
     switch (type) {
     case 'ollama':
       return true;
+    case 'naidan_rpc':
     case 'openai':
     case 'transformers_js':
     case 'llama_cpp_browser':
@@ -816,6 +817,7 @@ const isChatSubmissionEnabled = computed(() => {
   }
 
   switch (type) {
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'transformers_js':

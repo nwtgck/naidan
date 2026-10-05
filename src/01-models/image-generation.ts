@@ -93,7 +93,8 @@ export type ImageGenerationRun = {
   execution: ImageGenerationRunExecution,
 };
 
-/** Only completed outputs are assets. Pending output slots belong to a run. */
+/** Assets contain complete image bytes. An unconfirmed RPC output is retained
+ * as such and is not evidence of a successfully completed computation. */
 export type ImageGenerationAsset = {
   id: ImageGenerationAssetId,
   sessionId: ImageGenerationSessionId,
@@ -115,6 +116,7 @@ export type ImageGenerationAssetAnnotations = {
 };
 
 export type ImageGenerationAssetSummary = Omit<ImageGenerationAsset, 'result' | 'previews'> & {
+  confirmation?: 'unconfirmed',
   binaryObjectId: ImageGenerationAsset['result']['binaryObjectId'],
   width: number,
   height: number,

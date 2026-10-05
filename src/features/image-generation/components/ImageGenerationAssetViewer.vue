@@ -105,7 +105,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { queue, index } }) |
     <template #details>
       <section data-testid="workspace-viewer-details" tw-class="space-y-4">
         <h2 tw-class="text-sm font-semibold">{{ lazyStrings.imageGeneration__inspect() }}</h2>
-        <p tw-class="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">{{ lazyStrings.imageGeneration__actual_seed() }}: {{ current.seed }} · {{ current.width }} × {{ current.height }}</p>
+        <p tw-class="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">{{ current.confirmation === 'unconfirmed' ? lazyStrings.ImageGenerationHistory__requested_seed() : lazyStrings.imageGeneration__actual_seed() }}: {{ current.seed }} · {{ current.width }} × {{ current.height }}</p>
         <p v-if="view.inspectLoading.value" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__loading() }}</p>
         <p v-if="view.inspectFailure.value" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ view.inspectFailure.value }}</p>
         <p v-if="view.details.value" tw-class="text-sm whitespace-pre-wrap break-words">{{ view.details.value.run.request.parameters.prompt }}</p>

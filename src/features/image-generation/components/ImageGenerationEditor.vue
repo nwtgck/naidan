@@ -9,6 +9,7 @@ import ImageModelConfiguration from '@/features/stable-diffusion-cpp-browser/com
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageLoraControls from '@/features/stable-diffusion-cpp-browser/components/ImageLoraControls.vue';
 import ImageInputControls from './ImageInputControls.vue';
+import ImageExecutionTarget from './ImageExecutionTarget.vue';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePrompt', text: string }): unknown }>();
@@ -17,7 +18,8 @@ const id = useId();
 const configurationOpen = ref(false);
 const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
-const hasModel = computed(() => !!library.main.value || !!files.value.model || !!files.value.diffusion);
+const remote = computed(() => props.view.executionTarget?.kind.value === 'naidan_rpc');
+const hasModel = computed(() => remote.value ? !!props.view.executionTarget?.selection.value && !!props.view.executionTarget?.connected.value : !!library.main.value || !!files.value.model || !!files.value.diffusion);
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -67,7 +69,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <form @submit.prevent="generate()" tw-class="min-w-0 space-y-4">
-    <section :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-model-setup">
+    <ImageExecutionTarget v-if="view.executionTarget" :target="view.executionTarget" :disabled="busy || view.historyActions.busy.value" />
+    <section v-if="!remote" :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-model-setup">
       <ImageModelLibrary :active="active" :manual-name="(files.model || files.diffusion)?.name" :view="library" :disabled="formDisabled" @prepare="emit('manageModels')" />
       <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2" data-testid="image-model-options">
         <ImageSettingsSection embedded v-model:open="configurationOpen" :title="lazyStrings.ImageGenerationEditor__model_configuration()" :summary="componentSummary" data-testid="image-component-settings">
@@ -97,7 +100,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-negative-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'negativePrompt'" :text="parameters.negativePrompt" /><ImageGenerationCopyButton :text="parameters.negativePrompt" :label="lazyStrings.imageGeneration__copy_negative_prompt()" data-testid="image-copy-draft-negative-prompt" /></div></div>
       <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
       <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
-        <button type="submit" :disabled="formDisabled || !supported || !hasModel || library.importing.value || (!!library.main.value && !library.ready.value)" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
+        <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (library.importing.value || (!!library.main.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
 
         <button type="button" :disabled="!inferenceRunning || stopping" @click="cancel" data-testid="image-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
           <SquareIcon aria-hidden="true" tw-class="h-4 w-4 fill-current" />{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
@@ -164,7 +167,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </ImageSettingsSection>
     </fieldset>
-    <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2">
+    <fieldset v-if="!remote" :disabled="formDisabled" tw-class="min-w-0 space-y-2">
       <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__runtime_settings()" :summary="parameters.bf16WeightType.toUpperCase() + ' · ' + profile">
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__advanced_parameters_help() }}</p>
         <div tw-class="grid sm:grid-cols-2 gap-4">
@@ -234,7 +237,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p v-else-if="manualInspectionState === 'scanning'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
       <p v-else-if="library.main.value || files.model || files.diffusion" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>
     </fieldset>
-    <div tw-class="flex flex-wrap items-center gap-3 text-sm" data-testid="image-model-retention">
+    <div tw-class="flex flex-wrap items-center gap-3 text-sm" v-if="!remote" data-testid="image-model-retention">
       <label tw-class="min-h-10 cursor-pointer inline-flex items-center gap-2">
         <input v-model="retainModel" type="checkbox" role="switch" :disabled="!supported" data-testid="image-retain-model" tw-class="sr-only peer" /><span aria-hidden="true" tw-class="relative h-6 w-10 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors peer-checked:bg-blue-600 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4 motion-reduce:transition-none motion-reduce:after:transition-none" />{{ lazyStrings.stableDiffusionCppBrowser__keep_model_loaded() }}</label>
       <span v-if="modelResident" tw-class="text-xs text-blue-600 dark:text-blue-400">{{ lazyStrings.stableDiffusionCppBrowser__model_resident() }}</span>

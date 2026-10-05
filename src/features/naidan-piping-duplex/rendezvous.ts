@@ -12,6 +12,9 @@ export function createNaidanPipingCode(): string {
 export function normalizeRendezvousCode({ code }: {
     code: string;
 }): string {
+  // A pinned-identity rendezvous has a full hash namespace; it is never a human authentication code.
+  if (/^peer-[0-9a-f]{64}$/.test(code)) return code;
+  if (/^[0-9]{4,8}$/.test(code)) return code;
   requireValue({ condition: /^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$/.test(code), message: 'Invalid rendezvous code shape' });
   const normalized = code.toUpperCase().replace('-', '');
   requireValue({ condition: [...normalized].every(character => alphabet.includes(character)), message: 'Invalid rendezvous alphabet' });

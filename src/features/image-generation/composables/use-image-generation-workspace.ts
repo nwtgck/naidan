@@ -769,8 +769,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     return true;
   }
   const editor: ImageGenerationView = { ...generation, generate,
-    formDisabled: computed(() => generation.formDisabled.value || busy.value || !editorReady.value || hasPendingSave.value),
-    draftDisabled: computed(() => generation.draftDisabled.value || busy.value || !editorReady.value),
+    formDisabled: computed(() => generation.formDisabled.value || busy.value || available.value && !editorReady.value || hasPendingSave.value),
+    draftDisabled: computed(() => generation.draftDisabled.value || busy.value || available.value && !editorReady.value),
   };
   watch([text, onlyFavorite, filterTagId, visibility], () => {
     // Coalesce typing; invalidate a pending response immediately so it cannot
@@ -781,7 +781,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       void refresh({ append: false });
     }, 180);
   }, { flush: 'sync' });
-  watch(() => [generation.parameters.value, generation.profile.value, generation.files.value, generation.loras.value, generation.imageInputs.value,
+  watch(() => [generation.executionTarget?.kind.value, generation.executionTarget?.connectionId.value, generation.executionTarget?.selection.value, generation.parameters.value, generation.profile.value, generation.files.value, generation.loras.value, generation.imageInputs.value,
     generation.library.main.value, generation.library.components.value.map(value => value.selected), generation.weightResidency.value,
     generation.gpuBudgetMiB.value, generation.preview.value, generation.seedMode.value, generation.layout.value, generation.debug.value,
     generation.retainModel.value, generation.keepPreviews.value, generation.maxPreviews.value, generation.maxResults.value, count.value], () => {

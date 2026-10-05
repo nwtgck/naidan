@@ -1,3 +1,4 @@
+import type { NaidanRpcConnectionId } from '@/01-models/ids';
 /**
  * Domain Definitions (Single Source of Truth)
  *
@@ -83,7 +84,9 @@ export type UnsupportedExperimentalEndpoint = {
   persistedType: string | undefined,
 };
 
-export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
+export type NaidanRpcEndpoint = { type: 'naidan_rpc', connectionId: NaidanRpcConnectionId | undefined };
+
+export type SupportedEndpoint = NaidanRpcEndpoint | HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 
@@ -481,6 +484,7 @@ export interface Settings {
     /** Global tool configuration. Missing keys use application defaults. */
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
+    naidanRpc?: 'disabled' | 'enabled',
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
     globalSearch?: {
       scope?: 'all' | 'current_thread' | 'title_only',

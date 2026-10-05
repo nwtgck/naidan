@@ -20,6 +20,7 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
   const fixture: Plugin = {
     name: 'image-ui-boundary-fixture',
     resolveId(id) {
+      if (id.startsWith('virtual:file-protocol-standalone/worker/')) return '\0' + id;
       if (id === 'virtual:image-view' || id === 'virtual:image-strings' || id.startsWith('virtual:llama-cpp-browser-core/')) return '\0' + id;
       return undefined;
     },
@@ -28,6 +29,9 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
       // test. Keep real JS Worker graphs but do not transform every multi-MB
       // llama artifact merely because the attached Chat can select that provider.
       // The reviewed native resolver is independently tested in build-core.test.
+      // Worker bootstrap is isolated here; dedicated worker-entry tests bundle
+      // the JS storage/query implementation without an inference engine.
+      if (id.startsWith('\0virtual:file-protocol-standalone/worker/')) return 'export async function createStandaloneWorker(){throw new Error("Worker bootstrap is not run by this fixture");}';
       if (id.startsWith('\0virtual:llama-cpp-browser-core/')) return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
       if (id === '\0virtual:image-view') return entrySource ?? "export { default } from '@/features/image-generation/components/ImageGenerationLab.vue';";
       // The dedicated realStrings cases below cover locale packaging. This
@@ -77,24 +81,29 @@ export const resolveBrowserLocale = () => 'en';
 
 afterEach(() => vi.unstubAllEnvs());
 describe('hosted-only bicore image boundary', () => {
-  it('ships the real disabled view without generation code, probes, schemas, Workers or image assets', async () => {
+  it('ships the common caller view and schemas without local image inference or image assets', async () => {
     vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', '/deliberately-missing-image-runtime');
     const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
-    expect(local).toEqual(['benchmark-form.ts', 'component-label.ts', 'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageEngineState.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageLoraControls.vue', 'components/ImageModelCatalog.vue', 'components/ImageModelConfiguration.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'components/ImageRepositoryImport.vue', 'form-options.ts', 'library-standalone.ts', 'lora-catalog.ts', 'model-recipes.ts', 'use-image-benchmark-standalone.ts']);
+    expect(local).toContain('library-standalone.ts');
+    expect(local).toContain('types.ts');
+    for (const id of local) expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, id) })).not.toThrow();
+    for (const forbidden of ['capabilities.ts', 'use-image-library.ts', 'inventory-worker/client.ts', 'inference/engine.ts', 'worker/client-hosted.ts']) expect(local).not.toContain(forbidden);
+    expect(modules.some(id => id.endsWith('/providers/local-environment-standalone.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/components/ImageGenerationWorkspace.vue'))).toBe(true);
     expect(workerModules).toEqual([]);
     expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
     const code = Object.values(files).map(file => file.type === 'chunk' ? file.code : '').join('\n');
     expect(code).toContain('image-generation-lab');
     expect(code).toContain('hosted_build_required');
     expect(code).toContain('image-model-catalog');
-    // Capability existence checks keep unavailable controls visible; opening
-    // OPFS remains forbidden, including optional method calls.
-    expect(code).not.toMatch(/\bgetDirectory\s*(?:\?\.)?\s*\(/);
+    // Storage is a caller-side capability. OPFS access is no longer rejected
+    // merely because the image inference engine is absent from this build.
     expect(code).not.toContain('FileReaderSync');
     expect(code).not.toContain('new Worker');
-    expect(code).not.toContain('WebAssembly.validate');
+    // Existing standalone llama packaging is covered by its own boundary;
+    // this test asserts no SD capability probe was imported above.
   }, 60_000);
 
   it('retains the hosted generation controller and real Worker implementation in hosted builds', async () => {
@@ -178,7 +187,7 @@ describe('hosted-only bicore image boundary', () => {
   it.each(['components/ImageEngineState.vue', 'components/ImageModelConfiguration.vue', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).not.toThrow();
   });
-  it.each(['engine-state.ts', 'use-image-engine-state.ts', 'worker/engine-state.ts', 'use-image-benchmark-hosted.ts', 'benchmark/types.ts', 'benchmark/plan.ts', 'benchmark/runner.ts', 'benchmark/archive.ts', 'benchmark/measurements.ts', 'worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'recommendations.ts', 'session-key.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-input.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'types.ts', 'capabilities.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'diagnostics.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
+  it.each(['engine-state.ts', 'worker/engine-state.ts', 'use-image-benchmark-hosted.ts', 'benchmark/types.ts', 'benchmark/plan.ts', 'benchmark/runner.ts', 'benchmark/archive.ts', 'benchmark/measurements.ts', 'worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'session-key.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-input.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'capabilities.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });
 });

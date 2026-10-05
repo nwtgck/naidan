@@ -1,3 +1,5 @@
+import type { RecoverableImageExecutionOutput } from '@/features/image-generation/execution/types';
+import { copyImageGenerationRuntime } from '@/01-models/image-generation-remote';
 import { generateId } from '@/01-models/id';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationModelFile, ImageGenerationRecord } from '@/01-models/image-generation-history';
@@ -20,7 +22,7 @@ export function copyImageGenerationSnapshot({ snapshot }: { snapshot: ImageGener
   const { parameters, models, loras, imageInputs, preview, runtime, ...requestRest } = request;
   requestRest satisfies Record<PropertyKey, never>;
   return { id, createdAt, inputFiles: inputFiles.map(file => ({ ...file })), request: {
-    parameters: { ...parameters }, preview: { ...preview }, runtime: { ...runtime },
+    parameters: { ...parameters }, preview: { ...preview }, runtime: copyImageGenerationRuntime({ runtime }),
     models: models.map(({ file, companions, ...model }) => ({ ...model, file: { ...file }, companions: companions.map(companion => ({ ...companion, file: { ...companion.file } })) })),
     loras: loras.map(lora => ({ ...lora, file: { ...lora.file } })),
     imageInputs: { initImage: imageInputs.initImage && { ...imageInputs.initImage }, strength: imageInputs.strength,
@@ -94,6 +96,19 @@ export function finishImageGenerationSnapshot({ snapshot, result, previews, elap
     },
     files,
   };
+}
+
+/** Complete pixels without confirmed execution metadata are recoverable,
+ * never a successful generated output. Keep their identity stable on save retry. */
+export function recoverImageGenerationSnapshot({ snapshot, output, elapsedMs }: {
+  snapshot: ImageGenerationSnapshot, output: RecoverableImageExecutionOutput, elapsedMs: number,
+}): { record: ImageGenerationRecord, files: HistoryBinaryFile[] } {
+  const captured = copyImageGenerationSnapshot({ snapshot });
+  const binaryObjectId = generateId<BinaryObjectId>();
+  return { record: { id: captured.id, createdAt: captured.createdAt, request: captured.request,
+    result: { confirmation: 'unconfirmed', binaryObjectId, width: output.width, height: output.height,
+      modelVersion: output.reported?.modelVersion, uniformOutput: output.reported?.uniformOutput, elapsedMs }, previews: [] },
+  files: [...captured.inputFiles, { binaryObjectId, blob: output.png, name: 'recovered-image.png' }] };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

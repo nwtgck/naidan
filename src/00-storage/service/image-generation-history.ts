@@ -94,7 +94,14 @@ async function writeText({ directory, name, text }: { directory: FileSystemDirec
 function summarize({ record }: { record: ExperimentalImageGenerationDto }): ExperimentalImageGenerationSummaryDto {
   return {
     id: record.id, createdAt: record.createdAt, prompt: record.request.parameters.prompt,
-    modelName: record.request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '',
+    modelName: (() => {
+      const runtime = record.request.runtime;
+      switch (runtime.profile) {
+      case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
+      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return record.request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
+      default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+      }
+    })(),
     binaryObjectId: record.result.binaryObjectId, width: record.result.width, height: record.result.height,
     previewCount: record.previews.length,
   };

@@ -78,6 +78,7 @@ function resolveCompactLmParameters({
   case 'browser_provided_lm':
   case 'unsupported_experimental_endpoint':
     return undefined;
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'llama_cpp_browser':

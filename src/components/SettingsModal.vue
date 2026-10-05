@@ -2,7 +2,7 @@
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
-import { ref, watch, computed, nextTick } from 'vue';
+import { ref, watch, computed, nextTick, defineAsyncComponent } from 'vue';
 import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
@@ -31,6 +31,7 @@ const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () 
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
 const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
+const NaidanRpcTab = defineAsyncComponent(() => import('@/features/naidan-peer-rpc/components/NaidanRpcTab.vue'));
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
 const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
 const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/tools/components/GlobalToolsSettings.vue') });
@@ -146,12 +147,14 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
 }
 
 // Tab State
-type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'llama_cpp_browser' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
+type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'llama_cpp_browser' | 'storage' | 'binary_objects' | 'volumes' | 'naidan_rpc' | 'developer' | 'about';
+const isRpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
 const activeTab = computed({
   get: () => {
     const queryTab = route.query.settings as string;
     if (queryTab) {
+      if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
       if (queryTab === 'provider-profiles') return 'profiles';
       if (queryTab === 'transformers-js') return 'transformers_js';
       if (queryTab === 'llama-cpp-browser') return 'llama_cpp_browser';
@@ -160,6 +163,7 @@ const activeTab = computed({
       return (queryTab as Tab);
     }
     const tab = (route.params as { tab?: string }).tab;
+    if (tab === 'naidan-rpc' || tab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
     if (tab === 'provider-profiles') return 'profiles';
     if (tab === 'transformers-js') return 'transformers_js';
     if (tab === 'llama-cpp-browser') return 'llama_cpp_browser';
@@ -169,6 +173,7 @@ const activeTab = computed({
   },
   set: (val) => {
     const pathMap: Record<string, string> = {
+      naidan_rpc: 'naidan-rpc',
       profiles: 'provider-profiles',
       transformers_js: 'transformers-js',
       llama_cpp_browser: 'llama-cpp-browser',
@@ -328,6 +333,15 @@ defineExpose({
               {{ lazyStrings.SettingsModal__folders() }}
             </button>
             <button
+              v-if="isRpcEnabled"
+              @click="activeTab = 'naidan_rpc'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'naidan_rpc' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
+              data-testid="tab-naidan-rpc"
+            >
+              <CpuIcon tw-class="w-4 h-4" />
+              {{ lazyStrings.naidanRpc__title() }}
+            </button>
+            <button
               @click="activeTab = 'developer'"
               :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-developer"
@@ -420,6 +434,8 @@ defineExpose({
 
               <!-- Volume Settings Tab -->
               <VolumeSettingsTab v-if="activeTab === 'volumes' && isVolumesFeatureEnabled" />
+
+              <NaidanRpcTab v-if="activeTab === 'naidan_rpc' && isRpcEnabled" />
 
               <!-- Developer Tab -->
               <DeveloperTab

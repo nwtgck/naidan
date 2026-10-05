@@ -194,7 +194,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="promptCopyError" role="alert" data-testid="image-history-copy-prompt-error" tw-class="mt-2 text-xs text-red-600 dark:text-red-400 break-words">{{ promptCopyError }}</p>
           </section>
           <ImageSettingsSection :title="lazyStrings.ImageGenerationHistory__generation_details()" :summary="undefined" data-testid="image-history-generation-details">
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ selected.result.width }} × {{ selected.result.height }} · {{ selected.result.modelVersion }} · {{ lazyStrings.ImageGenerationHistory__requested_seed() }}: {{ selected.request.parameters.seed }}</p>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ selected.result.confirmation === 'unconfirmed' ? lazyStrings.ImageRecoveredOutputs__unconfirmed() : '' }} {{ selected.result.width }} × {{ selected.result.height }} · {{ selected.result.modelVersion }} · {{ lazyStrings.ImageGenerationHistory__requested_seed() }}: {{ selected.request.parameters.seed }}</p>
             <dl tw-class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
               <div>
                 <dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</dt>
@@ -216,7 +216,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__generation_time() }}</dt>
                 <dd>{{ (selected.result.elapsedMs / 1000).toFixed(1) }} s</dd>
               </div>
-              <div>
+              <div v-if="selected.request.parameters.bf16WeightType !== undefined">
                 <dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</dt>
                 <dd>{{ selected.request.parameters.bf16WeightType.toUpperCase() }}</dd>
               </div>

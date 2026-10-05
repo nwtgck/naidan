@@ -125,6 +125,7 @@ const isTransformersJs = computed(() => {
   switch (type) {
   case 'transformers_js':
     return true;
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'llama_cpp_browser':
@@ -177,6 +178,7 @@ watch(
   effectiveType,
   (newType, _previousType, onCleanup) => {
     switch (newType) {
+    case 'naidan_rpc':
     case 'openai':
     case 'ollama':
     case 'llama_cpp_browser':
@@ -348,6 +350,8 @@ function createEndpoint({
   httpHeaders: [string, string][],
 }): Endpoint {
   switch (type) {
+  case 'naidan_rpc':
+    throw new Error('Configure Naidan RPC connections in Settings');
   case 'openai':
   case 'ollama':
     return {
@@ -389,6 +393,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
     switch (currentEffectiveType) {
     case 'transformers_js':
       return true;
+    case 'naidan_rpc':
     case 'openai':
     case 'ollama':
     case 'llama_cpp_browser':
@@ -524,6 +529,7 @@ async function handleFinish() {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
     const modelSettings = (() => {
       switch (type) {
+      case 'naidan_rpc':
       case 'openai':
       case 'ollama':
         return {

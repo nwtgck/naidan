@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { restrictedFetchHeadersSchema } from '@/utils/restricted-fetch-headers';
 import { ascii, ownBytes } from '@/features/naidan-piping-duplex/bytes';
 import { startPinnedConnection } from '@/features/naidan-piping-duplex/connection';
 import type { PinnedConnectionTask } from '@/features/naidan-piping-duplex/connection';
 import { FiniteEndpoint } from '@/features/naidan-piping-duplex/finite';
-import type { NaidanPipingKeyContext } from '@/features/naidan-piping-duplex/key-context';
+import type { NaidanPipingKeyContext, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import type { NaidanPipingRole } from '@/features/naidan-piping-duplex/role';
 import { runDuplex, validatePacing } from '@/features/naidan-piping-duplex/runner';
@@ -16,8 +17,9 @@ export type NaidanPipingDuplexOptions = {
   policy: 'https-only' | 'allow-loopback-http';
   requestTimeoutMs: number;
   repairTimeoutMs: number;
-  connectionTimeoutMs: number;
-  handshakeRetentionMs: number;
+  connectionTimeoutMs: number | undefined;
+  handshakeRetentionMs: number | undefined;
+  headers?: { name: string; value: string }[];
   pacing: NaidanPipingDuplexPacing;
 };
 
@@ -27,8 +29,9 @@ const optionsSchema = z.strictObject({
   policy: z.enum(['https-only', 'allow-loopback-http']),
   requestTimeoutMs: duration,
   repairTimeoutMs: duration,
-  connectionTimeoutMs: duration,
-  handshakeRetentionMs: duration,
+  connectionTimeoutMs: duration.optional(),
+  handshakeRetentionMs: duration.optional(),
+  headers: restrictedFetchHeadersSchema.optional(),
   pacing: z.strictObject({
     minimumMs: duration,
     heartbeatMs: duration,
@@ -82,12 +85,13 @@ export class NaidanPipingDuplexSession {
     void this.closed.catch(() => {});
   }
 
-  static async connect({ piping, code, role, identity, expectedPeer, signal }: {
+  private static async connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer, signal }: {
     piping: NaidanPipingDuplexOptions;
     code: string;
     role: NaidanPipingRole;
     identity: NaidanPipingIdentity;
-    expectedPeer: Uint8Array;
+    expectedPeer: Uint8Array | undefined;
+    verifyPeer: NaidanPipingPeerVerifier | undefined;
     signal: AbortSignal;
   }): Promise<NaidanPipingDuplexSession> {
     signal.throwIfAborted();
@@ -95,10 +99,10 @@ export class NaidanPipingDuplexSession {
     const settings = optionsSchema.parse(piping);
     validatePacing({ pacing: settings.pacing });
     const localIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
-    const pin = ownBytes({ bytes: expectedPeer, maxBytes: 32 });
+    const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 });
     const endpointOptions = {
       baseUrl: settings.baseUrl, policy: settings.policy,
-      timeoutMs: settings.requestTimeoutMs, repairTimeoutMs: settings.repairTimeoutMs,
+      timeoutMs: settings.requestTimeoutMs, repairTimeoutMs: settings.repairTimeoutMs, headers: settings.headers,
     };
     // The final handshake flight and application traffic have independent POST ownership.
     const bootstrapEndpoint = new FiniteEndpoint(endpointOptions);
@@ -112,7 +116,7 @@ export class NaidanPipingDuplexSession {
     let streams: StreamSession | undefined;
     try {
       bootstrap = await startPinnedConnection({
-        role, identity: localIdentity, expectedPeer: pin, code, endpoint: bootstrapEndpoint, signal: stop.signal,
+        role, identity: localIdentity, expectedPeer: pin, verifyPeer, code, endpoint: bootstrapEndpoint, signal: stop.signal,
         activeTimeoutMs: settings.connectionTimeoutMs, completionLeaseMs: settings.handshakeRetentionMs,
         intervalMs: settings.pacing.minimumMs,
         // A different stream profile must fail authentication, not silently produce two idle routes.
@@ -134,6 +138,18 @@ export class NaidanPipingDuplexSession {
     }
   }
 
+  static connect({ piping, code, role, identity, expectedPeer, signal }: {
+    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole;
+    identity: NaidanPipingIdentity; expectedPeer: Uint8Array; signal: AbortSignal;
+  }): Promise<NaidanPipingDuplexSession> {
+    return this.connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer: undefined, signal });
+  }
+  static pair({ piping, code, role, identity, verifyPeer, signal }: {
+    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole;
+    identity: NaidanPipingIdentity; verifyPeer: NaidanPipingPeerVerifier; signal: AbortSignal;
+  }): Promise<NaidanPipingDuplexSession> {
+    return this.connectInternal({ piping, code, role, identity, expectedPeer: undefined, verifyPeer, signal });
+  }
   get peerIdentity(): Uint8Array {
     return this.keys.peerIdentity;
   }

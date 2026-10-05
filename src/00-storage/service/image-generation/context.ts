@@ -11,7 +11,8 @@ const generationLock = 'naidan-experimental-image-generation';
 const revisionSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1);
 
 export async function withImageGenerationLock<T>({ storageType, operation }: { storageType: StorageType, operation: () => Promise<T> }): Promise<T> {
-  if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image Generation storage is unavailable in standalone builds.');
+  // Image storage belongs to the caller. Build mode does not decide whether
+  // its original OPFS store and Web Locks are available.
   switch (storageType) {
   case 'opfs': break;
   case 'memory': case 'local': throw new Error('Image Generation requires OPFS storage.');

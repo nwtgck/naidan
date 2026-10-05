@@ -47,7 +47,7 @@ vi.mock('@/features/image-generation/translation/request', () => ({ translateIma
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: translationMocks.provider }));
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { Chat, ChatSummary, StorageType } from '@/01-models/types';
-import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import type { ImageGenerationDraft } from '@/features/image-generation/generation-draft';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import { finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
@@ -116,7 +116,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
         keepPreviews: generation.keepPreviews.value, maxPreviews: generation.maxPreviews.value, maxResults: generation.maxResults.value, files: [], modelFiles: [] };
     },
     async restoreDraft({ draft }) {
-      restored(draft); generation.parameters.value = { ...draft.request.parameters }; generation.seedMode.value = draft.seedMode; generation.layout.value = draft.layout;
+      restored(draft); generation.parameters.value = { ...generation.parameters.value, ...draft.request.parameters }; generation.seedMode.value = draft.seedMode; generation.layout.value = draft.layout;
     },
     resetDraft() {
       generation.parameters.value = { ...generation.parameters.value, prompt: '', negativePrompt: '' };
@@ -152,7 +152,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
       }
     },
   };
-  generation.parameters.value = { ...original.parameters }; generation.seedMode.value = 'fixed';
+  generation.parameters.value = { ...generation.parameters.value, ...original.parameters }; generation.seedMode.value = 'fixed';
   let view: ImageGenerationWorkspaceView | undefined;
   const wrapper = mount(defineComponent({ setup() {
     view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
@@ -243,7 +243,7 @@ describe('Image Generation composition and lifetime', () => {
     await h.view.generate(); const latest = h.view.runState.value?.run;
     expect(latest?.sources).toEqual([{ role: 'settings', sessionId: tile.sessionId, assetId: tile.id }]);
   });
-  it('preserves the requested image count in temporary generation when OPFS is not selected', async () => {
+  it('keeps the requested temporary run count when OPFS is not selected', async () => {
     mocks.storage = 'memory'; const h = await ready(); h.view.count.value = 4;
     await h.view.generate(); expect(h.native).toHaveBeenCalledTimes(4); expect(mocks.publish).not.toHaveBeenCalled(); expect(h.view.sessions.value).toEqual([]);
   });

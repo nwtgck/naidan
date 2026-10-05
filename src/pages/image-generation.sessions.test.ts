@@ -25,7 +25,7 @@ vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () =>
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
-  const { useImageGeneration } = await import('@/features/image-generation/use-image-generation-standalone');
+  const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view');
   return { useImageGeneration(): ImageGenerationView {
     mocks.owners++; onScopeDispose(() => {
       mocks.disposed++;
@@ -37,7 +37,7 @@ vi.mock('@/features/image-generation/use-image-generation', async () => {
         return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
       },
       async restoreDraft({ draft }) {
-        await mocks.restore({ draft }); form.parameters.value = { ...draft.request.parameters };
+        await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
       },
       resetDraft() {
         form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };

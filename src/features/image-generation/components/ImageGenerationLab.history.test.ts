@@ -17,7 +17,7 @@ vi.mock('@/00-storage/service', () => ({ storageService: {
 vi.mock('@/features/image-generation/history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, dispose: mocks.dispose }) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
-  const { useImageGeneration: createForm } = await import('@/features/image-generation/use-image-generation-standalone');
+  const { useImageGeneration: createForm } = await import('@/features/image-generation/test-utils/unavailable-image-view');
   const { useImageGenerationHistory } = await import('@/features/image-generation/history/use-image-generation-history');
   const { onScopeDispose } = await import('vue');
   return { useImageGeneration() {

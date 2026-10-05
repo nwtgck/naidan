@@ -1,0 +1,1 @@
+export const ImageExecutionTarget__remote_models_are_read_only = (): string => "Solo se pueden seleccionar archivos de modelo que ya existen en el dispositivo remoto. Las descargas, importaciones y cambios en los ajustes del proveedor no se ofrecen de forma deliberada.";

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RpcConnectionSelect from '@/features/naidan-peer-rpc/components/RpcConnectionSelect.vue';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { ChevronDownIcon, PlusIcon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
@@ -36,13 +37,14 @@ const effective = computed(() => resolveImagePromptTranslation({
   global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId },
 }));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
-const endpointOptions = ['inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
+const endpointOptions = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
 function endpointChoice({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
   const value = endpointOptions.find(option => option === raw);
   if (!value) return;
   switch (value) {
+  case 'naidan_rpc': draft.value.endpoint = { type: 'naidan_rpc', connectionId: undefined }; break;
   case 'inherit': draft.value.endpoint = undefined; break;
   case 'openai': case 'ollama': draft.value.endpoint = { type: value, url: '', httpHeaders: undefined }; break;
   case 'transformers_js': case 'llama_cpp_browser': case 'browser_provided_lm': draft.value.endpoint = { type: value }; break;
@@ -127,6 +129,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <span>{{ lazyStrings.imageGeneration__translation_endpoint() }}</span>
       <span tw-class="relative block"><select :value="draft.endpoint?.type ?? 'inherit'" @change="endpointChoice({ event: $event })" data-testid="translation-endpoint-choice" tw-class="appearance-none w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"><option v-for="choice in endpointOptions" :key="choice" :value="choice">{{ choice === 'inherit' ? lazyStrings.imageGeneration__translation_inherit() : choice }}</option><option v-if="draft.endpoint?.type === 'unsupported_experimental_endpoint'" value="unsupported_experimental_endpoint">{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option></select><ChevronDownIcon tw-class="pointer-events-none absolute right-3 top-2 w-4 h-4" /></span>
     </label>
+    <RpcConnectionSelect v-if="draft.endpoint?.type === 'naidan_rpc'" v-model="draft.endpoint.connectionId" />
     <template v-if="httpEndpoint">
       <label tw-class="block space-y-1"><span>URL</span><input v-model="httpEndpoint.url" type="url" spellcheck="false" data-testid="translation-endpoint-url" tw-class="w-full min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></label>
       <ImageSettingsSection compact :title="lazyStrings.imageGeneration__translation_headers()" :summary="undefined">

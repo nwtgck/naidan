@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__recovery_explanation = (): string => "Complete image data was received, but generation completion could not be confirmed. Saving or downloading these images does not mark the run as successful. These buffers survive closing the workspace, but not closing this browser tab.";

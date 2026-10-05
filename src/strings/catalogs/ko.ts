@@ -1,8 +1,3 @@
-import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/ko';
-import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/ko';
-import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/ko';
-import { ImagePendingHistory__save_without_generating_again } from '@/strings/messages/ImagePendingHistory__save_without_generating_again/ko';
-import { ImagePendingHistory__unsaved_images } from '@/strings/messages/ImagePendingHistory__unsaved_images/ko';
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ko';
@@ -25,14 +20,96 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/ko';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ko';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ko';
-import { ImagePendingRuns__save_without_generating_again } from '@/strings/messages/ImagePendingRuns__save_without_generating_again/ko';
-import { ImagePendingRuns__download_image } from '@/strings/messages/ImagePendingRuns__download_image/ko';
-import { ImagePendingRuns__discard_warning } from '@/strings/messages/ImagePendingRuns__discard_warning/ko';
-import { ImagePendingRuns__run_information_pending } from '@/strings/messages/ImagePendingRuns__run_information_pending/ko';
+import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/messages/ImageRecoveredOutputs__managed_by_pending_run/ko';
+import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/ko';
+import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/ko';
+import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/ko';
+import { ImagePendingHistory__save_without_generating_again } from '@/strings/messages/ImagePendingHistory__save_without_generating_again/ko';
+import { ImagePendingHistory__unsaved_images } from '@/strings/messages/ImagePendingHistory__unsaved_images/ko';
+import { ImagePendingRuns__completion_unconfirmed } from '@/strings/messages/ImagePendingRuns__completion_unconfirmed/ko';
 import { ImageGenerationWorkspace__generate_without_saving } from '@/strings/messages/ImageGenerationWorkspace__generate_without_saving/ko';
-import { ImagePendingRuns__unsaved_runs } from '@/strings/messages/ImagePendingRuns__unsaved_runs/ko';
+import { ImagePendingRuns__discard_warning } from '@/strings/messages/ImagePendingRuns__discard_warning/ko';
 import { ImagePendingRuns__discard_pending_save } from '@/strings/messages/ImagePendingRuns__discard_pending_save/ko';
+import { ImagePendingRuns__download_image } from '@/strings/messages/ImagePendingRuns__download_image/ko';
+import { ImagePendingRuns__run_information_pending } from '@/strings/messages/ImagePendingRuns__run_information_pending/ko';
+import { ImagePendingRuns__save_without_generating_again } from '@/strings/messages/ImagePendingRuns__save_without_generating_again/ko';
+import { ImagePendingRuns__unsaved_runs } from '@/strings/messages/ImagePendingRuns__unsaved_runs/ko';
+import { ImageRecoveredOutputs__discard_warning } from '@/strings/messages/ImageRecoveredOutputs__discard_warning/ko';
+import { ImageRecoveredOutputs__discard_image } from '@/strings/messages/ImageRecoveredOutputs__discard_image/ko';
+import { ImageRecoveredOutputs__download_image } from '@/strings/messages/ImageRecoveredOutputs__download_image/ko';
+import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/ko';
+import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/ko';
+import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/ko';
+import { ImageExecutionTarget__refresh_connections } from '@/strings/messages/ImageExecutionTarget__refresh_connections/ko';
+import { ImageExecutionTarget__use_configuration } from '@/strings/messages/ImageExecutionTarget__use_configuration/ko';
+import { ImageExecutionTarget__connect_in_rpc_settings } from '@/strings/messages/ImageExecutionTarget__connect_in_rpc_settings/ko';
+import { ImageExecutionTarget__list_remote_models } from '@/strings/messages/ImageExecutionTarget__list_remote_models/ko';
+import { ImageExecutionTarget__remote_model } from '@/strings/messages/ImageExecutionTarget__remote_model/ko';
+import { ImageExecutionTarget__this_device } from '@/strings/messages/ImageExecutionTarget__this_device/ko';
+import { ImageExecutionTarget__compute_with } from '@/strings/messages/ImageExecutionTarget__compute_with/ko';
+import { ImageExecutionTarget__explicit_model_configuration } from '@/strings/messages/ImageExecutionTarget__explicit_model_configuration/ko';
+import { ImageExecutionTarget__remote_models_are_read_only } from '@/strings/messages/ImageExecutionTarget__remote_models_are_read_only/ko';
 import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/ko';
+import { naidanRpc__enable_first } from '@/strings/messages/naidanRpc__enable_first/ko';
+import { naidanRpc__methods_empty } from '@/strings/messages/naidanRpc__methods_empty/ko';
+import { naidanRpc__use_help } from '@/strings/messages/naidanRpc__use_help/ko';
+import { naidanRpc__manage } from '@/strings/messages/naidanRpc__manage/ko';
+import { naidanRpc__choose_connection } from '@/strings/messages/naidanRpc__choose_connection/ko';
+import { naidanRpc__no_connections } from '@/strings/messages/naidanRpc__no_connections/ko';
+import { naidanRpc__checking_stop_status } from '@/strings/messages/naidanRpc__checking_stop_status/ko';
+import { naidanRpc__new_calls_blocked_waiting_for_completion } from '@/strings/messages/naidanRpc__new_calls_blocked_waiting_for_completion/ko';
+import { naidanRpc__rpc_connections_stopped } from '@/strings/messages/naidanRpc__rpc_connections_stopped/ko';
+import { naidanRpc__stop_not_confirmed_check_managing_tab } from '@/strings/messages/naidanRpc__stop_not_confirmed_check_managing_tab/ko';
+import { naidanRpc__check_stop_again } from '@/strings/messages/naidanRpc__check_stop_again/ko';
+import { naidanRpc__failed } from '@/strings/messages/naidanRpc__failed/ko';
+import { naidanRpc__disconnect_confirm } from '@/strings/messages/naidanRpc__disconnect_confirm/ko';
+import { naidanRpc__forget_confirm } from '@/strings/messages/naidanRpc__forget_confirm/ko';
+import { naidanRpc__forget } from '@/strings/messages/naidanRpc__forget/ko';
+import { naidanRpc__save_connection } from '@/strings/messages/naidanRpc__save_connection/ko';
+import { naidanRpc__label } from '@/strings/messages/naidanRpc__label/ko';
+import { NaidanRpcTab__save_name } from '@/strings/messages/NaidanRpcTab__save_name/ko';
+import { naidanRpc__remember_help } from '@/strings/messages/naidanRpc__remember_help/ko';
+import { naidanRpc__remember } from '@/strings/messages/naidanRpc__remember/ko';
+import { naidanRpc__reject } from '@/strings/messages/naidanRpc__reject/ko';
+import { naidanRpc__matches } from '@/strings/messages/naidanRpc__matches/ko';
+import { naidanRpc__compare_help } from '@/strings/messages/naidanRpc__compare_help/ko';
+import { naidanRpc__compare } from '@/strings/messages/naidanRpc__compare/ko';
+import { naidanRpc__start } from '@/strings/messages/naidanRpc__start/ko';
+import { naidanRpc__responder } from '@/strings/messages/naidanRpc__responder/ko';
+import { naidanRpc__initiator } from '@/strings/messages/naidanRpc__initiator/ko';
+import { naidanRpc__code_help } from '@/strings/messages/naidanRpc__code_help/ko';
+import { naidanRpc__code } from '@/strings/messages/naidanRpc__code/ko';
+import { naidanRpc__remove_header } from '@/strings/messages/naidanRpc__remove_header/ko';
+import { naidanRpc__header_value } from '@/strings/messages/naidanRpc__header_value/ko';
+import { naidanRpc__header_name } from '@/strings/messages/naidanRpc__header_name/ko';
+import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/ko';
+import { naidanRpc__headers } from '@/strings/messages/naidanRpc__headers/ko';
+import { naidanRpc__server } from '@/strings/messages/naidanRpc__server/ko';
+import { naidanRpc__transport } from '@/strings/messages/naidanRpc__transport/ko';
+import { naidanRpc__native_unavailable } from '@/strings/messages/naidanRpc__native_unavailable/ko';
+import { naidanRpc__saving } from '@/strings/messages/naidanRpc__saving/ko';
+import { naidanRpc__methods_pending } from '@/strings/messages/naidanRpc__methods_pending/ko';
+import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/ko';
+import { naidanRpc__images } from '@/strings/messages/naidanRpc__images/ko';
+import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/ko';
+import { naidanRpc__provide_help } from '@/strings/messages/naidanRpc__provide_help/ko';
+import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/ko';
+import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/ko';
+import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/ko';
+import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/ko';
+import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/ko';
+import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/ko';
+import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/ko';
+import { naidanRpc__disconnect } from '@/strings/messages/naidanRpc__disconnect/ko';
+import { naidanRpc__connect } from '@/strings/messages/naidanRpc__connect/ko';
+import { naidanRpc__refresh } from '@/strings/messages/naidanRpc__refresh/ko';
+import { naidanRpc__new_connection } from '@/strings/messages/naidanRpc__new_connection/ko';
+import { naidanRpc__connections } from '@/strings/messages/naidanRpc__connections/ko';
+import { naidanRpc__feature_details } from '@/strings/messages/naidanRpc__feature_details/ko';
+import { naidanRpc__summary } from '@/strings/messages/naidanRpc__summary/ko';
+import { naidanRpc__disable } from '@/strings/messages/naidanRpc__disable/ko';
+import { naidanRpc__enable } from '@/strings/messages/naidanRpc__enable/ko';
+import { naidanRpc__title } from '@/strings/messages/naidanRpc__title/ko';
 import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/ko';
 import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/ko';
 import { imageGeneration__show_connected_chat } from '@/strings/messages/imageGeneration__show_connected_chat/ko';
@@ -2593,11 +2670,6 @@ import { ImageInputControls__model_support_required } from '@/strings/messages/I
 import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/ko';
 
 export const catalog = {
-  ImagePendingHistory__discard_warning,
-  ImagePendingHistory__discard,
-  ImagePendingHistory__download_image,
-  ImagePendingHistory__save_without_generating_again,
-  ImagePendingHistory__unsaved_images,
   // SHARED__ intentionally couples every call site. Follow messages/AGENTS.md.
   SHARED__all_chats,
   SHARED__assistant,
@@ -2619,6 +2691,21 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  ImageRecoveredOutputs__discard_warning,
+  ImageRecoveredOutputs__discard_image,
+  ImageRecoveredOutputs__download_image,
+  ImageRecoveredOutputs__recovery_explanation,
+  ImageRecoveredOutputs__unconfirmed,
+  ImageRecoveredOutputs__unconfirmed_images,
+  ImageExecutionTarget__refresh_connections,
+  ImageExecutionTarget__use_configuration,
+  ImageExecutionTarget__connect_in_rpc_settings,
+  ImageExecutionTarget__list_remote_models,
+  ImageExecutionTarget__remote_model,
+  ImageExecutionTarget__this_device,
+  ImageExecutionTarget__compute_with,
+  ImageExecutionTarget__explicit_model_configuration,
+  ImageExecutionTarget__remote_models_are_read_only,
   imageGeneration__session_deletion_pending,
   imageGeneration__session_unavailable,
   imageGeneration__finish_session_work_before_deleting,
@@ -5126,11 +5213,78 @@ export const catalog = {
   imageGeneration__choose_chat_help,
   imageGeneration__close_chat,
   imageGeneration__open_assistant_chat,
-  ImagePendingRuns__save_without_generating_again,
-  ImagePendingRuns__download_image,
-  ImagePendingRuns__discard_warning,
-  ImagePendingRuns__run_information_pending,
+  naidanRpc__title,
+  naidanRpc__enable,
+  naidanRpc__disable,
+  naidanRpc__summary,
+  naidanRpc__feature_details,
+  naidanRpc__connections,
+  naidanRpc__new_connection,
+  naidanRpc__refresh,
+  naidanRpc__connect,
+  naidanRpc__disconnect,
+  naidanRpc__disconnected,
+  naidanRpc__connecting,
+  naidanRpc__connected,
+  naidanRpc__stopping,
+  naidanRpc__temporary,
+  naidanRpc__saved,
+  naidanRpc__provide,
+  naidanRpc__provide_help,
+  naidanRpc__chat,
+  naidanRpc__images,
+  naidanRpc__apply_methods,
+  naidanRpc__methods_pending,
+  naidanRpc__saving,
+  naidanRpc__native_unavailable,
+  naidanRpc__transport,
+  naidanRpc__server,
+  naidanRpc__headers,
+  naidanRpc__add_header,
+  naidanRpc__header_name,
+  naidanRpc__header_value,
+  naidanRpc__remove_header,
+  naidanRpc__code,
+  naidanRpc__code_help,
+  naidanRpc__initiator,
+  naidanRpc__responder,
+  naidanRpc__start,
+  naidanRpc__compare,
+  naidanRpc__compare_help,
+  naidanRpc__matches,
+  naidanRpc__reject,
+  naidanRpc__remember,
+  naidanRpc__remember_help,
+  naidanRpc__label,
+  NaidanRpcTab__save_name,
+  naidanRpc__save_connection,
+  naidanRpc__forget,
+  naidanRpc__forget_confirm,
+  naidanRpc__disconnect_confirm,
+  naidanRpc__checking_stop_status,
+  naidanRpc__new_calls_blocked_waiting_for_completion,
+  naidanRpc__rpc_connections_stopped,
+  naidanRpc__stop_not_confirmed_check_managing_tab,
+  naidanRpc__check_stop_again,
+  naidanRpc__failed,
+  naidanRpc__no_connections,
+  naidanRpc__choose_connection,
+  naidanRpc__manage,
+  naidanRpc__use_help,
+  naidanRpc__methods_empty,
+  naidanRpc__enable_first,
+  ImageRecoveredOutputs__managed_by_pending_run,
+  ImagePendingHistory__discard_warning,
+  ImagePendingHistory__discard,
+  ImagePendingHistory__download_image,
+  ImagePendingHistory__save_without_generating_again,
+  ImagePendingHistory__unsaved_images,
+  ImagePendingRuns__completion_unconfirmed,
   ImageGenerationWorkspace__generate_without_saving,
-  ImagePendingRuns__unsaved_runs,
+  ImagePendingRuns__discard_warning,
   ImagePendingRuns__discard_pending_save,
+  ImagePendingRuns__download_image,
+  ImagePendingRuns__run_information_pending,
+  ImagePendingRuns__save_without_generating_again,
+  ImagePendingRuns__unsaved_runs,
 } satisfies Strings;

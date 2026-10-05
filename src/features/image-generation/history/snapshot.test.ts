@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { requestFixture, ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-import { snapshotImageGeneration, finishImageGenerationSnapshot } from './snapshot';
+import { snapshotImageGeneration, finishImageGenerationSnapshot, recoverImageGenerationSnapshot } from './snapshot';
 import { prepareImageHistoryReuse } from './reuse';
 import { imageGenerationDownloadBlob } from './download';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
@@ -131,4 +131,15 @@ it('embeds Unicode request settings and actual preview dimensions only into the 
   expect(text).toContain('iTXt'); expect(text).toContain('癒しの猫'); expect(text).toContain('"seed":"-1"');
   expect(text).toContain('"image":{"kind":"preview","width":128,"height":128,"step":4');
   expect(new Uint8Array(await png.arrayBuffer())).toEqual(bytes);
+});
+
+
+it('keeps recovered output facts unknown without inventing a successful model report', () => {
+  const { snapshot } = completed();
+  const png = new Blob(['recoverable-pixels'], { type: 'image/png' });
+  const recovered = recoverImageGenerationSnapshot({ snapshot, elapsedMs: 2,
+    output: { png, width: 256, height: 256, reported: undefined } });
+  expect(recovered.record.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined });
+  expect(recovered.record.request).toEqual(snapshot.request);
+  expect(recovered.files.find(file => file.binaryObjectId === recovered.record.result.binaryObjectId)?.blob).toBe(png);
 });

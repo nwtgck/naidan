@@ -77,7 +77,7 @@ export async function fetchModelsForChat({
         }
         break;
       }
-      case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
+      case 'naidan_rpc': case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
       default: { const exhaustive: never = endpoint; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
       }
       mutableChat.modelId = replacement;

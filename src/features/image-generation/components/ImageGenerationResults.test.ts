@@ -4,7 +4,7 @@ import { toImageGenerationId } from '@/01-models/ids';
 import { computed, ref, watch } from 'vue';
 import { createImageGallery } from '@/features/image-generation/image-gallery';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import ImageGenerationResults from './ImageGenerationResults.vue';
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {
