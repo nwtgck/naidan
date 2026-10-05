@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_validation = (): string => "These are upstream-based configurations, not certified browser inference results. Actual generation and memory use still depend on the browser and device. File sizes are approximate download sizes, not GPU memory requirements.";

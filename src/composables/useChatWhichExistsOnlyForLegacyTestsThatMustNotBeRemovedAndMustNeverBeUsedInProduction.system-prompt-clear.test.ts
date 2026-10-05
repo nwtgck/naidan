@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -19,6 +20,7 @@ afterEach(() => {
 // Mock storage
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),

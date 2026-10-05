@@ -93,6 +93,10 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     importModel: async ({ file, onProgress, signal }) => (await getClient({ signal })).importModel({ file, onProgress, signal }),
     importDirectory: async ({ directory, onProgress, signal }) => (await getClient({ signal })).importDirectory({ directory, onProgress, signal }),
     removeModel: async ({ plan, signal }) => (await getClient({ signal })).removeModel({ plan, signal }),
+    prepareModel: async ({ request, onProgress, signal }) => {
+      parseRuntimeOptions({ options: request.options });
+      return (await getClient({ signal })).prepareModel({ request, onProgress, signal });
+    },
     generate: async ({ request, onEvent, onProgress, signal }) => {
       parseRuntimeOptions({ options: request.options });
       return (await getClient({ signal })).generate({ request, onEvent, onProgress, signal });

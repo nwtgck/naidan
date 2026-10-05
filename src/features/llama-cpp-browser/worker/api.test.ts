@@ -1,6 +1,8 @@
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import type { generateAudio } from './audio-generation';
+import type { prepareSession } from './session';
+import type { WorkerPrepareCall } from './types';
 import type { WorkerAudioCall } from './types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
@@ -14,12 +16,12 @@ import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 const completed = () => ({ ...result, toolCalls: [] });
-const calls = vi.hoisted(() => ({ audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
-vi.mock("./session", () => ({ invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
+vi.mock("./session", () => ({ prepareSession: calls.prepare, invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
 vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
   importStoredModel: calls.import, removeStoredModel: calls.remove, listStoredModels: calls.list }));
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
@@ -355,5 +357,187 @@ describe('preview control isolation', () => {
   });
   it.each([0, -1, 1.5, Number.NaN])('rejects malformed request version %s before applying intent', async requestVersion => {
     await expect(createWorkerApi().requestAudioPreview({ generationId: 1, requestVersion })).rejects.toThrow();
+  });
+});
+
+
+function preparation({ generationId }: { generationId: number }): WorkerPrepareCall {
+  return { generationId, model: 'local.gguf', options: { profile: 'cpu-wasm32' }, debug: 'off', assetBaseURL: 'https://example.invalid/profiles/' };
+}
+describe('preparation RPC ownership', () => {
+  it('prepares the session with no messages or generation and drains progress before releasing the lane', async () => {
+    const gate = deferred();
+    calls.prepare.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'loading', completed: 1, total: 1 } });
+      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+    });
+    const api = createWorkerApi(); const progress = vi.fn(() => gate.promise);
+    const pending = api.prepareModel(preparation({ generationId: 401 }), progress);
+    const rejected = expect(pending).rejects.toThrow('invalid-gguf');
+    await vi.waitFor(() => expect(progress).toHaveBeenCalledOnce());
+    expect(calls.prepare.mock.calls.at(-1)?.[0].request).not.toHaveProperty('messages');
+    expect(calls.generate).not.toHaveBeenCalled();
+    await expect(api.release()).rejects.toThrow('busy');
+    await expect(api.prepareModel(preparation({ generationId: 402 }), () => {})).rejects.toThrow('busy');
+    gate.resolve(); await rejected; await api.release();
+  });
+  it('targets cancellation by operation identity while keeping the lane until native cleanup completes', async () => {
+    const gate = deferred(); let signal: AbortSignal | undefined;
+    calls.prepare.mockImplementationOnce(async args => {
+      signal = args.signal; await gate.promise; throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const api = createWorkerApi(); const pending = api.prepareModel(preparation({ generationId: 501 }), () => {});
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    await api.cancelGeneration({ generationId: 500 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 501 }); expect(signal?.aborted).toBe(true);
+    await expect(api.generate(request({ generationId: 502 }), async () => {}, () => {})).rejects.toThrow('busy');
+    gate.resolve(); await rejected; await api.release();
+  });
+  it('rejects accidental fake-conversation data before touching the session', async () => {
+    await expect(createWorkerApi().prepareModel({ ...preparation({ generationId: 601 }), ...{ messages: [] } }, () => {})).rejects.toThrow();
+    expect(calls.prepare).not.toHaveBeenCalled();
+  });
+});
+
+describe('generation progress mailbox integration', () => {
+  it('bounds a blocked progress burst without dropping text and waits for the latest acknowledgement', async () => {
+    const first = deferred(); const latest = deferred(); const seen: number[] = []; const text: string[] = [];
+    calls.generate.mockImplementationOnce(async ({ onProgress, onEvent }) => {
+      for (let completed = 1; completed <= 10000; completed++) onProgress({ progress: { phase: 'generating', completed, total: 10000 } });
+      await onEvent({ event: { type: 'text', text: 'first' } });
+      await onEvent({ event: { type: 'text', text: 'last' } });
+      return completed();
+    });
+    const api = createWorkerApi(); let done = false;
+    const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
+      if (event.type === 'text') text.push(event.text);
+    }, progress => {
+      seen.push(progress.completed); return seen.length === 1 ? first.promise : latest.promise;
+    }).then(value => {
+      done = true; return value;
+    });
+    await vi.waitFor(() => expect(text).toEqual(['first', 'last']));
+    expect(seen).toEqual([1]); expect(done).toBe(false);
+    await expect(api.release()).rejects.toThrow('busy');
+    first.resolve(); await vi.waitFor(() => expect(seen).toEqual([1, 10000]));
+    expect(done).toBe(false);
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow('busy');
+    latest.resolve(); await expect(pending).resolves.toEqual(completed());
+    calls.generate.mockResolvedValueOnce(completed());
+    await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
+  });
+  it('starts loading and phase changes immediately without flushing stale prefill snapshots later', async () => {
+    const loading = deferred(); const prefill = deferred(); const generating = deferred(); const seen: string[] = [];
+    calls.generate.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'loading', completed: 0, total: 1 } });
+      onProgress({ progress: { phase: 'loading', completed: 1, total: 1 } });
+      onProgress({ progress: { phase: 'prefill', completed: 1, total: 2 } });
+      onProgress({ progress: { phase: 'prefill', completed: 2, total: 2 } });
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 1 } });
+      return completed();
+    });
+    const api = createWorkerApi();
+    const pending = api.generate(request({ generationId: 1 }), async () => {}, progress => {
+      seen.push(`${progress.phase}:${progress.completed}`);
+      if (progress.phase === 'loading') return loading.promise;
+      return progress.phase === 'prefill' ? prefill.promise : generating.promise;
+    });
+    await vi.waitFor(() => expect(seen).toEqual(['loading:0', 'loading:1', 'prefill:1', 'generating:1']));
+    generating.resolve(); prefill.resolve(); loading.resolve(); await pending;
+    expect(seen).toEqual(['loading:0', 'loading:1', 'prefill:1', 'generating:1']);
+  });
+  it('cancels unsent progress but drains accepted text and already posted callbacks', async () => {
+    const gate = deferred(); const progressGate = deferred(); const seen: number[] = []; const text: string[] = [];
+    calls.generate.mockImplementationOnce(async ({ onProgress, onEvent }) => {
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 10 } });
+      onProgress({ progress: { phase: 'generating', completed: 2, total: 10 } });
+      await gate.promise;
+      await onEvent({ event: { type: 'text', text: 'accepted' } });
+      onProgress({ progress: { phase: 'generating', completed: 3, total: 10 } });
+      return completed();
+    });
+    const api = createWorkerApi(); let done = false;
+    const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
+      if (event.type === 'text') text.push(event.text);
+    }, progress => {
+      seen.push(progress.completed); return progressGate.promise;
+    }).then(() => {
+      done = true;
+    });
+    await vi.waitFor(() => expect(seen).toEqual([1]));
+    await api.cancelGeneration({ generationId: 1 }); gate.resolve();
+    await vi.waitFor(() => expect(text).toEqual(['accepted'])); expect(done).toBe(false);
+    progressGate.resolve(); await pending; expect(seen).toEqual([1]);
+  });
+  it.each(['sync', 'async'] as const)('does not leak a %s progress callback failure into the next request', async failure => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    calls.generate.mockImplementationOnce(async ({ onProgress }) => {
+      for (const completed of [1, 2, 3]) onProgress({ progress: { phase: 'generating', completed, total: 3 } });
+      return completed();
+    });
+    const api = createWorkerApi();
+    try {
+      await expect(api.generate(request({ generationId: 1 }), async () => {}, () => {
+        const error = new Error('private transport detail');
+        switch (failure) {
+        case 'sync': throw error;
+        case 'async': return Promise.reject(error);
+        default: { const exhaustive: never = failure; throw new Error(exhaustive); }
+        }
+      })).rejects.toThrow('worker-failed');
+      calls.generate.mockResolvedValueOnce(completed());
+      await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
+      expect(JSON.stringify(log.mock.calls)).not.toContain('private transport detail');
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it('drains numeric callbacks even when the original loading callback queue has failed', async () => {
+    const gate = deferred(); const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    calls.generate.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'loading', completed: 0, total: 1 } });
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 1 } });
+      return completed();
+    });
+    const api = createWorkerApi(); let done = false; const seen: string[] = [];
+    const pending = api.generate(request({ generationId: 1 }), async () => {}, progress => {
+      seen.push(progress.phase);
+      if (progress.phase === 'loading') throw new Error('private loading detail');
+      return gate.promise;
+    }).catch(error => {
+      done = true; return error;
+    });
+    try {
+      await vi.waitFor(() => expect(seen).toEqual(['loading', 'generating']));
+      expect(done).toBe(false); await expect(api.release()).rejects.toThrow('busy');
+      gate.resolve(); expect(await pending).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
+    } finally {
+      gate.resolve(); await pending; log.mockRestore();
+    }
+  });
+  it.each(['on', 'off'] as const)('reports only aggregate delivery counts when debug is %s', async debug => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const blocked = deferred(); const seen: number[] = [];
+    calls.generate.mockImplementationOnce(async ({ onProgress }) => {
+      for (let completed = 1; completed <= 33; completed++) onProgress({ progress: { phase: 'generating', completed, total: 33 } });
+      return completed();
+    });
+    const api = createWorkerApi();
+    try {
+      const pending = api.generate({ ...request({ generationId: 1 }), debug }, async () => {}, progress => {
+        seen.push(progress.completed); return blocked.promise;
+      });
+      await vi.waitFor(() => expect(seen).toEqual([1])); blocked.resolve(); await pending;
+      const reports = readDiagnostics({ calls: log.mock.calls }).filter(item => item.event === 'generation-progress');
+      if (debug === 'on') {
+        expect(reports).toEqual([{ event: 'generation-progress', progressDelivery: {
+          received: 33, sent: 2, settled: 2, coalesced: 31, discarded: 0,
+          callbackFailures: 0, peakInFlight: 1, peakPending: 1,
+        } }]);
+      } else expect(reports).toEqual([]);
+    } finally {
+      blocked.resolve(); log.mockRestore();
+    }
   });
 });

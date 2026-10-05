@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__bf16_weight_conversion_help = (): string => "F32 conserva los valores BF16 y duplica la memoria de esos pesos. F16 usa la misma memoria, pero puede perder precisión y rango numérico. La cuantización existente no cambia.";

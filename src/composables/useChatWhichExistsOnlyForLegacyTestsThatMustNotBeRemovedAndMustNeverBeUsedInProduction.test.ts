@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { getMessageText } from '@/01-models/message-text';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -38,6 +39,7 @@ let mockHierarchy: Hierarchy = { items: [] };
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
@@ -1126,6 +1128,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     }));
 
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(async ({ updater }) => {
+      await updater({ current: { ...chatObj, id: toChatId({ raw: chatObj.id }) } });
+    });
     const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
     await promise;
@@ -1235,7 +1240,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     }));
 
-    chatObj.title = null; // Clear title to allow auto-generation to proceed
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(async ({ updater }) => {
+      await updater({ current: { ...chatObj, id: chatObj.id } });
+    });
     await generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
 
     expect(chatObj.title).toBe('New Better Title');

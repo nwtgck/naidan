@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -16,6 +17,7 @@ const mockLoadChat = vi.fn().mockImplementation(({ id }: { id: string }) => Prom
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: (...args: any[]) => mockSaveChat(...args),

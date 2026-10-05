@@ -49,6 +49,7 @@ describe('useSampleChat', () => {
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
     const meta = await metaCall![0].updater({ current: null });
+    if (meta === undefined) throw new Error('Sample creation must write chat metadata.');
     const chatId = metaCall![0].id;
 
     expect(chatId).toBeDefined();
@@ -103,6 +104,7 @@ describe('useSampleChat', () => {
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
     const meta = await metaCall![0].updater({ current: null });
+    if (meta === undefined) throw new Error('Sample creation must write chat metadata.');
     const chatId = metaCall![0].id;
 
     expect(meta.title).toBe('Long Sample: Outline Stress Test');

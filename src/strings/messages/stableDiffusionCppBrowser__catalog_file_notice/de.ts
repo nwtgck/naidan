@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_file_notice = (): string => "Nur ausgewählte Dateien werden geladen. Beachten Sie die Bedingungen der Anbieter. Größen beziehen sich auf Speicherplatz, nicht Arbeitsspeicher.";

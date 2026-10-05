@@ -1,3 +1,5 @@
+import { collectTitleGeneration } from '@/logic/collect-title-generation';
+import { LlamaCppBrowserError } from './types';
 import { z } from 'zod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateInputSchema, type GenerationResult } from './types';
@@ -153,4 +155,29 @@ it('passes the actual caller approval context into the common tool execution', a
   service.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: called({ argumentsText: '{}', name: 'lookup', id: 'id' }), onEvent }));
   const fixture = createChatFixture({ provider: new LlamaCppBrowserProvider(), request: chatRequest(), tools: [{ name: 'lookup', description: '', parametersSchema: z.object({}), execute }], controller: new AbortController(), onToolEvent: () => {}, approvalContext });
   await fixture.run();expect(execute).toHaveBeenCalledOnce();
+});
+
+
+it('retries a positively identified native thinking rejection for a title only', async () => {
+  service.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'reasoning-unsupported' }));
+  const request = chatRequest();
+  const result = await collectTitleGeneration({
+    provider: new LlamaCppBrowserProvider(), endpoint: { type: 'llama_cpp_browser' },
+    messages: request.messages, model: request.model,
+    parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } }, signal: new AbortController().signal,
+  });
+  expect(result.text).toBe('done');
+  expect(service.generate.mock.calls.map(([{ input }]) => input.reasoningEffort)).toEqual(['none', undefined]);
+});
+
+it('does not retry an unrelated native template error when generating a title', async () => {
+  service.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'template-unsupported' }));
+  const request = chatRequest();
+  const result = await collectTitleGeneration({
+    provider: new LlamaCppBrowserProvider(), endpoint: { type: 'llama_cpp_browser' },
+    messages: request.messages, model: request.model,
+    parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } }, signal: new AbortController().signal,
+  });
+  expect(result.result.type).toBe('error');
+  expect(service.generate).toHaveBeenCalledTimes(1);
 });

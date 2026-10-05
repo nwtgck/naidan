@@ -144,7 +144,8 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     Error, TypeError, DOMException,
     Request, Response, Headers, URL, URLSearchParams, console,
     ExtendableEvent: LifetimeEvent, FetchEvent: RequestEvent,
-    setTimeout, clearTimeout, performance, Promise,
+    setTimeout, clearTimeout, setInterval, clearInterval, performance, Promise,
+    ReadableStream, MessageChannel, MessagePort,
   }, { filename: 'generated-sw.js' });
 
   function lifecycle(type: 'install' | 'activate'): Promise<void> {
@@ -153,7 +154,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     return event.finished();
   }
 
-  async function request({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '', method = 'GET' }: {
+  async function streamRequest({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '', method = 'GET' }: {
     url: string;
     clientId?: string;
     resultingClientId?: string;
@@ -161,7 +162,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     destination?: string;
     referrer?: string;
     method?: string;
-  }): Promise<Response> {
+  }): Promise<{ response: Response; completed: Promise<void> }> {
     // Node's Request constructor cannot create browser-generated navigate
     // requests, so supply their read-only event metadata explicitly.
     const request = new Request(url, { method, ...(referrer ? { referrer } : {}) });
@@ -171,8 +172,21 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     event.clientId = clientId; event.resultingClientId = resultingClientId;
     target.dispatchEvent(event);
     const response = await (event.response ?? fetch(request));
-    await event.finished();
+    return { response, completed: event.finished() };
+  }
+
+  async function request(args: Parameters<typeof streamRequest>[0]): Promise<Response> {
+    const { response, completed } = await streamRequest(args);
+    await completed;
     return response;
+  }
+
+  function messageWithPorts({ data, clientId, ports }: { data: unknown; clientId: string; ports: MessagePort[] }): Promise<void> {
+    const event = Object.assign(new LifetimeEvent('message'), {
+      data, origin: new URL(scope).origin, source: clients.clients.get(clientId), ports,
+    });
+    target.dispatchEvent(event);
+    return event.finished();
   }
 
   async function message({ data, clientId, origin = new URL(scope).origin, replyPort = true }: { data: unknown; clientId: string; origin?: string; replyPort?: boolean }): Promise<unknown> {
@@ -186,7 +200,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     target.dispatchEvent(event); await event.finished();
     return reply;
   }
-  return { lifecycle, request, message };
+  return { lifecycle, request, streamRequest, message, messageWithPorts };
 }
 
 export const TEST_ONLY = {};

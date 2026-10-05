@@ -1,0 +1,1 @@
+export const imageGeneration__compare_notice = (): string => "Compare saved settings only. Identical settings do not guarantee identical pixels across runtime versions, devices or changed model files.";

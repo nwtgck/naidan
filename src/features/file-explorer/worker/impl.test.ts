@@ -1,3 +1,7 @@
+import { WeshVFS } from '@/features/wesh/vfs';
+import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
+import { receiveByteStream } from '@/utils/byte-stream-port';
+import { MessageChannel } from 'node:worker_threads';
 import JSZip from 'jszip';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
@@ -19,6 +23,60 @@ describe('file-explorer.worker.impl', () => {
 
   beforeEach(() => {
     worker = createFileExplorerWorker();
+  });
+
+
+  it.each(['opfs-root', 'native-directory', 'wesh-mounts'] as const)('prepares a native File without reading its bytes from %s', async kind => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'download-root' });
+    const handle = await root.getFileHandle('model.gguf', { create: true });
+    handle.content = new Uint8Array([1]);
+    if (kind === 'opfs-root') vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
+    const descriptor = kind === 'opfs-root' ? { kind, rootName: 'Files' }
+      : kind === 'native-directory' ? { kind, rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }
+        : { kind, rootName: 'Files', mounts: [{ type: 'directory' as const, path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }] };
+    const { sessionId } = await worker.prepareSession({ request: { root: descriptor } });
+    const directory = kind === 'wesh-mounts' ? '/mount' : '/';
+    const path = kind === 'wesh-mounts' ? '/mount/model.gguf' : '/model.gguf';
+    try {
+      const listing = await worker.readDirectory({ request: { sessionId, path: directory } });
+      expect(listing.entries[0]!.size).toBe(1);
+      handle.content = new Uint8Array([4, 5, 6]);
+      const file = await handle.getFile();
+      const getFile = vi.spyOn(handle, 'getFile').mockResolvedValue(file);
+      const stream = vi.spyOn(file, 'stream');
+      const buffer = vi.spyOn(file, 'arrayBuffer');
+      const prepared = await worker.prepareFileDownload({ request: { sessionId, path } });
+      expect(prepared.kind).toBe('file');
+      if (prepared.kind !== 'file') throw new Error('Expected a native File');
+      expect(prepared.blob).toBe(file);
+      expect(prepared.blob.size).toBe(3);
+      expect(getFile).toHaveBeenCalledOnce();
+      expect(stream).not.toHaveBeenCalled();
+      expect(buffer).not.toHaveBeenCalled();
+      expect(await prepared.blob.text()).toBe(String.fromCharCode(4, 5, 6));
+    } finally {
+      await worker.disposeSession({ request: { sessionId } });
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves a virtual file lazy without guessing Content-Length from stat', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'virtual' });
+    const handle = await root.getFileHandle('file', { create: true });
+    handle.content = new Uint8Array([1, 2, 3]);
+    const { sessionId } = await worker.prepareSession({ request: { root: { kind: 'wesh-mounts', rootName: 'Files',
+      mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false }],
+    } } });
+    vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
+    const open = vi.spyOn(WeshVFS.prototype, 'open');
+    try {
+      expect(await worker.prepareFileDownload({ request: { sessionId, path: '/mount/file' } })).toEqual({ kind: 'stream' });
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      await worker.disposeSession({ request: { sessionId } });
+      vi.restoreAllMocks();
+    }
   });
 
   it('lists native directory entries with metadata', async () => {
@@ -208,7 +266,11 @@ describe('file-explorer.worker.impl', () => {
       resultState: 'complete',
     });
 
+    const channel = new MessageChannel();
+    const received = receiveByteStream({ port: channel.port1 as unknown as MessagePort });
+    const bytesPromise = new Response(received.stream).arrayBuffer();
     const archive = await worker.createDirectoryArchive({
+      port: channel.port2 as unknown as MessagePort,
       request: {
         sessionId,
         jobId: 'archive-job-1',
@@ -219,7 +281,7 @@ describe('file-explorer.worker.impl', () => {
     expect(archive.status).toBe('completed');
     if (archive.status !== 'completed') throw new Error('Expected a completed archive');
 
-    const zipBytes = Uint8Array.from(new Uint8Array(await archive.blob.arrayBuffer()));
+    const zipBytes = Uint8Array.from(new Uint8Array(await bytesPromise));
     const zip = await JSZip.loadAsync(zipBytes);
     expect(Object.keys(zip.files)).toContain('my-project/');
     expect(Object.keys(zip.files)).toContain('my-project/src/');
@@ -417,6 +479,43 @@ describe('file-explorer.worker.impl', () => {
       },
     });
     expect(targetListing.entries.map(entry => entry.name)).not.toContain('source.txt');
+  });
+
+  it('bounds virtual text preview reads before buffering and never reads unsupported binary previews', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'large-preview' });
+    for (const name of ['large.txt', 'large.bin']) {
+      const file = await root.getFileHandle(name, { create: true });
+      file.content = new Uint8Array(TEXT_PREVIEW_SIZE_LIMIT + 1024 * 1024);
+    }
+    const { sessionId } = await worker.prepareSession({ request: { root: {
+      kind: 'wesh-mounts', rootName: 'Files', mounts: [{ type: 'directory', path: '/preview',
+        handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }],
+    } } });
+    const nativeHandle = vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
+    const originalOpen = WeshVFS.prototype.open;
+    let bytesRead = 0;
+    const opened = vi.spyOn(WeshVFS.prototype, 'open').mockImplementation(async function (this: WeshVFS, input) {
+      const handle = await originalOpen.call(this, input);
+      const originalRead = handle.read.bind(handle);
+      vi.spyOn(handle, 'read').mockImplementation(async input => {
+        const result = await originalRead(input);
+        bytesRead += result.bytesRead;
+        return result;
+      });
+      return handle;
+    });
+    try {
+      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.txt', mode: 'bounded' } }))
+        .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
+      expect(bytesRead).toBe(TEXT_PREVIEW_SIZE_LIMIT + 1);
+      const calls = opened.mock.calls.length;
+      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.bin', mode: 'bounded' } }))
+        .toEqual({ kind: 'binary', oversized: false });
+      expect(opened).toHaveBeenCalledTimes(calls);
+    } finally {
+      opened.mockRestore(); nativeHandle.mockRestore();
+      await worker.disposeSession({ request: { sessionId } });
+    }
   });
 
   it('exposes virtual directories for wesh mounts roots', async () => {

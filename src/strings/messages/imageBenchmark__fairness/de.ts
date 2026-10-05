@@ -1,0 +1,1 @@
+export const imageBenchmark__fairness = (): string => "Das normale Modell wird vor der Messung freigegeben; Worker zwischen Modellen beendet. Browser-/OS-Caches, andere Apps, Temperatur und GPU-Speicherfreigabe werden nicht kontrolliert.";

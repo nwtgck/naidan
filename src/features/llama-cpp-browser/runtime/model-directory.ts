@@ -1,3 +1,5 @@
+import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
+import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
@@ -10,7 +12,7 @@ export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {
-  return name.length > 0 && name !== '.' && name !== '..' && !/[\\/]/.test(name) && !Array.from(name).some(character => character.charCodeAt(0) < 32) && new TextEncoder().encode(name).length <= 255;
+  return isModelSourceSegment({ name });
 }
 export function allowedModelDirectory({ name }: { name: string }): boolean {
   return validSegment({ name }) && !name.startsWith('.');
@@ -46,7 +48,7 @@ export async function readModelFiles({ folder, prefix }: { folder: FileSystemDir
     switch (entry.kind) {
     case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${path}/` })); break;
     case 'file':
-      if (/\.gguf$/i.test(name)) result.push({ path, handle: entry, file: await entry.getFile() });
+      if (/\.gguf$/i.test(name) && !await modelFileIsPending({ directory: folder, name })) result.push({ path, handle: entry, file: await entry.getFile() });
       break;
     default: { const exhaustive: never = entry; throw new Error(`Unexpected entry: ${exhaustive}`); }
     }

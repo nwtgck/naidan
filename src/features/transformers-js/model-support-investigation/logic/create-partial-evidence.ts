@@ -1,4 +1,4 @@
-import { setEvidenceFile, createEvidenceArchive, createEvidenceFilesReader, openEvidenceArchive } from './evidence-archive';
+import { setEvidenceFile, createEvidenceArchive, createEvidenceFilesReader, openEvidenceArchive, type PreparedEvidenceArchive, type EvidenceArchiveReader } from './evidence-archive';
 import { freshMetadataSummarySchema } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import { investigationExecutionSummary } from './investigation-execution-summary';
 import { renderInvestigationFeatureResults } from './investigation-feature-results';
@@ -733,15 +733,20 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
   };
 }
 
-export async function createPartialModelSupportEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }: {
+export async function preparePartialModelSupportEvidence({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
   replayMetadata?: InvestigationReplayMetadataSidecar[],
   nativeEvidence?: ProductionProviderNativeEvidenceSidecar,
   ordinaryDownloadTiming?: DownloadTimingSnapshot,
-}): Promise<{ blob: Blob, fileName: string }> {
+}): Promise<PreparedEvidenceArchive> {
   const { files, fileName } = await createPartialModelSupportEvidenceFiles({ run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming, maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, maximumNativeJsonCharacters: PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS });
   await verifyGeneratedEvidenceFiles({ archive: createEvidenceFilesReader({ files }) });
+  return { files, fileName };
+}
+
+export async function createPartialModelSupportEvidence({ ...args }: Parameters<typeof preparePartialModelSupportEvidence>[0]): Promise<{ blob: Blob, fileName: string }> {
+  const { files, fileName } = await preparePartialModelSupportEvidence(args);
   const blob = await createEvidenceArchive({ files });
   await verifyGeneratedEvidenceArchive({ blob });
   return { blob, fileName };
@@ -810,7 +815,7 @@ const packagedRunIdentitySchema = z.object({
 // or peak heap use (compression and verification may own additional copies).
 // UTF-16 code units of native index JSON only, not UTF-8 bytes or peak heap use.
 
-export async function createBatchModelSupportEvidence({
+export async function prepareBatchModelSupportEvidence({
   batchId,
   items,
   ordinaryDownloadTiming,
@@ -818,7 +823,7 @@ export async function createBatchModelSupportEvidence({
   batchId: string,
   items: readonly ModelSupportInvestigationBatchEvidenceItem[],
   ordinaryDownloadTiming?: DownloadTimingSnapshot,
-}): Promise<{ blob: Blob, fileName: string }> {
+}): Promise<PreparedEvidenceArchive> {
   if (batchId.length === 0) throw new Error("Model Support Investigation batch Evidence requires a batch ID");
   if (items.length === 0) throw new Error("Model Support Investigation batch Evidence requires at least one target");
   const replayBytes = items.reduce((total, item) => total + (item.replayMetadata ?? []).reduce((sum, sidecar) => sum + sidecar.blob.size, 0), 0);
@@ -903,74 +908,85 @@ export async function createBatchModelSupportEvidence({
     files: manifestFiles,
   }, undefined, 2)}\n` });
 
-  const blob = await createEvidenceArchive({ files });
-  const verification = await openEvidenceArchive({ blob });
-  try {
-    await verifyOrdinaryDownloadTimingEvidence({ archive: verification.reader, association: { kind: 'investigation-batch', batchId } });
-    const batchFile = await verification.reader.read({ path: "batch.json" });
-    if (batchFile === undefined) throw new Error("Batch Evidence archive is missing batch.json");
-    const parsedBatch = batchEvidenceIndexSchema.parse(JSON.parse(await batchFile.text()) as unknown);
-    const expectedPackagedModelCount = items.filter(item => item.run !== undefined).length;
-    if (
-      parsedBatch.batchId !== batchId
+  await verifyBatchEvidenceContents({ archive: createEvidenceFilesReader({ files }), batchId, items });
+  return { files, fileName: `model-support-investigation-batch-${safeFilePart({ value: batchId })}.zip` };
+}
+
+async function verifyBatchEvidenceContents({ archive, batchId, items }: {
+  archive: EvidenceArchiveReader;
+  batchId: string;
+  items: readonly ModelSupportInvestigationBatchEvidenceItem[];
+}): Promise<void> {
+  await verifyOrdinaryDownloadTimingEvidence({ archive: archive, association: { kind: 'investigation-batch', batchId } });
+  const batchFile = await archive.read({ path: "batch.json" });
+  if (batchFile === undefined) throw new Error("Batch Evidence archive is missing batch.json");
+  const parsedBatch = batchEvidenceIndexSchema.parse(JSON.parse(await batchFile.text()) as unknown);
+  const expectedPackagedModelCount = items.filter(item => item.run !== undefined).length;
+  if (
+    parsedBatch.batchId !== batchId
       || parsedBatch.targetCount !== items.length
       || parsedBatch.packagedModelCount !== expectedPackagedModelCount
       || parsedBatch.targets.length !== items.length
-    ) {
-      throw new Error("Batch Evidence archive target index is incomplete");
-    }
-    for (const [index, item] of items.entries()) {
-      const indexed = parsedBatch.targets[index];
-      if (
-        indexed?.index !== index + 1
+  ) {
+    throw new Error("Batch Evidence archive target index is incomplete");
+  }
+  for (const [index, item] of items.entries()) {
+    const indexed = parsedBatch.targets[index];
+    if (
+      indexed?.index !== index + 1
         || indexed.target !== item.target
         || indexed.status !== item.status
         || indexed.error !== item.error
-      ) {
-        throw new Error(`Batch Evidence target mismatch at index ${index + 1}`);
-      }
-      if (item.run !== undefined) {
-        if (indexed.runId !== item.run.runId || typeof indexed.evidencePath !== "string") {
-          throw new Error(`Batch Evidence is missing a dossier path for target: ${item.target}`);
-        }
-        const runFile = await verification.reader.read({ path: `${indexed.evidencePath}run.json` });
-        if (runFile === undefined) throw new Error(`Batch Evidence is missing run.json for target: ${item.target}`);
-        const packagedRun = packagedRunIdentitySchema.parse(JSON.parse(await runFile.text()) as unknown);
-        if (packagedRun.modelId !== item.run.modelId || packagedRun.runId !== item.run.runId) {
-          throw new Error(`Batch Evidence run identity mismatch for target: ${item.target}`);
-        }
-      } else if (indexed.runId !== undefined || indexed.evidencePath !== undefined) {
-        throw new Error(`Batch Evidence unexpectedly packaged a dossier for target: ${item.target}`);
-      }
+    ) {
+      throw new Error(`Batch Evidence target mismatch at index ${index + 1}`);
     }
+    if (item.run !== undefined) {
+      if (indexed.runId !== item.run.runId || typeof indexed.evidencePath !== "string") {
+        throw new Error(`Batch Evidence is missing a dossier path for target: ${item.target}`);
+      }
+      const runFile = await archive.read({ path: `${indexed.evidencePath}run.json` });
+      if (runFile === undefined) throw new Error(`Batch Evidence is missing run.json for target: ${item.target}`);
+      const packagedRun = packagedRunIdentitySchema.parse(JSON.parse(await runFile.text()) as unknown);
+      if (packagedRun.modelId !== item.run.modelId || packagedRun.runId !== item.run.runId) {
+        throw new Error(`Batch Evidence run identity mismatch for target: ${item.target}`);
+      }
+    } else if (indexed.runId !== undefined || indexed.evidencePath !== undefined) {
+      throw new Error(`Batch Evidence unexpectedly packaged a dossier for target: ${item.target}`);
+    }
+  }
 
-    const verificationManifestFile = await verification.reader.read({ path: "manifest.json" });
-    if (verificationManifestFile === undefined) throw new Error("Batch Evidence archive is missing manifest.json");
-    const verificationManifest = batchEvidenceManifestSchema.parse(JSON.parse(await verificationManifestFile.text()) as unknown);
-    if (verificationManifest.batchId !== batchId) throw new Error("Batch Evidence archive manifest batch ID does not match");
-    const archivePaths = verification.reader.paths
-      .filter(path => path !== "manifest.json")
-      .sort((left, right) => left.localeCompare(right));
-    const manifestPaths = verificationManifest.files.map(entry => entry.path).sort((left, right) => left.localeCompare(right));
-    if (manifestPaths.length !== archivePaths.length || manifestPaths.some((path, index) => path !== archivePaths[index])) {
-      throw new Error("Batch Evidence archive manifest paths do not match archive files");
+  const verificationManifestFile = await archive.read({ path: "manifest.json" });
+  if (verificationManifestFile === undefined) throw new Error("Batch Evidence archive is missing manifest.json");
+  const verificationManifest = batchEvidenceManifestSchema.parse(JSON.parse(await verificationManifestFile.text()) as unknown);
+  if (verificationManifest.batchId !== batchId) throw new Error("Batch Evidence archive manifest batch ID does not match");
+  const archivePaths = archive.paths
+    .filter(path => path !== "manifest.json")
+    .sort((left, right) => left.localeCompare(right));
+  const manifestPaths = verificationManifest.files.map(entry => entry.path).sort((left, right) => left.localeCompare(right));
+  if (manifestPaths.length !== archivePaths.length || manifestPaths.some((path, index) => path !== archivePaths[index])) {
+    throw new Error("Batch Evidence archive manifest paths do not match archive files");
+  }
+  for (const entry of verificationManifest.files) {
+    const file = await archive.read({ path: entry.path });
+    if (file === undefined) throw new Error(`Batch Evidence archive is missing manifest path: ${entry.path}`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength !== entry.byteLength || await sha256Hex({ bytes }) !== entry.sha256) {
+      throw new Error(`Batch Evidence archive integrity mismatch: ${entry.path}`);
     }
-    for (const entry of verificationManifest.files) {
-      const file = await verification.reader.read({ path: entry.path });
-      if (file === undefined) throw new Error(`Batch Evidence archive is missing manifest path: ${entry.path}`);
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      if (bytes.byteLength !== entry.byteLength || await sha256Hex({ bytes }) !== entry.sha256) {
-        throw new Error(`Batch Evidence archive integrity mismatch: ${entry.path}`);
-      }
-    }
+  }
 
-    return {
-      blob,
-      fileName: `model-support-investigation-batch-${safeFilePart({ value: batchId })}.zip`,
-    };
+}
+
+export async function createBatchModelSupportEvidence({ ...args }: Parameters<typeof prepareBatchModelSupportEvidence>[0]): Promise<{ blob: Blob, fileName: string }> {
+  const { files, fileName } = await prepareBatchModelSupportEvidence(args);
+  const blob = await createEvidenceArchive({ files });
+  const verification = await openEvidenceArchive({ blob });
+  try {
+    await verifyBatchEvidenceContents({ archive: verification.reader, batchId: args.batchId, items: args.items });
   } finally {
     await verification.close();
   }
+  return { blob, fileName };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

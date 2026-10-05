@@ -1,3 +1,4 @@
+import { createProgressQueue } from './progress-queue';
 import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
 import { generateAudio } from './audio-generation';
 import { workerTransfer } from '@/utils/worker-transport';
@@ -6,14 +7,14 @@ import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { logDiagnostic, logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
-import { errorCode, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
+import { errorCode, progressSchema, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
-import { invalidateStoredModel, releaseSession } from "./session";
+import { invalidateStoredModel, releaseSession, prepareSession } from "./session";
 import { generate } from "./generation";
-import { workerAudioCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
+import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
@@ -76,6 +77,28 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     }
   }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
+    async prepareModel(request, onProgress) {
+      const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
+      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      const controller = new AbortController(); active = { generationId, controller };
+      const events = eventQueue();
+      try {
+        await guarded({ operation: async () => {
+          await prepareSession({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
+            events.send({ operation: () => {
+              if (!controller.signal.aborted) return onProgress(progress);
+            } });
+          } });
+        } });
+      } finally {
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
     async generateAudio(request, onProgress, onDiagnostic, onPreview) {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
@@ -172,6 +195,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       if (active) throw new LlamaCppBrowserError({ code: "busy" });
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
+      const progressQueue = createProgressQueue({ signal: controller.signal, deliver: ({ progress }) => onProgress(progress) });
       const unsubscribe = subscribeDiagnostics({ debug: accepted.debug ?? 'off', listener: ({ diagnostic }) => {
         if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
         return undefined;
@@ -188,9 +212,20 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
             }
           },
           onProgress: ({ progress }) => {
-            events.send({ operation: () => {
-              if (!controller.signal.aborted) return onProgress(progress);
-            } });
+            const acceptedProgress = progressSchema.parse(progress);
+            switch (acceptedProgress.phase) {
+            case 'prefill': case 'generating':
+              progressQueue.send({ progress: { ...acceptedProgress, phase: acceptedProgress.phase } });
+              break;
+            case 'importing': case 'initializing': case 'loading': case 'decoding-audio':
+              // Preserve immediate native loading progress. Only the high-rate
+              // text-evaluation/generation snapshots use the bounded mailbox.
+              events.send({ operation: () => {
+                if (!controller.signal.aborted) return onProgress(acceptedProgress);
+              } });
+              break;
+            default: { const exhaustive: never = acceptedProgress.phase; throw new Error(String(exhaustive)); }
+            }
           },
         }) });
         return generationResultSchema.parse(result);
@@ -201,7 +236,20 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         try {
           await events.finish();
         } finally {
-          active = undefined;
+          try {
+            await progressQueue.finish();
+          } finally {
+            active = undefined;
+            switch (accepted.debug) {
+            case 'on':
+              try {
+                logDiagnostic({ diagnostic: { event: 'generation-progress', progressDelivery: { ...progressQueue.counters } } });
+              } catch { /* A diagnostic must not replace a result or callback failure. */ }
+              break;
+            case 'off': case undefined: break;
+            default: { const exhaustive: never = accepted.debug; void exhaustive; }
+            }
+          }
         }
       }
     },

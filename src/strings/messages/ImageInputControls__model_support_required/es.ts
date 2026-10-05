@@ -1,0 +1,1 @@
+export const ImageInputControls__model_support_required = (): string => "Las referencias requieren un modelo entrenado para usarlas. Generar una imagen no demuestra que se hayan usado. Puedes combinar imágenes iniciales y de referencia.";

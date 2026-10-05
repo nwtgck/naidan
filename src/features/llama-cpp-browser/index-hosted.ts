@@ -62,6 +62,7 @@ async function observeProbe({ pending, signal }: { pending: Promise<ProfileCapab
 }
 let activeController: AbortController | undefined;
 let queue: Promise<void> = Promise.resolve();
+let laneReservations = 0;
 const listeners = new Set<({ state }: { state: EngineState }) => void>();
 const modelListeners = new Set<() => void>();
 function publish({ next }: { next: EngineState }): void {
@@ -84,6 +85,7 @@ async function run<T>({ signal, operation, kind }: {
 }): Promise<T> {
   if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   const epoch = profileEpoch;
+  laneReservations++;
   const predecessor = queue;
   let releaseLane: () => void = () => {};
   queue = new Promise<void>(resolve => {
@@ -129,7 +131,7 @@ async function run<T>({ signal, operation, kind }: {
       case 'operation': break;
       default: { const exhaustive: never = kind; throw new Error(`Unhandled operation kind: ${exhaustive}`); }
       }
-      const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported') && client?.canReuse();
+      const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported' || failure === 'reasoning-unsupported') && client?.canReuse();
       if (!reusable) {
         client?.dispose(); client = undefined; invalidateProfiles();
       }
@@ -140,7 +142,7 @@ async function run<T>({ signal, operation, kind }: {
         logDiagnostic({ diagnostic: { event: 'cancelled' } });
         break;
       case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model':
-      case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'context-full':
+      case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'context-full':
       case 'unsupported-input': case 'busy': case 'worker-failed':
       case 'audio-model-unsupported': case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty':
         publish({ next: { status: 'error', code } });
@@ -153,10 +155,35 @@ async function run<T>({ signal, operation, kind }: {
       signal?.removeEventListener('abort', forwardAbort); activeController = undefined;
     }
   } finally {
+    laneReservations--;
     releaseLane();
   }
 }
 export const llamaCppBrowserService: LlamaCppBrowserService = {
+  async prepareModel({ model, signal, onProgress }) {
+    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    // Inspect ownership, not progress. Tool callbacks can own the lane while
+    // EngineState still says idle. Do not evict or wait behind another chat.
+    if (laneReservations > 0) return 'skipped-busy';
+    const acceptedOptions = { ...options };
+    return run({ kind: 'operation', signal, operation: async ({ worker, signal }) => {
+      let acceptingProgress = true;
+      const report: typeof progress = ({ progress: value }) => {
+        if (signal.aborted || !acceptingProgress) return;
+        progress({ progress: value });
+        onProgress?.({ progress: value });
+      };
+      try {
+        report({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        await worker.prepareModel({ request: { model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
+        return 'ready' as const;
+      } finally {
+        acceptingProgress = false;
+      }
+    } });
+  },
   getProfileState: () => profileState,
   subscribeProfiles({ listener }) {
     profileListeners.add(listener); listener({ state: profileState }); return () => {

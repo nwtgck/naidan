@@ -1,32 +1,29 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import MagicString from 'magic-string';
-import { z } from 'zod';
 import { normalizePath, type Plugin } from 'vite';
 import { profileSchema, usesWebGpu, type LlamaCppProfile } from './types';
+import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 0fc505c5a4a061f4a6601fa6dc69c48895206da6.
+// Reviewed browser variant artifact source: 4836e0d38b43a34e580690ef489c5fd542cdca1b.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
-  'webgpu-wasm64-jspi': 'ff3786e68fa11050df3950980116e19988ef790da382b3eb3abd7ef2c5424921',
-  'webgpu-wasm32-jspi': 'c676739632d85c50ab7798df591d7fe4b59a5dedfb068756837bf775e9a6f785',
-  'webgpu-wasm32-asyncify': '16a9d487506b95a2608c439f732afb69d34913cca74872b2fca03783be44e244',
-  'cpu-wasm64': '6e499ce22b0eea54a204713d3c8fa99b5971ac9ccf44edc4d7767f50ef7de298',
-  'cpu-wasm32': 'd5dc3e3115cacaff3e7dab6122b96b4c77f1a69cc7aee21b8b2844ff31a6bc86',
+  'webgpu-wasm64-jspi': '981f441ff4c93cc8ebfe487fac8679ee0fa3ccc60f4c84c3b68e8168dafba866',
+  'webgpu-wasm32-jspi': '63d18398a996e44093c95436fc9cc08ded13a3939653b3c6e47e3ec64e71240e',
+  'webgpu-wasm32-asyncify': '824e0174e156155311648aa554515829b2e5c39cf0bb73b416e522a7b902c0e7',
+  'cpu-wasm64': '8badeb60fce2b7f3f41796c15878bb00d5263e874e91ba8f0a8110959cdb225f',
+  'cpu-wasm32': 'd80bdd6d7ee0035800509db2e979e066f4f52ec98400844a31e09934fd11b4eb',
 } as const satisfies Record<LlamaCppProfile, string>;
 // Standalone selects either embedded JSPI artifact through Worker capability checks.
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '82c1258bf8acc56c20dd63aa4ac6de16a7d4419958e6e50459eb91dae70ed1ed' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '7a2e054fbbddd313c02f862aeaee2f47c73e7723aca3558a0afa0f1f38c2210a' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '495fffd6e2a94be52e022665f2464bc2e3ec58daae758229ae21b4ccbd7fc16b' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '7ec0c71ccf89b7b5fda552747583a820a4219e1c249ace227ed9033319546066' },
 } as const;
-const manifestSchema = z.object({ formatVersion: z.literal(2), files: z.array(z.object({
-  path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/),
-})) });
 
 /** Version-bound adapter for the browser variant, which has no upstream version guards. */
 export function transformBrowserCore({ source, id, profile }: { source: string, id: string, profile: LlamaCppProfile }) {
@@ -85,24 +82,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   corePlugin: Plugin;
   embeddedBinaries: readonly StandaloneEmbeddedBinary[];
 } {
-  const artifactRoot = realpathSync(path.join(rootDir, 'node_modules/llama-cpp-browser-core'));
-  const manifestPath = path.join(artifactRoot, 'manifest.json');
-  const manifest = manifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8')));
-  const files = new Map<string, z.infer<typeof manifestSchema>['files'][number]>();
-  for (const file of manifest.files) {
-    if (files.has(file.path)) throw new Error('Duplicate core manifest entry');
-    files.set(file.path, file);
-  }
-  function readArtifact({ relative }: { relative: string }) {
-    if (relative.split('/').some(part => !part || part === '.' || part === '..') || relative.includes('\\')) throw new Error('Invalid core artifact path');
-    const file = files.get(relative);
-    if (!file) throw new Error(`Missing core artifact: ${relative}`);
-    const filePath = realpathSync(path.join(artifactRoot, relative));
-    if (!filePath.startsWith(artifactRoot + path.sep)) throw new Error('Core artifact escapes package');
-    const data = readFileSync(filePath);
-    if (data.length !== file.bytes || createHash('sha256').update(data).digest('hex') !== file.sha256) throw new Error(`Core artifact integrity mismatch: ${relative}`);
-    return { filePath, data, ...file };
-  }
+  const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = readLlamaArtifactPackage({ rootDir });
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -124,7 +104,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     if (wasm.sha256 !== expected.sha256) throw new Error('Unreviewed standalone Wasm artifact');
     return { virtualId: expected.virtualId, filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256 };
   }) : [];
-  const profileRoot = normalizePath(path.join(artifactRoot, 'profiles')) + '/';
+  const profileRoot = normalizePath(artifactProfiles) + '/';
   const byId = new Map(cores.map(entry => [normalizePath(entry.core.filePath), entry]));
   const byVirtualId = new Map(cores.map(entry => [virtualPrefix + entry.profile, normalizePath(entry.core.filePath)]));
   const identity = createHash('sha256').update(cores.map(entry => entry.transformed.code).join('\0')).digest('hex');
@@ -166,9 +146,9 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         // Reject other native modules before tree shaking can hide their provenance.
         const entry = byId.get(filePath);
         if (!entry) throw new Error(`Unavailable llama.cpp artifact: ${filePath}`);
-        this.addWatchFile(manifestPath);
+        for (const manifestPath of manifestPaths) this.addWatchFile(manifestPath);
         this.addWatchFile(entry.core.filePath);
-        for (const relative of licenseFiles) this.addWatchFile(path.join(artifactRoot, relative));
+        for (const relative of licenseFiles) this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
         return transformBrowserCore({ source: readFileSync(entry.core.filePath, 'utf8'), id, profile: entry.profile });
       },
     },

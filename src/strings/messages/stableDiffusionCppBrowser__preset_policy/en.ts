@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preset_policy = (): string => "Uses tensor structure plus variant metadata or a verified download receipt, not filenames. Preview timing, resolution and memory settings are Naidan starting points, not provider guarantees. Applying preserves prompts, seed, preview ON/OFF, runtime profile and memory budget.";

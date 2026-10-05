@@ -45,6 +45,8 @@ import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/01-models/ids';
 import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 import { createWebZipCompressionCodec, StreamingZipWriter } from '@/utils/zip-stream';
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
+import { createTextExportStream } from '@/utils/text-export-stream';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { openIndexedZipArchive, type IndexedZipArchive } from './zip-archive';
 import { cloneEndpoint } from '@/01-models/endpoint';
@@ -439,13 +441,16 @@ export class ImportExportService {
     // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/00-storage/mapper/mappers');
     const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
+    const abort = new AbortController();
+    const stream = createAbortableByteStream({ stream: output.stream, signal: abort.signal,
+      onCancel: () => abort.abort(new DOMException('Export cancelled', 'AbortError')),
+    });
     const centralDirectoryStore = createMemoryZipCentralDirectoryStore();
     const writer = new StreamingZipWriter({
       output: output.sink,
       centralDirectoryStore,
       compressionCodec: createWebZipCompressionCodec(),
     });
-    const encoder = new TextEncoder();
     const createdDirectories = new Set<string>();
     const modifiedAt = new Date();
 
@@ -491,12 +496,12 @@ export class ImportExportService {
         name: path,
         modifiedAt,
         compression: 'store',
-        stream,
+        stream: createAbortableByteStream({ stream, signal: abort.signal, onCancel: undefined }),
       });
     };
 
     const addTextFile = async ({ path, text }: { path: string, text: string }): Promise<void> => {
-      await addFile({ path, stream: createByteStream({ bytes: encoder.encode(text) }) });
+      await addFile({ path, stream: createTextExportStream({ produce: async ({ write }) => write({ text }) }) });
     };
 
     const addEmptyFile = async ({ path }: { path: string }): Promise<void> => {
@@ -558,12 +563,18 @@ export class ImportExportService {
             return blob.stream();
           }
 
+          let offset = 0;
           return new ReadableStream<Uint8Array>({
-            async start(controller) {
-              controller.enqueue(new Uint8Array(await blob.arrayBuffer()));
-              controller.close();
+            async pull(controller) {
+              if (offset === blob.size) {
+                controller.close(); return;
+              }
+              const end = Math.min(offset + 256 * 1024, blob.size);
+              const bytes = new Uint8Array(await blob.slice(offset, end).arrayBuffer());
+              offset = end;
+              controller.enqueue(bytes);
             },
-          });
+          }, { highWaterMark: 0 });
         };
 
         const addBinaryObjectToZip = async ({
@@ -592,6 +603,7 @@ export class ImportExportService {
         };
 
         for await (const chunk of snapshot.contentStream) {
+          abort.signal.throwIfAborted();
           switch (chunk.type) {
           case 'chat': {
             if (excludeFlags.chat) {
@@ -651,23 +663,22 @@ export class ImportExportService {
         await writer.finalize();
         await output.close();
       } catch (error: unknown) {
-        this.globalEvents.addErrorEvent({
-          source: 'ImportExportService',
-          message: await ensureStrings.ImportExportService__export_dump_failed(),
-          details: error instanceof Error ? error : new Error(String(error)),
-        });
-        try {
-          await output.abort({ reason: error });
-        } catch {
-          // The consumer may already have cancelled the stream.
+        // Release the consumer before diagnostics (which may load strings).
+        await output.abort({ reason: error }).catch(() => undefined);
+        if (!abort.signal.aborted) {
+          this.globalEvents.addErrorEvent({
+            source: 'ImportExportService',
+            message: await ensureStrings.ImportExportService__export_dump_failed(),
+            details: error instanceof Error ? error : new Error(String(error)),
+          });
         }
       } finally {
         await centralDirectoryStore.dispose();
       }
     };
 
-    void produceZip();
-    return { stream: output.stream, filename };
+    void produceZip().catch(reason => output.abort({ reason }).catch(() => undefined));
+    return { stream, filename };
   }
 
   /**

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useSlots } from 'vue';
+const slots = useSlots();
 import { ShieldCheckIcon, DownloadIcon, GhostIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
@@ -7,6 +8,8 @@ import { lazyStrings } from '@/strings';
 
 defineProps<{
   hasInput?: boolean,
+  // Only the model-link setup opts out; ordinary welcome screens keep discovery.
+  suggestionsVisibility?: 'visible' | 'hidden',
 }>();
 
 defineEmits<{
@@ -66,63 +69,71 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-12 text-center pointer-events-none">
-    <div class="animate-in fade-in zoom-in" tw-class="w-full max-w-4xl flex flex-col items-center space-y-8 sm:space-y-12 translate-y-[-25%] sm:translate-y-[-30%] duration-1000">
+  <div :tw-class="['flex flex-col items-center justify-center p-6 sm:p-12 text-center pointer-events-none', slots.primary || slots.notice ? 'relative w-full min-h-full' : 'absolute inset-0']">
+    <div :class="slots.primary || slots.notice ? undefined : 'animate-in fade-in zoom-in'" :tw-class="['w-full max-w-4xl flex flex-col items-center space-y-8 sm:space-y-12 duration-1000', slots.primary || slots.notice ? '' : 'translate-y-[-25%] sm:translate-y-[-30%]']">
 
-      <!-- Security Status Section -->
-      <div tw-class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
-        <div tw-class="relative group">
-          <!-- Subtle Glow Effect -->
-          <div
-            :tw-class="['absolute inset-0 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000', settings.storageType === 'memory' ? 'bg-indigo-500/20 dark:bg-indigo-500/10' : 'bg-emerald-500/20 dark:bg-emerald-500/10']"
-          ></div>
+      <slot name="primary">
+        <!-- Security Status Section -->
+        <div tw-class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
+          <div tw-class="relative group">
+            <!-- Subtle Glow Effect -->
+            <div
+              :tw-class="['absolute inset-0 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000', settings.storageType === 'memory' ? 'bg-indigo-500/20 dark:bg-indigo-500/10' : 'bg-emerald-500/20 dark:bg-emerald-500/10']"
+            ></div>
 
-          <div
-            :tw-class="['relative p-4 sm:p-5 rounded-[2rem] border shadow-sm', settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20']"
-          >
-            <GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
-            <ShieldCheckIcon v-else tw-class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
-          </div>
-        </div>
-
-        <div tw-class="space-y-3 sm:space-y-4">
-          <div tw-class="space-y-1 sm:space-y-2">
-            <h2 tw-class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
-              <template v-if="settings.storageType === 'memory'">
-                {{ lazyStrings.WelcomeScreen__conversations_are_stored_in_memory() }}
-              </template>
-              <template v-else>
-                {{ lazyStrings.WelcomeScreen__all_conversations_are_stored_locally() }}
-              </template>
-            </h2>
-            <p tw-class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
-              <template v-if="settings.storageType === 'memory'">
-                {{ lazyStrings.WelcomeScreen__data_is_cleared_on_reload() }}
-              </template>
-              <template v-else>
-                {{ lazyStrings.WelcomeScreen__your_data_stays_on_your_device() }}
-              </template>
-            </p>
-          </div>
-
-          <!-- Standalone Build Link (Only in Hosted Mode) -->
-          <div v-if="isHosted" tw-class="flex justify-center pt-1">
-            <a
-              :href="portableAppDownload.href"
-              :download="portableAppDownload.fileName"
-              tw-class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
-              :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
+            <div
+              :tw-class="['relative p-4 sm:p-5 rounded-[2rem] border shadow-sm', settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20']"
             >
-              <div tw-class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span tw-class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.WelcomeScreen__download_portable_app() }}</span>
-              <DownloadIcon tw-class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
-            </a>
+              <GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
+              <ShieldCheckIcon v-else tw-class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          </div>
+
+          <div tw-class="space-y-3 sm:space-y-4">
+            <div tw-class="space-y-1 sm:space-y-2">
+              <h2 tw-class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
+                <template v-if="settings.storageType === 'memory'">
+                  {{ lazyStrings.WelcomeScreen__conversations_are_stored_in_memory() }}
+                </template>
+                <template v-else>
+                  {{ lazyStrings.WelcomeScreen__all_conversations_are_stored_locally() }}
+                </template>
+              </h2>
+              <p tw-class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
+                <template v-if="settings.storageType === 'memory'">
+                  {{ lazyStrings.WelcomeScreen__data_is_cleared_on_reload() }}
+                </template>
+                <template v-else>
+                  {{ lazyStrings.WelcomeScreen__your_data_stays_on_your_device() }}
+                </template>
+              </p>
+            </div>
+
+            <!-- Standalone Build Link (Only in Hosted Mode) -->
+            <div v-if="isHosted" tw-class="flex justify-center pt-1">
+              <a
+                :href="portableAppDownload.href"
+                :download="portableAppDownload.fileName"
+                tw-class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
+                :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
+              >
+                <div tw-class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span tw-class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.WelcomeScreen__download_portable_app() }}</span>
+                <DownloadIcon tw-class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
+              </a>
+            </div>
           </div>
         </div>
-      </div>
+
+      </slot>
+
+      <!-- Ordinary missing-model recovery is supplemental. It never owns the
+           composer visibility or replaces the usual privacy welcome content. -->
+      <slot name="notice" />
 
       <!-- Minimal Discovery Links -->
       <div
+        v-if="suggestionsVisibility !== 'hidden'"
         data-testid="suggestions-container"
         :tw-class="['pt-4 sm:pt-8 flex flex-wrap justify-center gap-x-6 sm:gap-x-8 gap-y-2 sm:gap-y-3 transition-all duration-700 pointer-events-auto', hasInput ? 'opacity-0 pointer-events-none translate-y-2' : 'opacity-40 hover:opacity-100 translate-y-0']"
       >

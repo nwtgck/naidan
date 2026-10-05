@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime';
 import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
@@ -239,6 +240,7 @@ export default defineConfig(({ mode }) => {
       plugins: () => [...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
     },
     plugins: [
+      createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }),
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createInitialThemeHtmlPlugin(),

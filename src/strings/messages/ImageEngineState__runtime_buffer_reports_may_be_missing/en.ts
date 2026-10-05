@@ -1,0 +1,1 @@
+export const ImageEngineState__runtime_buffer_reports_may_be_missing = (): string => "Runtime buffer figures come from existing reports and may be old. A value of 0 B may also mean that no report is available.";

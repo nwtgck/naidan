@@ -11,6 +11,11 @@ import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCa
 export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional() }).strict();
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
+export const workerPrepareInputSchema = workerGenerateInputSchema.pick({ model: true, options: true, debug: true, assetBaseURL: true }).strict();
+export type WorkerPrepareInput = z.infer<typeof workerPrepareInputSchema>;
+export const workerPrepareCallSchema = workerPrepareInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
+export type WorkerPrepareCall = z.infer<typeof workerPrepareCallSchema>;
+
 export const workerGenerateCallSchema = workerGenerateInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
@@ -20,6 +25,8 @@ export const workerAudioCallSchema = workerAudioInputSchema.extend({ generationI
 export type WorkerAudioCall = z.infer<typeof workerAudioCallSchema>;
 
 export interface LlamaCppWorkerApi {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
+  prepareModel(request: WorkerPrepareCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
   generateAudio(request: WorkerAudioCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<({ result, requestVersion }: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
   probeProfiles(): Promise<ProfileCapabilities>;
@@ -38,6 +45,7 @@ export interface LlamaCppWorkerApi {
   generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
+  prepareModel({ request, onProgress, signal }: { request: WorkerPrepareInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<void>;
   generateAudio({ request, onProgress, cancellationSignal, completionSignal, preview }: { request: AudioGenerationInput, onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
   subscribeDisposed({ listener }: { listener: () => void }): () => void;
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;

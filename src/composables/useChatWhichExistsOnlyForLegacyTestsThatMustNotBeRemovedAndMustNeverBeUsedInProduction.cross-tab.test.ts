@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/01-models/types';
@@ -19,6 +20,7 @@ const { mocks } = vi.hoisted(() => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
       mocks.capturedListener = listener;

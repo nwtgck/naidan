@@ -1,3 +1,4 @@
+import { UnsupportedReasoningError } from '@/01-models/lm-errors';
 import { customAlphabet } from 'nanoid';
 import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
 import { toToolCallId } from '@/01-models/ids';
@@ -89,8 +90,17 @@ export function createLlamaCppGeneration({ request, generate }: {
       default: { const exhaustive: never = result.finishReason; throw new Error(`Unknown finish reason: ${exhaustive}`); }
       }
     } catch (error) {
-      if (signal.aborted || errorCode({ error }) === 'aborted') return { type: 'interrupted', reason: 'aborted' };
-      throw error;
+      if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+      const code = errorCode({ error });
+      switch (code) {
+      case 'aborted': return { type: 'interrupted', reason: 'aborted' };
+      case 'reasoning-unsupported': throw new UnsupportedReasoningError({ message: 'This model template does not support the requested thinking control.' });
+      case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
+      case 'runtime-error': case 'template-unsupported': case 'context-full': case 'unsupported-input':
+      case 'busy': case 'worker-failed': case 'audio-model-unsupported': case 'audio-reference-required':
+      case 'audio-reference-invalid': case 'audio-output-empty': throw error;
+      default: { const exhaustive: never = code; throw new Error(`Unhandled generation error: ${exhaustive}`); }
+      }
     }
   } });
 }

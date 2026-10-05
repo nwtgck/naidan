@@ -1,0 +1,1 @@
+export const ImageEngineState__runtime_buffer_reports_may_be_missing = (): string => "Die Werte der Laufzeitpuffer stammen aus vorhandenen Berichten und können veraltet sein. 0 B kann auch bedeuten, dass kein Bericht vorliegt.";

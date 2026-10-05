@@ -98,26 +98,29 @@ defineExpose({
 <template>
   <div
     class="assistant-process-sequence"
-    :tw-class="['flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20',
+    :tw-class="['min-w-0 max-w-full flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20',
                 (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-1.5' : 'pt-0',
                 (flow.position === 'standalone' || flow.position === 'end') ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
     ]"
   >
     <!-- Turn Header (Icon + Model ID) -->
-    <div v-if="isFirstInTurn" tw-class="flex items-center gap-3 mb-1 px-5 pt-3">
-      <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+    <div v-if="isFirstInTurn" tw-class="min-w-0 flex items-center gap-3 mb-1 px-5 pt-3">
+      <div tw-class="w-8 h-8 shrink-0 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <BirdIcon tw-class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
-      <div tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
-        <span>{{ modelId || lazyStrings.SHARED__assistant() }}</span>
+      <div tw-class="min-w-0 text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
+        <span tw-class="truncate" :title="modelId">{{ modelId || lazyStrings.SHARED__assistant() }}</span>
       </div>
     </div>
 
     <!-- Compact Show/Less Toggle -->
     <div ref="toggleRef" :tw-class="['px-5 py-1', isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : '']">
-      <div
+      <button
+        type="button"
+        :aria-expanded="isExpanded"
+        :title="displaySummary"
         @click="toggle"
-        :tw-class="['inline-flex items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none',
+        :tw-class="['inline-flex min-w-0 max-w-full items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none',
                     isExpanded
                       ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
                       : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600'
@@ -125,21 +128,21 @@ defineExpose({
         data-testid="assistant-process-toggle"
       >
         <!-- Status/Action Icon -->
-        <div tw-class="flex-shrink-0">
+        <span tw-class="flex-shrink-0">
           <Loader2Icon v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" tw-class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
           <component :is="isExpanded ? EyeOffIcon : EyeIcon" v-else :tw-class="['w-3 h-3 transition-transform duration-300', { 'opacity-60': !isExpanded }]" />
-        </div>
+        </span>
 
         <!-- Summary Text -->
-        <div tw-class="text-[10px] font-bold tracking-tight truncate max-w-[200px] sm:max-w-md">
+        <span tw-class="min-w-0 text-left text-[10px] leading-relaxed font-bold tracking-tight whitespace-normal [overflow-wrap:anywhere]">
           {{ displaySummary }}
-        </div>
+        </span>
 
         <!-- Action Label -->
-        <div tw-class="text-[8px] uppercase font-black tracking-tighter opacity-0 group-hover/seq:opacity-100 transition-opacity pl-1 border-l border-current/10 ml-0.5">
+        <span tw-class="shrink-0 text-[8px] uppercase font-black tracking-tighter opacity-0 group-hover/seq:opacity-100 transition-opacity pl-1 border-l border-current/10 ml-0.5">
           {{ isExpanded ? lazyStrings.AssistantProcessSequence__less() : lazyStrings.AssistantProcessSequence__show() }}
-        </div>
-      </div>
+        </span>
+      </button>
       <slot v-if="!isExpanded && isProcessing && !stats.isCurrentlyThinking && !stats.isWaiting" name="cursor" />
     </div>
 

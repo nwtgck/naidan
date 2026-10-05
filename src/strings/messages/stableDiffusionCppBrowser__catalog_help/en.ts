@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_help = (): string => "Choose the diffusion model, image decoder and text encoder for each recipe. Download and select explicitly fetches only the chosen files into local storage. Opening the catalog or changing options makes no network request. Select from saved files stays offline.";

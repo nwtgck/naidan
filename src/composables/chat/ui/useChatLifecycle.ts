@@ -1,3 +1,4 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
@@ -32,6 +33,10 @@ export interface AddToastOptions {
 }
 
 export type ChatLifecycleAdapter = {
+  createChatWithoutSelecting({ groupId, modelId, systemPrompt }: {
+    groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined,
+  }): Promise<Chat | null>,
+
   createNewChat({
     groupId,
     modelId,
@@ -60,11 +65,13 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   const { setCurrentChatId } = useChatTools();
   const chatNavigation = useChatNavigation();
 
-  async function createNewChat({
+  async function createChat({
+    activation,
     groupId,
     modelId,
     systemPrompt,
   }: {
+    activation: 'activate' | 'preserve',
     groupId: ChatGroupId | undefined,
     modelId: string | undefined,
     systemPrompt: SystemPrompt | undefined,
@@ -73,7 +80,14 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       return null;
     }
 
-    currentChatGroupRef.value = null;
+    const activate = (() => {
+      switch (activation) {
+      case 'activate': return true;
+      case 'preserve': return false;
+      default: { const exhaustive: never = activation; throw new Error(String(exhaustive)); }
+      }
+    })();
+    if (activate) currentChatGroupRef.value = null;
     creatingChat.value = true;
     const chatId = generateId<ChatId>();
 
@@ -126,13 +140,22 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         return current;
       } });
 
-      setCurrentChatId({ chatId });
-      currentChatRef.value = chat;
+      if (activate) {
+        setCurrentChatId({ chatId });
+        currentChatRef.value = chat;
+      }
       await loadData();
       return chat;
     } finally {
       creatingChat.value = false;
     }
+  }
+
+  function createNewChat({ groupId, modelId, systemPrompt }: { groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined }): Promise<Chat | null> {
+    return createChat({ groupId, modelId, systemPrompt, activation: 'activate' });
+  }
+  function createChatWithoutSelecting({ groupId, modelId, systemPrompt }: { groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined }): Promise<Chat | null> {
+    return createChat({ groupId, modelId, systemPrompt, activation: 'preserve' });
   }
 
   async function deleteChat({
@@ -142,6 +165,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     id: ChatId,
     injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
   }): Promise<void> {
+    autoTitleScheduler.cancel({ chatId: id });
+    chatRuntimeStore.getActiveTitleGeneration({ chatId: id })?.abort();
+    chatRuntimeStore.deleteActiveTitleGeneration({ chatId: id });
     const chat = await storageService.loadChat({ id });
     if (chat === null) {
       return;
@@ -240,6 +266,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   }
 
   async function deleteAllChats(): Promise<void> {
+    autoTitleScheduler.reset();
+    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) controller.abort();
+    chatRuntimeStore.activeTitleGenerations.clear();
     for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
       item.controller.abort();
     }
@@ -267,6 +296,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
   return {
     createNewChat,
+    createChatWithoutSelecting,
     deleteChat,
     deleteAllChats,
     ...((__BUILD_MODE_IS_TEST__ && {

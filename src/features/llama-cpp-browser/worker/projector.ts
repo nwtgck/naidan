@@ -2,7 +2,8 @@ import type { AudioBackend } from '@/features/audio-generation/types';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { mountReadOnlyFile } from '@/features/llama-cpp-browser/runtime/read-only-file';
-import { logFailure, logOperation } from '@/features/llama-cpp-browser/debug-log';
+import { createModelReadCache } from '@/features/llama-cpp-browser/runtime/model-read-cache';
+import { logDiagnostic, logFailure, logOperation } from '@/features/llama-cpp-browser/debug-log';
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { createProjectorTrace } from './projector-trace';
 
@@ -26,7 +27,15 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     close(): void,
   }> };
   if (!handle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  const reportFileReads = (() => {
+    switch (debug) {
+    case 'on': return true;
+    case 'off': return false;
+    default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+    }
+  })();
   const access = await handle.createSyncAccessHandle();
+  const readCache = createModelReadCache({ mode: 'read-ahead', now: reportFileReads ? () => performance.now() : undefined });
   let mounted: ReturnType<typeof mountReadOnlyFile> | undefined;
   let trace: ReturnType<typeof createProjectorTrace> | undefined;
   const allocations: bigint[] = []; let pointer = 0n;
@@ -67,9 +76,9 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
   try {
     checkCancelled();
     if (access.getSize() !== file.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-    mounted = mountReadOnlyFile({ core, path: `/models/${file.path}`, source: { size: access.getSize(), read({ destination, offset }) {
+    mounted = mountReadOnlyFile({ core, path: `/models/${file.path}`, source: readCache.wrap({ source: { size: access.getSize(), read({ destination, offset }) {
       return access.read(destination, { at: offset });
-    } }, maxChunkBytes: 8 * 1024 * 1024 });
+    } } }), maxChunkBytes: 8 * 1024 * 1024 });
     const params = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(params);
     await core.api.mtmd_context_params_default(params);
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'use_gpu', value: backend === 'profile' && usesWebGpu({ profile }) ? 1 : 0 });
@@ -93,7 +102,15 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     logFailure({ stage: 'projector-load', error });
     await release(); throw error;
   } finally {
-    await cleanupTemporary();
+    try {
+      await cleanupTemporary();
+    } finally {
+      readCache.dispose();
+      try {
+        if (reportFileReads) logDiagnostic({ diagnostic: { event: 'file-read-performance', profile,
+          fileReads: { target: 'projector', ...readCache.counters } } });
+      } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
+    }
   }
   // Transfer native ownership only after temporary filesystem resources are closed.
   return { pointer, debug, release };

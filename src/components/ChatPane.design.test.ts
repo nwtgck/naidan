@@ -41,7 +41,8 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: vi.fn(),
 }));
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: vi.fn(),
 }));
 

@@ -170,6 +170,13 @@ English and must not be moved into this directory.
 
 ## Module exports and implementation style
 
+Locale message implementations must not import or re-export an implementation
+from another locale, even when the displayed text is identical. Until a translation
+is available, keep the English text as an independent function in the target locale
+file. A cross-locale re-export retains a foreign payload in single-locale standalone
+packages and is rejected by release packaging. Locale-neutral shared constants and
+helpers remain allowed; do not put such shared code inside a locale message module.
+
 Each locale module must use a named export whose identifier exactly matches the
 message directory and catalog key. Individual message modules must not use a
 default export. Message functions must return `string` synchronously. Do not add

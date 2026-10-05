@@ -1,0 +1,1 @@
+export const imageGeneration__assistant_help = (): string => "Use an existing chat to translate or improve your prompt. Reading Workspace context and editing the prompt use tools and permissions. This does not generate images.";

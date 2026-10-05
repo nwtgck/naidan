@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch } from 'vue';
+import { useModelLaunchCoordinator } from '@/features/llama-cpp-browser/composables/useModelLaunchCoordinator';
 import { useRoute, useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -25,6 +26,7 @@ const { appInteraction } = useAppPresentation();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const router = useRouter();
 const route = useRoute();
+useModelLaunchCoordinator();
 
 watch(
   () => route.path,
@@ -54,6 +56,7 @@ watch(
       || !initialized
       || !dismissed
       || path !== '/'
+      || router.currentRoute.value.query['llama-cpp-browser-model'] !== undefined
     ) return;
 
     if (len === 0 && !q) {

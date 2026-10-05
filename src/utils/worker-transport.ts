@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink';
+import { z } from 'zod';
 
 export type WorkerRemote<Api> = Comlink.Remote<Api>;
 export type WorkerProxy<T extends object> = T & Comlink.ProxyMarked;
@@ -125,6 +126,89 @@ async function detectReadableStreamTransferSupport(): Promise<'supported' | 'uns
 export function getReadableStreamTransferSupport(): Promise<'supported' | 'unsupported'> {
   readableStreamTransferSupport ??= detectReadableStreamTransferSupport();
   return readableStreamTransferSupport;
+}
+
+/** One-way, schema-checked notifications for synchronous native work. Unlike a
+ * proxied RPC callback this creates no response promise/acknowledgement queue.
+ * An omitted endpoint means the current dedicated Worker, as for Comlink expose.
+ * Consumers own rate/size limits and must never use this as an unchecked RPC. */
+export function postWorkerNotification<T>({ endpoint, schema, value }: {
+  endpoint: Pick<Comlink.Endpoint, 'postMessage'> | undefined,
+  schema: import('zod').ZodType<T>, value: T,
+}): void {
+  try {
+    const parsed = schema.safeParse(value);
+    if (parsed.success) (endpoint ?? globalThis as unknown as Comlink.Endpoint).postMessage(parsed.data);
+  } catch { /* Notification failure must not unwind native execution. */ }
+}
+
+export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: {
+  endpoint: Comlink.Endpoint | undefined, schema: import('zod').ZodType<T>, listener: ({ value }: { value: T }) => void,
+}): () => void {
+  // Undefined is the current dedicated Worker, matching postWorkerNotification.
+  const target = endpoint ?? globalThis as unknown as Comlink.Endpoint;
+  let active = true;
+  const receive: EventListener = event => {
+    if (!active) return;
+    try {
+      const parsed = schema.safeParse((event as MessageEvent<unknown>).data);
+      if (parsed.success) listener({ value: parsed.data });
+    } catch { /* Neither malformed telemetry nor a renderer controls the Worker. */ }
+  };
+  target.addEventListener('message', receive);
+  target.start?.();
+  return () => {
+    active = false; target.removeEventListener('message', receive);
+  };
+}
+
+/** A schema-checked, single-owner MessagePort boundary for byte/control protocols.
+ * Keep raw postMessage/listeners in this audited module, not in feature code.
+ */
+export function createValidatedMessagePort<Incoming extends z.ZodType, Outgoing extends z.ZodType>({
+  port, incomingSchema, outgoingSchema, onMessage, onError,
+}: {
+  port: MessagePort,
+  incomingSchema: Incoming,
+  outgoingSchema: Outgoing,
+  onMessage: ({ message }: { message: z.infer<Incoming> }) => void | Promise<void>,
+  onError: ({ reason }: { reason: unknown }) => void,
+}): {
+  send: ({ message, transferables }: { message: z.input<Outgoing>, transferables: Transferable[] }) => void,
+  close: () => void,
+} {
+  let closed = false;
+  port.onmessage = (event: MessageEvent<unknown>) => {
+    if (closed) return;
+    try {
+      const result = onMessage({ message: incomingSchema.parse(event.data) });
+      if (result) void result.catch(reason => onError({ reason }));
+    } catch (reason) {
+      onError({ reason });
+    }
+  };
+  port.onmessageerror = () => onError({ reason: new Error('Invalid worker message') });
+  port.start();
+  return {
+    send({ message, transferables }) {
+      if (closed) return;
+      try {
+        port.postMessage(outgoingSchema.parse(message), transferables);
+      } catch (reason) {
+        // Close before notifying: error handlers may try to tell the peer that
+        // the stream failed. A broken port must not recurse through send().
+        closed = true;
+        port.onmessage = null; port.onmessageerror = null; port.close();
+        onError({ reason });
+      }
+    },
+    close() {
+      closed = true;
+      port.onmessage = null;
+      port.onmessageerror = null;
+      port.close();
+    },
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

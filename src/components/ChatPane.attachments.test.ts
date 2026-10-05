@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -256,7 +257,8 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 }));
 
 
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: () => ({
     push: vi.fn(),
     currentRoute: { value: { params: { id: toChatId({ raw: 'chat-1' }) } } },
@@ -287,6 +289,7 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => { }),
     canPersistBinary: true,

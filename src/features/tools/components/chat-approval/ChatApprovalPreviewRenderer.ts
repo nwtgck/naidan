@@ -1,7 +1,9 @@
-import { h, type VNode } from 'vue';
+import { defineAsyncComponent, h, type VNode } from 'vue';
 import type { ApprovalPreview } from '@/features/tools/approval';
 import WikipediaGetPageApprovalPreview from './previews/WikipediaGetPageApprovalPreview.vue';
 import WikipediaSearchApprovalPreview from './previews/WikipediaSearchApprovalPreview.vue';
+
+const ImageGenerationPromptApprovalPreview = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationPromptApprovalPreview.vue'));
 
 export default function ChatApprovalPreviewRenderer({
   preview,
@@ -9,6 +11,7 @@ export default function ChatApprovalPreviewRenderer({
   preview: ApprovalPreview,
 }): VNode {
   switch (preview.type) {
+  case 'image_generation_prompt': return h(ImageGenerationPromptApprovalPreview, { field: preview.field, before: preview.before, after: preview.after });
   case 'wikipedia_search':
     return h(WikipediaSearchApprovalPreview, {
       keyword: preview.keyword,

@@ -70,6 +70,44 @@ afterEach(() => {
 });
 
 describe('OPFS export index read failures', () => {
+  it('cancels the currently blocked binary source when the output download is cancelled', async () => {
+    await createFixture();
+    const snapshot = await storageService.dumpWithoutLock();
+    const entered = Promise.withResolvers<void>();
+    const cancelled = vi.fn();
+    const blob = new Blob(['blocked binary source']);
+    Object.defineProperty(blob, 'stream', { configurable: true, value: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull() {
+        entered.resolve(); return new Promise<void>(() => undefined);
+      },
+      cancel: cancelled,
+    }, { highWaterMark: 0 }) });
+    let iteratorClosed = false;
+    vi.spyOn(storageService, 'dumpWithoutLock').mockResolvedValue({ ...snapshot,
+      contentStream: (async function* () {
+        try {
+          for await (const chunk of snapshot.contentStream) {
+            yield chunk.type === 'binary_object' ? { ...chunk, blob, size: blob.size } : chunk;
+          }
+        } finally {
+          iteratorClosed = true;
+        }
+      })(),
+    });
+    const { stream } = await new ImportExportService({ storage: storageService }).exportData({});
+    const reader = stream.getReader();
+    const consume = (async () => {
+      while (!(await reader.read()).done) { /* Drain headers to reach the binary entry. */ }
+    })();
+    await entered.promise;
+    await reader.cancel(new DOMException('Cancelled download', 'AbortError'));
+    await consume;
+    await vi.waitFor(() => expect(iteratorClosed).toBe(true));
+    reader.releaseLock();
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    expect(addErrorEvent).not.toHaveBeenCalled();
+  });
+
   it.each(['invalid-json', 'invalid-schema', 'unreadable-handle'] as const)(
     'rejects dump after earlier chat and shard output when an existing index is %s', async failure => {
       const { root, provider, brokenIndex } = await createFixture();

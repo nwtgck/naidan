@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_drop_help = (): string => "Cree las tres carpetas de repositorio indicadas y conserve las rutas internas. Arrástrelas juntas o por separado a la biblioteca local, no su carpeta superior común. Seleccione el modelo de difusión; se buscarán componentes compatibles en los repositorios importados.";

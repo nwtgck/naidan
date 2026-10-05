@@ -11,6 +11,11 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { WeshMount } from '@/features/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
+const mockStreamDownload = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/stream-download', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/stream-download')>(), downloadStream: mockStreamDownload,
+}));
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -42,6 +47,31 @@ const {
 }));
 
 // Mock dependencies
+// Test the real ChatPane/ChatInput wiring independently of the setup state
+// machine, which has deferred-file and download tests in useModelLaunchChat.
+const launchComposerOverride = ref<'visible' | 'hidden'>();
+vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async importOriginal => {
+  const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useModelLaunchChat')>();
+  return { ...original, useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
+    const state = original.useModelLaunchChat(args);
+    return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
+  } };
+});
+// Disk inspection/cancellation is exercised in useMissingLlamaCppBrowserModel.
+// This suite keeps that boundary controlled while testing the real pane/input
+// policy, including the separate ordinary-Chat notice below.
+const recoveryAvailability = ref<'checking' | 'available' | 'missing' | 'unreadable'>('available');
+vi.mock('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel', async importOriginal => {
+  const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel')>();
+  return { ...original, useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
+    const state = original.useMissingLlamaCppBrowserModel(args);
+    return { ...state,
+      availability: recoveryAvailability,
+      visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
+      maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
+    };
+  } };
+});
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
@@ -710,6 +740,8 @@ vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: () => undefined,
+    captureModelLaunchStorage: () => () => true,
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
@@ -733,6 +765,8 @@ Object.defineProperty(navigator, 'clipboard', {
 let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
+  launchComposerOverride.value = undefined;
+  recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
   vi.useRealTimers();
@@ -2920,66 +2954,23 @@ describe('ChatPane Export Functionality', () => {
   });
 
   // Mock browser APIs for file download
-  const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
-    // Mock Blob content access for testing
-    if (blob instanceof Blob) {
-      // We can't easily mock blob.text() without implementing the whole Blob interface
-      // But we can check the blob content in the test itself if needed
-      (blob as any).text = async () => {
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsText(blob);
-        });
-      };
-    }
-    return 'blob:mockurl';
-  });
-  const mockRevokeObjectURL = vi.fn();
-  const mockAnchorClick = vi.fn();
-  const mockAppendChild = vi.fn();
-  const mockRemoveChild = vi.fn();
-  let originalCreateElement: any;
-
-  beforeAll(() => {
-    // Capture the original createElement once, before any mocks are applied
-    originalCreateElement = document.createElement;
-  });
-
+  const exported: Array<{ filename: string; text: string }> = [];
   beforeEach(() => {
     resetMocks();
+    exported.length = 0;
     document.body.innerHTML = '<div id="app"></div>';
     setupScrollToMock();
-
-    // Setup browser API spies/mocks
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(mockCreateObjectURL as any);
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
-
-    // Robust mock for document.createElement to avoid breaking Vue internals
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      // Create the real element first
-      const el = originalCreateElement.call(document, tagName);
-
-      // If it's an anchor tag, attach our spy
-      if (tagName === 'a') {
-        // Also attach spy to the real element's click just in case
-        vi.spyOn(el, 'click').mockImplementation(mockAnchorClick);
-        return el;
-      }
-      return el;
+    // Replace only the browser's sink; exercise the real text producer/encoder.
+    mockStreamDownload.mockImplementation(async ({ filename, openStream }: {
+      filename: string; openStream: () => Promise<ReadableStream<Uint8Array>>;
+    }) => {
+      exported.push({ filename, text: await new Response(await openStream()).text() });
     });
-
-    vi.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
-    vi.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
   });
-
   afterEach(() => {
-    // Restore all mocks to their original state to ensure a clean slate before applying new mocks
     vi.restoreAllMocks();
     if (wrapper) {
-      wrapper.unmount();
-      wrapper = null;
+      wrapper.unmount(); wrapper = null;
     }
     document.body.innerHTML = '';
   });
@@ -2997,9 +2988,7 @@ describe('ChatPane Export Functionality', () => {
     await wrapper.get('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.get('[data-testid="export-markdown-button"]').trigger('click');
     await flushPromises();
-    const blob = mockCreateObjectURL.mock.calls.at(-1)?.[0];
-    if (!(blob instanceof Blob)) throw new Error('Expected exported Markdown Blob.');
-    const text = await blob.text();
+    const text = exported.at(-1)!.text;
     expect(text.match(/Visible answer/g)).toHaveLength(1);
     expect(text).not.toContain('Draft-only value');
     expect(text.match(/## AI:/g)).toHaveLength(1);
@@ -3035,17 +3024,9 @@ describe('ChatPane Export Functionality', () => {
     await exportButton.trigger('click');
     await flushPromises();
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
-    expect(mockAppendChild).toHaveBeenCalledWith(expect.any(Object));
-    expect(mockRemoveChild).toHaveBeenCalledWith(expect.any(Object));
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    // Verify blob content (simplified check since we mocked createObjectURL)
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toBe('text/plain;charset=utf-8');
-
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# Predefined Chat Title');
     expect(text).toContain(`\
 ## User:
@@ -3055,8 +3036,7 @@ Hello AI`);
 Hello User`);
 
     // Verify filename
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('Predefined Chat Title.txt');
+    expect(exported[0]!.filename).toBe('Predefined Chat Title.txt');
   });
 
   it('should handle empty chat for markdown export (no current chat)', async () => {
@@ -3073,8 +3053,7 @@ Hello User`);
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(false);
 
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
-    expect(mockAnchorClick).not.toHaveBeenCalled();
+    expect(mockStreamDownload).not.toHaveBeenCalled();
   });
 
   it('should export with default title if current chat title is empty', async () => {
@@ -3105,18 +3084,15 @@ Hello User`);
     await flushPromises();
 
     // Just verify the calls happened
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# New Chat');
     expect(text).toContain(`\
 ## User:
 Another message`);
 
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('new_chat.txt');
+    expect(exported[0]!.filename).toBe('new_chat.txt');
   });
 
   it('should handle empty active messages for export', async () => {
@@ -3144,15 +3120,12 @@ Another message`);
     await exportButton.trigger('click');
     await flushPromises();
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(mockAnchorClick).toHaveBeenCalled();
+    expect(mockStreamDownload).toHaveBeenCalled();
 
-    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-    const text = await blob.text();
+    const text = exported[0]!.text;
     expect(text).toContain('# Chat with no messages');
 
-    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('Chat with no messages.txt');
+    expect(exported[0]!.filename).toBe('Chat with no messages.txt');
   });
 
   it('should export chat as URL', async () => {
@@ -4011,4 +3984,82 @@ describe('ChatPane Model Selection', () => {
     // 5. Verify Tools Menu UI is also synced
     expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
   }, 20_000);
+});
+
+describe('model-link composer visibility wiring', () => {
+  beforeEach(() => {
+    resetMocks();
+    document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
+  });
+  afterEach(() => {
+    wrapper?.unmount(); wrapper = null;
+    launchComposerOverride.value = undefined;
+    document.body.innerHTML = '';
+  });
+  it('keeps the same input instance and draft while setup hides the composer and suggestions', async () => {
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const instance = input.element;
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Draft survives model setup');
+    launchComposerOverride.value = 'hidden';
+    await nextTick();
+    expect(wrapper.getComponent(ChatInput).element).toBe(instance);
+    expect(input.isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
+    launchComposerOverride.value = 'visible';
+    await nextTick();
+    expect(wrapper.getComponent(ChatInput).element).toBe(instance);
+    expect(input.isVisible()).toBe(true);
+    expect(textarea.element.value).toBe('Draft survives model setup');
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+  });
+});
+
+
+describe('ordinary Chat missing browser model notice', () => {
+  beforeEach(() => {
+    resetMocks(); setupScrollToMock();
+  });
+  afterEach(() => {
+    recoveryAvailability.value = 'available';
+  });
+  it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
+    recoveryAvailability.value = 'checking';
+    const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('keep writing while the model is prepared');
+    const original = textarea.element;
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    recoveryAvailability.value = 'missing'; await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(true);
+    expect(wrapper.get('textarea').isVisible()).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(original);
+    expect(textarea.element.value).toBe('keep writing while the model is prepared');
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    recoveryAvailability.value = 'available'; await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(original);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('also offers recovery for a nonempty conversation without hiding messages or input', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/original' };
+    const node = createTextNode({ id: toMessageId({ raw: 'existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
+    mockActiveMessages.value = [node];
+    mockCurrentChat.value!.root.items = [node];
+    recoveryAvailability.value = 'missing';
+    const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Existing conversation');
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.get('textarea').isVisible()).toBe(true);
+    wrapper.unmount();
+  });
 });

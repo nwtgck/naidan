@@ -31,6 +31,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: 'enabled',
       sidebarSendMessageReorder: 'move_sent_chat',
       globalSearch: undefined,
+      browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       markdownRendering: 'future_renderer',
@@ -51,6 +52,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
       globalSearch: undefined,
+      browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       fakeLm: 'disabled',
@@ -70,6 +72,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: 'disabled',
       globalSearch: undefined,
+      browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       futureFeature: { enabled: true },
@@ -86,6 +89,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
       globalSearch: undefined,
+      browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       _root: 'future-experimental-shape',

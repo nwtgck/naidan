@@ -1,0 +1,1 @@
+export const ImageLoraControls__choose_adapters_for_selected_model = (): string => 'Elige adaptadores para el modelo seleccionado. Generar una imagen no confirma que se haya aplicado LoRA. Activa el modo de depuración para ver los registros. Esta selección no se guarda.';

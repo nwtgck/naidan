@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -20,6 +21,7 @@ afterEach(() => {
 // Mock storage
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
@@ -259,7 +261,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.mocked(storageService.loadChatMeta).mockResolvedValue(storedMeta);
     let persisted: ChatMeta = storedMeta;
     vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
-      persisted = await updater({ current: persisted });
+      const updated = await updater({ current: persisted });
+      if (updated !== undefined) persisted = updated;
     });
 
     await updateChatSettings({

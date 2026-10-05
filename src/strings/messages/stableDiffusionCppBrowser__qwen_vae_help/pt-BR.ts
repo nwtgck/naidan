@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_vae_help = (): string => "Para Qwen Image 2.1 com blocos ativados. Mantém a resolução e evita a decodificação de um único bloco grande. É uma medida de compatibilidade, não uma garantia contra imagens uniformes.";

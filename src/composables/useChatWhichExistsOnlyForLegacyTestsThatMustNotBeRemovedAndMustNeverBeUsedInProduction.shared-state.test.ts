@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
 
@@ -9,6 +10,7 @@ const mockUpdateChatContent = vi.fn().mockImplementation(async ({ updater }: { i
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),

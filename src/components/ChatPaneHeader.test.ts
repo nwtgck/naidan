@@ -224,3 +224,22 @@ describe('ChatPaneHeader', () => {
     expect(wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').exists()).toBe(false);
   });
 });
+
+
+describe('compact attached-chat header', () => {
+  it('keeps a single nonwrapping model label and a named settings control for long Japanese groups', async () => {
+    await ensureAllStringsForTest({ locale: 'ja' });
+    const group = makeGroup({ name: '画像生成用の非常に長い日本語のチャットグループ名' });
+    const wrapper = mountHeader({ chat: makeChat(), groups: [group] });
+    try {
+      await wrapper.setProps({ modelLabel: 'チャットグループ: hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M' });
+      const trigger = wrapper.get('[data-testid="model-trigger"]');
+      expect(trigger.text()).toBe('チャットグループ: hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M');
+      expect(trigger.attributes('aria-label')).toBeTruthy();
+      expect(wrapper.get('[data-testid="chat-model-name"]').element.parentElement?.classList.contains('whitespace-nowrap')).toBe(true);
+      await trigger.trigger('click'); expect(wrapper.emitted('update:show-chat-settings')).toEqual([[true]]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+});

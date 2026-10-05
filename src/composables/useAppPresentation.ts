@@ -1,3 +1,4 @@
+import { useModelLaunchOnboardingBypass } from '@/features/llama-cpp-browser/composables/useModelLaunchOnboardingBypass';
 import {
   computed,
   inject,
@@ -46,17 +47,19 @@ function createAppPresentation({
   startupState,
   settingsInitialized,
   isOnboardingDismissed,
+  modelLaunchBypass,
 }: {
   startupState: ShallowRef<StartupState>,
   settingsInitialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: Readonly<Ref<boolean>>,
+  modelLaunchBypass: Readonly<Ref<boolean>>,
 }): AppPresentation {
   const onboardingPresentation = computed<OnboardingPresentation>(() => {
     if (!settingsInitialized.value) {
       return 'hidden';
     }
 
-    return isOnboardingDismissed.value
+    return isOnboardingDismissed.value || modelLaunchBypass.value
       ? 'hidden'
       : 'visible';
   });
@@ -105,6 +108,7 @@ export function provideAppPresentation({ startupState }: {
     startupState,
     settingsInitialized: settingsStore.initialized,
     isOnboardingDismissed: settingsStore.isOnboardingDismissed,
+    modelLaunchBypass: useModelLaunchOnboardingBypass({ initialized: settingsStore.initialized, storageType: computed(() => settingsStore.settings.value.storageType) }),
   });
   provide(appPresentationKey, presentation);
   return presentation;

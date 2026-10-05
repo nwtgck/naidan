@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__reuse_does_not_download_models = (): string => 'Reutilizar ajustes no descarga modelos. Vuelve a seleccionar los archivos que falten. Una semilla -1 no identifica la semilla aleatoria utilizada.';

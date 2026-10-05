@@ -1,0 +1,1 @@
+export const imageGeneration__batch_failed = ({ succeeded, failed }: { succeeded: number; failed: number }): string => `${succeeded} completed; ${failed} failed. Completed changes were kept. Reload before retrying.`;

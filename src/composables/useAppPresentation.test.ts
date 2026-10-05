@@ -27,6 +27,7 @@ describe('app presentation', () => {
       startupState,
       settingsInitialized,
       isOnboardingDismissed,
+      modelLaunchBypass: ref(false),
     });
   }
 
@@ -82,5 +83,24 @@ describe('app presentation', () => {
     };
 
     expect(appInteraction.value).toBe('blocked-by-onboarding');
+  });
+});
+
+
+describe('model launch presentation without onboarding dismissal', () => {
+  it('never overlays onboarding on the embedded launcher and still respects startup blocking', () => {
+    const bypass = ref(true);
+    const startupState = shallowRef<StartupState>({ kind: 'initializing-foundation' });
+    const dismissed = ref(false);
+    const presentation = TEST_ONLY.createAppPresentation({ startupState, settingsInitialized: ref(true), isOnboardingDismissed: dismissed, modelLaunchBypass: bypass });
+    expect(presentation.onboardingPresentation.value).toBe('hidden');
+    expect(presentation.appInteraction.value).toBe('blocked-by-startup');
+    startupState.value = { kind: 'ready', mainApp: MainApp };
+    expect(presentation.onboardingPresentation.value).toBe('hidden');
+    expect(presentation.appInteraction.value).toBe('enabled');
+    expect(dismissed.value).toBe(false);
+    bypass.value = false;
+    expect(presentation.onboardingPresentation.value).toBe('visible');
+    expect(presentation.appInteraction.value).toBe('blocked-by-onboarding');
   });
 });

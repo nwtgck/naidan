@@ -1,3 +1,4 @@
+import { copyNativeUtf8 } from './native-utf8';
 import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-browser/runtime/artifacts';
 import { z } from 'zod';
 import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
@@ -63,15 +64,21 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
   const api: Record<string, NativeCall> = Object.create(null);
   for (const fn of schema.functions) {
     const call = native({ name: fn.export });
+    // The generated signature belongs to the bound module, not to one call.
+    // Keep validating actual arguments and holding the suspension guard below.
+    const kinds = fn.parameters.map(parameter => parameter.kind);
+    switch (fn.returnKind) {
+    case 'record': kinds.unshift('pointer'); break;
+    case 'pointer': case 'u64': case 'i64': case 'float': case 'signed': case 'unsigned': case 'boolean': case 'array': case 'void': break;
+    default: { const exhaustive: never = fn.returnKind; throw new Error(`Unknown return kind: ${exhaustive}`); }
+    }
+    const ccallName = fn.export.slice(1);
+    const ccallReturn = fn.returnKind === 'record' || fn.returnKind === 'void' ? undefined
+      : ['pointer', 'u64', 'i64'].includes(fn.returnKind) ? 'bigint' : 'number';
+    const ccallKinds = kinds.map(kind => ['pointer', 'record', 'u64', 'i64'].includes(kind) ? 'bigint' as const : 'number' as const);
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Adapt generated C ABI calls without changing their signatures.
     api[fn.name] = async (...args) => {
       assertIdle();
-      const kinds = fn.parameters.map(parameter => parameter.kind);
-      switch (fn.returnKind) {
-      case 'record': kinds.unshift('pointer'); break;
-      case 'pointer': case 'u64': case 'i64': case 'float': case 'signed': case 'unsigned': case 'boolean': case 'array': case 'void': break;
-      default: { const exhaustive: never = fn.returnKind; throw new Error(`Unknown return kind: ${exhaustive}`); }
-      }
       if (args.length !== kinds.length) throw new TypeError(`Incorrect native argument count: ${fn.name}`);
       for (const [i, kind] of kinds.entries()) {
         const value = args[i];
@@ -98,11 +105,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
           // Raw Asyncify exports can return before unwinding finishes. ccall waits for
           // the final result and keeps the serialization guard held during suspension.
           // The generated bridge uses bigint for pointers even in the wasm32 profile.
-          const result: NativeScalar | void = await module.ccall(fn.export.slice(1),
-            fn.returnKind === 'record' || fn.returnKind === 'void' ? undefined
-              : ['pointer', 'u64', 'i64'].includes(fn.returnKind) ? 'bigint' : 'number',
-            kinds.map(kind => ['pointer', 'record', 'u64', 'i64'].includes(kind) ? 'bigint' : 'number'),
-            args, { async: true });
+          const result: NativeScalar | void = await module.ccall(ccallName, ccallReturn, ccallKinds, args, { async: true });
           return result;
         }
         default: { const exhaustive: never = callMode; throw new Error(`Unhandled native call mode: ${exhaustive}`); }
@@ -112,17 +115,34 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
       }
     };
   }
+  // ABI metadata belongs to this module instance. Never retain heap views or
+  // request/model pointers here: heap growth and allocator reuse are unrelated
+  // to the immutable record layouts. Only known schema entries enter the maps.
+  const records = new Map(schema.records.map(entry => [entry.name, entry]));
+  const recordSizes = new Map<string, number>();
+  const fieldLayouts = new Map<string, Map<string, Readonly<{ kind: z.infer<typeof kindSchema>, offset: bigint, size: number }>>>();
   function record({ name }: { name: string }) {
-    const entry = schema.records.find(entry => entry.name === name);
+    const entry = records.get(name);
     if (!entry) throw new Error(`Unknown native record: ${name}`);
     return entry;
   }
   function fieldLayout({ name, field }: { name: string, field: string }) {
+    // Cache hits must not bypass the same native lifetime guard as misses.
+    assertIdle();
+    const cached = fieldLayouts.get(name)?.get(field);
+    if (cached) return cached;
     const entry = record({ name }); const spec = entry.fields.find(spec => spec.name === field);
     if (!spec) throw new Error(`Unknown native field: ${name}.${field}`);
-    const offset = BigInt(scalar({ name: '_lcb_offsetof_field', args: [entry.id, spec.id] }));
+    const offset = BigInt(index({ value: scalar({ name: '_lcb_offsetof_field', args: [entry.id, spec.id] }) }));
     const size = index({ value: scalar({ name: '_lcb_sizeof_field', args: [entry.id, spec.id] }) });
-    return { kind: spec.kind, offset, size };
+    // Publish only a fully read, immutable result. Failed queries remain misses.
+    const layout = Object.freeze({ kind: spec.kind, offset, size });
+    let fields = fieldLayouts.get(name);
+    if (!fields) {
+      fields = new Map(); fieldLayouts.set(name, fields);
+    }
+    fields.set(field, layout);
+    return layout;
   }
   function field({ name, pointer, field }: { name: string, pointer: bigint, field: string }) {
     const { kind, offset, size } = fieldLayout({ name, field });
@@ -140,16 +160,24 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     if (pointer === undefined) throw new Error('Native allocation failed');
     return pointer;
   }
-  const recordSize = ({ name }: { name: string }): number => index({ value: scalar({ name: '_lcb_sizeof_record', args: [record({ name }).id] }) });
+  const recordSize = ({ name }: { name: string }): number => {
+    assertIdle();
+    const cached = recordSizes.get(name);
+    if (cached !== undefined) return cached;
+    const size = index({ value: scalar({ name: '_lcb_sizeof_record', args: [record({ name }).id] }) });
+    recordSizes.set(name, size);
+    return size;
+  };
+  function free({ pointer }: { pointer: bigint }): void {
+    assertIdle(); native({ name: '_lcb_free' })(pointer);
+  }
   return {
     module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, tryAlloc, recordSize, fieldLayout,
     enumValues({ prefix }: { prefix: string }): { name: string, value: number }[] {
       assertIdle();
       return schema.constants.flatMap((name, id) => name.startsWith(prefix) ? [{ name, value: Number(scalar({ name: '_lcb_constant', args: [id] })) }] : []);
     },
-    free({ pointer }: { pointer: bigint }): void {
-      assertIdle(); native({ name: '_lcb_free' })(pointer);
-    },
+    free,
     constant({ name }: { name: string }): number {
       const id = schema.constants.indexOf(name); if (id < 0) throw new Error(`Unknown native constant: ${name}`);
       const value = Number(scalar({ name: '_lcb_constant', args: [id] }));
@@ -157,7 +185,14 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
       return value;
     },
     allocRecord({ name }: { name: string }): bigint {
-      const size = recordSize({ name }); const pointer = alloc({ bytes: size }); bytes({ pointer, length: size }).fill(0); return pointer;
+      const size = recordSize({ name }); const pointer = alloc({ bytes: size });
+      try {
+        bytes({ pointer, length: size }).fill(0);
+        return pointer;
+      } catch (error) {
+        free({ pointer });
+        throw error;
+      }
     },
     setField({ name, pointer, field: fieldName, value }: { name: string, pointer: bigint, field: string, value: NativeScalar }): void {
       assertIdle(); const { kind, size, view } = field({ name, pointer, field: fieldName });
@@ -187,8 +222,8 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
       } else throw new RangeError('Unsupported native field width');
     },
     utf8({ text }: { text: string }): bigint {
-      const data = new TextEncoder().encode(text); const pointer = alloc({ bytes: data.length + 1 });
-      const span = bytes({ pointer, length: data.length + 1 }); span.set(data); span[data.length] = 0; return pointer;
+      assertIdle();
+      return copyNativeUtf8({ core: { alloc, bytes, free }, data: new TextEncoder().encode(text) });
     },
   };
 }

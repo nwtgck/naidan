@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageService } from './index';
+import { MemoryStorageProvider } from './memory-storage';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 
@@ -45,6 +46,7 @@ const mockProvider = {
   saveChatContent: vi.fn().mockResolvedValue(undefined),
   loadChatContent: vi.fn().mockResolvedValue(null),
   deleteChat: vi.fn().mockResolvedValue(undefined),
+  deleteBinaryObject: vi.fn().mockResolvedValue(undefined),
   saveChatGroup: vi.fn().mockResolvedValue(undefined),
   loadChatGroup: vi.fn().mockResolvedValue(null),
   deleteChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -113,6 +115,15 @@ describe('StorageService Synchronization Wrapper', () => {
     await service.init({ type: 'local' });
   });
 
+  it('performs a conditional metadata no-op without writing or notifying', async () => {
+    const updater = vi.fn().mockResolvedValue(undefined);
+    await service.updateChatMeta({ id: toChatId({ raw: 'deleted-chat' }), updater });
+    expect(updater).toHaveBeenCalledExactlyOnceWith({ current: null });
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: LOCK_METADATA }));
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
   it('should wrap deleteChat with lock and notify after success', async () => {
     await service.deleteChat({ id: toChatId({ raw: 'c1' }) });
 
@@ -122,6 +133,29 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(mockProvider.deleteChat).toHaveBeenCalledWith({ id: 'c1' });
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
+  });
+
+  it('keeps binary deletion on its original provider while waiting for the metadata lock', async () => {
+    const ready = Promise.withResolvers<void>();
+    mockWithLock.mockImplementationOnce(async ({ fn }: { fn: () => Promise<void> }) => {
+      await ready.promise; return fn();
+    });
+    const memoryDelete = vi.spyOn(MemoryStorageProvider.prototype, 'deleteBinaryObject');
+    const binaryObjectId = toBinaryObjectId({ raw: 'selected-image' });
+    const deleting = service.deleteBinaryObject({ binaryObjectId });
+    await service.init({ type: 'memory' });
+    ready.resolve(); await deleting;
+    expect(mockProvider.deleteBinaryObject).toHaveBeenCalledExactlyOnceWith({ binaryObjectId });
+    expect(memoryDelete).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledExactlyOnceWith({ event: expect.objectContaining({ type: 'binary_objects' }) });
+    memoryDelete.mockRestore();
+  });
+
+  it('propagates a failed binary deletion without publishing success', async () => {
+    mockProvider.deleteBinaryObject.mockRejectedValueOnce(new Error('Cannot remove image'));
+    await expect(service.deleteBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: 'selected-image' }) })).rejects.toThrow('Cannot remove image');
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockAddErrorEvent).toHaveBeenCalled();
   });
 
   it('should wrap updateChatGroup with lock and notify after success', async () => {

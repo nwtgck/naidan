@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__gallery_budget = (): string => "Se eliminan las imágenes más antiguas al alcanzar el límite o el presupuesto: resultados 256 MiB, vistas previas 64 MiB. Guarde lo que desee conservar.";

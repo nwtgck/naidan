@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__experimental_history_notice = (): string => 'Das Speichern des Generierungsverlaufs ist experimentell. Durch Updates können Bilder oder Generierungsdaten verloren gehen. Lade Bilder herunter, die du behalten möchtest.';

@@ -235,7 +235,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </button>
       </div>
     </div>
-    <LlamaCppBrowserDownloadJob v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || checkingLocal || localError" tw-class="mt-2" @resume="download" />
+    <LlamaCppBrowserDownloadJob appearance="manager" v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || checkingLocal || localError" tw-class="mt-2" @resume="download" />
     <p v-if="localError" role="alert" tw-class="mt-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <!-- Expansion is local presentation only. Keeping the panel mounted preserves
          its plan, but inert removes hidden links/buttons from keyboard focus. -->

@@ -7,6 +7,10 @@ import AppCommandRuntime from './AppCommandRuntime.vue';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
 
+// Model-launch orchestration is covered with a real router in its composable
+// tests. These command tests isolate ownership of the ordinary startup path.
+vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchCoordinator', () => ({ useModelLaunchCoordinator: vi.fn() }));
+
 const mockCreateNewChat = vi.fn();
 const mockCreateChatGroup = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
@@ -149,6 +153,16 @@ describe('AppCommandRuntime', () => {
   });
 
   const mountRuntime = () => mount(AppCommandRuntime);
+
+  it('leaves model-link startup to its coordinator instead of creating or auto-sending an ordinary chat', async () => {
+    mockChats.value = [];
+    currentRoute.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', q: 'do not auto-send' };
+    mountRuntime();
+    await flushPromises(); await nextTick();
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockCreateChatGroup).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
 
   it('automatically creates a new chat if none exist and on root path', async () => {
     mockChats.value = [];

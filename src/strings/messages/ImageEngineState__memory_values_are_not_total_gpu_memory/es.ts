@@ -1,0 +1,1 @@
+export const ImageEngineState__memory_values_are_not_total_gpu_memory = (): string => "Estas categorías pueden solaparse. No indican un total, el uso físico de memoria de la GPU ni la memoria disponible.";

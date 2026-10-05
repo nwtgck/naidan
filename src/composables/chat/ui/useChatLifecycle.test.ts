@@ -1,5 +1,10 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
+import { chatRuntimeStore } from '@/composables/chat/global/chat-core-singletons';
+import { storageService } from '@/00-storage/service';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockAddToast,
@@ -25,8 +30,8 @@ const {
   mockUpdateChatMeta: vi.fn().mockResolvedValue(undefined),
   mockUpdateHierarchy: vi.fn(),
   mockCreatingChat: { value: false },
-  mockCurrentChatGroupRef: { value: null },
-  mockCurrentChatRef: { value: null },
+  mockCurrentChatGroupRef: { value: null as ChatGroup | null },
+  mockCurrentChatRef: { value: null as Chat | null },
 }));
 
 vi.mock('@/00-storage/service', () => ({
@@ -57,15 +62,8 @@ vi.mock('@/composables/useToast', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  chatRuntimeStore: {
-    activeGenerations: new Map(),
-    clearActiveGenerations: vi.fn(),
-    clearActiveTaskCounts: vi.fn(),
-    clearTasksForChat: vi.fn(),
-    getActiveGeneration: vi.fn(),
-    deleteActiveGeneration: vi.fn(),
-  },
+vi.mock('@/composables/chat/global/chat-core-singletons', async () => ({
+  chatRuntimeStore: (await import('@/composables/chat/global/chat-runtime-store')).createChatRuntimeStore(),
   clearChatTmpDirectories: vi.fn(),
   creatingChat: mockCreatingChat,
   currentChatGroupRef: mockCurrentChatGroupRef,
@@ -90,8 +88,13 @@ describe('useChatLifecycle', () => {
   const groupId = toChatGroupId({ raw: 'workspace-group' });
   const existingChatId = toChatId({ raw: 'existing-chat' });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    autoTitleScheduler.reset();
+    chatRuntimeStore.clearActiveTaskCounts();
+    chatRuntimeStore.activeTitleGenerations.clear();
+    vi.mocked(storageService.loadChat).mockResolvedValue(null);
     mockCreatingChat.value = false;
     mockCurrentChatGroupRef.value = null;
     mockCurrentChatRef.value = null;
@@ -111,6 +114,44 @@ describe('useChatLifecycle', () => {
       };
       await updater({ current });
     });
+  });
+
+  afterEach(() => {
+    autoTitleScheduler.reset();
+    vi.useRealTimers();
+  });
+
+  it('cancels pending and active titles immediately during the deletion undo window', async () => {
+    vi.useFakeTimers();
+    const chat: Chat = { id: existingChatId, title: null, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat);
+    const controller = new AbortController();
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: existingChatId, controller });
+    const run = vi.fn().mockResolvedValue(undefined);
+    autoTitleScheduler.schedule({ chatId: existingChatId, run });
+    await useChatLifecycle().deleteChat({ id: existingChatId, injectAddToast: () => 'undo-toast' });
+    expect(controller.signal.aborted).toBe(true);
+    expect(chatRuntimeStore.getActiveTitleGeneration({ chatId: existingChatId })).toBeUndefined();
+    expect(storageService.deleteChat).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('clears every pending title and aborts title controllers when deleting all chats', async () => {
+    vi.useFakeTimers();
+    const other = toChatId({ raw: 'other-chat' });
+    const first = new AbortController(); const second = new AbortController();
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: existingChatId, controller: first });
+    chatRuntimeStore.setActiveTitleGeneration({ chatId: other, controller: second });
+    const run = vi.fn().mockResolvedValue(undefined);
+    autoTitleScheduler.schedule({ chatId: existingChatId, run });
+    autoTitleScheduler.schedule({ chatId: other, run });
+    await useChatLifecycle().deleteAllChats();
+    expect(first.signal.aborted).toBe(true);
+    expect(second.signal.aborted).toBe(true);
+    expect(chatRuntimeStore.activeTitleGenerations.size).toBe(0);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('provisions a workspace only for the newly created chat when Shell Execute is effectively enabled', async () => {
@@ -145,4 +186,22 @@ describe('useChatLifecycle', () => {
     expect(created).not.toBeNull();
     expect(mockEnsureChatWorkspaceMounted).not.toHaveBeenCalled();
   });
+  it('creates a grouped assistant chat without replacing the selected regular chat or group', async () => {
+    const existing: Chat = { id: existingChatId, title: 'Main chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
+    const group: ChatGroup = { id: groupId, name: 'Images', isCollapsed: false, updatedAt: 1, items: [] };
+    mockCurrentChatRef.value = existing; mockCurrentChatGroupRef.value = group;
+    const created = await useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: 'custom-model', systemPrompt: undefined });
+    expect(created).toMatchObject({ groupId, modelId: 'custom-model' });
+    expect(mockCurrentChatRef.value).toBe(existing); expect(mockCurrentChatGroupRef.value).toBe(group);
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+    expect(mockUpdateHierarchy).toHaveBeenCalledOnce(); expect(mockLoadData).toHaveBeenCalledOnce();
+    expect(mockRegisterLiveInstance).toHaveBeenCalledOnce(); expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
+    expect(mockCreatingChat.value).toBe(false);
+  });
+  it('releases the creation gate on failure while preserving main-chat navigation', async () => {
+    mockUpdateChatContent.mockRejectedValueOnce(new Error('save failure'));
+    await expect(useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined })).rejects.toThrow('save failure');
+    expect(mockCreatingChat.value).toBe(false); expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+  });
+
 });

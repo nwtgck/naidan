@@ -1,3 +1,4 @@
+import { useChatViewScope } from '@/composables/chat/ui/chat-view-scope';
 import { ref, computed, toRaw, triggerRef, watch, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/01-models/types';
 import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
@@ -104,10 +105,6 @@ interface ChatToolsApi {
   },
 }
 
-function getCurrentLiveChat(): Chat | null {
-  if (_currentChatId.value === null) return null;
-  return getLiveChatById({ chatId: _currentChatId.value });
-}
 
 export function getChatGroupToolConfigsForChat({
   chat,
@@ -453,14 +450,20 @@ export async function updateToolConfigsForChat({
 }
 
 export function useChatTools(): ChatToolsApi {
+  const scope = useChatViewScope();
+  const activeChatId = computed(() => scope ? scope.value : _currentChatId.value);
+  function getCurrentLiveChat(): Chat | null {
+    const id = activeChatId.value;
+    return id === null ? null : getLiveChatById({ chatId: id });
+  }
   const isToolEnabled = ({ name }: { name: string }) => {
     if (!isLmToolName(name)) return false;
-    if (_currentChatId.value === null) return false;
+    if (activeChatId.value === null) return false;
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
       chat: liveChat ?? {
-        id: _currentChatId.value,
+        id: activeChatId.value,
         groupId: undefined,
         toolConfigs: undefined,
       },
@@ -473,21 +476,22 @@ export function useChatTools(): ChatToolsApi {
   }: {
     updater: ToolConfigsUpdater,
   }): Promise<void> => {
-    if (_currentChatId.value === null) return;
-    await updateToolConfigsForChat({ chatId: _currentChatId.value, updater });
+    if (activeChatId.value === null) return;
+    await updateToolConfigsForChat({ chatId: activeChatId.value, updater });
   };
 
   const provisionWorkspaceIfShellBecameEnabled = async ({
     name,
     wasEnabled,
+    chatId,
   }: {
     name: LmToolName,
     wasEnabled: boolean,
+    chatId: ChatId,
   }): Promise<void> => {
-    if (name !== 'shell_execute' || wasEnabled || !isToolEnabled({ name })) return;
-
-    const chat = getCurrentLiveChat();
-    if (chat === null) return;
+    if (name !== 'shell_execute' || wasEnabled) return;
+    const chat = getLiveChatById({ chatId });
+    if (chat === null || !isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name })) return;
 
     try {
       await ensureChatWorkspaceMounted({ chat });
@@ -503,8 +507,8 @@ export function useChatTools(): ChatToolsApi {
     name: LmToolName,
     status: ToolConfigStatus,
   }): Promise<void> => {
-    if (_currentChatId.value === null) return;
-    const chatId = _currentChatId.value;
+    if (activeChatId.value === null) return;
+    const chatId = activeChatId.value;
     const key = builtinToolKeyForLmToolName({ name });
     const wasEnabled = isToolEnabled({ name });
 
@@ -517,7 +521,7 @@ export function useChatTools(): ChatToolsApi {
       }),
     });
 
-    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled });
+    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId });
   };
 
   const setToolEnabled = async ({
@@ -539,6 +543,8 @@ export function useChatTools(): ChatToolsApi {
   }: {
     name: LmToolName,
   }): Promise<void> => {
+    const chatId = activeChatId.value;
+    if (chatId === null) return;
     const wasEnabled = isToolEnabled({ name });
     await updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => removeSingletonToolConfig({
@@ -546,7 +552,7 @@ export function useChatTools(): ChatToolsApi {
         key: builtinToolKeyForLmToolName({ name }),
       }),
     });
-    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled });
+    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId });
   };
 
 
@@ -555,7 +561,7 @@ export function useChatTools(): ChatToolsApi {
   };
 
   const getToolInheritanceLabel = ({ name }: { name: LmToolName }): ChatToolInheritanceLabel => {
-    if (_currentChatId.value === null) return 'Use global';
+    if (activeChatId.value === null) return 'Use global';
     const liveChat = getCurrentLiveChat();
     const groupConfig = findLastToolConfigByKey({
       toolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
@@ -569,12 +575,12 @@ export function useChatTools(): ChatToolsApi {
   };
 
   const enabledToolNames = computed((): LmToolName[] => {
-    if (_currentChatId.value === null) return [];
+    if (activeChatId.value === null) return [];
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
       chat: liveChat ?? {
-        id: _currentChatId.value,
+        id: activeChatId.value,
         groupId: undefined,
         toolConfigs: undefined,
       },

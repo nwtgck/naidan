@@ -6,7 +6,7 @@ import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-b
 import { createLlamaCppWorkerClient } from './client-standalone';
 
 const calls = vi.hoisted(() => ({ factory: vi.fn(), probe: vi.fn(), release: vi.fn(), remote: {
-  requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
+  prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
 } }));
 vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser', () => ({ createStandaloneWorker: calls.factory }));
 vi.mock('../runtime/shared-storage-probe', () => ({ verifySharedStorage: calls.probe }));
@@ -175,4 +175,18 @@ it('retains preview intent across lazy standalone initialization without choosin
   expect(calls.remote.generateAudio.mock.calls[0]![0].options.profile).toBe('webgpu-wasm32-jspi');
   expect(calls.remote.generateAudio.mock.calls[0]![0].assetBaseURL).toBeUndefined();
   result.resolve(audioResult()); await pending; client.dispose();
+});
+
+
+describe('standalone preparation', () => {
+  it('prepares through the verified standalone worker without an external asset URL', async () => {
+    calls.remote.prepareModel.mockResolvedValueOnce(undefined);
+    const client = createLlamaCppWorkerClient();
+    await client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, signal: undefined });
+    expect(calls.factory).toHaveBeenCalledOnce(); expect(calls.probe).toHaveBeenCalledOnce();
+    expect(calls.remote.prepareModel.mock.calls[0]![0]).not.toHaveProperty('messages');
+    expect(calls.remote.prepareModel.mock.calls[0]![0].assetBaseURL).toBeUndefined();
+    expect(calls.remote.generate).not.toHaveBeenCalled(); client.dispose();
+    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+  });
 });

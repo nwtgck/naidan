@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, reactive } from 'vue';
 import type { LmProvider } from '@/01-models/lm';
@@ -44,6 +45,7 @@ vi.mock('../features/lm/ollama', () => ({
 // Mock storage service
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     updateChatContent: vi.fn().mockResolvedValue(undefined),

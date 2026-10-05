@@ -1,4 +1,5 @@
-import { computed, type ComputedRef, type Ref } from 'vue';
+import { computed, ref, watch, getCurrentScope, onScopeDispose, type ComputedRef, type Ref } from 'vue';
+import { useChatViewScope } from './ui/chat-view-scope';
 import type { Endpoint } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
 import {
@@ -32,18 +33,35 @@ export type ChatModelsAdapter = {
   TEST_ONLY: Record<never, never>,
 };
 
-export function useChatModels(): ChatModelsAdapter {
-  const fetchingModelsState = computed(() => fetchingModels.value);
+export function useChatModels({ scope: providedScope }: { scope?: Readonly<Ref<ChatId>> } = {}): ChatModelsAdapter {
+  const scope = providedScope ?? useChatViewScope();
+  const modelsForView = scope ? ref<string[]>([]) : availableModels;
+  const requests = ref(0);
+  const fetchingModelsState = computed(() => scope ? requests.value > 0 : fetchingModels.value);
+  let sequence = 0, disposed = false;
+  // An embedded ChatPane must not borrow the globally selected chat's model
+  // list. Each view also rejects late responses after switching its identity.
+  if (scope) watch(scope, () => {
+    sequence++; modelsForView.value = [];
+  }, { flush: 'sync' });
+  if (getCurrentScope()) onScopeDispose(() => {
+    disposed = true; sequence++;
+  });
 
   async function fetchForChat({
     chatId,
   }: {
     chatId: ChatId,
   }): Promise<string[]> {
-    return await fetchModelsForChat({
-      chatId,
-      errorSource: 'useChatModels:fetchForChat',
-    });
+    const token = ++sequence;
+    requests.value++;
+    try {
+      const result = await fetchModelsForChat({ chatId, errorSource: 'useChatModels:fetchForChat' });
+      if (scope && scope.value === chatId && token === sequence && !disposed) modelsForView.value = result;
+      return result;
+    } finally {
+      requests.value--;
+    }
   }
 
   async function fetchForGlobalEndpoint(): Promise<string[]> {
@@ -57,14 +75,16 @@ export function useChatModels(): ChatModelsAdapter {
   }: {
     endpoint: Endpoint,
   }): Promise<string[]> {
-    return await fetchModelsForEndpoint({
-      endpoint,
-      errorSource: 'useChatModels:fetchForEndpoint',
-    });
+    requests.value++;
+    try {
+      return await fetchModelsForEndpoint({ endpoint, errorSource: 'useChatModels:fetchForEndpoint' });
+    } finally {
+      requests.value--;
+    }
   }
 
   return {
-    availableModels,
+    availableModels: modelsForView,
     fetchingModels: fetchingModelsState,
     fetchForChat,
     fetchForGlobalEndpoint,

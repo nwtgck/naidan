@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__deleting_image_file_affects_other_records = (): string => 'Solo se eliminará el archivo de la imagen generada. Se conservarán el registro del historial, las vistas previas y las imágenes de entrada. Los demás registros que usen este archivo ya no podrán mostrar la imagen.';

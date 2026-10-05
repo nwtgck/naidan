@@ -1,0 +1,1 @@
+export const imageBenchmark__defaults_help = (): string => "Größe, Schritte, Prompts und Seed bleiben ohne Überschreibung gemeinsam. Gleiche Schritte bedeuten nicht gleiche Arbeit oder Qualität. Modellargumente stehen in der effektiven Anfrage.";

@@ -1,0 +1,1 @@
+export const ImageEngineState__busy_during_generation = ({ phase }: { phase: string }): string => `A geração está em andamento (${phase}). Os valores só podem ser atualizados quando o mecanismo estiver ocioso.`;

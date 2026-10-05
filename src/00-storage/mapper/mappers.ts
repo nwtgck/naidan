@@ -1,3 +1,4 @@
+import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 /**
  * Mappers
  */
@@ -50,6 +51,7 @@ import type {
   ChatSidebarItem,
   SidebarItem,
   Settings,
+  BrowserImageGenerationSettings,
   Endpoint,
   StorageType,
   SystemPrompt,
@@ -75,6 +77,7 @@ import {
   toChatGroupId,
   toChatId,
   toMessageId,
+  toHostModelDirectoryId,
   toProviderProfileId,
   toToolCallId,
   toVolumeId,
@@ -2061,6 +2064,83 @@ export const buildSidebarItemsFromHierarchy = (
     .filter((i): i is SidebarItem => i !== null);
 };
 
+type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
+const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
+  if (dto === undefined) return undefined;
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+    preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
+  unhandled satisfies Record<PropertyKey, never>;
+  const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
+    if (modelDownloadDestination === undefined) return undefined;
+    switch (modelDownloadDestination.kind) {
+    case 'opfs': {
+      const { kind, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<{ kind: 'opfs' }>()({ kind });
+    }
+    case 'host': {
+      const { kind, directoryId, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<Extract<NonNullable<BrowserImageGenerationSettings['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }) });
+    }
+    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    }
+  })();
+  const mappedDownload = (() => {
+    if (imageDownload === undefined) return undefined;
+    const { format, metadata, ...unhandledDownload } = imageDownload;
+    unhandledDownload satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationSettings['imageDownload']>>()({ format, metadata });
+  })();
+  const mappedPreview = (() => {
+    if (preview === undefined) return undefined;
+    const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
+    unhandledPreview satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
+  })();
+  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
+    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
+    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+};
+
+const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
+  if (domain === undefined) return undefined;
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+    preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
+  unhandled satisfies Record<PropertyKey, never>;
+  const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
+    if (modelDownloadDestination === undefined) return undefined;
+    switch (modelDownloadDestination.kind) {
+    case 'opfs': {
+      const { kind, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<{ kind: 'opfs' }>()({ kind });
+    }
+    case 'host': {
+      const { kind, directoryId, ...unhandledDestination } = modelDownloadDestination;
+      unhandledDestination satisfies Record<PropertyKey, never>;
+      return exactObject<Extract<NonNullable<BrowserImageGenerationDto['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }) });
+    }
+    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    }
+  })();
+  const mappedDownload = (() => {
+    if (imageDownload === undefined) return undefined;
+    const { format, metadata, ...unhandledDownload } = imageDownload;
+    unhandledDownload satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationDto['imageDownload']>>()({ format, metadata });
+  })();
+  const mappedPreview = (() => {
+    if (preview === undefined) return undefined;
+    const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
+    unhandledPreview satisfies Record<PropertyKey, never>;
+    return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
+  })();
+  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
+    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
+    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+};
+
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const titleGeneration = settingsTitleGenerationToDomain({ dto });
 
@@ -2095,7 +2175,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm,
       sidebarSendMessageReorder,
       globalSearch,
+      browserImageGeneration,
       unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2130,7 +2212,15 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm: fakeLm ?? 'disabled',
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
+      browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number]>()({
+          id: toHostModelDirectoryId({ raw: id }),
+          name,
+        });
+      }),
     });
   })();
 
@@ -2200,7 +2290,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm,
       sidebarSendMessageReorder,
       globalSearch,
+      browserImageGeneration,
       unreadable: _unreadable,
+      hostModelDirectories,
       ...unhandledExperimental
     } = experimental ?? {};
 
@@ -2239,7 +2331,15 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       }),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
+      browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
       unreadable: undefined,
+      hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
+        unhandledDirectory satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['hostModelDirectories']>[number]>()({
+          id: idToRaw({ id }),
+          name,
+        });
+      }),
     });
   })();
 

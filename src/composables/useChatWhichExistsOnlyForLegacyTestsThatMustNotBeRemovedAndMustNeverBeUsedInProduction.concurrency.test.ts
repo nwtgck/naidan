@@ -1,3 +1,6 @@
+import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
+import { chatRuntimeStore } from '@/composables/chat/global/chat-core-singletons';
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { getMessageText } from '@/01-models/message-text';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -18,6 +21,7 @@ let mockHierarchy: Hierarchy = { items: [] };
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockImplementation(() => {
@@ -49,6 +53,7 @@ vi.mock('../00-storage/service', () => ({
     updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mockChatStorage.get(id) || null;
       const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
+      if (updatedMeta === undefined) return;
       if (current) {
         const full = { ...current, ...updatedMeta };
         mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -164,6 +169,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   };
 
   beforeEach(() => {
+    autoTitleScheduler.reset();
     vi.clearAllMocks();
     mockLmChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
       signal,
@@ -180,6 +186,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   afterEach(async () => {
+    autoTitleScheduler.reset();
+    vi.useRealTimers();
     await vi.waitUntil(() => activeGenerations.size === 0);
     expect(errorCount.value).toBe(0);
   });
@@ -435,6 +443,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should not overwrite a manual rename with an auto-generated title', async () => {
+    vi.useFakeTimers();
     const { createNewChat, currentChat, sendMessage, renameChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
     mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
@@ -464,11 +473,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         },
       }));
 
-    // 2. Start generation (response finishes, title gen starts and waits)
+    // 2. The response releases foreground ownership before quiet time starts.
     const sendPromise = sendMessage({ content: 'Topic' });
-    await new Promise(r => setTimeout(r, 50));
-    await waitForRegistry(chatAId);
-    await vi.waitUntil(() => mockLmChat.mock.calls.length >= 2); // Wait for title gen to start
+    await sendPromise;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(chatRuntimeStore.isProcessing({ chatId: chatAId })).toBe(false);
+    expect(mockLmChat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(mockLmChat).toHaveBeenCalledTimes(2);
+    expect(chatRuntimeStore.isGeneratingTitle({ chatId: chatAId })).toBe(true);
 
     // 3. User manually renames while title gen is "calculating"
     await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'User Manual Title' });
@@ -476,8 +489,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 4. Let auto-title finish
     resolveTitle!();
-    await sendPromise;
-    await vi.waitUntil(() => !activeGenerations.has(chatAId));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(chatRuntimeStore.isGeneratingTitle({ chatId: chatAId })).toBe(false);
 
     // 5. Verify manual title was NOT overwritten
     const finalChat = await storageService.loadChat({ id: chatAId });

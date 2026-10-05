@@ -1,3 +1,4 @@
+import { downloadBlob } from '@/utils/stream-download';
 import { render, h as vueH } from 'vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 import ImageInfoDisplay from './ImageInfoDisplay.vue';
@@ -135,18 +136,7 @@ export const ImageDownloadHydrator = {
         fallback: 'generated-image',
       });
 
-      const downloadUrl = URL.createObjectURL(finalBlob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      try {
-        link.click();
-      } finally {
-        document.body.removeChild(link);
-        // The download owns this URL even if its originating view is already closed.
-        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-      }
+      downloadBlob({ blob: finalBlob, filename });
     } catch (err) {
       console.error('[Hydrator] Failed to download generated image:', err);
     }

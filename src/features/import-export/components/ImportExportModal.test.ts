@@ -1,5 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImportExportModal from './ImportExportModal.vue';
@@ -7,7 +7,20 @@ import ImportExportModal from './ImportExportModal.vue';
 const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
   exportData: vi.fn(),
+  compressingData: vi.fn(async () => 'Compressing data...'),
+  exportSuccessful: vi.fn(async () => 'Export successful'),
 }));
+
+vi.mock('@/strings', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/strings')>();
+  return { ...actual, ensureStrings: new Proxy(actual.ensureStrings, {
+    get(target, property, receiver) {
+      if (property === 'ImportExportModal__compressing_data') return mocks.compressingData;
+      if (property === 'ImportExportModal__export_successful') return mocks.exportSuccessful;
+      return Reflect.get(target, property, receiver);
+    },
+  }) };
+});
 
 vi.mock('@/features/import-export/service', () => ({
   ImportExportService: class {
@@ -51,6 +64,9 @@ async function exportNow({ wrapper }: { wrapper: ReturnType<typeof mountModal> }
     expect(mocks.exportData).toHaveBeenCalled();
   });
   await flushPromises();
+  expect(URL.createObjectURL).toHaveBeenCalledOnce();
+  expect(mocks.addToast).toHaveBeenCalledOnce();
+  expect(wrapper.emitted('close')).toHaveLength(1);
 }
 
 describe('ImportExportModal.vue', () => {
@@ -60,10 +76,15 @@ describe('ImportExportModal.vue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.exportData.mockResolvedValue({
+    vi.stubGlobal('isSecureContext', false);
+    mocks.compressingData.mockReset().mockResolvedValue('Compressing data...');
+    mocks.exportSuccessful.mockReset().mockResolvedValue('Export successful');
+    mocks.exportData.mockImplementation(async () => ({
       filename: 'naidan-data-test.zip',
-      stream: new Blob(['zip'], { type: 'application/zip' }),
-    });
+      stream: new ReadableStream<Uint8Array>({ start(controller) {
+        controller.enqueue(new TextEncoder().encode('zip')); controller.close();
+      } }),
+    }));
 
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
@@ -74,6 +95,47 @@ describe('ImportExportModal.vue', () => {
       value: vi.fn(),
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not start export after cancellation during asynchronous preparation', async () => {
+    const preparation = Promise.withResolvers<string>();
+    mocks.compressingData.mockReturnValueOnce(preparation.promise);
+    const wrapper = mountModal();
+    await openExportMode({ wrapper });
+    await wrapper.find('[data-testid="import-export-export-now-button"]').trigger('click');
+    await vi.waitFor(() => expect(mocks.compressingData).toHaveBeenCalledOnce());
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    preparation.resolve('Compressing data...');
+    await flushPromises();
+    expect(mocks.exportData).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(mocks.addToast).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('does not close a reopened dialog after an old success message resolves', async () => {
+    const success = Promise.withResolvers<string>();
+    mocks.exportSuccessful.mockReturnValueOnce(success.promise);
+    const wrapper = mountModal();
+    await openExportMode({ wrapper });
+    await wrapper.find('[data-testid="import-export-export-now-button"]').trigger('click');
+    await vi.waitFor(() => expect(mocks.exportSuccessful).toHaveBeenCalledOnce());
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    success.resolve('Export successful');
+    await flushPromises();
+    expect(mocks.addToast).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.find('[data-testid="import-export-export-card"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it('exports all data by default without passing exclude options', async () => {

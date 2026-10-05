@@ -62,9 +62,13 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
     const progress: DownloadProgress[] = [];
     await downloadRepository({ selection: next, signal: new AbortController().signal, onProgress: ({ progress: event }) => progress.push(event) });
     expect(progress[0]).toEqual({ completed: 128, total: 384, processed: 0, phase: 'transferring' });
-    expect(progress).toContainEqual({ completed: 256, total: 384, processed: 128, phase: 'transferring' });
+    expect(progress).toContainEqual({ completed: 256, total: 384, processed: 128, phase: 'transferring', currentFileIndex: 1 });
     expect(progress.at(-1)).toEqual({ completed: 384, total: 384, processed: 256, phase: 'verifying' });
     expect(privacyFetchStream).toHaveBeenCalledTimes(2);
+    // The first shard is already complete. It must never be shown as the
+    // active request based on aggregate/resumed byte counts.
+    expect(progress.filter(value => value.currentFileIndex !== undefined).every(value => value.currentFileIndex === 1 || value.currentFileIndex === 2)).toBe(true);
+    expect(progress.at(-1)?.currentFileIndex).toBeUndefined();
   });
   it('keeps short and oversized responses unpublished', async () => {
     state.support = support; vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64)] }));
@@ -97,7 +101,7 @@ describe('download orchestration', () => {
     const progress: DownloadProgress[] = [];
     await downloadRepository({ selection, signal: new AbortController().signal, onProgress: ({ progress: next }) => progress.push(next) });
     expect(progress[0]).toMatchObject({ completed: 48, processed: 0 });
-    expect(progress).toContainEqual({ completed: 0, total: 128, processed: 0, phase: 'transferring' });
+    expect(progress).toContainEqual({ completed: 0, total: 128, processed: 0, phase: 'transferring', currentFileIndex: 0 });
     expect(progress.at(-1)).toEqual({ completed: 128, total: 128, processed: 128, phase: 'verifying' });
     expect((await listHuggingFaceModels())[0]?.size).toBe(128);
     await cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/owner/repo', files: (await scanDeletionTree({ folder: await repositoryFolder({ repository: selection.repository, create: false }) })).files } }); expect(await listHuggingFaceModels()).toEqual([]);
@@ -134,4 +138,12 @@ describe('download orchestration', () => {
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
     expect(vi.mocked(privacyFetchStream).mock.calls[0]?.[0].request.signal?.aborted).toBe(true);
   });
+});
+
+it('can cancel when the next file is reported before any network request is made', async () => {
+  const controller = new AbortController();
+  await expect(downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress }) => {
+    if (progress.currentFileIndex === 0) controller.abort();
+  } })).rejects.toMatchObject({ name: 'AbortError' });
+  expect(privacyFetchStream).not.toHaveBeenCalled();
 });

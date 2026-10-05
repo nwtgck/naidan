@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__preset_policy = (): string => "Usa estructura y metadatos o un recibo verificado, no nombres. Vista previa, resolución y memoria son valores iniciales de Naidan. Conserva textos, semilla, activación de vista previa, perfil y presupuesto.";

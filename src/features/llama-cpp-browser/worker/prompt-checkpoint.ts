@@ -84,19 +84,38 @@ export async function restorePromptCheckpoint({ core, context, checkpoint }: {
 
 /** Prefer the native generation suffix boundary only when both text and actual
  * tokenization agree. Retain a final token for fresh logits in every case. */
-export async function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens }: {
-  core: CheckpointCore, vocab: bigint, prompt: string, promptPointer: bigint, generationPrompt: string, tokens: number[],
+export async function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens, onTokenize }: {
+  core: CheckpointCore, vocab: bigint, prompt: string, promptPointer: bigint, generationPrompt: string, tokens: number[], onTokenize: () => void,
 }): Promise<number> {
   const fallback = Math.max(0, tokens.length - 1);
   if (!generationPrompt || !prompt.endsWith(generationPrompt)) return fallback;
   const prefix = prompt.slice(0, -generationPrompt.length);
   const length = new TextEncoder().encode(prefix).length;
-  const count = Math.abs(await core.api.llama_tokenize(vocab, promptPointer, length, 0n, 0, 1, 1));
-  if (count < 1 || count >= tokens.length) return fallback;
-  const pointer = core.tryAlloc({ bytes: count * 4 });
+  if (tokens.length < 2) return fallback;
+  let capacity = Math.min(tokens.length - 1, 65536);
+  let pointer = core.tryAlloc({ bytes: capacity * 4 });
   if (pointer === undefined) return fallback;
   try {
-    if (await core.api.llama_tokenize(vocab, promptPointer, length, pointer, count, 1, 1) !== count) return fallback;
+    // Validate before passing native code a writable range, and reacquire the
+    // view after it settles because tokenization can grow Wasm memory.
+    core.bytes({ pointer, length: capacity * 4 });
+    onTokenize();
+    let count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
+    if (Number.isInteger(count) && count >= -2147483647 && count < -capacity && count > -tokens.length) {
+      const required = -count;
+      const previous = pointer; pointer = undefined;
+      core.free({ pointer: previous });
+      capacity = required;
+      pointer = core.tryAlloc({ bytes: capacity * 4 });
+      if (pointer === undefined) return fallback;
+      core.bytes({ pointer, length: capacity * 4 });
+      onTokenize();
+      count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
+      if (count !== required) return fallback;
+    }
+    // A checkpoint is optional. Failed/overflowing tokenization must never
+    // cause a huge allocation or invent a prefix boundary.
+    if (!Number.isInteger(count) || count < 1 || count > capacity || count >= tokens.length) return fallback;
     const bytes = core.bytes({ pointer, length: count * 4 });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let common = 0;
@@ -105,7 +124,7 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
     // before that changed token instead of assuming the text split is a token split.
     return common > 0 ? common : fallback;
   } finally {
-    core.free({ pointer });
+    if (pointer !== undefined) core.free({ pointer });
   }
 }
 

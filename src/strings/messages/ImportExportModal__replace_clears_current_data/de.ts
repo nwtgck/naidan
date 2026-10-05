@@ -1,1 +1,1 @@
-export const ImportExportModal__replace_clears_current_data = (): string => 'Löscht die aktuellen Daten und stellt den Zustand aus der ZIP-Datei wieder her.';
+export const ImportExportModal__replace_clears_current_data = (): string => 'Löscht die aktuellen Daten und stellt den Zustand aus der ZIP-Datei wieder her. Der experimentelle Bildgenerierungsverlauf (Verknüpfungen zwischen Bildern und Einstellungen) ist nicht in ZIP-Sicherungen enthalten und wird gelöscht.';

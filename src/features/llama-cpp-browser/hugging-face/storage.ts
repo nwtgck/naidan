@@ -1,3 +1,4 @@
+import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
 import { modelGroups, variantLabel, isProjector } from './model-variants';
@@ -71,14 +72,17 @@ async function repositoryFiles({ repository }: { repository: string }): Promise<
 export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
   return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository }) });
 }
-async function describeRepositoryDirectories({ repository, actual }: { repository: string, actual: ModelDirectory['files'] }): Promise<ModelDirectory[]> {
+async function describeRepositoryDirectories({ repository, actual, onlyModelPath }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
   for (const group of models) {
     const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
     try {
       const resolved = resolveModelFiles({ files });
+      // A launch checks one exact model, not the headers of every quantization.
+      // Keep grouping and projector selection identical to normal model listing.
+      if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) continue;
       if (!await allValid({ files })) continue;
-      const id = `${modelName({ repository })}:${encodeURIComponent(resolved.modelPath)}`;
+      const id = huggingFaceModelId({ repository, modelPath: resolved.modelPath });
       const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(resolved.modelPath);
       const label = variantLabel({ repository, path: resolved.modelPath });
       // Split identities are visible even before a same-stem unsplit file is added.
@@ -106,7 +110,7 @@ export async function installedSelection({ selection }: { selection: DownloadSel
   // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
   if (!await allValid({ files: selectedFiles })) return undefined;
   const requested = resolveModelFiles({ files: selection.files });
-  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual })).find(model => model.modelPath === requested.modelPath);
+  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath })).find(model => model.modelPath === requested.modelPath);
   return directory ? describeDirectory({ directory }) : undefined;
 }
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {

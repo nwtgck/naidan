@@ -1,21 +1,13 @@
+import { responseOffset } from './download-response';
+import { modelDownloadUrl } from './download-url';
+export { responseOffset } from './download-response';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 import { getReadableStreamTransferSupport, workerProxy, workerCapability, workerTransfer } from '@/utils/worker-transport';
 import { deleteRepository, withRepositoryLock } from './storage';
-import { beginDownloadResultSchema, sharedProjectorConflictMessage, existingModelConflictMessage, DownloadConflictError, progressSchema, repositoryUrlPath, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
+import { beginDownloadResultSchema, sharedProjectorConflictMessage, existingModelConflictMessage, DownloadConflictError, progressSchema, selectionSchema, type BeginDownloadResult, type DownloadProgress, type DownloadSelection } from './types';
 import { createDownloadWriterClient } from '@/features/llama-cpp-browser/hugging-face/writer-client';
 
-export function responseOffset({ status, headers, offset, size }: { status: number, headers: Headers, offset: number, size: number }): number {
-  const length = headers.get('content-length');
-  if (status === 200) {
-    if (length !== null && (!/^\d+$/.test(length) || Number(length) !== size)) throw new Error('Invalid download response size');
-    return 0;
-  }
-  if (status !== 206) throw new Error(`Download HTTP ${status}`);
-  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headers.get('content-range') ?? '');
-  if (!range || Number(range[1]) !== offset || Number(range[2]) !== size - 1 || Number(range[3]) !== size || (length !== null && (!/^\d+$/.test(length) || Number(length) !== size - offset))) throw new Error('Invalid download Content-Range');
-  return offset;
-}
 export async function downloadRepository({ selection, signal, onProgress }: { selection: DownloadSelection, signal: AbortSignal, onProgress: ({ progress }: { progress: DownloadProgress }) => void }): Promise<void> {
   selection = selectionSchema.parse(selection);
   await withRepositoryLock({ repository: selection.repository, operation: async () => {
@@ -67,9 +59,12 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
       journal.bytes = journal.bytes.map((bytes, index) => !journal.complete[index] && bytes === selection.files[index]!.size ? 0 : bytes);
       const total = selection.files.reduce((sum, file) => sum + file.size, 0);
       let processed = 0;
+      // This is transient progress, never journal/DTO data. Resumed/reused bytes
+      // cannot reliably tell the UI which request is currently being processed.
+      let currentFileIndex: number | undefined;
       const report = (): void => {
         const completed = journal.bytes.reduce((sum, bytes) => sum + bytes, 0);
-        onProgress({ progress: progressSchema.parse({ completed, total, processed, phase: completed === total ? 'verifying' : 'transferring' }) });
+        onProgress({ progress: progressSchema.parse({ completed, total, processed, phase: completed === total ? 'verifying' : 'transferring', ...(currentFileIndex === undefined ? {} : { currentFileIndex }) }) });
       };
       report();
       for (let index = 0; index < selection.files.length; index++) {
@@ -78,8 +73,8 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         // A full-size but unverified response must be downloaded again, never
         // promoted by a 416 response or by size alone.
         const offset = journal.reused?.[index] || journal.bytes[index] === file.size ? 0 : journal.bytes[index]!;
-        const path = file.path.split('/').map(encodeURIComponent).join('/');
-        const url = `https://huggingface.co/${repositoryUrlPath({ repository: selection.repository })}/resolve/${selection.revision}/${path}`;
+        const url = modelDownloadUrl({ repository: selection.repository, revision: selection.revision, file });
+        currentFileIndex = index; report(); check();
         const response = await privacyFetchStream({ request: { url, signal: network.signal, ...(offset > 0 ? { headers: [['Range', `bytes=${offset}-`]] } : {}) } });
         body = response.body;
         const start = responseOffset({ status: response.status, headers: response.headers, offset, size: file.size });
@@ -121,6 +116,7 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
           reader.releaseLock(); body = undefined;
         }
       }
+      currentFileIndex = undefined; report();
       check(); await call({ promise: writer.finish() });
     } catch (error) {
       if (error instanceof Error && error.message === sharedProjectorConflictMessage) throw new DownloadConflictError({ reason: 'projector-conflict' });

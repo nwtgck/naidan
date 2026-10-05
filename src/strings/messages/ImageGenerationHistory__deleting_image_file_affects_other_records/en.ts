@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__deleting_image_file_affects_other_records = (): string => 'This deletes only the generated image file. The history record, previews, and input images remain. Other records that use this file will no longer show the image.';

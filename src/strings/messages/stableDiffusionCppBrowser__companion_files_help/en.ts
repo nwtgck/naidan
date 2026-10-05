@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__companion_files_help = (): string => "Manual files bypass automatic component selection. Use GGUF or safetensors supported by the backend. For repository shards or index files, import the complete folder above.";

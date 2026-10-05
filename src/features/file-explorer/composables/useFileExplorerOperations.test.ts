@@ -1,3 +1,4 @@
+import { downloadFile, downloadStream } from '@/utils/stream-download';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { ref } from 'vue';
@@ -8,6 +9,7 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockAddToast = vi.fn();
 
+vi.mock('@/utils/stream-download', () => ({ downloadStream: vi.fn().mockResolvedValue(undefined), downloadFile: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/composables/useConfirm', () => ({
   useConfirm: () => ({ showConfirm: mockShowConfirm }),
 }));
@@ -45,9 +47,13 @@ describe('useFileExplorerOperations', () => {
     mockShowConfirm.mockReset();
     mockShowConfirm.mockResolvedValue(true);
     mockAddToast.mockReset();
+    vi.mocked(downloadFile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(downloadStream).mockReset().mockResolvedValue(undefined);
     client = {
       readDirectory: vi.fn(),
       readPreview: vi.fn(),
+      prepareFileDownload: vi.fn().mockResolvedValue({ kind: 'stream' }),
+      openFileStream: vi.fn(),
       readFile: vi.fn().mockResolvedValue({ blob: new File([], 'download.txt') }),
       createFile: vi.fn().mockResolvedValue(undefined),
       createFolder: vi.fn().mockResolvedValue(undefined),
@@ -79,6 +85,7 @@ describe('useFileExplorerOperations', () => {
         resultState: 'complete',
       }),
       startDirectoryArchive: vi.fn(() => ({
+        stream: new ReadableStream<Uint8Array>(),
         result: Promise.resolve({ status: 'cancelled' as const }),
         cancel: vi.fn().mockResolvedValue(undefined),
       })),
@@ -213,22 +220,58 @@ describe('useFileExplorerOperations', () => {
     const ops = makeOps();
     const entry = makeEntry('subdir', 'directory');
     await expect(ops.downloadEntry({ entry })).resolves.toBeUndefined();
+    expect(client.prepareFileDownload).not.toHaveBeenCalled();
   });
 
-  it('downloadEntry creates and clicks a download anchor for files', async () => {
-    const anchor = { href: '', download: '', click: vi.fn() };
-    vi.spyOn(document, 'createElement').mockReturnValueOnce(anchor as unknown as HTMLElement);
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
-    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
-
+  it('downloadEntry opens a lazy streaming download for files', async () => {
     const ops = makeOps();
-    const entry = makeEntry('photo.png');
+    const entry = makeEntry('file.txt');
     await ops.downloadEntry({ entry });
+    expect(downloadStream).toHaveBeenCalledWith({
+      filename: 'file.txt', size: undefined, signal: expect.any(AbortSignal), openStream: expect.any(Function),
+    });
+    expect(client.prepareFileDownload).toHaveBeenCalledWith({ path: entry.path });
+    expect(client.readFile).not.toHaveBeenCalled();
+    expect(client.openFileStream).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+    const options = vi.mocked(downloadStream).mock.calls[0]![0];
+    await options.openStream();
+    expect(client.openFileStream).toHaveBeenCalledWith({ path: entry.path });
 
-    expect(client.readFile).toHaveBeenCalledWith({ path: '/workspace/photo.png' });
-    expect(anchor.download).toBe('photo.png');
-    expect(anchor.click).toHaveBeenCalled();
-    expect(revokeSpy).toHaveBeenCalledWith('blob:fake');
+  });
+
+  it('sends a native snapshot to downloadFile instead of a listing-sized stream', async () => {
+    const file = new File(['new contents'], 'file.txt');
+    const stream = vi.fn();
+    Object.defineProperty(file, 'stream', { value: stream });
+    vi.mocked(client.prepareFileDownload).mockResolvedValue({ kind: 'file', blob: file });
+    const entry = makeEntry('file.txt'); // listing size=100 is intentionally stale
+    await makeOps().downloadEntry({ entry });
+    expect(downloadFile).toHaveBeenCalledExactlyOnceWith({ file, filename: 'file.txt', signal: expect.any(AbortSignal) });
+    expect(downloadStream).not.toHaveBeenCalled();
+    expect(client.readFile).not.toHaveBeenCalled();
+    expect(client.openFileStream).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed native lookup instead of retrying via a different source', async () => {
+    vi.mocked(client.prepareFileDownload).mockRejectedValue(new Error('file removed'));
+    await makeOps().downloadEntry({ entry: makeEntry('file.txt') });
+    expect(mockAddToast).toHaveBeenCalledOnce();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(downloadStream).not.toHaveBeenCalled();
+  });
+
+  it('does not start a delayed File save after the page was hidden', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<FileExplorerWorkerClient['prepareFileDownload']>>>();
+    vi.mocked(client.prepareFileDownload).mockReturnValue(pending.promise);
+    const operation = makeOps().downloadEntry({ entry: makeEntry('file.txt') });
+    window.dispatchEvent(new Event('pagehide'));
+    pending.resolve({ kind: 'file', blob: new File(['late'], 'file.txt') });
+    await operation;
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(downloadStream).not.toHaveBeenCalled();
+    expect(mockAddToast).not.toHaveBeenCalled();
   });
 
 });

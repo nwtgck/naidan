@@ -309,7 +309,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
     </div>
     <div v-for="job in repositoryJobs" :key="job.id" data-testid="llama-hf-download-job" tw-class="space-y-2 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
       <p tw-class="text-[10px] text-gray-500 dark:text-gray-400 break-all">Hugging Face · {{ job.repository }}</p>
-      <LlamaCppBrowserDownloadJob :job="job" :disabled="disabled || deleting" @resume="job.selection && download({ selection: job.selection })" />
+      <LlamaCppBrowserDownloadJob appearance="manager" :job="job" :disabled="disabled || deleting" @resume="job.selection && download({ selection: job.selection })" />
       <button v-if="job.status === 'paused' || job.status === 'failed'" type="button" data-testid="llama-hf-delete" :disabled="disabled || active !== undefined || deleting || queuedDownloadBusy" tw-class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed" @click="remove({ repository: job.repository })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
     </div>
     <details v-if="catalog" ref="details" data-testid="llama-hf-details" tw-class="text-xs text-gray-500 dark:text-gray-400">

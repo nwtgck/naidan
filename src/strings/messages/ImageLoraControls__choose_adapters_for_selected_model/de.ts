@@ -1,0 +1,1 @@
+export const ImageLoraControls__choose_adapters_for_selected_model = (): string => 'Wähle Adapter für das ausgewählte Modell. Ein erzeugtes Bild bestätigt nicht die LoRA-Anwendung. Aktiviere den Debug-Modus für Laufzeitprotokolle. Diese Auswahl wird nicht gespeichert.';

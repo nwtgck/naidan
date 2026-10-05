@@ -209,9 +209,12 @@ export function createCoreWebGpuNavigator({ navigator, report }: {
 }): Pick<Navigator, 'gpu'> | undefined {
   if (!navigator?.gpu) return navigator;
   const gpu = navigator.gpu;
+  // Snapshot the entry point before a caller installs this scoped facade into
+  // its dedicated Worker. Looking it up again would recurse into that hook.
+  const requestAdapter = gpu.requestAdapter.bind(gpu);
   return facade({ target: navigator, overrides: { gpu: facade({ target: gpu, overrides: {
     async requestAdapter(options) {
-      const adapter = await gpu.requestAdapter(options);
+      const adapter = await requestAdapter(options);
       if (!adapter) return adapter;
       return facade({ target: adapter, overrides: { async requestDevice(descriptor) {
         return wrapDevice({ device: await adapter.requestDevice(descriptor), report });

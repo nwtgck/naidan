@@ -14,6 +14,7 @@ import type {
   ChatGroupId,
   ChatId,
   MessageId,
+  HostModelDirectoryId,
   ProviderProfileId,
   ToolCallId,
   VolumeId,
@@ -402,6 +403,60 @@ export interface ProviderProfile {
   lmParameters?: LmParameters,
 }
 
+export type BrowserImageModelLocation =
+  | { kind: 'opfs', path: string }
+  | { kind: 'host', directoryId: HostModelDirectoryId, path: string };
+
+export type BrowserImageModelSelection = {
+  primary: { slot: 'model' | 'diffusion', location: BrowserImageModelLocation },
+  components: {
+    slot: 'vae' | 'clipL' | 'clipG' | 't5' | 'lm',
+    choice: { kind: 'file', location: BrowserImageModelLocation } | { kind: 'none' },
+  }[],
+  loras: { location: BrowserImageModelLocation, enabled: 'enabled' | 'disabled', strength: number }[],
+};
+
+export type BrowserImageGenerationSettings = {
+  width?: number,
+  height?: number,
+  seedMode?: 'random' | 'fixed',
+  seed?: string,
+  debug?: 'off' | 'on',
+  historyPersistence?: 'enabled' | 'disabled',
+  modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
+  imageDownload?: { format?: 'png' | 'webp' | 'jpeg', metadata?: 'include' | 'omit' },
+  modelSelection?: BrowserImageModelSelection,
+  preview?: {
+    enabled?: 'enabled' | 'disabled',
+    mode?: 'projection' | 'vae',
+    interval?: number,
+    startStep?: number,
+    maxEdge?: number,
+  },
+  keepPreviews?: 'enabled' | 'disabled',
+  maxPreviews?: number,
+  maxResults?: number,
+  bf16WeightType?: 'f32' | 'f16',
+};
+
+/** Visible defaults for the browser image editor; absent settings remain absent on disk. */
+export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
+  width: 256,
+  height: 256,
+  seedMode: 'random',
+  seed: '42',
+  debug: 'off',
+  historyPersistence: 'enabled',
+  modelDownloadDestination: { kind: 'opfs' },
+  imageDownload: { format: 'png', metadata: 'omit' },
+  modelSelection: undefined,
+  preview: { enabled: 'disabled', mode: 'vae', interval: 2, startStep: 1, maxEdge: 256 },
+  keepPreviews: 'enabled',
+  maxPreviews: 16,
+  maxResults: 20,
+  bf16WeightType: 'f32',
+} satisfies BrowserImageGenerationSettings;
+
 export interface Settings {
   endpoint: Endpoint,
   defaultModelId?: string,
@@ -433,14 +488,17 @@ export interface Settings {
       previewMode?: 'always' | 'peek' | 'disabled',
       previewContextSize?: number | 'full',
     },
+    browserImageGeneration?: BrowserImageGenerationSettings,
     readonly unreadable?: {
       readonly [key: string]: unknown,
     },
+    hostModelDirectories?: { id: HostModelDirectoryId, name: string }[],
   },
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
-  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  // Fresh settings only. Persisted/legacy settings retain their own reasoning values.
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } },
   providerProfiles: [],
   mounts: [],
   heavyContentAlertDismissed: false,

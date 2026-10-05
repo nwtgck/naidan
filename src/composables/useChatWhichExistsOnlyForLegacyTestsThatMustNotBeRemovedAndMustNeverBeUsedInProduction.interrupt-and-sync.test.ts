@@ -1,3 +1,4 @@
+import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { getMessageText } from '@/01-models/message-text';
@@ -38,6 +39,7 @@ vi.mock('../features/lm/ollama', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),

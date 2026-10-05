@@ -93,6 +93,8 @@ describe('useFileExplorerPreview', () => {
         }
       }),
       readFile: vi.fn(),
+      prepareFileDownload: vi.fn().mockResolvedValue({ kind: 'stream' }),
+      openFileStream: vi.fn(),
       createFile: vi.fn(),
       createFolder: vi.fn(),
       deleteEntries: vi.fn(),
@@ -123,6 +125,7 @@ describe('useFileExplorerPreview', () => {
         resultState: 'complete',
       }),
       startDirectoryArchive: vi.fn(() => ({
+        stream: new ReadableStream<Uint8Array>(),
         result: Promise.resolve({ status: 'cancelled' as const }),
         cancel: vi.fn().mockResolvedValue(undefined),
       })),

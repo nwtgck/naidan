@@ -1,8 +1,10 @@
+import { getImageGenerationToolsForChat } from '@/features/stable-diffusion-cpp-browser/session/assistant-registry';
+import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, Chat, ChatGroup, Endpoint, EndpointType, LmParameters, MessageNode, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-import { isConfiguredEndpoint } from '@/01-models/endpoint';
+import { getSupportedEndpointType, isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
 import { type Tool } from '@/01-models/tool';
 import { loadLmProvider } from '@/features/lm/providerFactory';
@@ -57,7 +59,7 @@ import {
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import {
-  generateChatTitleForChat,
+  scheduleAutoTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-flow';
 import {
   abortProcessingForChat,
@@ -107,15 +109,24 @@ function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): bool
 }
 
 function resolveGenerationModel({
+  endpointType,
   assistantModelId,
   resolvedModelId,
   availableModels,
 }: {
+  endpointType: EndpointType | undefined,
   assistantModelId: string | undefined,
   resolvedModelId: string,
   availableModels: readonly string[],
 }): string {
   const preferredModel = assistantModelId || resolvedModelId;
+  // Local file identities need not be present in the human-readable model list.
+  // Missing local files are an error, not permission to use another model.
+  switch (endpointType) {
+  case 'llama_cpp_browser': return preferredModel;
+  case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case undefined: break;
+  default: { const exhaustive: never = endpointType; throw new Error(String(exhaustive)); }
+  }
   if (!preferredModel || availableModels.length === 0) return preferredModel;
   if (availableModels.includes(preferredModel)) return preferredModel;
   return availableModels[0] ?? '';
@@ -235,7 +246,9 @@ export async function sendMessageToTargetChat({
         errorSource: 'chat-generation-flow:resolve-models',
       })
       : [];
-    const resolvedModel = resolveGenerationModel({
+    const pinnedTarget = await assertModelLaunchReady({ chat: mutableChat, endpoint, modelId: resolved.modelId });
+    const resolvedModel = pinnedTarget?.modelId ?? resolveGenerationModel({
+      endpointType: type,
       assistantModelId: mutableChat.modelId,
       resolvedModelId: resolved.modelId,
       availableModels: models,
@@ -304,6 +317,15 @@ export async function sendMessageToTargetChat({
         seed: seed === 'browser_random' ? 'browser_random' : seed,
         persistAs,
       }) + content;
+    }
+
+    if (pinnedTarget !== undefined) {
+      const current = resolveGenerationSettings({ chat: mutableChat });
+      if (current.endpoint.type !== 'llama_cpp_browser' || current.modelId !== pinnedTarget.modelId
+        || storageService.getModelLaunch({ chatId: mutableChat.id })?.target.modelId !== pinnedTarget.modelId) {
+        throw new Error(await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed());
+      }
+      await assertModelLaunchReady({ chat: mutableChat, endpoint: current.endpoint, modelId: current.modelId });
     }
 
     const userMessage: UserMessageNode = {
@@ -488,7 +510,9 @@ export async function generateResponseForAssistant({
       chatId: mutableChat.id,
       errorSource: 'chat-generation-flow:resolve-regeneration-model',
     });
-    const resolvedModel = resolveGenerationModel({
+    const pinnedTarget = await assertModelLaunchReady({ chat: mutableChat, endpoint: resolved.endpoint, modelId: assistantNode.modelId || resolved.modelId });
+    const resolvedModel = pinnedTarget?.modelId ?? resolveGenerationModel({
+      endpointType: getSupportedEndpointType({ endpoint: resolved.endpoint }),
       assistantModelId: assistantNode.modelId,
       resolvedModelId: resolved.modelId,
       availableModels: availableGenerationModels,
@@ -648,7 +672,7 @@ export async function generateResponseForAssistant({
         break;
       case 'finished':
         if (mutableChat.title === null && resolved.autoTitleEnabled && !controller.signal.aborted) {
-          await generateChatTitleForChat({ chatId: mutableChat.id, signal: controller.signal, titleModelIdOverride: undefined });
+          scheduleAutoTitleForChat({ chatId: mutableChat.id });
         }
         break;
       default: { const _ex: never = result; throw new Error(`Unhandled generation result: ${_ex}`); }
@@ -661,7 +685,7 @@ export async function generateResponseForAssistant({
   } catch (error) {
     signalReady();
     // Model errors are recorded by the common runner. Failures in storage, tool
-    // observation, disposal, or title generation must not overwrite that outcome.
+    // observation or disposal must not overwrite that outcome.
     const reason: unknown = controller.signal.reason;
     const userStop = controller.signal.aborted && reason instanceof DOMException && reason.name === 'AbortError';
     if (userStop) {
@@ -1009,7 +1033,7 @@ async function getEnabledToolsForChat({
       : (await storageService.loadChatGroup({ id: chat.groupId }))?.mounts)
     : undefined;
 
-  return await getEnabledTools({
+  const tools = await getEnabledTools({
     enabledNames,
     settings: settings.value as unknown as Settings,
     chatGroupMounts,
@@ -1020,6 +1044,12 @@ async function getEnabledToolsForChat({
     tmpHandle: chatTmpDirectory?.handle,
     requestChoice,
   });
+  try {
+    return [...tools, ...getImageGenerationToolsForChat({ chatId: chat.id })];
+  } catch (error) {
+    for (const tool of tools) await tool.dispose?.();
+    throw error;
+  }
 }
 
 async function handleImageGenerationWithDefaults({

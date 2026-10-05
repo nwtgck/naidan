@@ -246,7 +246,8 @@ function mountChatPane({
 }
 
 // Mock useRouter
-vi.mock('vue-router', () => ({
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
   useRouter: () => ({
     push: vi.fn(),
   }),

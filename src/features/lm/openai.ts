@@ -8,6 +8,8 @@
  * Validation ensures that type errors do not leak into the application logic
  * and that we handle unexpected API behavior gracefully.
  */
+import { isUnsupportedReasoningError, UnsupportedReasoningError } from '@/01-models/lm-errors';
+import { isReasoningErrorEnvelope, isReasoningRejection } from './reasoning-rejection';
 import { z } from 'zod';
 import { toToolCallId, type BinaryObjectId } from '@/01-models/ids';
 import type { LmParameters, ChatMessage } from '@/01-models/types';
@@ -116,7 +118,9 @@ export class OpenAIProvider implements LmProvider {
         throw new Error(message);
       }
       if (!response.ok) {
+        const unsupportedReasoning = body.reasoning_effort === 'none' && await isReasoningRejection({ response, parameter: 'reasoning_effort' });
         const message = `OpenAI API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
+        if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
         addErrorEvent({ source: 'OpenAIProvider', message, details: { status: response.status, url } });
         throw new Error(message);
       }
@@ -139,7 +143,11 @@ export class OpenAIProvider implements LmProvider {
             await completeCalls();
             return { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
           }
-          const chunk = OpenAIChatChunkSchema.parse(JSON.parse(data));
+          const raw: unknown = JSON.parse(data);
+          if (body.reasoning_effort === 'none' && isReasoningErrorEnvelope({ value: raw, parameter: 'reasoning_effort' })) {
+            throw new UnsupportedReasoningError({ message: 'The endpoint rejected reasoning_effort=none in its generation stream.' });
+          }
+          const chunk = OpenAIChatChunkSchema.parse(raw);
           if (chunk.choices.length > 1) throw new Error('Multiple generated choices are not supported in one assistant message.');
           const choice = chunk.choices[0];
           if (!choice) continue; // Usage-only event.
@@ -185,7 +193,7 @@ export class OpenAIProvider implements LmProvider {
         // A socket closing by itself is not a model-level completion event.
         return { type: 'interrupted', reason: 'unknown' } satisfies ChatGenerationResult;
       } catch (error) {
-        if (!signal.aborted) addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
+        if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
         throw error;
       }
     } });

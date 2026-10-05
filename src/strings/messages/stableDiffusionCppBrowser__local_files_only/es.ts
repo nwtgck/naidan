@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__local_files_only = (): string => "La obtención de modelos requiere una acción explícita. La generación lee archivos locales y no descarga componentes faltantes.";

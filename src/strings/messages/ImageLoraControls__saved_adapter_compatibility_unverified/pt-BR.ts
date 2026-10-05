@@ -1,0 +1,1 @@
+export const ImageLoraControls__saved_adapter_compatibility_unverified = (): string => "A compatibilidade com o modelo selecionado não foi verificada. Os adaptadores só são adicionados quando você os escolhe.";

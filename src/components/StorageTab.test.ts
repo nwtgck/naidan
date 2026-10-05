@@ -555,6 +555,8 @@ describe('StorageTab.vue Tests', () => {
         updateGlobalModel: vi.fn(),
         updateGlobalEndpoint: vi.fn(),
         updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
+        captureModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['captureModelLaunchDefaults']>(),
+        initializeModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['initializeModelLaunchDefaults']>(),
         updateSystemPrompt: vi.fn(),
         updateStorageType: vi.fn(),
         setIsOnboardingDismissed: vi.fn(),

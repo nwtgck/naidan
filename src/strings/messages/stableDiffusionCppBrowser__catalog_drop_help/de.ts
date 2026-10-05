@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__catalog_drop_help = (): string => "Erstellen Sie die drei Repository-Ordner oben und behalten Sie alle inneren Pfade bei. Ziehen Sie die drei Ordner gemeinsam oder einzeln in die lokale Bibliothek, nicht den übergeordneten Ordner. Wählen Sie das Diffusionsmodell; passende Komponenten werden repositoryübergreifend gesucht.";

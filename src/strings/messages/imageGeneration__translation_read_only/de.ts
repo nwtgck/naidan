@@ -1,0 +1,1 @@
+export const imageGeneration__translation_read_only = (): string => "View a translation without replacing the original prompt. Only this text is sent to the selected endpoint when you translate. No chat or translation history is saved.";

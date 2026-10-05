@@ -73,6 +73,36 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/image-generation': RouteRecordInfo<
+      '/image-generation',
+      '/image-generation',
+      Record<never, never>,
+      Record<never, never>,
+      | '/image-generation/diagnostics'
+      | '/image-generation/models'
+      | '/image-generation/session/[sessionId]'
+    >,
+    '/image-generation/diagnostics': RouteRecordInfo<
+      '/image-generation/diagnostics',
+      '/image-generation/diagnostics',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/image-generation/models': RouteRecordInfo<
+      '/image-generation/models',
+      '/image-generation/models',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/image-generation/session/[sessionId]': RouteRecordInfo<
+      '/image-generation/session/[sessionId]',
+      '/image-generation/session/:sessionId',
+      { sessionId: ParamValue<true> },
+      { sessionId: ParamValue<false> },
+      | never
+    >,
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
@@ -147,6 +177,41 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | never
+    }
+    'src/pages/image-generation.vue': {
+      routes:
+        | '/image-generation'
+        | '/image-generation/diagnostics'
+        | '/image-generation/models'
+        | '/image-generation/session/[sessionId]'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/image-generation/diagnostics.vue': {
+      routes:
+        | '/image-generation/diagnostics'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/image-generation/models.vue': {
+      routes:
+        | '/image-generation/models'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/image-generation/session/[sessionId].vue': {
+      routes:
+        | '/image-generation/session/[sessionId]'
+      views:
+        | never
+      pathParamNames:
+        | 'sessionId'
     }
     'src/pages/settings/index.vue': {
       routes:

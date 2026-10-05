@@ -1,0 +1,1 @@
+export const ImageGenerationHistory__backup_does_not_include_history = (): string => 'Backups ZIP incluem imagens, mas não o histórico que as vincula às configurações. Substituir dados por um backup remove esse histórico.';

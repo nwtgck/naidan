@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__qwen_vae_help = (): string => "Para Qwen Image 2.1 con mosaicos activados. Mantiene la resolución y evita decodificar un único mosaico grande. Es una medida de compatibilidad, no una garantía contra resultados uniformes.";

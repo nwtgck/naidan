@@ -2,9 +2,11 @@ import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-r
 import type { AudioGenerationInput, AudioGenerationResult } from '@/features/audio-generation/types';
 import type { ProfileCapabilities, ProfileState } from './runtime/profile-capabilities';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, GenerationCallback, LocalModel, RuntimeOptions } from './types';
+import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, GenerationCallback, LocalModel, RuntimeOptions, Progress } from './types';
 
 export interface LlamaCppBrowserService {
+  /** Best-effort preparation: never queues behind an existing operation. */
+  prepareModel({ model, signal, onProgress }: { model: string, signal: AbortSignal | undefined, onProgress?: ({ progress }: { progress: Progress }) => void }): Promise<'ready' | 'skipped-busy'>;
   generateAudio({ input, cancellationSignal, completionSignal, preview }: { input: Omit<AudioGenerationInput, 'options'>, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
   getProfileState(): ProfileState;
   subscribeProfiles({ listener }: { listener: ({ state }: { state: ProfileState }) => void }): () => void;
