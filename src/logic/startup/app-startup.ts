@@ -9,6 +9,7 @@ import {
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
+import { startRpcAutomaticConnections } from '@/features/naidan-peer-rpc/runtime/feature';
 import {
   readFirstQueryValue,
   resolveInitialRoute,
@@ -125,7 +126,10 @@ export async function startApp({ startupState, settingsStore, router, navigation
     checkpoint: 'app-ready',
     details: undefined,
   });
-  return disposeGlobalSettingsQuerySync;
+  const disposeRpcAutomaticConnections = startRpcAutomaticConnections();
+  return () => {
+    disposeRpcAutomaticConnections(); disposeGlobalSettingsQuerySync();
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

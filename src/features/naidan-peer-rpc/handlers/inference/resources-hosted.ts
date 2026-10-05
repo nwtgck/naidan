@@ -14,6 +14,9 @@ import type { OwnedInferenceResources } from './resources';
 import { imageModelSelectionSchema, imageCatalogItemSchema } from '@/features/naidan-peer-rpc/contract';
 import type { PeerImageFile, PeerImageCatalogItem } from '@/features/naidan-peer-rpc/contract';
 import { NaidanRpcError } from '@/features/naidan-rpc';
+import { createImageGenerationFailure, readImageGenerationNativeFailureContext } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
+import type { ImageGenerationFailure, ImageGenerationNativeFailureContext } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
+import { sanitizeImageLog } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 
 function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFile {
   const file = candidate.files.find(item => item.path === candidate.path)?.file;
@@ -102,17 +105,23 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         // A split diffusion file is not a ready-to-generate model bundle. Do
         // not infer missing encoders/VAE or use the owner's saved editor preset.
         const selection = candidate.roles.includes('model') && !candidate.classes.includes('lora') ? { primary: { slot: 'model' as const, file }, components: [], loras: [] } : undefined;
-        result.push(imageCatalogItemSchema.parse({ label: candidate.path, file, roles, selection }));
+        result.push(imageCatalogItemSchema.parse({ label: candidate.path, file, roles, selection, facts: { family: candidate.family, classes: candidate.classes } }));
         if (result.length > 256) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
       }
       signal.throwIfAborted(); return result;
     },
     async generateImage({ input, signal, onProgress, onPreview }) {
       signal = operationSignal({ signal });
-      if (imageBusy) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
+      if (imageBusy) throw createImageGenerationFailure({ error: new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' }), stage: 'admission', reason: 'engine-busy', profile: undefined, gpu: false, nativeContext: undefined });
       imageBusy = true;
       const retired = Promise.withResolvers<void>();
       imageRetirement = retired.promise;
+      let stage: ImageGenerationFailure['stage'] = 'model-selection';
+      let reason: ImageGenerationFailure['reason'] = 'model-selection-failed';
+      let profile: string | undefined;
+      let gpu = false;
+      let failedStage: ImageGenerationFailure['stage'] | undefined;
+      let nativeContext: ImageGenerationNativeFailureContext | undefined;
       try {
         const selection = imageModelSelectionSchema.parse(input.modelSelection);
         const candidates = (await inventory({ signal })).candidates;
@@ -128,6 +137,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           if (!candidate.classes.includes('lora') || candidate.files.length !== 1) throw new Error('The requested adapter is not a single LoRA file');
           return { file: candidate.files[0]!.file, path: candidate.path, strength };
         });
+        stage = 'runtime-init'; reason = 'runtime-unavailable';
         const config = configurationSchema.parse(rawConfiguration);
         switch (config.kind) {
         case 'unavailable': throw new Error('Local image inference is not included in this build');
@@ -136,6 +146,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         }
         const artifact = config.artifacts.find(artifact => artifact.profile === initialProfile());
         if (!artifact) throw new Error('The local image profile is not available');
+        profile = artifact.profile;
+        stage = 'input'; reason = 'invalid-input';
         const request = requestSchema.parse({ artifact, models, loras, debug: 'off', weightResidency: 'auto',
           baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
           preview: input.preview,
@@ -143,7 +155,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           parameters: { ...input.parameters, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32',
             qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' },
         });
+        stage = 'runtime-init'; reason = 'runtime-unavailable';
         signal.throwIfAborted(); image ??= createImageEngineClient({ onReleased: undefined });
+        stage = 'worker'; reason = 'engine-failed';
         const rawResult = await image.generate({ request, signal, onPreview: ({ frame }) => {
           signal.throwIfAborted(); onPreview({ frame });
         }, onProgress: ({ event }) => {
@@ -157,11 +171,47 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
           }
           onProgress({ value: { phase, completed: event.step, total: event.steps } });
+        }, onDiagnostic: ({ diagnostic }) => {
+          switch (diagnostic.event) {
+          case 'start': case 'complete': case 'progress': stage = diagnostic.stage; break;
+          case 'failed':
+            failedStage ??= (() => {
+              const current = diagnostic.stage;
+              switch (current) {
+              case 'worker': return stage;
+              case 'runtime-fetch': case 'runtime-init': case 'model-header': case 'model-load': case 'generation':
+              case 'sampling': case 'decoding': case 'encoding': case 'cleanup': return current;
+              default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+              }
+            })();
+            nativeContext ??= readImageGenerationNativeFailureContext({ fields: diagnostic.fields });
+            break;
+          case 'gpu':
+            if (/^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(diagnostic.message ?? '')) {
+              gpu = true; failedStage ??= diagnostic.stage;
+            }
+            break;
+          case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
+          default: { const exhaustive: never = diagnostic.event; throw new Error(String(exhaustive)); }
+          }
         } });
         signal.throwIfAborted();
+        stage = 'output-validation'; reason = 'invalid-output';
         const result = workerResultSchema.parse(rawResult);
         if ('cancelled' in result) throw new DOMException('Image generation cancelled', 'AbortError');
         return result;
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        const failure = createImageGenerationFailure({ error, stage: failedStage ?? stage, reason, profile, gpu, nativeContext });
+        // Detailed native context stays on the provider. Exported context is
+        // deliberately limited to the public error fields above.
+        try {
+          console.error('[naidan-peer-rpc:image]', { ...failure.details,
+            message: sanitizeImageLog({ message: error instanceof Error ? error.message : String(error),
+              secrets: [input.parameters.prompt, input.parameters.negativePrompt] }) });
+        } catch { /* Diagnostics must not replace the original failure. */ }
+        throw failure;
       } finally {
         imageBusy = false;
         retired.resolve();

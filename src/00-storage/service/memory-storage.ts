@@ -28,6 +28,7 @@ import {
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
+import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 /**
  * Memory Storage Implementation
@@ -44,6 +45,14 @@ export class MemoryStorageProvider extends IStorageProvider {
   private chatContents = new Map<ChatId, ChatContentDto>();
   private binaryObjects = new Map<BinaryObjectId, { blob: Blob, meta: BinaryObject }>();
   private blobCache = new Map<AttachmentId, Blob>();
+  private naidanRpcRegistry: ExperimentalNaidanRpcRegistryDto | undefined;
+
+  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+    return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(this.naidanRpcRegistry);
+  }
+  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+    this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(registry);
+  }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
     for (const part of iterateAttachmentParts({ nodes })) {
@@ -326,6 +335,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async clearAll(): Promise<void> {
+    this.naidanRpcRegistry = undefined;
     this.hierarchy = { items: [] };
     this.settings = null;
     this.chatMetas.clear();

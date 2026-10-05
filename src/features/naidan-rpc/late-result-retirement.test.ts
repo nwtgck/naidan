@@ -6,7 +6,7 @@ import { NaidanRpcPeer } from './peer';
 import { transportPair } from './test-transport';
 
 const definition = contract({ name: 'test.late-result', methods: {
-  run: procedure({ input: z.strictObject({}), result: z.strictObject({ image: rpc.bytes(), events: rpc.stream({ item: z.number() }) }), notifications: {} }),
+  run: procedure({ input: z.strictObject({}), result: z.strictObject({ image: rpc.byteStream(), events: rpc.stream({ item: z.number() }) }), notifications: {} }),
 } });
 
 it.each(['cancel', 'revoke'] as const)('owns unread result streams returned after %s until their cancellation settles', async mode => {

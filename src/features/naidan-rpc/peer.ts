@@ -20,6 +20,7 @@ export class NaidanRpcPeer {
   private readonly pendingInvocations = new Set<Promise<void>>();
   private inputRetirement: Promise<unknown> = Promise.resolve();
   private incomingAdmission: 'open' | 'suspended' = 'open';
+  private readonly allowedWhileSuspended = new Map<string, ReadonlySet<string>>();
   private failure: unknown;
   private retirementFailure: { error: unknown } | undefined;
   constructor({ transport, exports, limits, signal }: {
@@ -89,13 +90,23 @@ export class NaidanRpcPeer {
     const exposure = this.methods.get(contract);
     const result = exposure?.methods.get(method);
     if (!result) throw new NaidanRpcError({ code: 'METHOD_NOT_FOUND' });
-    if (this.incomingAdmission === 'suspended' || !exposure?.allowed.has(method)) throw new NaidanRpcError({ code: 'METHOD_NOT_ALLOWED' });
+    if (!exposure?.allowed.has(method) || (this.incomingAdmission === 'suspended' && !this.allowedWhileSuspended.get(contract)?.has(method))) throw new NaidanRpcError({ code: 'METHOD_NOT_ALLOWED' });
     return result;
   }
   /** Pause new inbound calls while local policy is being revalidated. Already
    * admitted calls retain their lifetime; actual revocations use setAllowedMethods. */
   setIncomingAdmission({ status }: { status: 'open' | 'suspended' }): void {
     this.stop.signal.throwIfAborted(); this.incomingAdmission = status;
+  }
+  /** A narrowly registered status method may remain callable during policy
+   * checks. This never grants authority or bypasses revocation and teardown. */
+  allowIncomingWhileSuspended<C extends Contract>({ contract, allowedMethods }: {
+    contract: C; allowedMethods: readonly NaidanRpcMethodName<NoInfer<C>>[];
+  }): void {
+    this.stop.signal.throwIfAborted();
+    const exposure = this.methods.get(contract.name);
+    check({ condition: exposure?.contract === contract, code: 'INVALID_ARGUMENT' });
+    this.allowedWhileSuspended.set(contract.name, checkAllowedMethods({ contract, allowedMethods }));
   }
   /** Local authority only. Updating grants never calls, reconnects or replays. */
   setAllowedMethods<C extends Contract>({ contract, allowedMethods }: {
@@ -214,6 +225,7 @@ export class NaidanRpcPeer {
   /** Stops owned calls and the exclusive iterator, not the borrowed transport's entire session. */
   dispose(): void {
     if (this.stop.signal.aborted) return;
+    this.allowedWhileSuspended.clear();
     this.stop.abort(); for (const call of this.calls) call.abort({ code: 'CANCELLED' }); this.methods.clear();
   }
 }

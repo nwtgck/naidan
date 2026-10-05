@@ -1,7 +1,7 @@
 import { peerAllowedMethodsSchema } from '@/features/naidan-peer-rpc/contract';
-import type { NaidanPeerMethodName } from '@/features/naidan-peer-rpc/contract';
+import type { NaidanPeerControlledMethodName } from '@/features/naidan-peer-rpc/contract';
 
-type Names = readonly NaidanPeerMethodName[];
+type Names = readonly NaidanPeerControlledMethodName[];
 export type MethodAccessState = {
   effective: Names;
   desired: Names;
@@ -40,6 +40,13 @@ export function createMethodAccess({ initial, stored, revision, persist, apply, 
   };
   return {
     state,
+    /** A metadata-only write may advance the record revision without changing
+     * the stored method list. It must not confirm an unsaved restriction or
+     * install authority into a running session. */
+    adoptStoredRevision({ revision }: { revision: number }): void {
+      if (disposed || !Number.isSafeInteger(revision) || revision < currentRevision) throw new Error('Unexpected connection storage revision');
+      currentRevision = revision;
+    },
     update({ allowedMethods }: { allowedMethods: Names }): Promise<void> {
       if (disposed) return Promise.reject(new Error('The connection access controller is closed'));
       let next: Names;

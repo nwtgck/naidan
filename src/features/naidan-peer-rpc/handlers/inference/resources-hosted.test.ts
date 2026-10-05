@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ModelCandidate } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
+import type { ImageClient } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import { createReadOnlyResources } from './resources-hosted';
 import type { PeerImageInput } from './resources';
 const mocks = vi.hoisted(() => {
@@ -33,12 +34,15 @@ function generate({ input }: { input: PeerImageInput }) {
   return resource().generateImage({ input, signal: new AbortController().signal, onPreview: () => {}, onProgress: () => {} });
 }
 beforeEach(() => {
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('window', { location: { href: 'https://local.example/' } });
   vi.clearAllMocks(); mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
   mocks.create.mockReturnValue({ generate: mocks.generate, dispose: mocks.dispose });
   mocks.generate.mockResolvedValue({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals(); vi.restoreAllMocks();
+});
 it('reads catalogs without creating an engine or downloading anything', async () => {
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
   expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 }); expect(mocks.create).not.toHaveBeenCalled();
@@ -56,15 +60,45 @@ it('honors explicit read-only model selection and bounds native-only policies', 
 });
 it('rejects a changed model before starting an engine', async () => {
   const input = request(); input.modelSelection.primary.file.expected!.size = 19;
-  await expect(generate({ input })).rejects.toThrow('changed'); expect(mocks.create).not.toHaveBeenCalled();
+  await expect(generate({ input })).rejects.toMatchObject({ code: 'HANDLER_FAILED', details: { stage: 'model-selection', reason: 'model-selection-failed' } });
+  expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('changed') }));
+  expect(mocks.create).not.toHaveBeenCalled();
 });
 it('cannot read an ungranted host directory or silently choose the owner preset', async () => {
   const input = request(); input.modelSelection.primary.file = { location: { kind: 'host', directoryId: 'not-granted', path: 'model.gguf' } };
-  await expect(generate({ input })).rejects.toThrow('permitted roots'); expect(mocks.create).not.toHaveBeenCalled();
+  await expect(generate({ input })).rejects.toMatchObject({ details: { stage: 'model-selection' } });
+  expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('permitted roots') }));
+  expect(mocks.create).not.toHaveBeenCalled();
 });
 it('rejects unsupported sampler values rather than dropping a caller setting', async () => {
   const input = request(); input.parameters.sampler = 'unknown-sampler';
   await expect(generate({ input })).rejects.toThrow(); expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('reports the failing native stage and Wasm locations without exporting native text', async () => {
+  const native = new WebAssembly.RuntimeError('private-model-path');
+  native.stack = `\
+RuntimeError: private-model-path
+wasm-function[42]:0xab`;
+  mocks.generate.mockImplementationOnce(async ({ onDiagnostic }: Parameters<ImageClient['generate']>[0]) => {
+    onDiagnostic?.({ diagnostic: { event: 'progress', stage: 'sampling', elapsedMs: 1, fields: {} } });
+    onDiagnostic?.({ diagnostic: { event: 'failed', stage: 'worker', elapsedMs: 2,
+      fields: { errorType: 'wasm-trap', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' }, message: native.message } });
+    // The Worker boundary can wrap a RuntimeError in an ordinary Error.
+    throw new Error(native.message);
+  });
+  await expect(generate({ input: request() })).rejects.toMatchObject({ code: 'HANDLER_FAILED', message: 'HANDLER_FAILED',
+    details: { kind: 'image-generation', stage: 'sampling', reason: 'engine-failed', errorType: 'wasm-trap',
+      profile: 'webgpu-wasm32-asyncify', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' } });
+  expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ stage: 'sampling', message: native.message }));
+});
+
+it('distinguishes GPU failures from other native errors', async () => {
+  mocks.generate.mockImplementationOnce(async ({ onDiagnostic }: Parameters<ImageClient['generate']>[0]) => {
+    onDiagnostic?.({ diagnostic: { event: 'gpu', stage: 'model-load', elapsedMs: 2, fields: {}, message: 'device lost: private-driver-message' } });
+    throw new Error('Image Worker failed');
+  });
+  await expect(generate({ input: request() })).rejects.toMatchObject({ details: { stage: 'model-load', reason: 'engine-failed', errorType: 'gpu' } });
 });
 
 it('disposes the cached image owner exactly once and rejects later calls', async () => {

@@ -36,7 +36,7 @@ import ImageGenerationCurationActions from '@/features/image-generation/componen
 import { createImageGenerationStorageHarness, generationRunFixture } from '@/00-storage/service/image-generation/test-support';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { publishImageGenerationBinaries } from '@/00-storage/service/image-generation-binaries';
-import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
+import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId, toNaidanRpcConnectionId, toNaidanRpcPeerId, toBinaryObjectId } from '@/01-models/ids';
 import ImageGenerationTranslationButton from '@/features/image-generation/components/ImageGenerationTranslationButton.vue';
 import ImageGenerationTranslationSettings from '@/features/image-generation/components/ImageGenerationTranslationSettings.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
@@ -45,6 +45,10 @@ import type { ImageGenerationSessionId } from '@/01-models/ids';
 const translationMocks = vi.hoisted(() => ({ translate: vi.fn(), provider: vi.fn() }));
 vi.mock('@/features/image-generation/translation/request', () => ({ translateImagePrompt: translationMocks.translate }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: translationMocks.provider }));
+import { useImageInferenceLocation } from './use-image-inference-location';
+import { copyRemoteImageModelEditor } from '@/features/image-generation/remote-image-model-editor';
+const rpcManager = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ getRpcManager: rpcManager.get, configureRpcFeature: async () => {}, subscribeRpcState: () => () => {} }));
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { Chat, ChatSummary, StorageType } from '@/01-models/types';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
@@ -80,7 +84,7 @@ async function publish({ store, publication, files }: Publication): Promise<void
   }
 }
 beforeEach(async () => {
-  vi.resetAllMocks(); mocks.storage = 'opfs'; listener = undefined; chatChoices.value = [];
+  vi.resetAllMocks(); rpcManager.get.mockResolvedValue({ reload: async () => {}, list: () => [] }); mocks.storage = 'opfs'; listener = undefined; chatChoices.value = [];
   createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
   provider = new MemoryStorageProvider();
   mocks.confirm.mockResolvedValue(true);
@@ -111,12 +115,14 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   original.loras = []; original.imageInputs = { initImage: undefined, referenceImages: [], strength: 0.75 };
   const generation: ImageGenerationView = { ...base, busy: computed(() => busy.value), formDisabled: computed(() => busy.value), draftDisabled: computed(() => false), supported: computed(() => true),
     captureDraft(): ImageGenerationDraft {
-      return { request: structuredClone({ ...original, parameters: { ...generation.parameters.value } }), seedMode: generation.seedMode.value,
-        layout: generation.layout.value, modelSelection: undefined, loraStates: [], debug: generation.debug.value, retainModel: generation.retainModel.value,
+      const remote = generation.inferenceLocation?.kind.value === 'naidan_rpc';
+      const request = remote ? generation.inferenceLocation!.captureDraftRequest({ seed: generation.parameters.value.seed }).request : structuredClone({ ...original, parameters: { ...generation.parameters.value } });
+      return { inferenceLocation: generation.inferenceLocation?.captureLocation(), request, seedMode: generation.seedMode.value,
+        layout: generation.layout.value, modelSelection: undefined, remoteModelEditor: remote ? copyRemoteImageModelEditor({ editor: generation.inferenceLocation!.editor.value }) : undefined, loraStates: [], debug: generation.debug.value, retainModel: generation.retainModel.value,
         keepPreviews: generation.keepPreviews.value, maxPreviews: generation.maxPreviews.value, maxResults: generation.maxResults.value, files: [], modelFiles: [] };
     },
     async restoreDraft({ draft }) {
-      restored(draft); generation.parameters.value = { ...generation.parameters.value, ...draft.request.parameters }; generation.seedMode.value = draft.seedMode; generation.layout.value = draft.layout;
+      restored(draft); if (draft.inferenceLocation) generation.inferenceLocation?.restoreLocation({ location: draft.inferenceLocation, modelEditor: draft.remoteModelEditor }); generation.parameters.value = { ...generation.parameters.value, ...draft.request.parameters }; generation.seedMode.value = draft.seedMode; generation.layout.value = draft.layout;
     },
     resetDraft() {
       generation.parameters.value = { ...generation.parameters.value, prompt: '', negativePrompt: '' };
@@ -124,7 +130,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
     cancel() {
       cancelled.value = true;
     },
-    async generate({ submission } = {}) {
+    async generate({ submission }) {
       if (busy.value) return;
       busy.value = true; cancelled.value = false;
       try {
@@ -133,7 +139,8 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
         }
         const capture = generation.captureDraft!();
         if (!capture) throw new Error('Missing fixture draft.');
-        const snapshot = { id: toImageGenerationId({ raw: 'fixture-aa' }), createdAt: Date.now(), request: capture.request, inputFiles: capture.files };
+        if (!capture.request.runtime) throw new Error('Missing fixture runtime.');
+        const snapshot = { id: toImageGenerationId({ raw: 'fixture-aa' }), createdAt: Date.now(), request: { ...capture.request, runtime: capture.request.runtime }, inputFiles: capture.files };
         const seeds = planImageGenerationSeeds({ baseSeed: snapshot.request.parameters.seed, count: submission.count });
         await submission.accepted({ snapshot, seeds });
         for (let index = 0; index < seeds.length; index++) {
@@ -155,6 +162,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   generation.parameters.value = { ...generation.parameters.value, ...original.parameters }; generation.seedMode.value = 'fixed';
   let view: ImageGenerationWorkspaceView | undefined;
   const wrapper = mount(defineComponent({ setup() {
+    generation.inferenceLocation = useImageInferenceLocation({ form: generation, blocked: () => busy.value, identifyInput: () => toBinaryObjectId({ raw: 'test-input' }) });
     view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
   } }));
   if (!view) throw new Error('Missing Workspace.');
@@ -191,6 +199,29 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.view.tiles.value).toHaveLength(0); expect(h.view.editorReady.value).toBe(true);
     const saved = selectImageGenerationAssets({ snapshot: await persistence.readImageGenerationSessionIndex({ store: h.view.store.value!, sessionId: a!.id }), query: { visibility: 'active' as const, text: '', tags: [], match: 'all', runId: undefined, cursor: undefined, limit: 40 } });
     expect(saved.items).toHaveLength(2);
+  });
+  it('persists unfinished RPC locations and exact model editors per session across switching and remount', async () => {
+    const h = await ready(); const location = h.generation.inferenceLocation!;
+    location.setKind({ value: 'naidan_rpc' }); h.generation.parameters.value.prompt = 'Waiting for a peer';
+    const a = (await h.view.newSession({ preserveDraft: true }))!; await h.view.flushDraft();
+    const b = (await h.view.newSession({ preserveDraft: false }))!;
+    const connection = { connectionId: toNaidanRpcConnectionId({ raw: 'session-peer' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }) };
+    const file = { location: { kind: 'opfs' as const, path: 'models/session.gguf' } };
+    location.restoreLocation({ location: { kind: 'naidan_rpc', connection }, modelEditor: { primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
+    h.generation.parameters.value.prompt = 'Selected peer'; await h.view.flushDraft();
+    // Disabled adapter edits do not change the generated model selection.
+    location.changeLora({ index: 0, enabled: 'disabled', strength: 0.3 });
+    await vi.waitFor(async () => expect((await persistence.loadImageGenerationDraft({ store: h.view.store.value!, sessionId: b.id }))?.remoteModelEditor?.loras[0]?.strength).toBe(0.3));
+    await h.view.selectSession({ sessionId: a.id });
+    expect(location.captureLocation()).toEqual({ kind: 'naidan_rpc', connection: undefined });
+    expect(location.editor.value.primary).toBeUndefined(); expect(h.generation.parameters.value.prompt).toBe('Waiting for a peer');
+    const saved = (await persistence.loadImageGenerationDraft({ store: h.view.store.value!, sessionId: a.id }))!;
+    expect(saved.request.runtime).toBeUndefined(); expect(saved.inferenceLocation).toEqual({ kind: 'naidan_rpc', connection: undefined });
+    await h.view.flushDraft(); h.wrapper.unmount(); await flushPromises();
+    const reopened = open({ requestedSessionId: ref(b.id) }); await flushPromises();
+    expect(reopened.generation.inferenceLocation!.captureLocation()).toEqual({ kind: 'naidan_rpc', connection });
+    expect(reopened.generation.inferenceLocation!.editor.value.loras).toMatchObject([{ enabled: 'disabled', strength: 0.3 }]);
+    expect(reopened.generation.parameters.value.prompt).toBe('Selected peer'); expect(reopened.native).not.toHaveBeenCalled();
   });
   it('retries failed image storage without additional inference or moving it to the selected session', async () => {
     const h = await ready(); let fail = true;
@@ -934,6 +965,28 @@ describe('read-only translation controls', () => {
       expect(availableModels.value).toEqual(globalModels); expect(settings.value.endpoint).toEqual(endpoint); expect(settings.value.defaultModelId).toBe(modelId);
     } finally {
       surface.unmount();
+    }
+  });
+  it('hides disabled RPC choices in translation settings and preserves a saved RPC reference', async () => {
+    const fixture = await ready();
+    const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'disabled' } } });
+    const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' }, global: { stubs: { RpcConnectionSelect: true } } });
+    try {
+      await flushPromises();
+      expect(surface.get('[data-testid="translation-endpoint-choice"]').find('option[value="naidan_rpc"]').exists()).toBe(false);
+      await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', connectionId: undefined }, modelId: 'remote-translator' } } });
+      await flushPromises();
+      const select = surface.get('[data-testid="translation-endpoint-choice"]');
+      expect(select.element).toHaveProperty('value', 'naidan_rpc');
+      expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'naidan_rpc', connectionId: undefined }, modelId: 'remote-translator' });
+      settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'enabled' } } });
+      await flushPromises(); expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      expect(translationMocks.translate).not.toHaveBeenCalled();
+    } finally {
+      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
     }
   });
 });

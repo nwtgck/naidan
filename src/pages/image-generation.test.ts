@@ -92,7 +92,7 @@ it('preserves an active benchmark and its retained results across browser back a
   await historyStep({ router, delta: -1 });
   expect(owner.TEST_ONLY.activeTab.value).toBe('generate');
   expect(bench.busy.value).toBe(true); expect(mocks.dispose).not.toHaveBeenCalled();
-  await owner.TEST_ONLY.generate(); expect(mocks.generate).toHaveBeenCalledTimes(1);
+  await owner.TEST_ONLY.generate({ submission: undefined }); expect(mocks.generate).toHaveBeenCalledTimes(1);
   await historyStep({ router, delta: 1 });
   expect(wrapper!.getComponent(ImageGenerationLab).vm.$.uid).toBe(owner.$.uid);
   pending.resolve({ png: new Blob(['PNG'], { type: 'image/png' }), width: 512, height: 512, modelVersion: 'fixture' });

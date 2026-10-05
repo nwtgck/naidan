@@ -3,6 +3,10 @@ import { createRpcStopControl } from './stop-control';
 import type { RpcStopStatus } from './stop-control';
 import type { Settings } from '@/01-models/types';
 import type { NaidanPeerManager } from './manager';
+import { scheduleIdleTask } from '@/utils/idle-task';
+import type { ScheduledIdleTask } from '@/utils/idle-task';
+import { naidanRpcStorage } from '@/00-storage/service/naidan-rpc';
+import { storageService } from '@/00-storage/service';
 
 let enabled = false;
 let readSettings: () => Settings | undefined = () => undefined;
@@ -10,6 +14,49 @@ let loaded: Promise<NaidanPeerManager> | undefined;
 const listeners = new Set<() => void>();
 let control: ReturnType<typeof createRpcStopControl> | undefined;
 let channel: BroadcastChannel | undefined;
+let automaticRegistration: object | undefined;
+let automaticEpoch = 0;
+let automaticScheduled: ScheduledIdleTask | undefined;
+function cancelAutomaticCheck(): void {
+  automaticEpoch++; automaticScheduled?.cancel(); automaticScheduled = undefined;
+}
+function scheduleAutomaticCheck(): void {
+  cancelAutomaticCheck();
+  if (!automaticRegistration || !enabled) return;
+  const epoch = automaticEpoch;
+  automaticScheduled = scheduleIdleTask({ timeoutMs: 1000, fallbackDelayMs: 100, task: async () => {
+    automaticScheduled = undefined;
+    const current = () => epoch === automaticEpoch && automaticRegistration !== undefined && enabled;
+    try {
+      // A feature flag is not connection intent. An empty/disabled registry
+      // does not import runtime, acquire an owner, read keys or create identity.
+      const { access, connections } = await naidanRpcStorage.list();
+      if (!current() || access.persistence !== 'durable' || !connections.some(connection => connection.autoConnect === 'enabled')) return;
+      const manager = await getRpcManager();
+      if (current()) await manager.startAutomaticConnections();
+    } catch {
+      // Failed reads/identity checks are not absence and are not retried in a
+      // tight loop. The next explicit setting/registry/resume hint may recheck.
+      notifyRpcState();
+    }
+  } });
+}
+/** Install only after app-ready. Startup continues without awaiting peers. */
+export function startRpcAutomaticConnections(): () => void {
+  const registration = {}; automaticRegistration = registration;
+  const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: scheduleAutomaticCheck });
+  const resume = () => scheduleAutomaticCheck();
+  window.addEventListener('focus', resume); window.addEventListener('pageshow', resume); window.addEventListener('online', resume);
+  scheduleAutomaticCheck();
+  return () => {
+    unsubscribe(); window.removeEventListener('focus', resume); window.removeEventListener('pageshow', resume); window.removeEventListener('online', resume);
+    if (automaticRegistration !== registration) return;
+    automaticRegistration = undefined; cancelAutomaticCheck();
+    if (loaded) void loaded.then(manager => {
+      manager.stopAutomaticConnections(); return manager.setEnabled({ enabled: false });
+    }).catch(notifyRpcState);
+  };
+}
 function revalidate(): void {
   if (enabled && loaded) void loaded.then(manager => manager.revalidate()).catch(notifyRpcState);
 }
@@ -46,7 +93,7 @@ export function rpcStopStatus(): RpcStopStatus {
 }
 /** Explicit OFF only. Passive settings hydration must never send a stop probe. */
 export function requestRpcStop(): void {
-  enabled = false; controls().requestStop(); notifyRpcState();
+  enabled = false; cancelAutomaticCheck(); controls().requestStop(); notifyRpcState();
   // A manager still acquiring its lock cannot yet answer as an owner.
   // Closing it also fences that pending acquisition and any pending pairing.
   if (loaded) void loaded.then(manager => manager.setEnabled({ enabled: false })).catch(notifyRpcState);
@@ -61,12 +108,13 @@ export function notifyRpcState(): void {
     } catch { /* Observation only. */ }
   }
 }
-/** Called by settings synchronization. Enabling alone does not import the
- * runtime, generate keys, read a catalog, connect or replay old calls. */
+/** Settings hydration has no network effects before app-ready. After that,
+ * only saved per-connection opt-in may start the automatic policy. */
 export function configureRpcFeature({ status, settings }: { status: 'enabled' | 'disabled', settings(): Settings }): Promise<void> {
   const nextEnabled = status === 'enabled';
   if (nextEnabled && !enabled) control?.clearRequest();
   enabled = nextEnabled; readSettings = settings;
+  scheduleAutomaticCheck();
   notifyRpcState();
   if (!loaded) return Promise.resolve();
   const desired = enabled;
@@ -76,7 +124,7 @@ export async function getRpcManager(): Promise<NaidanPeerManager> {
   if (!enabled) throw new Error('Enable Naidan RPC in Developer settings first');
   if (!loaded) {
     const initializing = import('./state').then(({ createRpcManager }) => createRpcManager({ settings: () => readSettings(), changed: notifyRpcState, control: controls(), stopping: () => {
-      enabled = false; notifyRpcState();
+      enabled = false; cancelAutomaticCheck(); notifyRpcState();
     } }));
     loaded = initializing;
     // Share pending/successful initialization, but do not permanently poison

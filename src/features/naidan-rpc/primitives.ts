@@ -1,3 +1,6 @@
+import { z } from 'zod';
+
+export const RPC_VERSION = 1;
 export const FRAME_BYTES = 65536;
 export const ITEM_BYTES = 16384;
 export const REFERENCE_LIMIT = 16;
@@ -12,6 +15,26 @@ export class NaidanRpcError extends Error {
   constructor({ code }: { code: NaidanRpcErrorCode }) {
     super(code); this.name = 'NaidanRpcError'; this.code = code;
   }
+}
+/** Applications must explicitly opt in to exporting bounded public context.
+ * Ordinary exception messages and stacks never cross the RPC boundary. */
+export const publicErrorDetailsSchema = z.record(z.string().min(1).max(64), z.union([
+  z.string().max(512), z.number().finite(), z.boolean(),
+])).refine(value => Object.keys(value).length <= 8);
+export type NaidanRpcPublicErrorDetails = z.infer<typeof publicErrorDetailsSchema>;
+export class NaidanRpcPublicError extends NaidanRpcError {
+  readonly details: Readonly<NaidanRpcPublicErrorDetails>;
+  constructor({ code, details }: { code: NaidanRpcErrorCode; details: NaidanRpcPublicErrorDetails }) {
+    super({ code }); this.name = 'NaidanRpcPublicError';
+    this.details = Object.freeze(publicErrorDetailsSchema.parse(details));
+  }
+}
+/** Display application-supplied context without interpreting its domain. */
+export function describeNaidanRpcError({ error }: { error: unknown }): string {
+  if (error instanceof NaidanRpcPublicError) return `RPC code: ${error.code}\nReported details:\n${JSON.stringify(error.details, undefined, 2)}`;
+  if (error instanceof NaidanRpcError) return `RPC code: ${error.code}`;
+  if (error instanceof z.ZodError) return `Validation error:\n${error.issues.map(issue => `${issue.path.map(String).join('.')}: ${issue.message}`).join('\n').slice(0, 1024)}`;
+  return `Detail: ${(error instanceof Error ? error.message : String(error)).slice(0, 1024)}`;
 }
 export function check({ condition, code }: { condition: unknown; code: NaidanRpcErrorCode }): void {
   if (!condition) throw new NaidanRpcError({ code });

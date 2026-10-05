@@ -33,7 +33,7 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
   const inputBudget = createInferenceBudget({ capacity: 64 * 1024 * 1024 });
   const deliveryBudget = createInferenceBudget({ capacity: 64 * 1024 * 1024 });
   const callee = new NaidanRpcPeer({ transport: transport.b, signal: lifetime.signal, limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
-    exports: [expose({ contract: naidanPeerContract, allowedMethods: ['generateChat'], implementation: createNaidanPeerImplementation({ inference: {
+    exports: [expose({ contract: naidanPeerContract, allowedMethods: ['generateChat'], implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: {
       inputBudget, deliveryBudget, resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected },
     } }) })] });
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], signal: lifetime.signal, limits: { maxCalls: 4, maxCallTimeoutMs: 1000 } });

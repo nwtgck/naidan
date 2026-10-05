@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import type { createRpcStopControl } from './stop-control';
 import type { Settings } from '@/01-models/types';
 import { naidanRpcStorage } from '@/00-storage/service/naidan-rpc';
+import { storageService } from '@/00-storage/service';
 import { NaidanPeerManager } from './manager';
 import { createRpcIdentityLoader } from './identity';
 import { acquireRpcOwner } from './owner';
@@ -19,7 +20,7 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
     readIdentity: () => naidanRpcStorage.readIdentity(),
     list: () => naidanRpcStorage.list(),
     async remember({ ...args }: Parameters<typeof naidanRpcStorage.remember>[0]) {
-      await naidanRpcStorage.remember(args); control.registryChanged();
+      const access = await naidanRpcStorage.remember(args); control.registryChanged(); return access;
     },
     async update({ ...args }: Parameters<typeof naidanRpcStorage.update>[0]) {
       const revision = await naidanRpcStorage.update(args); control.registryChanged(); return revision;
@@ -46,6 +47,9 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
     },
     open: openPipingRpc, changed, retireResources: () => inference.retire(), inference: { resources: inference.resources,
       inputBudget, deliveryBudget } } });
+  storageService.subscribeNaidanRpcRegistryChanges({ listener: () => {
+    void manager.revalidate().catch(changed);
+  } });
   return manager;
 }
 export const TEST_ONLY = {

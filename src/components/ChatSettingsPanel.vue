@@ -85,6 +85,7 @@ const titleEndpointModels = ref<string[]>([]);
 const isFetchingTitleEndpointModels = ref(false);
 const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 const { settings } = useSettings();
+const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
@@ -1751,7 +1752,8 @@ defineExpose({
                 <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                <option value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                <option v-else-if="localSettings.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                 <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                 <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
@@ -1915,7 +1917,8 @@ defineExpose({
                   <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
                   <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                  <option value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-else-if="localTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                   <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                   <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>

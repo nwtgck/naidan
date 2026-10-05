@@ -15,6 +15,7 @@ import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabe
 import ImageSettingsSection from './ImageSettingsSection.vue';
 const props = defineProps<{ workspace: ImageGenerationWorkspaceView, scope: 'session' | 'workspace' }>();
 const { settings } = useSettings();
+const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const draft = ref<ImageGenerationTranslationOverride>({ endpoint: undefined, modelId: undefined });
 const models = ref<string[]>([]), loading = ref(false), saving = ref(false), failure = ref(''), saved = ref(false);
 let controller: AbortController | undefined, epoch = 0, disposed = false;
@@ -37,12 +38,14 @@ const effective = computed(() => resolveImagePromptTranslation({
   global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId },
 }));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
-const endpointOptions = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
+const endpointTypes = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
+const endpointOptions = computed(() => endpointTypes.filter(value => value !== 'naidan_rpc' || rpcEnabled.value));
 function endpointChoice({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
-  const value = endpointOptions.find(option => option === raw);
+  const value = endpointTypes.find(option => option === raw);
   if (!value) return;
+  if (value === 'naidan_rpc' && !rpcEnabled.value) return;
   switch (value) {
   case 'naidan_rpc': draft.value.endpoint = { type: 'naidan_rpc', connectionId: undefined }; break;
   case 'inherit': draft.value.endpoint = undefined; break;
@@ -127,7 +130,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </label>
     <label tw-class="block space-y-1">
       <span>{{ lazyStrings.imageGeneration__translation_endpoint() }}</span>
-      <span tw-class="relative block"><select :value="draft.endpoint?.type ?? 'inherit'" @change="endpointChoice({ event: $event })" data-testid="translation-endpoint-choice" tw-class="appearance-none w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"><option v-for="choice in endpointOptions" :key="choice" :value="choice">{{ choice === 'inherit' ? lazyStrings.imageGeneration__translation_inherit() : choice }}</option><option v-if="draft.endpoint?.type === 'unsupported_experimental_endpoint'" value="unsupported_experimental_endpoint">{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option></select><ChevronDownIcon tw-class="pointer-events-none absolute right-3 top-2 w-4 h-4" /></span>
+      <span tw-class="relative block"><select :value="draft.endpoint?.type ?? 'inherit'" @change="endpointChoice({ event: $event })" data-testid="translation-endpoint-choice" tw-class="appearance-none w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"><option v-for="choice in endpointOptions" :key="choice" :value="choice">{{ choice === 'inherit' ? lazyStrings.imageGeneration__translation_inherit() : choice }}</option><option v-if="!rpcEnabled && draft.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option><option v-if="draft.endpoint?.type === 'unsupported_experimental_endpoint'" value="unsupported_experimental_endpoint">{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option></select><ChevronDownIcon tw-class="pointer-events-none absolute right-3 top-2 w-4 h-4" /></span>
     </label>
     <RpcConnectionSelect v-if="draft.endpoint?.type === 'naidan_rpc'" v-model="draft.endpoint.connectionId" />
     <template v-if="httpEndpoint">

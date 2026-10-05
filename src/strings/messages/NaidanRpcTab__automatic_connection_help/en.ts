@@ -1,0 +1,1 @@
+export const NaidanRpcTab__automatic_connection_help = (): string => "Resume this connection when Naidan starts and retry after an unexpected disconnection. Disconnecting pauses automatic connections for this page; the setting applies again after a reload.";

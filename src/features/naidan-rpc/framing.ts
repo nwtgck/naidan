@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { decode, encode } from '@/features/naidan-rpc/codec';
 import type { WireValue } from '@/features/naidan-rpc/codec';
-import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, NaidanRpcError } from '@/features/naidan-rpc/primitives';
+import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, NaidanRpcError, NaidanRpcPublicError, publicErrorDetailsSchema, RPC_VERSION } from '@/features/naidan-rpc/primitives';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
 
 const id = z.number().int().min(1).max(65535), sequence = z.number().int().min(1).max(0xffffffff);
 const scope = z.enum(['input', 'result']);
 export const frameSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('open'), version: z.literal(1), contract: z.string().max(64), method: z.string().max(64), timeoutMs: z.number().int().positive().max(2147483647).optional(), value: z.unknown() }),
+  z.strictObject({ type: z.literal('open'), version: z.literal(RPC_VERSION), contract: z.string().max(64), method: z.string().max(64), timeoutMs: z.number().int().positive().max(2147483647).optional(), value: z.unknown() }),
   z.strictObject({ type: z.literal('result'), value: z.unknown() }),
   z.strictObject({ type: z.literal('accept'), scope, ids: z.array(id).max(16) }),
   z.strictObject({ type: z.literal('pull'), id, sequence }),
@@ -19,7 +19,8 @@ export const frameSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('returned'), invocation: sequence, value: z.unknown() }),
   z.strictObject({ type: z.literal('raised'), invocation: sequence }),
   z.strictObject({ type: z.literal('notice'), name: z.string().max(64), value: z.unknown() }),
-  z.strictObject({ type: z.literal('finish'), code: z.enum(codes).optional() }),
+  z.strictObject({ type: z.literal('finish'), code: z.enum(codes).optional(), details: publicErrorDetailsSchema.optional() })
+    .refine(value => value.code !== undefined || value.details === undefined),
   z.strictObject({ type: z.literal('ack') }),
 ]);
 export type Frame = z.output<typeof frameSchema>;
@@ -47,10 +48,15 @@ export class FramedDuplex {
   }
   send({ frame }: { frame: Frame }): Promise<void> {
     if (this.failure) return Promise.reject(this.failure);
-    check({ condition: !this.closing && this.queue.length < QUEUE_FRAMES, code: 'RESOURCE_EXHAUSTED' });
+    check({ condition: !this.closing, code: 'RESOURCE_EXHAUSTED' });
+    if (this.queue.length >= QUEUE_FRAMES) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: {
+      scope: 'rpc-frame', constraint: 'queued-frames', limit: QUEUE_FRAMES, observed: this.queue.length + 1,
+    } });
     const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES });
     const bytes = new Uint8Array(payload.length + 4); new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
-    check({ condition: this.queuedBytes + bytes.length <= QUEUE_BYTES, code: 'RESOURCE_EXHAUSTED' });
+    if (this.queuedBytes + bytes.length > QUEUE_BYTES) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: {
+      scope: 'rpc-frame', constraint: 'queued-bytes', limit: QUEUE_BYTES, observed: this.queuedBytes + bytes.length,
+    } });
     const settled = deferred<void>(); this.queue.push({ bytes, settled }); this.queuedBytes += bytes.length;
     this.kick(); return settled.promise;
   }

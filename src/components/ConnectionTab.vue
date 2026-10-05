@@ -71,6 +71,8 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
+const rpcEnabled = computed(() => form.value.experimental?.naidanRpc === 'enabled');
+
 const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
@@ -969,7 +971,8 @@ defineExpose({
                 >
                   <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                  <option value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-else-if="endpointType === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                   <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available' ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
@@ -1170,7 +1173,8 @@ defineExpose({
                       >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                       <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                       <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                      <option value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                      <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                      <option v-else-if="globalTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                       <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                       <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
                       <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>

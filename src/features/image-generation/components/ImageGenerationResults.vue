@@ -157,7 +157,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button v-if="results.length" type="button" @click="clearResults" tw-class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 text-red-600 dark:text-red-400 font-bold rounded-xl border border-red-100 dark:border-red-900/30 bg-red-50/40 dark:bg-red-900/10 px-3 py-2 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-10">{{ lazyStrings.stableDiffusionCppBrowser__clear_results() }}</button>
       </div>
     </ImageSettingsSection>
-    <ImageEngineState v-if="view.executionTarget?.kind.value !== 'naidan_rpc'" :view="view" :active="active" />
+    <ImageEngineState v-if="view.inferenceLocation?.kind.value !== 'naidan_rpc'" :view="view" :active="active" />
     <div ref="diagnosticsRegion" tabindex="-1" data-testid="image-diagnostics-region" tw-class="space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-2xl">
       <ImageSettingsSection v-model:open="diagnosticsOpen" :title="lazyStrings.stableDiffusionCppBrowser__diagnostics()" :summary="diagnosticStatus" data-testid="image-live-diagnostics">
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__debug_help() }}</p>
@@ -174,7 +174,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </ImageSettingsSection>
       <details v-if="displayedFailure" open tw-class="rounded-xl border border-red-300 dark:border-red-800 p-4">
         <summary tw-class="font-medium">{{ lazyStrings.stableDiffusionCppBrowser__diagnostics() }}</summary>
-        <pre role="alert" tw-class="text-xs whitespace-pre-wrap break-words mt-3 max-h-72 overflow-auto">{{ displayedFailure }}</pre>
+        <pre role="alert" data-testid="image-generation-failure-detail" tw-class="text-xs whitespace-pre-wrap break-words mt-3 max-h-72 overflow-auto">{{ displayedFailure }}</pre>
       </details>
     </div>
     <ImageGenerationViewer :download-enabled="true" v-if="viewerIndex !== undefined" v-model:index="viewerIndex" :count="results.length" @close="viewerIndex = undefined">

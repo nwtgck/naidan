@@ -1,3 +1,5 @@
+// @vitest-environment node
+import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { expect, it, vi } from 'vitest';
 import { preparePeerImageExecution } from './image-execution';
 import { NaidanPeerManager } from '@/features/naidan-peer-rpc/runtime/manager';
@@ -10,6 +12,8 @@ import { NaidanRpcPeer, expose } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
+
+const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
 function image(): Blob {
   // Structural wire fixture only: no real PNG decoding, CRC or GPU is tested.
@@ -26,7 +30,7 @@ function input(): PeerImageInput {
 async function setup() {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
   const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-    localPublicKey: encodePeerKey({ bytes: local }), label: 'Image peer', revision: 0, allowedMethods: [],
+    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Image peer', revision: 0, allowedMethods: [],
     transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] } };
   const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), lifetime = new AbortController();
   const closed = Promise.withResolvers<void>();
@@ -43,14 +47,14 @@ async function setup() {
   const resources: ReadOnlyInferenceResources = { generateImage, generateChat: unexpected, listChatModels: unexpected, listImageModels: unexpected };
   const inference = { resources, inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }) };
   const provider = new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract,
-    implementation: createNaidanPeerImplementation({ inference }), allowedMethods: ['generateImage'] })],
+    implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference }), allowedMethods: ['generateImage'] })],
   limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const open = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
     signal.addEventListener('abort', abort, { once: true });
     return { ...pair.a, closed: closed.promise, peerIdentity: remote, abort };
   });
   const manager = new NaidanPeerManager({ dependencies: {
-    storage: { list: async () => [record], readIdentity: async () => undefined, remember: async () => {}, update: async ({ connection }) => connection.revision, remove: async () => {} },
+    storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
     identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }), acquireOwner: async () => ({ release() {} }),
     open, changed() {}, retireResources: async () => {}, inference,
   } });

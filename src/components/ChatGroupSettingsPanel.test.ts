@@ -109,6 +109,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 const globalStubs = {
+  RpcConnectionSelect: true,
   'lucide-vue-next': true,
   'LmParametersEditor': {
     name: 'LmParametersEditor',
@@ -144,6 +145,31 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
+  it('hides disabled RPC choices while preserving existing chat and title references', async () => {
+    mockGroup.endpoint = { type: 'naidan_rpc', connectionId: undefined };
+    mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        const select = wrapper.get(`[data-testid="${name}"]`);
+        expect(select.element).toHaveProperty('value', 'naidan_rpc');
+        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      }
+      mockSettings.experimental = { naidanRpc: 'enabled' }; await nextTick();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      }
+      mockSettings.experimental = undefined;
+      mockGroup.endpoint = undefined; mockGroup.titleGeneration = 'inherit'; await nextTick();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();

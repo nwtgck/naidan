@@ -25,6 +25,7 @@ type BrandedId<TName extends string> =
 
 export type NaidanRpcConnectionId = BrandedId<'NaidanRpcConnectionId'>;
 export type NaidanRpcPeerId = BrandedId<'NaidanRpcPeerId'>;
+export type NaidanRpcRegistryId = BrandedId<'NaidanRpcRegistryId'>;
 
 export type ChatId = BrandedId<'ChatId'>;
 export type MessageId = BrandedId<'MessageId'>;
@@ -61,6 +62,9 @@ export function toNaidanRpcConnectionId({ raw }: { raw: string }): NaidanRpcConn
 }
 export function toNaidanRpcPeerId({ raw }: { raw: string }): NaidanRpcPeerId {
   return raw as unknown as NaidanRpcPeerId;
+}
+export function toNaidanRpcRegistryId({ raw }: { raw: string }): NaidanRpcRegistryId {
+  return raw as unknown as NaidanRpcRegistryId;
 }
 
 export function toChatId({ raw }: { raw: string }): ChatId {

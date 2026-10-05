@@ -369,3 +369,15 @@ it('opens diagnostics inside the workspace execution disclosure without changing
   const diagnostics = wrapper.findAll('details').find(details => details.text().includes('Diagnostics'));
   expect(diagnostics?.attributes('open')).toBeDefined();
 });
+
+it('displays the complete RPC error detail as text in workspace diagnostics', () => {
+  const view = useImageGeneration();
+  const detail = `\
+Image generation or delivery failed
+RPC code: HANDLER_FAILED
+Reported details:
+{"stage":"sampling","reason":"engine-failed"}`;
+  view.latestRun.value = { status: 'failed', width: 256, height: 256, failure: detail };
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true, presentation: 'settings', persistence: 'workspace' } });
+  expect(wrapper.get('[data-testid="image-generation-failure-detail"]').element.textContent).toBe(detail);
+});

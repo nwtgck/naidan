@@ -26,8 +26,29 @@ it('does not treat relay credentials as part of the shared route namespace', asy
   await openPipingRpc({ ...common, settings: { ...settings, headers: [{ name: 'Authorization', value: 'secret' }] } });
   expect(calls.connect.mock.calls[0]![0].code).toBe(calls.connect.mock.calls[1]![0].code);
 });
-it('keeps first-pairing codes short and requires an explicit verifier', async () => {
-  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: 'peer-' + 'a'.repeat(64), role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal })).rejects.toThrow();
+it('bounds first-pairing input and still requires an explicit verifier', async () => {
+  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: 'a'.repeat(129), role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal })).rejects.toThrow();
   await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: '1234', role: 'initiator', verifyPeer: undefined, signal: new AbortController().signal })).rejects.toThrow();
   expect(calls.pair).not.toHaveBeenCalled();
+});
+it('uses reciprocal discovery routes for normalized Unicode meeting codes without bypassing comparison', async () => {
+  const verifyPeer = vi.fn(async () => true);
+  const common = { settings, peerKey: undefined, verifyPeer, signal: new AbortController().signal };
+  await openPipingRpc({ ...common, identity: a, code: '  cafe\u0301 家 🔌  ', role: 'initiator' });
+  await openPipingRpc({ ...common, identity: b, code: 'café 家 🔌', role: 'responder' });
+  const first = calls.pair.mock.calls[0]![0], second = calls.pair.mock.calls[1]![0];
+  expect(first.code).toMatch(/^peer-[0-9a-f]{64}$/); expect(first.code).toBe(second.code);
+  expect(first.verifyPeer).toBe(verifyPeer); expect(second.verifyPeer).toBe(verifyPeer);
+  const left = await RendezvousChannel.create({ role: 'initiator', code: first.code, origin: settings.serverUrl });
+  const right = await RendezvousChannel.create({ role: 'responder', code: second.code, origin: settings.serverUrl });
+  expect(left.routes.send).toBe(right.routes.receive); left.dispose(); right.dispose();
+  expect(calls.connect).not.toHaveBeenCalled();
+});
+it('treats input resembling a pinned route as an ordinary meeting code requiring comparison', async () => {
+  const code = 'peer-' + 'a'.repeat(64), verifyPeer = vi.fn(async () => true);
+  await openPipingRpc({ settings, identity: a, peerKey: undefined, code, role: 'initiator', verifyPeer, signal: new AbortController().signal });
+  expect(calls.pair).toHaveBeenCalledOnce();
+  expect(calls.pair.mock.calls[0]![0].code).not.toBe(code);
+  expect(calls.pair.mock.calls[0]![0].verifyPeer).toBe(verifyPeer);
+  expect(calls.connect).not.toHaveBeenCalled();
 });

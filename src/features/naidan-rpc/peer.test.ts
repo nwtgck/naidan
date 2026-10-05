@@ -2,7 +2,7 @@ import { methodNames } from '@/features/naidan-rpc/contract';
 // @vitest-environment node
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
-import { contract, procedure, expose, rpc, NaidanRpcPeer } from '@/features/naidan-rpc';
+import { contract, procedure, expose, rpc, NaidanRpcPeer, NaidanRpcPublicError } from '@/features/naidan-rpc';
 import type { NaidanRpcExposure } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -35,6 +35,44 @@ const arithmetic = contract({ name: 'example.math', methods: {
   sum: procedure({ input: z.object({ x: z.number(), y: z.number().optional() }), result: z.number(), notifications: {} }),
 } });
 const math = expose({ contract: arithmetic, allowedMethods: methodNames({ contract: arithmetic }), implementation: { sum: ({ input }) => input.x + (input.y ?? 0) } });
+
+it('returns explicitly public error context while keeping ordinary exception text private', async () => {
+  const details = { kind: 'test-failure', stage: 'computation', reason: 'failed' };
+  const exports = expose({ contract: arithmetic, allowedMethods: ['sum'], implementation: { sum({ input }) {
+    if (input.x === 0) throw new NaidanRpcPublicError({ code: 'HANDLER_FAILED', details });
+    throw new Error('private-native-path-and-prompt');
+  } } });
+  const { a } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const publicCall = a.client({ contract: arithmetic }).sum({ input: { x: 0, y: undefined }, on: {}, signal: undefined, timeoutMs: 1500 });
+  await expect(publicCall.result).rejects.toMatchObject({ code: 'HANDLER_FAILED', details });
+  await expect(publicCall.closed).rejects.toMatchObject({ code: 'HANDLER_FAILED', details });
+  const privateCall = a.client({ contract: arithmetic }).sum({ input: { x: 1, y: undefined }, on: {}, signal: undefined, timeoutMs: 1500 });
+  await expect(privateCall.result).rejects.toMatchObject({ code: 'HANDLER_FAILED', message: 'HANDLER_FAILED' });
+  await expect(privateCall.closed).rejects.toMatchObject({ code: 'HANDLER_FAILED', message: 'HANDLER_FAILED' });
+});
+
+it('preserves public context on a late stream failure and still completes retirement', async () => {
+  const details = { stage: 'stream-delivery', reason: 'failed' };
+  const definition = contract({ name: 'example.public-stream-error', methods: { run: procedure({ input: z.object({}), result: rpc.stream({ item: z.number() }), notifications: {} }) } });
+  const exports = expose({ contract: definition, allowedMethods: ['run'], implementation: { run: () => new ReadableStream({ pull(controller) {
+    controller.error(new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details }));
+  } }, { highWaterMark: 0 }) } });
+  const { a, transport } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
+  await expect((await call.result).getReader().read()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', details });
+  await expect(call.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', details });
+  expect(transport.stats().active).toBe(0);
+});
+
+it('delivers the precise generic item limit when serialization fails at the provider', async () => {
+  const definition = contract({ name: 'example.item-limit', methods: { run: procedure({ input: z.object({}), result: rpc.stream({ item: z.string() }), notifications: {} }) } });
+  const exports = expose({ contract: definition, allowedMethods: ['run'], implementation: { run: () => source({ items: ['x'.repeat(21848)] }) } });
+  const { a } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
+  const expected = { code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'string-code-units', limit: 16384, observed: 21848 } };
+  await expect((await call.result).getReader().read()).rejects.toMatchObject(expected);
+  await expect(call.closed).rejects.toMatchObject(expected);
+});
 
 it('two peers call concurrently and return finite values with optional field normalization', async () => {
   const { a, b, transport } = peers({ aExports: [math], bExports: [math], capacity: 8 });
@@ -88,7 +126,7 @@ it('reverse callbacks return values concurrently without acquiring another lower
 
 it('old implementations decline unknown streams without reading their sources', async () => {
   const legacy = contract({ name: 'example.compat', methods: { run: procedure({ input: z.object({ value: z.number() }), result: z.number(), notifications: {} }) } });
-  const newer = contract({ name: 'example.compat', methods: { run: procedure({ input: z.object({ value: z.number(), extra: rpc.bytes() }), result: z.number(), notifications: {} }) } });
+  const newer = contract({ name: 'example.compat', methods: { run: procedure({ input: z.object({ value: z.number(), extra: rpc.byteStream() }), result: z.number(), notifications: {} }) } });
   let pulls = 0, cancels = 0;
   const upload = new ReadableStream<Uint8Array>({ pull() {
     pulls++;
@@ -117,7 +155,7 @@ it('one result stream cancellation does not cancel its independent sibling', asy
 });
 
 it('raw byte streams transfer large source chunks through bounded item frames', async () => {
-  const definition = contract({ name: 'example.bytes', methods: { echo: procedure({ input: z.object({ data: rpc.bytes() }), result: rpc.bytes(), notifications: {} }) } });
+  const definition = contract({ name: 'example.bytes', methods: { echo: procedure({ input: z.object({ data: rpc.byteStream() }), result: rpc.byteStream(), notifications: {} }) } });
   const { a, transport } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { echo: ({ input }) => input.data } })], capacity: 1 });
   const input = new Uint8Array(199999); for (let index = 0; index < input.length; index++) input[index] = index % 251;
   const call = a.client({ contract: definition }).echo({ input: { data: source({ items: [input] }) }, on: {}, signal: undefined, timeoutMs: 1500 });
@@ -173,7 +211,7 @@ it('a call timeout fails pending streams without cancelling another parallel cal
 
 it('new result fields containing streams are declined by old callers without source reads', async () => {
   const old = contract({ name: 'example.output-compat', methods: { run: procedure({ input: z.object({}), result: z.object({ value: z.number() }), notifications: {} }) } });
-  const modern = contract({ name: 'example.output-compat', methods: { run: procedure({ input: z.object({}), result: z.object({ value: z.number(), extra: rpc.bytes() }), notifications: {} }) } });
+  const modern = contract({ name: 'example.output-compat', methods: { run: procedure({ input: z.object({}), result: z.object({ value: z.number(), extra: rpc.byteStream() }), notifications: {} }) } });
   let pulls = 0, cancellations = 0;
   const { a } = peers({ aExports: [], bExports: [expose({ contract: modern, allowedMethods: methodNames({ contract: modern }), implementation: { run: () => ({ value: 9,
     extra: new ReadableStream<Uint8Array>({ pull() {
@@ -188,7 +226,7 @@ it('new result fields containing streams are declined by old callers without sou
 });
 
 it('unused input is stopped after finite result and input aliasing fails before opening a transport', async () => {
-  const definition = contract({ name: 'example.input', methods: { run: procedure({ input: z.object({ a: rpc.bytes(), b: rpc.bytes() }), result: z.number(), notifications: {} }) } });
+  const definition = contract({ name: 'example.input', methods: { run: procedure({ input: z.object({ a: rpc.byteStream(), b: rpc.byteStream() }), result: z.number(), notifications: {} }) } });
   const { a, transport } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => 4 } })], capacity: 2 });
   let cancelled = 0;
   const stream = () => new ReadableStream<Uint8Array>({ cancel() {
@@ -233,7 +271,7 @@ it('notifications are latest-value signals and slow observers do not block respo
 });
 
 it('byte streams skip empty chunks while retaining correct content and termination', async () => {
-  const definition = contract({ name: 'example.empty-bytes', methods: { run: procedure({ input: z.object({}), result: rpc.bytes(), notifications: {} }) } });
+  const definition = contract({ name: 'example.empty-bytes', methods: { run: procedure({ input: z.object({}), result: rpc.byteStream(), notifications: {} }) } });
   const { a } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => source({ items: [new Uint8Array(), new Uint8Array([5, 7]), new Uint8Array()] }) } })], capacity: 1 });
   const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   expect(Buffer.concat(await collect({ stream: await call.result }))).toEqual(Buffer.from([5, 7])); await call.closed;
@@ -264,4 +302,30 @@ it('pausing admission preserves an admitted invocation but denies new calls unti
   b.setIncomingAdmission({ status: 'open' });
   const resumed = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
   expect(await resumed.result).toBe(42); await resumed.closed;
+});
+
+it('a suspended admission exception does not grant revoked methods or survive disposal', async () => {
+  let invocations = 0;
+  const definition = contract({ name: 'test.discovery', methods: {
+    status: procedure({ input: z.object({}), result: z.number(), notifications: {} }),
+    infer: procedure({ input: z.object({}), result: z.number(), notifications: {} }),
+  } });
+  const { a, b } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: ['status', 'infer'], implementation: {
+    status: () => 42, infer: () => {
+      invocations++; return 7;
+    },
+  } })], capacity: 4 });
+  b.allowIncomingWhileSuspended({ contract: definition, allowedMethods: ['status'] });
+  b.setIncomingAdmission({ status: 'suspended' });
+  const client = a.client({ contract: definition });
+  const status = client.status({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  expect(await status.result).toBe(42); await status.closed;
+  const infer = client.infer({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  await expect(infer.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' }); await expect(infer.closed).rejects.toBeDefined();
+  expect(invocations).toBe(0);
+  b.setAllowedMethods({ contract: definition, allowedMethods: ['infer'] });
+  const revoked = client.status({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  await expect(revoked.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' }); await expect(revoked.closed).rejects.toBeDefined();
+  expect(() => b.allowIncomingWhileSuspended({ contract: contract({ ...definition }), allowedMethods: ['status'] })).toThrow();
+  b.dispose(); expect(() => b.allowIncomingWhileSuspended({ contract: definition, allowedMethods: ['status'] })).toThrow();
 });

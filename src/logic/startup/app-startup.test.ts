@@ -13,6 +13,9 @@ const MainApp = defineComponent({
 });
 const loadChatsForAppStartup = vi.hoisted(() => vi.fn(async () => {}));
 const activateChatBootstrap = vi.hoisted(() => vi.fn());
+const disposeRpcAutomaticConnections = vi.hoisted(() => vi.fn());
+const startRpcAutomaticConnections = vi.hoisted(() => vi.fn(() => disposeRpcAutomaticConnections));
+vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ startRpcAutomaticConnections }));
 
 vi.mock('@/MainApp.vue', () => ({
   default: MainApp,
@@ -122,6 +125,7 @@ describe('app startup', () => {
   beforeEach(() => {
     loadChatsForAppStartup.mockClear();
     activateChatBootstrap.mockClear();
+    startRpcAutomaticConnections.mockClear(); disposeRpcAutomaticConnections.mockClear();
   });
 
   it('uses the normal main startup path for an already configured user', async () => {
@@ -144,6 +148,7 @@ describe('app startup', () => {
       mainApp: MainApp,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
+    expect(startRpcAutomaticConnections).not.toHaveBeenCalled();
 
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     const dispose = await startup;
@@ -156,6 +161,8 @@ describe('app startup', () => {
     });
 
     dispose();
+    expect(startRpcAutomaticConnections).toHaveBeenCalledOnce();
+    expect(disposeRpcAutomaticConnections).toHaveBeenCalledOnce();
   });
 
   it('gives onboarding one paint and then renders the real app before dismissal', async () => {

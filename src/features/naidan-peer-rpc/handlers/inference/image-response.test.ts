@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { promiseAllKeyed } from '@/utils/promise';
 import { collectBytes } from '@/features/naidan-peer-rpc/codecs/transfer';
@@ -54,7 +55,8 @@ it('fails both readers on native failure and releases the delivery reservation',
   const { response, budget } = setup({ run: async () => {
     throw new Error('Native failure');
   } });
-  await Promise.all([expect(response.image.getReader().read()).rejects.toThrow('Native failure'), expect(response.events.getReader().read()).rejects.toThrow('Native failure')]);
+  await Promise.all([expect(response.image.getReader().read()).rejects.toMatchObject({ details: { stage: 'generation', reason: 'generation-failed' } }),
+    expect(response.events.getReader().read()).rejects.toMatchObject({ details: { stage: 'generation', reason: 'generation-failed' } })]);
   expect(budget.reserved).toBe(0);
 });
 it('bounds pending previews without blocking native computation behind a slow events reader', async () => {
@@ -93,7 +95,8 @@ it('propagates external revocation to both outputs before native work settles', 
 });
 it('rejects returned pixels with unexpected dimensions', async () => {
   const { response, budget } = setup({ run: async () => ({ ...output(), width: 512 }) });
-  await Promise.all([expect(collect({ stream: response.image })).rejects.toThrow('Unexpected'), expect(collect({ stream: response.events })).rejects.toThrow('Unexpected')]);
+  await Promise.all([expect(collect({ stream: response.image })).rejects.toMatchObject({ details: { stage: 'output-validation', reason: 'invalid-output' } }),
+    expect(collect({ stream: response.events })).rejects.toMatchObject({ details: { stage: 'output-validation', reason: 'invalid-output' } })]);
   expect(budget.reserved).toBe(0);
 });
 it('retains delivery ownership while a cancelled preview is still materializing bytes', async () => {

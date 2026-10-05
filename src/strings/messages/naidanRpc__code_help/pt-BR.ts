@@ -1,1 +1,1 @@
-export const naidanRpc__code_help = (): string => "O número serve apenas como ponto de encontro, não para verificar a identidade. Escolha papéis opostos nos dois dispositivos.";
+export const naidanRpc__code_help = (): string => "Este código serve como ponto de encontro. Verifique o outro dispositivo comparando todo o texto de confirmação por um meio confiável, como uma chamada telefônica. Escolha papéis opostos nos dois dispositivos.";

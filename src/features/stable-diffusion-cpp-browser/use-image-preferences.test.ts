@@ -27,7 +27,7 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
   const scope = effectScope(); scopes.push(scope);
   return scope.run(() => {
     const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { browserImageGeneration: saved, locale: 'en' } });
-    const ready = ref(initialized), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
+    const ready = ref(initialized), localModels = ref(true), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
     const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
     const download = vi.fn(), onSelection = vi.fn(), restored = vi.fn(), failed = vi.fn();
     const list = vi.fn(async () => entries);
@@ -35,13 +35,33 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
     const updateExperimental = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
       settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
     });
-    useImagePreferences({ settings, initialized: ready, updateExperimental, form, seedMode, historyEnabled, library, restoring, restored, failed });
-    return { scope, settings, ready, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, download, onSelection, list };
+    const preferences = useImagePreferences({ settings, initialized: ready, captureStorage: () => () => true, updateForStorage: async ({ updater }) => {
+      await updateExperimental({ updater }); return 'saved';
+    }, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed });
+    return { preferences, scope, settings, ready, localModels, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, download, onSelection, list };
   })!;
 }
 async function settled(): Promise<void> {
   await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick();
 }
+
+it('defers local model discovery until switching back from a restored remote inference location', async () => {
+  const saved: BrowserImageGenerationSettings = { width: 768, modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/user/0/z-image.gguf' } }, components: [], loras: [] } };
+  const h = harness({ initialized: false, saved, entries: repositories() });
+  h.localModels.value = false; h.ready.value = true; await settled();
+  expect(h.form.parameters.value.width).toBe(768); expect(h.list).not.toHaveBeenCalled(); expect(h.updateExperimental).not.toHaveBeenCalled();
+  h.localModels.value = true;
+  await vi.waitFor(() => expect(h.restoring.value).toBe(false)); await settled();
+  expect(h.list).toHaveBeenCalledOnce(); expect(h.library.main.value).toContain('user/0'); expect(h.updateExperimental).not.toHaveBeenCalled();
+});
+
+it('lets an explicit session configuration supersede deferred global model defaults', async () => {
+  const saved: BrowserImageGenerationSettings = { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/user/0/z-image.gguf' } }, components: [], loras: [] } };
+  const h = harness({ initialized: false, saved, entries: repositories() });
+  h.localModels.value = false; h.ready.value = true; await settled();
+  h.preferences.discardDeferredModelSelection(); h.localModels.value = true; await settled();
+  expect(h.list).not.toHaveBeenCalled(); expect(h.restored).not.toHaveBeenCalled();
+});
 
 it('hydrates once before saving and stores only approved preferences after explicit edits', async () => {
   const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', debug: 'on', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType: 'f16' } });

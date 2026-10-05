@@ -40,15 +40,15 @@ import { ImageRecoveredOutputs__download_image } from '@/strings/messages/ImageR
 import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/ja';
 import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/ja';
 import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/ja';
-import { ImageExecutionTarget__refresh_connections } from '@/strings/messages/ImageExecutionTarget__refresh_connections/ja';
-import { ImageExecutionTarget__use_configuration } from '@/strings/messages/ImageExecutionTarget__use_configuration/ja';
-import { ImageExecutionTarget__connect_in_rpc_settings } from '@/strings/messages/ImageExecutionTarget__connect_in_rpc_settings/ja';
-import { ImageExecutionTarget__list_remote_models } from '@/strings/messages/ImageExecutionTarget__list_remote_models/ja';
-import { ImageExecutionTarget__remote_model } from '@/strings/messages/ImageExecutionTarget__remote_model/ja';
-import { ImageExecutionTarget__this_device } from '@/strings/messages/ImageExecutionTarget__this_device/ja';
-import { ImageExecutionTarget__compute_with } from '@/strings/messages/ImageExecutionTarget__compute_with/ja';
-import { ImageExecutionTarget__explicit_model_configuration } from '@/strings/messages/ImageExecutionTarget__explicit_model_configuration/ja';
-import { ImageExecutionTarget__remote_models_are_read_only } from '@/strings/messages/ImageExecutionTarget__remote_models_are_read_only/ja';
+import { ImageInferenceLocation__refresh_connections } from '@/strings/messages/ImageInferenceLocation__refresh_connections/ja';
+import { ImageInferenceLocation__use_configuration } from '@/strings/messages/ImageInferenceLocation__use_configuration/ja';
+import { ImageInferenceLocation__connect_in_rpc_settings } from '@/strings/messages/ImageInferenceLocation__connect_in_rpc_settings/ja';
+import { ImageInferenceLocation__list_remote_models } from '@/strings/messages/ImageInferenceLocation__list_remote_models/ja';
+import { ImageInferenceLocation__remote_model } from '@/strings/messages/ImageInferenceLocation__remote_model/ja';
+import { ImageInferenceLocation__this_device } from '@/strings/messages/ImageInferenceLocation__this_device/ja';
+import { ImageInferenceLocation__compute_with } from '@/strings/messages/ImageInferenceLocation__compute_with/ja';
+import { ImageInferenceLocation__explicit_model_configuration } from '@/strings/messages/ImageInferenceLocation__explicit_model_configuration/ja';
+import { ImageInferenceLocation__remote_models_are_read_only } from '@/strings/messages/ImageInferenceLocation__remote_models_are_read_only/ja';
 import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/ja';
 import { naidanRpc__enable_first } from '@/strings/messages/naidanRpc__enable_first/ja';
 import { naidanRpc__methods_empty } from '@/strings/messages/naidanRpc__methods_empty/ja';
@@ -67,7 +67,21 @@ import { naidanRpc__forget_confirm } from '@/strings/messages/naidanRpc__forget_
 import { naidanRpc__forget } from '@/strings/messages/naidanRpc__forget/ja';
 import { naidanRpc__save_connection } from '@/strings/messages/naidanRpc__save_connection/ja';
 import { naidanRpc__label } from '@/strings/messages/naidanRpc__label/ja';
+import { NaidanRpcTab__connect_automatically_on_startup } from '@/strings/messages/NaidanRpcTab__connect_automatically_on_startup/ja';
+import { NaidanRpcTab__automatic_connection_help } from '@/strings/messages/NaidanRpcTab__automatic_connection_help/ja';
+import { NaidanRpcTab__save_with_persistent_storage_first } from '@/strings/messages/NaidanRpcTab__save_with_persistent_storage_first/ja';
 import { NaidanRpcTab__save_name } from '@/strings/messages/NaidanRpcTab__save_name/ja';
+import { RpcPeerProvision__available_from_peer } from '@/strings/messages/RpcPeerProvision__available_from_peer/ja';
+import { RpcPeerProvision__connect_to_check } from '@/strings/messages/RpcPeerProvision__connect_to_check/ja';
+import { RpcPeerProvision__checking_provided_functions } from '@/strings/messages/RpcPeerProvision__checking_provided_functions/ja';
+import { RpcPeerProvision__could_not_check } from '@/strings/messages/RpcPeerProvision__could_not_check/ja';
+import { RpcPeerProvision__not_provided } from '@/strings/messages/RpcPeerProvision__not_provided/ja';
+import { RpcPeerProvision__provided } from '@/strings/messages/RpcPeerProvision__provided/ja';
+import { RpcPeerProvision__partially_provided } from '@/strings/messages/RpcPeerProvision__partially_provided/ja';
+import { RpcPeerProvision__chat_inference } from '@/strings/messages/RpcPeerProvision__chat_inference/ja';
+import { RpcPeerProvision__image_generation } from '@/strings/messages/RpcPeerProvision__image_generation/ja';
+import { NaidanRpcTab__method_details } from '@/strings/messages/NaidanRpcTab__method_details/ja';
+import { NaidanRpcTab__partially_enabled } from '@/strings/messages/NaidanRpcTab__partially_enabled/ja';
 import { naidanRpc__remember_help } from '@/strings/messages/naidanRpc__remember_help/ja';
 import { naidanRpc__remember } from '@/strings/messages/naidanRpc__remember/ja';
 import { naidanRpc__reject } from '@/strings/messages/naidanRpc__reject/ja';
@@ -79,6 +93,7 @@ import { naidanRpc__responder } from '@/strings/messages/naidanRpc__responder/ja
 import { naidanRpc__initiator } from '@/strings/messages/naidanRpc__initiator/ja';
 import { naidanRpc__code_help } from '@/strings/messages/naidanRpc__code_help/ja';
 import { naidanRpc__code } from '@/strings/messages/naidanRpc__code/ja';
+import { naidanRpc__disabled } from '@/strings/messages/naidanRpc__disabled/ja';
 import { naidanRpc__remove_header } from '@/strings/messages/naidanRpc__remove_header/ja';
 import { naidanRpc__header_value } from '@/strings/messages/naidanRpc__header_value/ja';
 import { naidanRpc__header_name } from '@/strings/messages/naidanRpc__header_name/ja';
@@ -2697,15 +2712,15 @@ export const catalog = {
   ImageRecoveredOutputs__recovery_explanation,
   ImageRecoveredOutputs__unconfirmed,
   ImageRecoveredOutputs__unconfirmed_images,
-  ImageExecutionTarget__refresh_connections,
-  ImageExecutionTarget__use_configuration,
-  ImageExecutionTarget__connect_in_rpc_settings,
-  ImageExecutionTarget__list_remote_models,
-  ImageExecutionTarget__remote_model,
-  ImageExecutionTarget__this_device,
-  ImageExecutionTarget__compute_with,
-  ImageExecutionTarget__explicit_model_configuration,
-  ImageExecutionTarget__remote_models_are_read_only,
+  ImageInferenceLocation__refresh_connections,
+  ImageInferenceLocation__use_configuration,
+  ImageInferenceLocation__connect_in_rpc_settings,
+  ImageInferenceLocation__list_remote_models,
+  ImageInferenceLocation__remote_model,
+  ImageInferenceLocation__this_device,
+  ImageInferenceLocation__compute_with,
+  ImageInferenceLocation__explicit_model_configuration,
+  ImageInferenceLocation__remote_models_are_read_only,
   imageGeneration__session_deletion_pending,
   imageGeneration__session_unavailable,
   imageGeneration__finish_session_work_before_deleting,
@@ -5245,6 +5260,7 @@ export const catalog = {
   naidanRpc__header_value,
   naidanRpc__remove_header,
   naidanRpc__code,
+  naidanRpc__disabled,
   naidanRpc__code_help,
   naidanRpc__initiator,
   naidanRpc__responder,
@@ -5256,7 +5272,21 @@ export const catalog = {
   naidanRpc__remember,
   naidanRpc__remember_help,
   naidanRpc__label,
+  NaidanRpcTab__connect_automatically_on_startup,
+  NaidanRpcTab__automatic_connection_help,
+  NaidanRpcTab__save_with_persistent_storage_first,
   NaidanRpcTab__save_name,
+  RpcPeerProvision__available_from_peer,
+  RpcPeerProvision__connect_to_check,
+  RpcPeerProvision__checking_provided_functions,
+  RpcPeerProvision__could_not_check,
+  RpcPeerProvision__not_provided,
+  RpcPeerProvision__provided,
+  RpcPeerProvision__partially_provided,
+  RpcPeerProvision__chat_inference,
+  RpcPeerProvision__image_generation,
+  NaidanRpcTab__method_details,
+  NaidanRpcTab__partially_enabled,
   naidanRpc__save_connection,
   naidanRpc__forget,
   naidanRpc__forget_confirm,

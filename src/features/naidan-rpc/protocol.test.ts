@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { NaidanRpcPeer, contract, procedure, rpc } from '@/features/naidan-rpc';
-import { FramedDuplex } from '@/features/naidan-rpc/framing';
+import { FramedDuplex, frameSchema } from '@/features/naidan-rpc/framing';
 import { Reference } from '@/features/naidan-rpc/codec';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 
@@ -11,6 +11,15 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 const definition = contract({ name: 'raw', methods: { get: procedure({ input: z.object({}), result: rpc.stream({ item: z.number() }), notifications: {} }) } });
+
+it('bounds public failure details and rejects details on successful completion', () => {
+  const frame = { type: 'finish', code: 'HANDLER_FAILED', details: { stage: 'sampling' } };
+  expect(frameSchema.safeParse(frame).success).toBe(true);
+  expect(frameSchema.safeParse({ ...frame, details: { stage: 'x'.repeat(513) } }).success).toBe(false);
+  expect(frameSchema.safeParse({ ...frame, details: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`field${i}`, i])) }).success).toBe(false);
+  expect(frameSchema.safeParse({ ...frame, details: { nested: { unbounded: 'value' } } }).success).toBe(false);
+  expect(frameSchema.safeParse({ ...frame, code: undefined }).success).toBe(false);
+});
 async function opened() {
   const transport = transportPair({ capacity: 1, fragmentBytes: 3 }), controller = new AbortController();
   const peer = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 1, maxCallTimeoutMs: 1000 }, signal: controller.signal });
@@ -21,7 +30,7 @@ async function opened() {
   const call = peer.client({ contract: definition }).get({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const incoming = await iterator.next(); if (incoming.done) throw new Error('Missing duplex');
   const wire = new FramedDuplex({ duplex: incoming.value });
-  expect((await wire.read())?.type).toBe('open');
+  expect(await wire.read()).toMatchObject({ type: 'open', version: 1 });
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [] } });
   return { call, wire, duplex: incoming.value };
 }
@@ -77,7 +86,7 @@ it('repeating STOP while a producer cancellation waits cannot create unbounded c
   cleanups.push(() => {
     waiting.resolve(); controller.abort(); transport.close();
   });
-  const definition = contract({ name: 'raw-stop', methods: { run: procedure({ input: rpc.bytes(), result: z.number(), notifications: {} }) } });
+  const definition = contract({ name: 'raw-stop', methods: { run: procedure({ input: rpc.byteStream(), result: z.number(), notifications: {} }) } });
   const call = peer.client({ contract: definition }).run({ input: new ReadableStream<Uint8Array>({ async cancel() {
     cancellations++; await waiting.promise;
   } }, { highWaterMark: 0 }),

@@ -23,7 +23,7 @@ function stream<S extends z.ZodType<Finite>>({ item }: { item: S }) {
   const schema = z.custom<ReadableStream<z.output<S>>>(value => value instanceof ReadableStream);
   capabilities.set(schema, { kind: 'stream', mode: 'items', item }); return schema;
 }
-function bytes() {
+function byteStream() {
   const schema = z.custom<ReadableStream<Uint8Array>>(value => value instanceof ReadableStream);
   capabilities.set(schema, { kind: 'stream', mode: 'bytes', item: z.instanceof(Uint8Array) }); return schema;
 }
@@ -31,7 +31,7 @@ function callback<I extends z.ZodType<Finite>, R extends z.ZodType<Finite>>({ in
   const schema = z.custom<CallbackToken<I, R>>(value => typeof value === 'function');
   capabilities.set(schema, { kind: 'callback', input, result }); return schema;
 }
-export const rpc = Object.freeze({ stream, bytes, callback });
+export const rpc = Object.freeze({ stream, byteStream, callback });
 export type Plan = { schema: z.ZodType; node: { kind: 'object'; fields: ReadonlyMap<string, Plan> } |
   { kind: 'array'; item: Plan } | { kind: 'optional'; inner: Plan } |
   { kind: 'capability'; capability: Capability } | { kind: 'finite' } };

@@ -31,7 +31,7 @@ function setup() {
   const unexpected = vi.fn((): never => {
     throw new Error('Catalogue access is not required');
   });
-  const client: NaidanPeerClient = { generateImage, listImageModels: unexpected, listChatModels: unexpected, generateChat: unexpected };
+  const client: NaidanPeerClient = { getProvidedMethods: unexpected, generateImage, listImageModels: unexpected, listChatModels: unexpected, generateChat: unexpected };
   const stop = new AbortController();
   const connection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), label: 'Original peer' };
   const plan = preparePeerImageExecution({ binding: { client, signal: stop.signal, connection }, input: request });

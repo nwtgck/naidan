@@ -1,3 +1,4 @@
+import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcConnectionId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 /**
@@ -2082,7 +2083,7 @@ export const buildSidebarItemsFromHierarchy = (
 type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
 const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
   if (dto === undefined) return undefined;
-  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
@@ -2115,12 +2116,14 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
   })();
   return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
     imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
+    inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
+    remoteModelEditors: remoteModelEditors?.map(dto => remoteImageModelEditorPreferenceToDomain({ dto })),
     keepPreviews, maxPreviews, maxResults, bf16WeightType });
 };
 
 const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
   if (domain === undefined) return undefined;
-  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
@@ -2153,6 +2156,8 @@ const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGeneratio
   })();
   return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
     imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
+    inferenceLocation: inferenceLocation && imageInferenceLocationToDto({ location: inferenceLocation }),
+    remoteModelEditors: remoteModelEditors?.map(preference => remoteImageModelEditorPreferenceToDto({ preference })),
     keepPreviews, maxPreviews, maxResults, bf16WeightType });
 };
 

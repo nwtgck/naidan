@@ -1,1 +1,1 @@
-export const naidanRpc__images = (): string => "画像生成";
+export const naidanRpc__images = (): string => "画像生成提供";

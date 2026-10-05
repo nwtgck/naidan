@@ -1,8 +1,18 @@
 import { expect, it, vi } from 'vitest';
 import { createMethodAccess } from './method-access';
-import type { NaidanPeerMethodName } from '@/features/naidan-peer-rpc/contract';
+import type { NaidanPeerControlledMethodName } from '@/features/naidan-peer-rpc/contract';
 
-type Names = readonly NaidanPeerMethodName[];
+type Names = readonly NaidanPeerControlledMethodName[];
+it('advances metadata revisions without installing authority or confirming unsaved restrictions', async () => {
+  const persist = vi.fn().mockRejectedValueOnce(new Error('quota')).mockResolvedValueOnce(4), apply = vi.fn();
+  const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 1, persist, apply, changed: () => {} });
+  await expect(controller.update({ allowedMethods: [] })).rejects.toThrow('quota');
+  apply.mockClear(); controller.adoptStoredRevision({ revision: 3 });
+  expect(controller.state()).toMatchObject({ effective: [], saved: ['generateChat'], revision: 3, persistence: 'failed' });
+  expect(apply).not.toHaveBeenCalled();
+  await controller.update({ allowedMethods: [] }); expect(persist).toHaveBeenLastCalledWith({ allowedMethods: [], expectedRevision: 3 });
+  expect(() => controller.adoptStoredRevision({ revision: 2 })).toThrow('revision');
+});
 function temporary({ initial }: { initial: Names }) {
   const applied: Names[] = [];
   const controller = createMethodAccess({ initial, stored: initial, revision: 0, persist: undefined, apply: ({ allowedMethods }) => applied.push(allowedMethods), changed: () => {} });
@@ -10,7 +20,7 @@ function temporary({ initial }: { initial: Names }) {
 }
 it('derives valid names without a wildcard or group authority', async () => {
   const { controller, applied } = temporary({ initial: [] });
-  const requested: NaidanPeerMethodName[] = ['listChatModels'];
+  const requested: NaidanPeerControlledMethodName[] = ['listChatModels'];
   await controller.update({ allowedMethods: requested }); requested.push('generateImage');
   expect(controller.state().effective).toEqual(['listChatModels']); expect(applied.at(-1)).toEqual(['listChatModels']);
   expect(Object.isFrozen(controller.state().effective)).toBe(true);
@@ -122,7 +132,7 @@ it('does not restore saved grants when installation synchronously closes the con
 });
 
 it('keeps the stored method set separate from a retained unsaved restriction', async () => {
-  const stored: NaidanPeerMethodName[] = ['listChatModels', 'generateChat'];
+  const stored: NaidanPeerControlledMethodName[] = ['listChatModels', 'generateChat'];
   const persist = vi.fn(async () => 8);
   const controller = createMethodAccess({ initial: ['listChatModels'], stored, revision: 7,
     persist, apply: () => {}, changed: () => {} });

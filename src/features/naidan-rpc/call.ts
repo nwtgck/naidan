@@ -4,7 +4,7 @@ import { FramedDuplex, wireValue } from '@/features/naidan-rpc/framing';
 import type { Frame } from '@/features/naidan-rpc/framing';
 import { compile, pack, project, references, isStream } from '@/features/naidan-rpc/schema';
 import type { Capability, Packed, Plan, Source } from '@/features/naidan-rpc/schema';
-import { CALLBACK_LIMIT, check, deferred, duration, ITEM_BYTES, NaidanRpcError } from '@/features/naidan-rpc/primitives';
+import { CALLBACK_LIMIT, check, deferred, duration, ITEM_BYTES, NaidanRpcError, NaidanRpcPublicError, RPC_VERSION } from '@/features/naidan-rpc/primitives';
 import type { NaidanRpcErrorCode } from '@/features/naidan-rpc/primitives';
 import type { PreparedMethod } from '@/features/naidan-rpc/contract';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
@@ -89,13 +89,16 @@ export class RpcConversation {
       pending = Promise.reject(error);
     }
     // Queue/encoding failures follow the same owned asynchronous path as transport failures.
-    void pending.catch(error => this.abort({ code: error instanceof NaidanRpcError ? error.code : 'TRANSPORT_ERROR' }));
+    void pending.catch(error => {
+      if (error instanceof NaidanRpcPublicError) this.failure ??= error;
+      this.abort({ code: error instanceof NaidanRpcError ? error.code : 'TRANSPORT_ERROR' });
+    });
     return pending;
   }
   private task({ run }: { run: () => Promise<void> }): void {
     this.jobs++;
     void Promise.resolve().then(run).catch(error => {
-      if (this.active()) this.reject({ code: error instanceof NaidanRpcError ? error.code : 'HANDLER_FAILED' });
+      if (this.active()) this.reject({ error: error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'HANDLER_FAILED' }) });
     }).finally(() => {
       this.jobs--; this.maybeFinish(); this.maybeRetire();
     });
@@ -119,7 +122,7 @@ export class RpcConversation {
     this.method = prepared; this.observers = { ...on };
     try {
       this.register({ packed, scope: 'input' }); this.inputOffered = true;
-      void this.send({ frame: { type: 'open', version: 1, contract, method, timeoutMs, value: packed.value } });
+      void this.send({ frame: { type: 'open', version: RPC_VERSION, contract, method, timeoutMs, value: packed.value } });
     } catch {
       this.abort({ code: 'INVALID_ARGUMENT' });
     }
@@ -381,7 +384,7 @@ export class RpcConversation {
       for (const [id, state] of this.imports) if (isStream(state.capability) && state.phase !== 'terminal') void this.stopImport({ id }).catch(() => {});
       if (!this.streamsTerminal({ scope: 'input', direction: 'import' })) return;
       this.finishSent = 'success'; this.notices.clear();
-      void this.send({ frame: { type: 'finish', code: undefined } }).then(() => this.channel.finish()).catch(() => this.abort({ code: 'TRANSPORT_ERROR' }));
+      void this.send({ frame: { type: 'finish', code: undefined, details: undefined } }).then(() => this.channel.finish()).catch(() => this.abort({ code: 'TRANSPORT_ERROR' }));
     } finally {
       this.finishing = false;
     }
@@ -395,17 +398,17 @@ export class RpcConversation {
     for (const pending of this.invocations.values()) pending.result.reject(error);
     this.invocations.clear();
   }
-  private reject({ code }: { code: NaidanRpcErrorCode }): void {
+  private reject({ error }: { error: NaidanRpcError }): void {
     if (this.wireEnded || this.failure) return;
-    this.failure = new NaidanRpcError({ code }); this.result.reject(this.failure); this.cancelCapabilities({ error: this.failure });
+    this.failure = error; this.result.reject(this.failure); this.cancelCapabilities({ error: this.failure });
     if (!this.finishSent) {
       this.finishSent = 'error';
-      void this.send({ frame: { type: 'finish', code } }).catch(() => this.abort({ code }));
+      void this.send({ frame: { type: 'finish', code: error.code, details: error instanceof NaidanRpcPublicError ? error.details : undefined } }).catch(() => this.abort({ code: error.code }));
     }
   }
   revokeMethods({ contract, removed }: { contract: string; removed: ReadonlySet<string> }): void {
     if (this.role === 'callee' && this.incomingMethod?.contract === contract && removed.has(this.incomingMethod.method) && this.active()) {
-      this.reject({ code: 'METHOD_NOT_ALLOWED' });
+      this.reject({ error: new NaidanRpcError({ code: 'METHOD_NOT_ALLOWED' }) });
     }
   }
   abort({ code }: { code: NaidanRpcErrorCode }): void {
@@ -429,7 +432,7 @@ export class RpcConversation {
     case 'finish': {
       check({ condition: this.finishReceived === undefined, code: 'PROTOCOL_ERROR' });
       if (frame.code !== undefined) {
-        this.failure ??= new NaidanRpcError({ code: frame.code }); this.result.reject(this.failure);
+        this.failure ??= frame.details === undefined ? new NaidanRpcError({ code: frame.code }) : new NaidanRpcPublicError({ code: frame.code, details: frame.details }); this.result.reject(this.failure);
         this.cancelCapabilities({ error: this.failure }); this.finishReceived = 'error';
       } else {
         check({ condition: isCaller({ role: this.role }) && this.resultReceived && this.callbacksRunning === 0 && this.invocations.size === 0 &&
@@ -459,14 +462,14 @@ export class RpcConversation {
       try {
         method = this.resolveMethod({ contract: frame.contract, method: frame.method });
       } catch (error) {
-        this.reject({ code: error instanceof NaidanRpcError ? error.code : 'METHOD_NOT_FOUND' }); return;
+        this.reject({ error: error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'METHOD_NOT_FOUND' }) }); return;
       }
       this.method = method;
       let input: unknown;
       try {
         input = this.receiveValue({ plan: method.input, value: wireValue({ value: frame.value }), scope: 'input' });
       } catch {
-        this.reject({ code: 'INVALID_ARGUMENT' }); return;
+        this.reject({ error: new NaidanRpcError({ code: 'INVALID_ARGUMENT' }) }); return;
       }
       this.task({ run: async () => {
         if (!this.active()) return;
@@ -547,6 +550,7 @@ export class RpcConversation {
       if (this.failure) this.closed.reject(this.failure); else this.closed.resolve();
       this.maybeRetire();
     } catch (error) {
+      if (error instanceof NaidanRpcPublicError) this.failure ??= error;
       this.abort({ code: error instanceof NaidanRpcError ? error.code : 'PROTOCOL_ERROR' });
     }
   }

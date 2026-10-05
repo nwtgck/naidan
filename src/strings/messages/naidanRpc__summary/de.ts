@@ -1,1 +1,1 @@
-export const naidanRpc__summary = (): string => "Verbinde dich mit einem anderen Naidan und wähle, was du bereitstellen möchtest.";
+export const naidanRpc__summary = (): string => "Verbinde dich mit einem anderen Naidan und wähle, was du bereitstellen möchtest. Die Kommunikationsinhalte werden zwischen den Naidan-Instanzen verschlüsselt.";

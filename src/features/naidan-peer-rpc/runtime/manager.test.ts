@@ -7,21 +7,28 @@ import { encodePeerKey } from './identity';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/inference/budget';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
-import type { NaidanRpcStorage } from '@/00-storage/service/naidan-rpc';
-import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+import type { NaidanRpcStorage, NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from '@/00-storage/service/naidan-rpc';
+import { toNaidanRpcConnectionId, toNaidanRpcPeerId, toNaidanRpcRegistryId } from '@/01-models/ids';
 import type { ReadOnlyInferenceResources } from '@/features/naidan-peer-rpc/handlers/inference/resources';
 import { expose, NaidanRpcPeer } from '@/features/naidan-rpc';
 import { naidanPeerContract } from '@/features/naidan-peer-rpc/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-peer-rpc/implementation';
+import { RpcOwnerBusyError } from './owner';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
+  vi.useRealTimers(); vi.restoreAllMocks();
 });
 const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
 const transport = { type: 'naidan_piping_duplex' as const, serverUrl: 'https://relay.invalid', headers: [] };
 const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-  localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer', transport, allowedMethods: [], revision: 0 };
+  autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer', transport, allowedMethods: [], revision: 0 };
+const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1,
+  registryId: toNaidanRpcRegistryId({ raw: 'registry-example' }), persistence: 'durable' };
+function snapshot({ connections }: { connections: NaidanRpcConnection[] }): NaidanRpcRegistrySnapshot {
+  return { access: registryAccess, connections };
+}
 function fixture() {
   const links: ReturnType<typeof transportPair>[] = [];
   const resources: ReadOnlyInferenceResources = {
@@ -31,8 +38,8 @@ function fixture() {
       throw new Error('not used');
     }),
   };
-  const storage: NaidanRpcStorage = { readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => [{ ...record }]),
-    remember: vi.fn(async () => {}), update: vi.fn(async ({ connection }) => connection.revision), remove: vi.fn(async () => {}) };
+  const storage: NaidanRpcStorage = { readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => snapshot({ connections: [{ ...record }] })),
+    remember: vi.fn(async () => registryAccess), update: vi.fn(async ({ connection }) => connection.revision), remove: vi.fn(async () => {}) };
   const release = vi.fn();
   const dependencies: RpcManagerDependencies = { storage,
     identity: vi.fn(async () => ({ privateKey: {} as CryptoKey, publicKey: local })),
@@ -55,6 +62,110 @@ function fixture() {
   });
   return { manager, dependencies, storage, links, release, resources };
 }
+function automaticFixture() {
+  vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  const result = fixture(); let stored: NaidanRpcConnection = { ...record, autoConnect: 'enabled' };
+  vi.mocked(result.storage.list).mockImplementation(async () => snapshot({ connections: [stored] }));
+  vi.mocked(result.storage.readIdentity).mockResolvedValue({ privateKey: {} as CryptoKey, publicKey: record.localPublicKey });
+  vi.mocked(result.storage.update).mockImplementation(async ({ connection }) => {
+    stored = connection; return connection.revision;
+  });
+  return result;
+}
+it('automatic startup restores a pinned saved identity without providing or replaying inference', async () => {
+  const { manager, dependencies, resources } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]?.phase).toBe('connected'); expect(dependencies.identity).toHaveBeenCalledOnce();
+  expect(manager.list()[0]?.access.effective).toEqual([]); expect(resources.generateChat).not.toHaveBeenCalled(); expect(resources.generateImage).not.toHaveBeenCalled();
+});
+it('does not generate a replacement identity or retry a missing saved key automatically', async () => {
+  const { manager, dependencies, storage } = automaticFixture(); vi.mocked(storage.readIdentity).mockResolvedValue(undefined);
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(storage.readIdentity).toHaveBeenCalledOnce(); expect(dependencies.identity).not.toHaveBeenCalled(); expect(dependencies.open).not.toHaveBeenCalled();
+});
+it('does not restart automatic policy after its pending registry read is stopped', async () => {
+  const { manager, storage, dependencies } = automaticFixture(); const gate = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
+  await manager.setEnabled({ enabled: true }); const starting = manager.startAutomaticConnections();
+  manager.stopAutomaticConnections(); gate.resolve(snapshot({ connections: [{ ...record, autoConnect: 'enabled' }] }));
+  await starting; await vi.advanceTimersByTimeAsync(60000); expect(dependencies.identity).not.toHaveBeenCalled(); expect(dependencies.open).not.toHaveBeenCalled();
+});
+it('does not silently enable automatic policy when its ON save fails', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [record] }));
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections();
+  vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
+  await expect(manager.setAutoConnect({ id: record.id, autoConnect: 'enabled' })).rejects.toThrow('quota');
+  await vi.advanceTimersByTimeAsync(60000); expect(manager.list()[0]?.connection.autoConnect).toBe('disabled'); expect(dependencies.open).not.toHaveBeenCalled();
+});
+it('waits for another tab owner and retries conditionally without opening an unowned transport', async () => {
+  const { manager, dependencies } = automaticFixture();
+  vi.mocked(dependencies.acquireOwner).mockRejectedValueOnce(new RpcOwnerBusyError());
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]?.failure).toBeUndefined(); expect(dependencies.open).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(999); expect(dependencies.acquireOwner).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1); expect(dependencies.acquireOwner).toHaveBeenCalledTimes(2); expect(manager.list()[0]?.phase).toBe('connected');
+});
+it('reconnects after physical closure and never changes a caller binding to the new session', async () => {
+  const { manager, dependencies, links } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  const binding = manager.bindClient({ id: record.id }); links[0]!.close(); await vi.advanceTimersByTimeAsync(1000);
+  expect(binding.signal.aborted).toBe(true); expect(dependencies.open).toHaveBeenCalledTimes(2);
+  const next = manager.bindClient({ id: record.id }); expect(next.signal).not.toBe(binding.signal); expect(next.signal.aborted).toBe(false);
+});
+it('manual disconnect pauses this page but retains the startup setting for the next reload', async () => {
+  const { manager, dependencies } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  await manager.disconnect({ id: record.id }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(manager.list()[0]?.connection.autoConnect).toBe('enabled'); expect(dependencies.open).toHaveBeenCalledOnce();
+  await manager.connect({ id: record.id }); expect(dependencies.open).toHaveBeenCalledTimes(2);
+});
+it('stops automatic retries on unknown failures rather than matching native error text', async () => {
+  const { manager, dependencies } = automaticFixture(); vi.mocked(dependencies.open).mockRejectedValue(new Error('transient network identity mismatch'));
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(dependencies.open).toHaveBeenCalledOnce(); expect(manager.list()[0]?.failure).toBe('RPC connection could not be established');
+});
+it('keeps automatic work stopped in this page when persisting OFF fails', async () => {
+  const { manager, storage, dependencies, links } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
+  await expect(manager.setAutoConnect({ id: record.id, autoConnect: 'disabled' })).rejects.toThrow('quota');
+  expect(manager.list()[0]?.connection.autoConnect).toBe('enabled'); expect(manager.list()[0]?.phase).toBe('connected');
+  links[0]!.close(); await vi.advanceTimersByTimeAsync(60000); expect(dependencies.open).toHaveBeenCalledOnce();
+});
+it('bounds concurrent automatic attempts independently of the maximum saved record count', async () => {
+  const { manager, dependencies, storage } = automaticFixture();
+  const records = Array.from({ length: 6 }, (_, index) => ({ ...record, autoConnect: 'enabled' as const,
+    id: toNaidanRpcConnectionId({ raw: `automatic-record-${index}` }), transport: { ...transport, serverUrl: `https://piping-${index}.example` } }));
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: records }));
+  vi.mocked(dependencies.open).mockImplementation(({ signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }));
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(dependencies.open).toHaveBeenCalledTimes(4);
+  await manager.setEnabled({ enabled: false }); await vi.advanceTimersByTimeAsync(60000); expect(dependencies.open).toHaveBeenCalledTimes(4);
+});
+it('adopts external display metadata without closing a live session or confirming a failed restriction', async () => {
+  const { manager, storage } = fixture(); const initial = { ...record, allowedMethods: ['generateChat'] };
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [initial] }));
+  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  const binding = manager.bindClient({ id: record.id }); vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
+  await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow('quota');
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...initial, label: 'New name', revision: 1 }] }));
+  await manager.revalidate(); expect(binding.signal.aborted).toBe(false);
+  expect(manager.list()[0]).toMatchObject({ phase: 'connected', connection: { label: 'New name', revision: 1 }, access: { effective: [], saved: ['generateChat'], persistence: 'failed', revision: 1 } });
+});
+it('retires a live session when its registry is replaced even if the record and revision are identical', async () => {
+  const { manager, storage } = fixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  const binding = manager.bindClient({ id: record.id });
+  const replacedAccess = { ...registryAccess, registryId: toNaidanRpcRegistryId({ raw: 'replacement-registry' }) };
+  vi.mocked(storage.list).mockResolvedValue({ access: replacedAccess, connections: [record] });
+  await manager.revalidate(); expect(binding.signal.aborted).toBe(true);
+  await vi.waitFor(() => expect(manager.list()[0]?.phase).toBe('disconnected'));
+  await manager.reload(); await manager.rename({ id: record.id, label: 'New store' });
+  expect(storage.update).toHaveBeenLastCalledWith(expect.objectContaining({ access: replacedAccess }));
+});
 it('loading records and enabling the feature never creates an identity or a connection', async () => {
   const { manager, dependencies } = fixture();
   await manager.reload(); await manager.setEnabled({ enabled: true });
@@ -114,9 +225,39 @@ it('a failed trust save leaves the verified temporary connection usable', async 
   expect(manager.list()[0]).toMatchObject({ phase: 'connected', persistence: 'temporary' });
   expect(() => manager.client({ id })).not.toThrow();
 });
+it('provides discovery with no inference grants and reports effective restrictions after a failed save', async () => {
+  const { manager, storage, resources, links, dependencies } = fixture();
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, allowedMethods: ['listChatModels'] }] }));
+  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [expose({ contract: naidanPeerContract,
+    allowedMethods: ['getProvidedMethods'], implementation: createNaidanPeerImplementation({ inference: dependencies.inference,
+      providedMethods: () => ({ status: 'ready', methods: ['listImageModels', 'generateImage'] }) }) })],
+  limits: { maxCalls: 4, maxCallTimeoutMs: 1000 }, signal: new AbortController().signal });
+  try {
+    expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: ['listImageModels', 'generateImage'] });
+    vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
+    await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow('quota');
+    expect(manager.list()[0]?.access.saved).toEqual(['listChatModels']);
+    const discovery = other.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+    expect(await discovery.result).toEqual({ status: 'ready', methods: [] }); await discovery.closed;
+    const checking = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(checking.promise);
+    const validated = manager.revalidate();
+    try {
+      expect(() => manager.client({ id: record.id })).toThrow('verification');
+      expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: ['listImageModels', 'generateImage'] });
+    } finally {
+      checking.resolve(snapshot({ connections: [{ ...record, allowedMethods: ['listChatModels'] }] })); await validated;
+    }
+    for (const resource of Object.values(resources)) expect(resource).not.toHaveBeenCalled();
+    await manager.disconnect({ id: record.id });
+    await expect(manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).rejects.toThrow();
+  } finally {
+    other.dispose();
+  }
+});
 it('failed restriction persistence remains restricted on explicit reconnection', async () => {
   const { manager, storage } = fixture();
-  vi.mocked(storage.list).mockResolvedValue([{ ...record, allowedMethods: ['generateChat'] }]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, allowedMethods: ['generateChat'] }] }));
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   vi.mocked(storage.update).mockRejectedValue(new Error('quota'));
   await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow();
@@ -126,24 +267,24 @@ it('failed restriction persistence remains restricted on explicit reconnection',
 it('remembering and disconnecting concurrently preserves only the explicitly saved record', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
   const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
-  const gate = Promise.withResolvers<void>(); vi.mocked(storage.remember).mockReturnValue(gate.promise);
+  const gate = Promise.withResolvers<NaidanRpcRegistryAccess>(); vi.mocked(storage.remember).mockReturnValue(gate.promise);
   const save = manager.remember({ id, label: 'Saved' }); await vi.waitFor(() => expect(storage.remember).toHaveBeenCalledOnce());
-  const stop = manager.disconnect({ id }); gate.resolve(); await save; await stop;
+  const stop = manager.disconnect({ id }); gate.resolve(registryAccess); await save; await stop;
   expect(manager.list()[0]).toMatchObject({ phase: 'disconnected', persistence: 'saved' });
 });
 it('same-peer same-origin duplicate connections fail even with different header values', async () => {
   const { manager, dependencies, storage } = fixture();
   const other = { ...record, id: toNaidanRpcConnectionId({ raw: 'connection-2' }), transport: { ...transport, headers: [{ name: 'X-Test', value: 'different' }] } };
-  vi.mocked(storage.list).mockResolvedValue([record, other]); await manager.setEnabled({ enabled: true }); await manager.reload();
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [record, other] })); await manager.setEnabled({ enabled: true }); await manager.reload();
   await manager.connect({ id: record.id }); await expect(manager.connect({ id: other.id })).rejects.toThrow('already have');
   expect(dependencies.open).toHaveBeenCalledOnce();
 });
 it('unknown stored methods fail closed instead of becoming wildcard authority', async () => {
-  const { manager, storage } = fixture(); vi.mocked(storage.list).mockResolvedValue([{ ...record, allowedMethods: ['futureMethod'] }]);
+  const { manager, storage } = fixture(); vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, allowedMethods: ['futureMethod'] }] }));
   await manager.reload(); expect(manager.list()[0]?.access.effective).toEqual([]); expect(manager.list()[0]?.failure).toContain('not supported');
 });
 it('transport key mismatch is rejected before publishing a connected row', async () => {
-  const { manager, storage } = fixture(); vi.mocked(storage.list).mockResolvedValue([{ ...record, peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(3) }) }) }]);
+  const { manager, storage } = fixture(); vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(3) }) }) }] }));
   await manager.setEnabled({ enabled: true }); await manager.reload(); await expect(manager.connect({ id: record.id })).rejects.toThrow('identity changed');
   expect(manager.list()[0]?.phase).toBe('disconnected');
 });
@@ -154,7 +295,7 @@ it('master OFF cancels calls and retains the owner until callee work actually re
     started.resolve(); await finished.promise; return [];
   });
   await manager.updateAllowedMethods({ id: record.id, allowedMethods: ['listChatModels'] });
-  const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [expose({ contract: naidanPeerContract, allowedMethods: [], implementation: createNaidanPeerImplementation({ inference: dependencies.inference }) })], limits: { maxCalls: 4, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
+  const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [expose({ contract: naidanPeerContract, allowedMethods: [], implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: dependencies.inference }) })], limits: { maxCalls: 4, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
   const call = other.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   const result = await call.result; const reader = result.getReader(); const reading = reader.read(); void reading.catch(() => {});
   await started.promise; const stopping = manager.setEnabled({ enabled: false });
@@ -184,9 +325,9 @@ it('reserves a forgetting connection until the persistent deletion finishes', as
 it('does not resurrect a forgotten connection from a read started before deletion', async () => {
   const { manager, storage } = fixture();
   await manager.setEnabled({ enabled: true }); await manager.reload();
-  const read = Promise.withResolvers<NaidanRpcConnection[]>(); vi.mocked(storage.list).mockReturnValue(read.promise);
+  const read = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValue(read.promise);
   const reload = manager.reload();
-  await manager.forget({ id: record.id }); read.resolve([record]); await reload;
+  await manager.forget({ id: record.id }); read.resolve(snapshot({ connections: [record] })); await reload;
   expect(manager.list()).toEqual([]);
 });
 it('also invalidates a stale read started while persistent deletion is pending', async () => {
@@ -194,15 +335,15 @@ it('also invalidates a stale read started while persistent deletion is pending',
   await manager.setEnabled({ enabled: true }); await manager.reload();
   const deletion = Promise.withResolvers<void>(); vi.mocked(storage.remove).mockReturnValue(deletion.promise);
   const forgetting = manager.forget({ id: record.id }); await vi.waitFor(() => expect(storage.remove).toHaveBeenCalledOnce());
-  const read = Promise.withResolvers<NaidanRpcConnection[]>(); vi.mocked(storage.list).mockReturnValue(read.promise);
-  const reload = manager.reload(); deletion.resolve(); await forgetting; read.resolve([record]); await reload;
+  const read = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValue(read.promise);
+  const reload = manager.reload(); deletion.resolve(); await forgetting; read.resolve(snapshot({ connections: [record] })); await reload;
   expect(manager.list()).toEqual([]);
 });
 it('only the latest concurrent catalogue request may add records', async () => {
   const { manager, storage } = fixture();
-  const first = Promise.withResolvers<NaidanRpcConnection[]>(), second = Promise.withResolvers<NaidanRpcConnection[]>();
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), second = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
   vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-  const older = manager.reload(), newer = manager.reload(); second.resolve([]); await newer; first.resolve([record]); await older;
+  const older = manager.reload(), newer = manager.reload(); second.resolve(snapshot({ connections: [] })); await newer; first.resolve(snapshot({ connections: [record] })); await older;
   expect(manager.list()).toEqual([]);
 });
 it('failed deletion keeps a disconnected record and permits an explicit retry', async () => {
@@ -224,7 +365,7 @@ it('deletion waits for an already submitted grant write even on a disconnected r
   } finally {
     written.resolve(1); await changing; await forgetting;
   }
-  expect(storage.remove).toHaveBeenCalledWith({ id: record.id, expectedRevision: 1 });
+  expect(storage.remove).toHaveBeenCalledWith({ access: registryAccess, id: record.id, expectedRevision: 1 });
 });
 it('forgetting an active temporary connection does not wait for its own deletion', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
@@ -295,7 +436,7 @@ it('a concurrent disconnect waits for a rename but does not adopt a late grant e
   const naming = manager.rename({ id: record.id, label: 'Desk' }); await vi.waitFor(() => expect(storage.update).toHaveBeenCalledOnce());
   const stopping = manager.disconnect({ id: record.id }); write.resolve(1); await naming; await stopping;
   expect(manager.list()[0]).toMatchObject({ phase: 'disconnected', connection: { label: 'Desk' }, access: { effective: [] } });
-  vi.mocked(storage.list).mockResolvedValue([manager.list()[0]!.connection]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [manager.list()[0]!.connection] }));
   await manager.connect({ id: record.id }); expect(manager.list()[0]?.access.effective).toEqual([]);
 });
 
@@ -323,27 +464,31 @@ it('suspends inbound admission while checking storage without connecting or scan
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   await manager.updateAllowedMethods({ id: record.id, allowedMethods: ['listChatModels'] });
   const current = manager.list()[0]!.connection;
-  const gate = Promise.withResolvers<NaidanRpcConnection[]>(); vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
+  const gate = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
   const checking = manager.revalidate();
   const peer = new NaidanRpcPeer({ transport: links[0]!.b, exports: [], limits: { maxCalls: 4, maxCallTimeoutMs: 1000 }, signal: new AbortController().signal });
   try {
+    const discovery = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+    expect(await discovery.result).toEqual({ status: 'checking', methods: [] }); await discovery.closed;
     const rejected = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
     await expect(rejected.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
     await expect(rejected.closed).rejects.toBeDefined(); expect(resources.listChatModels).not.toHaveBeenCalled();
-    gate.resolve([current]); await checking;
+    gate.resolve(snapshot({ connections: [current] })); await checking;
     expect(manager.list()[0]?.phase).toBe('connected');
+    const confirmed = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+    expect(await confirmed.result).toEqual({ status: 'ready', methods: ['listChatModels'] }); await confirmed.closed;
     const accepted = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
     const reader = (await accepted.result).getReader(); expect((await reader.read()).value?.ref).toBe('models/local.gguf');
     expect((await reader.read()).done).toBe(true); await accepted.closed;
   } finally {
-    gate.resolve([current]); peer.dispose();
+    gate.resolve(snapshot({ connections: [current] })); peer.dispose();
   }
 });
 it('an external expansion disconnects instead of expanding live access or reconnecting', async () => {
   const { manager, storage, dependencies } = fixture();
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   const binding = manager.bindClient({ id: record.id });
-  vi.mocked(storage.list).mockResolvedValue([{ ...record, revision: 1, allowedMethods: ['generateImage'] }]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, revision: 1, allowedMethods: ['generateImage'] }] }));
   await manager.revalidate(); expect(binding.signal.aborted).toBe(true);
   expect(manager.list()[0]?.access.effective).toEqual([]);
   await expect(manager.connect({ id: record.id })).rejects.toThrow('Reload');
@@ -361,25 +506,25 @@ it('a failed storage check closes saved sessions and requires explicit reload', 
 });
 it('a late check after OFF does not restore inbound authority or delete saved rows', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-  const gate = Promise.withResolvers<NaidanRpcConnection[]>(); vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
+  const gate = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
   const checking = manager.revalidate(); await vi.waitFor(() => expect(storage.list).toHaveBeenCalledTimes(3));
-  await manager.setEnabled({ enabled: false }); gate.resolve([]); await checking;
+  await manager.setEnabled({ enabled: false }); gate.resolve(snapshot({ connections: [] })); await checking;
   expect(manager.list()).toHaveLength(1); expect(manager.list()[0]?.phase).toBe('disconnected');
 });
-it('detects a changed saved record before opening the first transport', async () => {
+it('detects a changed saved transport before opening the first transport', async () => {
   const { manager, storage, dependencies } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload();
-  vi.mocked(storage.list).mockResolvedValue([{ ...record, revision: 1, label: 'Changed elsewhere' }]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, revision: 1, label: 'Changed elsewhere', transport: { ...transport, serverUrl: 'https://changed.invalid' } }] }));
   await expect(manager.connect({ id: record.id })).rejects.toBeDefined(); expect(dependencies.open).not.toHaveBeenCalled();
   await manager.reload(); await manager.connect({ id: record.id }); expect(manager.list()[0]?.connection.label).toBe('Changed elsewhere');
 });
 it('deleting a persisted connection elsewhere stops it and removes the stale row', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-  const binding = manager.bindClient({ id: record.id }); vi.mocked(storage.list).mockResolvedValue([]);
+  const binding = manager.bindClient({ id: record.id }); vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [] }));
   await manager.revalidate(); expect(binding.signal.aborted).toBe(true); await vi.waitFor(() => expect(manager.list()).toEqual([]));
 });
 it('never silently rebinds an existing connection ID to another peer identity', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-  vi.mocked(storage.list).mockResolvedValue([{ ...record, revision: 1, peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(3) }) }) }]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, revision: 1, peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(3) }) }) }] }));
   await manager.revalidate(); await manager.reload();
   expect(manager.list()[0]?.connection.peerId).toBe(record.peerId); await expect(manager.connect({ id: record.id })).rejects.toThrow('Reload');
 });
@@ -391,9 +536,9 @@ it('temporary-only connections do not require storage to revalidate on focus', a
 });
 it('a second invalidation during a slow read is checked before reopening admission', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-  const first = Promise.withResolvers<NaidanRpcConnection[]>(); vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockResolvedValueOnce([]);
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockResolvedValueOnce(snapshot({ connections: [] }));
   const checking = manager.revalidate(); await vi.waitFor(() => expect(storage.list).toHaveBeenCalledTimes(3));
-  const newer = manager.revalidate(); expect(newer).toBe(checking); first.resolve([record]);
+  const newer = manager.revalidate(); expect(newer).toBe(checking); first.resolve(snapshot({ connections: [record] }));
   await checking; expect(storage.list).toHaveBeenCalledTimes(4); await vi.waitFor(() => expect(manager.list()).toEqual([]));
 });
 it('a cross-tab stop closes actual manager admission before acknowledging native retirement', async () => {
@@ -428,14 +573,14 @@ it('a cross-tab stop closes actual manager admission before acknowledging native
 });
 it('a record deleted before connection startup is removed after that startup retires without self-waiting', async () => {
   const { manager, storage, dependencies } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload();
-  vi.mocked(storage.list).mockResolvedValue([]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [] }));
   await expect(manager.connect({ id: record.id })).rejects.toBeDefined();
   expect(manager.list()).toEqual([]); expect(dependencies.open).not.toHaveBeenCalled();
 });
 it('unchanged persisted grants cannot undo a failed local restriction when the page resumes', async () => {
   const { manager, storage } = fixture();
   const saved = { ...record, allowedMethods: ['generateChat'] };
-  vi.mocked(storage.list).mockResolvedValue([saved]); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [saved] })); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
   await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow('quota');
   await manager.revalidate(); expect(manager.list()[0]?.phase).toBe('connected'); expect(manager.list()[0]?.access.effective).toEqual([]);
@@ -445,7 +590,7 @@ it('repeated invalidations have a bounded read budget and fail closed instead of
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   const before = vi.mocked(storage.list).mock.calls.length;
   vi.mocked(storage.list).mockImplementation(async () => {
-    void manager.revalidate().catch(() => {}); return [record];
+    void manager.revalidate().catch(() => {}); return snapshot({ connections: [record] });
   });
   await expect(manager.revalidate()).rejects.toThrow('repeatedly');
   await vi.waitFor(() => expect(manager.list()[0]?.phase).toBe('disconnected'));
@@ -488,7 +633,7 @@ it('a captured stop can finish an already stopping session but cannot resurrect 
 it('a saved session established during revalidation stays suspended until the read settles', async () => {
   const { manager, dependencies, storage, resources, links } = fixture();
   const saved = { ...record, allowedMethods: ['listChatModels'] };
-  vi.mocked(storage.list).mockResolvedValue([saved]);
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [saved] }));
   await manager.setEnabled({ enabled: true }); await manager.reload();
   const opened = Promise.withResolvers<void>();
   const original = dependencies.open;
@@ -497,7 +642,7 @@ it('a saved session established during revalidation stays suspended until the re
   });
   const connecting = manager.connect({ id: record.id });
   await vi.waitFor(() => expect(dependencies.open).toHaveBeenCalledOnce());
-  const read = Promise.withResolvers<NaidanRpcConnection[]>();
+  const read = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
   vi.mocked(storage.list).mockReturnValueOnce(read.promise);
   const validated = manager.revalidate();
   opened.resolve(); await connecting;
@@ -508,7 +653,7 @@ it('a saved session established during revalidation stays suspended until the re
     await expect(call.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
     expect(resources.listChatModels).not.toHaveBeenCalled();
   } finally {
-    call.cancel({ reason: 'Test complete' }); read.resolve([saved]); await validated;
+    call.cancel({ reason: 'Test complete' }); read.resolve(snapshot({ connections: [saved] })); await validated;
   }
   const accepted = other.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const reader = (await accepted.result).getReader();
@@ -519,7 +664,7 @@ it('a saved session established during revalidation stays suspended until the re
 it('a synchronous disconnect during live method revocation retains the restricted reconnect policy', async () => {
   const { manager, storage, resources, links } = fixture();
   let stored = { ...record, allowedMethods: ['listChatModels'] };
-  vi.mocked(storage.list).mockImplementation(async () => [stored]);
+  vi.mocked(storage.list).mockImplementation(async () => snapshot({ connections: [stored] }));
   vi.mocked(storage.update).mockImplementation(async ({ connection }) => {
     stored = { ...connection, allowedMethods: [...connection.allowedMethods] }; return connection.revision;
   });
@@ -543,7 +688,7 @@ it('a synchronous disconnect during live method revocation retains the restricte
 it('does not label an unsaved restriction as saved after disconnect and reconnect', async () => {
   const { manager, storage } = fixture();
   let stored: NaidanRpcConnection = { ...record, allowedMethods: ['generateChat'] };
-  vi.mocked(storage.list).mockImplementation(async () => [stored]);
+  vi.mocked(storage.list).mockImplementation(async () => snapshot({ connections: [stored] }));
   vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow('quota');

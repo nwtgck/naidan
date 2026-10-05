@@ -69,3 +69,12 @@ it('lengths and recursion are bounded before allocating a declared container', (
   const decoded = decode({ bytes: encoded }) as Uint8Array; decoded[1] = 8;
   expect(decode({ bytes: encoded })).toEqual(new Uint8Array([1, 2]));
 });
+
+it('reports the violated byte or string bound without including payload content', () => {
+  expect(() => encode({ value: { data: 'x'.repeat(21848) }, limit: 16384 })).toThrow(expect.objectContaining({
+    code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'string-code-units', limit: 16384, observed: 21848 },
+  }));
+  expect(() => encode({ value: new Uint8Array(16384), limit: 16384 })).toThrow(expect.objectContaining({
+    code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'encoded-bytes', limit: 16384, observed: 16387 },
+  }));
+});

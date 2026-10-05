@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readFile } from 'node:fs/promises';
 import { expect, it, vi } from 'vitest';
 import { createHttpRelay } from './test-support/http-relay';
@@ -8,6 +9,8 @@ import { NaidanPeerManager } from '@/features/naidan-peer-rpc/runtime/manager';
 import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/inference/budget';
 import type { ReadOnlyInferenceResources } from '@/features/naidan-peer-rpc/handlers/inference/resources';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
+import { toNaidanRpcRegistryId } from '@/01-models/ids';
+import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { prepareTranscript, receiveEvents } from '@/features/naidan-peer-rpc/codecs/chat-wire';
 import { startPeerImage } from '@/features/naidan-peer-rpc/adapters/image-provider';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -24,10 +27,11 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
     generateImage: vi.fn(async () => ({ png: new Blob([png], { type: 'image/png' }), width: 128, height: 128, modelVersion: 'fixture', uniformOutput: false })),
   };
   const saved = new Map<NaidanRpcConnection['id'], NaidanRpcConnection>();
+  const access: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: toNaidanRpcRegistryId({ raw: 'http-registry-example' }), persistence: 'durable' };
   const store = {
-    readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => [...saved.values()]),
+    readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => ({ access, connections: [...saved.values()] })),
     remember: vi.fn(async ({ connection }: { connection: NaidanRpcConnection }) => {
-      saved.set(connection.id, connection);
+      saved.set(connection.id, connection); return access;
     }),
     update: vi.fn(async ({ connection }: { connection: NaidanRpcConnection }) => {
       saved.set(connection.id, connection); return connection.revision;

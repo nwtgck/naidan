@@ -5,6 +5,7 @@ import { peerChatEventSchema, imageCatalogItemSchema, chatModelReferenceSchema }
 import { collectBytes, computationSource } from '@/features/naidan-peer-rpc/codecs/transfer';
 import { receiveTranscript, eventBytes, TRANSCRIPT_LIMIT, OUTPUT_LIMIT } from '@/features/naidan-peer-rpc/codecs/chat-wire';
 import { peerImageDimensions } from '@/features/naidan-peer-rpc/codecs/image-bounds';
+import { createImageGenerationFailure } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
 import { createImageResponse } from './image-response';
 import type { ReadOnlyInferenceResources, PeerInvocation } from './resources';
 import type { InferenceBudget } from './budget';
@@ -91,6 +92,7 @@ export function generateImage({ resources, inputBudget, deliveryBudget, input, s
       const encoded = uploads.reduce((bytes, image) => bytes + image.byteLength, 0);
       if (encoded > 64 * 1024 * 1024) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
       const leases = [inputBudget.reserve({ bytes: 2 * encoded })];
+      let generating = false;
       try {
         const files: File[] = []; let pixels = 0;
         for (const upload of uploads) {
@@ -104,9 +106,13 @@ export function generateImage({ resources, inputBudget, deliveryBudget, input, s
           files.push(new File([bytes], `input-${files.length}`, { type: mimeType }));
         }
         signal.throwIfAborted();
+        generating = true;
         return await resources.generateImage({ input: { modelSelection, parameters, preview,
           imageInputs: { initial: initial ? files[0] : undefined, references: initial ? files.slice(1) : files, strength } },
         signal, onProgress: notify.progress, onPreview });
+      } catch (error) {
+        signal.throwIfAborted();
+        throw createImageGenerationFailure({ error, stage: generating ? 'generation' : 'input', reason: generating ? 'generation-failed' : 'invalid-input', profile: undefined, gpu: false, nativeContext: undefined });
       } finally {
         for (const lease of leases) lease.release();
       }

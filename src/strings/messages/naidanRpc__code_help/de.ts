@@ -1,1 +1,1 @@
-export const naidanRpc__code_help = (): string => "Die Zahl dient nur zum Zusammenführen, nicht zur Identitätsprüfung. Wähle auf den beiden Geräten unterschiedliche Rollen.";
+export const naidanRpc__code_help = (): string => "Dieser Code dient als Treffpunkt für die Verbindung. Überprüfe die Gegenstelle, indem du den vollständigen Bestätigungstext über einen vertrauenswürdigen Weg, etwa ein Telefonat, vergleichst. Wähle auf den beiden Geräten unterschiedliche Rollen.";

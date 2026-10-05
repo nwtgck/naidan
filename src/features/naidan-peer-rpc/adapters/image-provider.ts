@@ -4,6 +4,7 @@ import type { PeerImageInput, PeerProgress } from '@/features/naidan-peer-rpc/ha
 import type { ImageExecutionOutput, ImageExecutionPreview, RecoverableImageExecutionOutput } from '@/features/image-generation/execution/types';
 import { peerImageDimensions } from '@/features/naidan-peer-rpc/codecs/image-bounds';
 import { validatePng } from '@/features/naidan-peer-rpc/codecs/png';
+import { describeNaidanRpcError } from '@/features/naidan-rpc';
 
 export type PeerImageOutcome =
   | { status: 'completed', output: ImageExecutionOutput, seed: string }
@@ -43,10 +44,15 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
   const wireSelection = { primary: { ...modelSelection.primary, file: fileReference({ file: modelSelection.primary.file }) },
     components: modelSelection.components.map(item => ({ ...item, file: fileReference({ file: item.file }) })),
     loras: modelSelection.loras.map(item => ({ ...item, file: fileReference({ file: item.file }) })) };
+  let lastProgress: PeerProgress | undefined;
   const call = client.generateImage({ input: { modelSelection: wireSelection, parameters, preview,
-    imageInputs: { initial, references, strength: input.imageInputs.strength } }, on: { progress: onProgress }, signal: lifetime, timeoutMs: undefined });
+    imageInputs: { initial, references, strength: input.imageInputs.strength } }, on: { progress: ({ value }) => {
+    lastProgress = { ...value }; onProgress({ value });
+  } }, signal: lifetime, timeoutMs: undefined });
   // Observe early rejection while result streams are still being read.
-  const closed = call.closed.then(() => ({ ok: true as const }), () => ({ ok: false as const }));
+  const closed = call.closed.then(() => ({ ok: true as const }), (error: unknown) => ({ ok: false as const, error }));
+  let firstFailure: { error: unknown; stage: string } | undefined;
+  let stage = 'request';
   let pixels: Uint8Array<ArrayBuffer> | undefined;
   let completed: Extract<PeerImageEvent, { type: 'completed' }> | undefined;
   let imageReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -55,9 +61,9 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
     void imageReader?.cancel().catch(() => {});
     void eventsReader?.cancel().catch(() => {});
   };
-  const aborted = Promise.withResolvers<{ ok: false }>();
+  const aborted = Promise.withResolvers<{ ok: false; error: unknown }>();
   const cancelled = () => {
-    aborted.resolve({ ok: false });
+    aborted.resolve({ ok: false, error: lifetime.reason });
     call.cancel({ reason: 'Image request cancelled' }); cancelReaders();
   };
   lifetime.addEventListener('abort', cancelled, { once: true });
@@ -66,7 +72,9 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
     try {
       const response = await call.result;
       lifetime.throwIfAborted();
+      stage = 'response';
       imageReader = response.image.getReader(); eventsReader = response.events.getReader();
+      let imageStage = 'image-transfer', eventStage = 'events-transfer';
       const readImage = async () => {
         const chunks: Uint8Array[] = []; let size = 0;
         for (;;) {
@@ -81,6 +89,7 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
         for (const chunk of chunks) {
           bytes.set(chunk, at); at += chunk.length;
         }
+        imageStage = 'image-validation';
         validatePng({ bytes, width: parameters.width, height: parameters.height });
         peerImageDimensions({ bytes, mimeType: 'image/png' });
         pixels = bytes;
@@ -89,10 +98,12 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
         let part: { header: Extract<PeerImageEvent, { type: 'preview-start' }>, bytes: Uint8Array<ArrayBuffer>, length: number } | undefined;
         let revision = 0;
         for (;;) {
+          eventStage = 'events-transfer';
           const next = await eventsReader!.read(); lifetime.throwIfAborted();
           if (next.done) {
             if (part || !completed) throw new Error('Image events ended without confirmation'); return;
           }
+          eventStage = 'event-validation';
           const event = peerImageEventSchema.parse(next.value);
           if (completed) throw new Error('Image events continued after completion');
           switch (event.type) {
@@ -107,6 +118,7 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
             break;
           }
           case 'preview-end': {
+            eventStage = 'preview-validation';
             if (!part || part.length !== part.bytes.length) throw new Error('Incomplete preview');
             const { width, height } = peerImageDimensions({ bytes: part.bytes, mimeType: 'image/png' });
             if (width !== part.header.width || height !== part.header.height) throw new Error('Preview dimensions differ');
@@ -115,36 +127,45 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
             part = undefined; break;
           }
           case 'completed':
+            eventStage = 'completion-validation';
             if (part || event.seed !== parameters.seed || event.width !== parameters.width || event.height !== parameters.height) throw new Error('Image confirmation differs from the request');
             completed = event; break;
           default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
           }
         }
       };
-      const guard = async ({ run }: { run(): Promise<void> }) => {
+      const guard = async ({ run, currentStage }: { run(): Promise<void>; currentStage(): string }) => {
         try {
           await run();
         } catch (error) {
+          // Capture the initiating failure before cancellation rejects its
+          // sibling. The sibling's CANCELLED must never replace this context.
+          firstFailure ??= { error, stage: currentStage() };
           call.cancel({ reason: 'Invalid or interrupted image response' }); cancelReaders(); throw error;
         }
       };
       // Read both streams concurrently; waiting for one before reading the other
       // can deadlock bounded remote writers. A failure cancels its sibling.
-      const tasks = [guard({ run: readImage }), guard({ run: readEvents })];
+      const tasks = [guard({ run: readImage, currentStage: () => imageStage }), guard({ run: readEvents, currentStage: () => eventStage })];
       const settled = await Promise.allSettled(tasks);
-      if (settled.some(item => item.status === 'rejected')) throw new Error('Image delivery was interrupted');
-      if (!(await Promise.race([closed, aborted.promise])).ok) throw new Error('Image delivery was not confirmed');
+      if (settled.some(item => item.status === 'rejected')) throw firstFailure?.error ?? new Error('Image delivery was interrupted');
+      stage = 'completion-confirmation';
+      const confirmation = await Promise.race([closed, aborted.promise]);
+      if (!confirmation.ok) throw confirmation.error;
       lifetime.throwIfAborted();
       if (!pixels || !completed) throw new Error('Missing image confirmation');
       return { status: 'completed', seed: completed.seed,
         output: { png: new Blob([pixels], { type: 'image/png' }), width: completed.width, height: completed.height,
           modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } };
-    } catch {
+    } catch (error) {
       call.cancel({ reason: 'Image request ended without confirmed completion' }); cancelReaders();
+      const description = ['Image generation or delivery failed', `Caller stage: ${firstFailure?.stage ?? stage}`,
+        describeNaidanRpcError({ error: firstFailure?.error ?? error }),
+        ...(lastProgress ? [`Last reported progress: ${lastProgress.phase} ${lastProgress.completed}/${lastProgress.total}`] : [])].join('\n');
       if (pixels) return { status: 'interrupted', recoverable: { png: new Blob([pixels], { type: 'image/png' }),
         width: parameters.width, height: parameters.height, reported: completed ? { seed: completed.seed, modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } : undefined },
-      message: 'Image received, but successful RPC completion was not confirmed' };
-      return lifetime.aborted ? { status: 'cancelled' } : { status: 'failed', message: 'Image generation or delivery failed' };
+      message: `Image received, but successful RPC completion was not confirmed\n${description}` };
+      return lifetime.aborted ? { status: 'cancelled' } : { status: 'failed', message: description };
     } finally {
       lifetime.removeEventListener('abort', cancelled);
       imageReader?.releaseLock(); eventsReader?.releaseLock();

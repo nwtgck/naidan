@@ -1,3 +1,4 @@
+import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NaidanPeerManager } from './manager';
 import type { RpcLink, RpcManagerDependencies } from './manager';
@@ -8,6 +9,8 @@ import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/inference/budget';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+
+const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -22,7 +25,7 @@ function endpoint() {
   const record: NaidanRpcConnection = {
     id: toNaidanRpcConnectionId({ raw: 'connection-lock-test' }),
     peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-    localPublicKey: encodePeerKey({ bytes: local }), label: 'Remote',
+    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Remote',
     transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0,
   };
   const released = Promise.withResolvers<void>();
@@ -39,7 +42,7 @@ function endpoint() {
     return { ...pair.a, closed: closed.promise, peerIdentity: remote, abort } satisfies RpcLink;
   });
   const manager = new NaidanPeerManager({ dependencies: {
-    storage: { readIdentity: async () => undefined, list: async () => [record], remember: async () => {}, update: async ({ connection }) => connection.revision, remove: async () => {} },
+    storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
     // Lock ownership is production code. Identity/native/transport/storage are
     // deliberate fixtures: this is not a multiple-browser integration test.
     identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),

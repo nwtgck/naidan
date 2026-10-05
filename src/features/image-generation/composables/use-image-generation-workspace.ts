@@ -245,7 +245,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   }
   async function restoreActiveDraft(): Promise<void> {
     const target = store.value, sessionId = selectedSessionId.value;
-    if (!target || !sessionId || switching.value || generation.formDisabled.value || editingSessionId.value === sessionId) return;
+    if (!target || !sessionId || (generation.draftRestoreDisabled?.value ?? generation.formDisabled.value) || switching.value || editingSessionId.value === sessionId) return;
     switching.value = true; touchDraft();
     const token = epoch;
     try {
@@ -728,7 +728,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       case 'settings': {
         const current = generation.captureDraft?.();
         if (!current || !generation.restoreDraft) return 'unavailable';
-        await generation.restoreDraft({ draft: { ...current, request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } }, seedMode: 'fixed', files: [], modelSelection: undefined,
+        await generation.restoreDraft({ draft: { ...current, request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } }, seedMode: 'fixed', files: [], modelSelection: undefined, remoteModelEditor: undefined, inferenceLocation: undefined,
           layout: selected.run.request.models.some(model => model.slot === 'model') ? 'checkpoint' : 'components',
           loraStates: selected.run.request.loras.map(lora => ({ enabled: lora.strength !== 0, strength: lora.strength })) } });
         break;
@@ -781,23 +781,23 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       void refresh({ append: false });
     }, 180);
   }, { flush: 'sync' });
-  watch(() => [generation.executionTarget?.kind.value, generation.executionTarget?.connectionId.value, generation.executionTarget?.selection.value, generation.parameters.value, generation.profile.value, generation.files.value, generation.loras.value, generation.imageInputs.value,
+  watch(() => [generation.inferenceLocation?.kind.value, generation.inferenceLocation?.connectionId.value, generation.inferenceLocation?.peerId.value, generation.inferenceLocation?.editor.value, generation.inferenceLocation?.selection.value, generation.parameters.value, generation.profile.value, generation.files.value, generation.loras.value, generation.imageInputs.value,
     generation.library.main.value, generation.library.components.value.map(value => value.selected), generation.weightResidency.value,
     generation.gpuBudgetMiB.value, generation.preview.value, generation.seedMode.value, generation.layout.value, generation.debug.value,
     generation.retainModel.value, generation.keepPreviews.value, generation.maxPreviews.value, generation.maxResults.value, count.value], () => {
     touchDraft();
-    if (!editorReady.value || generation.draftDisabled.value) return;
+    if (!editorReady.value || (generation.draftRestoreDisabled?.value ?? generation.draftDisabled.value)) return;
     rememberDraft(); clearTimeout(timer); timer = setTimeout(() => {
       void saveDraft();
     }, 500);
   }, { deep: true, flush: 'sync' });
-  watch(() => generation.formDisabled.value, value => {
+  watch(() => generation.draftRestoreDisabled?.value ?? generation.formDisabled.value, value => {
     if (!value) void restoreActiveDraft();
   });
   const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
     switch (event.type) {
     case 'migration': break;
-    case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'binary_objects': return;
+    case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
     }
     initialized.value = false;

@@ -1,3 +1,4 @@
+import type { Ref } from 'vue';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 import type { BinaryObjectId } from '@/01-models/ids';
@@ -9,6 +10,7 @@ export type ImageGenerationDraft = Omit<ImageGenerationSessionDraft, 'sessionId'
   modelFiles: { location: ImageGenerationModelFile, file: File }[],
 };
 export type ImageGenerationDraftAccess = {
+  draftRestoreDisabled: Readonly<Ref<boolean>>,
   captureDraft(): ImageGenerationDraft | undefined,
   restoreDraft({ draft }: { draft: ImageGenerationDraft }): Promise<void>,
   resetDraft(): void,

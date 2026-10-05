@@ -5,13 +5,8 @@ import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGene
 import { idToRaw, type ImageGenerationId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import {
-  ExperimentalImageGenerationSchemaDto,
-  ExperimentalImageGenerationIndexSchemaDto,
-  type ExperimentalImageGenerationDto,
-  type ExperimentalImageGenerationIndexDto,
-  type ExperimentalImageGenerationSummaryDto,
-} from '@/00-storage/00-dto/experimental.dto';
+import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationIndexSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { type ExperimentalImageGenerationDto, type ExperimentalImageGenerationIndexDto, type ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationSummaryToDomain, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 
 const historyLock = 'naidan-experimental-image-generation-history';

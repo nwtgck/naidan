@@ -1,4 +1,4 @@
-import { check, FRAME_BYTES, ownBytes, validKey } from '@/features/naidan-rpc/primitives';
+import { check, FRAME_BYTES, ownBytes, validKey, NaidanRpcPublicError } from '@/features/naidan-rpc/primitives';
 
 export type ReferenceMode = 'bytes' | 'items' | 'callback';
 /** A protocol capability is not a user object with a magic property. */
@@ -12,6 +12,9 @@ export class Reference {
 export type WireValue = undefined | boolean | number | string | Uint8Array | Reference | WireValue[] | { [key: string]: WireValue };
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+function enforceCodecLimit({ constraint, limit, observed }: { constraint: string; limit: number; observed: number }): void {
+  if (observed > limit) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint, limit, observed } });
+}
 function utf8({ text }: { text: string }): Uint8Array<ArrayBuffer> {
   // TextEncoder would silently replace unmatched UTF-16 surrogates.
   for (let at = 0; at < text.length; at++) {
@@ -29,7 +32,7 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
   const buffer = new Uint8Array(limit), view = new DataView(buffer.buffer);
   let at = 0, nodes = 0;
   const ancestors = new Set<object>();
-  const reserve = ({ count }: { count: number }) => check({ condition: at + count <= limit, code: 'RESOURCE_EXHAUSTED' });
+  const reserve = ({ count }: { count: number }) => enforceCodecLimit({ constraint: 'encoded-bytes', limit, observed: at + count });
   const byte = ({ value }: { value: number }) => {
     reserve({ count: 1 }); buffer[at++] = value;
   };
@@ -50,7 +53,8 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
     }
   };
   const visit = ({ value, depth }: { value: unknown; depth: number }): void => {
-    check({ condition: ++nodes <= 8192 && depth <= 32, code: 'RESOURCE_EXHAUSTED' });
+    enforceCodecLimit({ constraint: 'value-nodes', limit: 8192, observed: ++nodes });
+    enforceCodecLimit({ constraint: 'value-depth', limit: 32, observed: depth });
     if (value === undefined) {
       byte({ value: 0xf7 }); return;
     }
@@ -63,14 +67,14 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
         byte({ value: 0xfb }); reserve({ count: 8 }); view.setFloat64(at, value, false); at += 8;
       }
       return;
-    case 'string': { check({ condition: value.length <= limit, code: 'RESOURCE_EXHAUSTED' }); const bytes = utf8({ text: value }); head({ major: 3, value: bytes.length }); raw({ bytes }); return; }
+    case 'string': { enforceCodecLimit({ constraint: 'string-code-units', limit, observed: value.length }); const bytes = utf8({ text: value }); head({ major: 3, value: bytes.length }); raw({ bytes }); return; }
     case 'object': break;
     default: throw new Error('Unsupported RPC value');
     }
     check({ condition: value !== null, code: 'INVALID_ARGUMENT' });
     if (value === null) throw new Error('Null is not a missing-value marker');
     if (value instanceof Uint8Array) {
-      check({ condition: value.byteLength <= limit, code: 'RESOURCE_EXHAUSTED' });
+      enforceCodecLimit({ constraint: 'byte-array-bytes', limit, observed: value.byteLength });
       const bytes = ownBytes({ bytes: value }); head({ major: 2, value: bytes.length }); raw({ bytes }); return;
     }
     if (value instanceof Reference) {

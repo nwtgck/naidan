@@ -1,1 +1,1 @@
-export const naidanRpc__code = (): string => "Introduce el mismo número de 4 a 8 dígitos en ambos dispositivos";
+export const naidanRpc__code = (): string => "Introduce el mismo código de encuentro en ambos dispositivos";

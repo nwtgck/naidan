@@ -29,7 +29,7 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       const blob = await (await parent.getFileHandle(name)).getFile();
       metadata.push({ path, blob });
     }
-    function inputs({ request }: { request: ExperimentalImageGenerationRequestDto }): void {
+    function inputs({ request }: { request: Pick<ExperimentalImageGenerationRequestDto, 'imageInputs'> }): void {
       if (request.imageInputs.initImage) ids.add(request.imageInputs.initImage.binaryObjectId);
       for (const image of request.imageInputs.referenceImages) ids.add(image.binaryObjectId);
     }

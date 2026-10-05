@@ -108,7 +108,7 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
 const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
   switch (event.type) {
   case 'migration': loadingEpoch++; loaded.value = undefined; break;
-  case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'binary_objects': break;
+  case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
   default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
   }
 } });

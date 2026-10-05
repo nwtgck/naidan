@@ -79,6 +79,7 @@ vi.mock('lucide-vue-next', () => ({
   Settings2Icon: { template: '<span>Settings2</span>' },
   BookmarkPlusIcon: { template: '<span>BookmarkPlus</span>' },
   CpuIcon: { template: '<span>Cpu</span>' },
+  NetworkIcon: { template: '<span>Network</span>' },
   InfoIcon: { template: '<span>Info</span>' },
   ChefHatIcon: { template: '<span>ChefHat</span>' },
   DownloadIcon: { template: '<span>Download</span>' },

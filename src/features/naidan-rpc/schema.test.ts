@@ -38,7 +38,7 @@ it('unknown capability fields are not exposed through a loose object schema', ()
 });
 
 it('source validation rejects duplicate or locked streams without reading any producer', () => {
-  const plan = compile({ schema: z.object({ a: rpc.bytes(), b: rpc.bytes() }), capabilitiesAllowed: true, callbacksAllowed: true });
+  const plan = compile({ schema: z.object({ a: rpc.byteStream(), b: rpc.byteStream() }), capabilitiesAllowed: true, callbacksAllowed: true });
   let reads = 0;
   const source = new ReadableStream({ pull() {
     reads++;

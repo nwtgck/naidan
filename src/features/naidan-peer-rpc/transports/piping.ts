@@ -3,6 +3,7 @@ import type { NaidanPipingIdentity, NaidanPipingPeerVerifier, NaidanPipingRole }
 import type { NaidanRpcTransportSettings } from '@/01-models/naidan-rpc';
 import { validateRpcTransport } from '@/00-storage/service/naidan-rpc';
 import { encodePeerKey, decodePeerKey } from '@/features/naidan-peer-rpc/runtime/identity';
+import { normalizeRpcPairingCode } from '@/features/naidan-peer-rpc/runtime/pairing-code';
 
 export async function openPipingRpc({ settings, identity, peerKey, code, role, verifyPeer, signal }: {
   settings: NaidanRpcTransportSettings,
@@ -31,8 +32,15 @@ export async function openPipingRpc({ settings, identity, peerKey, code, role, v
     return NaidanPipingDuplexSession.connect({ piping, identity, expectedPeer: decodePeerKey({ value: peerKey }),
       code: 'peer-' + Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''), role: local === ordered[0] ? 'initiator' : 'responder', signal });
   }
-  if (!code || !/^[0-9]{4,8}$/.test(code) || !role || !verifyPeer) throw new Error('Enter the same 4–8 digit number on both devices');
-  return NaidanPipingDuplexSession.pair({ piping, code, identity, role, verifyPeer, signal });
+  if (code === undefined || !role || !verifyPeer) throw new Error('Pairing requires a shared code, role and explicit verifier');
+  const normalized = normalizeRpcPairingCode({ code });
+  // Use the existing bounded hash-code shape without changing Duplex. The
+  // digest domain is separate from pinned routes; its shape cannot bypass
+  // pair() and the explicit full comparison required for an unknown peer.
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(['naidan-peer-rpc-pairing/v1', normalized]))));
+  signal.throwIfAborted();
+  const rendezvousCode = 'peer-' + Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  return NaidanPipingDuplexSession.pair({ piping, code: rendezvousCode, identity, role, verifyPeer, signal });
 }
 export const TEST_ONLY = {
 };

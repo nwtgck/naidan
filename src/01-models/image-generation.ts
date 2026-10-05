@@ -1,3 +1,4 @@
+import type { ImageInferenceLocationPreference, RemoteImageModelEditor } from './image-generation-preferences';
 import type { BrowserImageModelSelection, Endpoint } from './types';
 import { z } from 'zod';
 import type { ImageGenerationRecord } from './image-generation-history';
@@ -49,15 +50,21 @@ export type ImageGenerationSession = {
   state: 'active' | 'archived' | 'deleting' | 'deleted',
 };
 
+export type ImageGenerationDraftRequest = Omit<ImageGenerationRecord['request'], 'runtime'> & {
+  runtime: ImageGenerationRecord['request']['runtime'] | undefined,
+};
+
 /** An editable checkpoint, independent of immutable generation requests. */
 export type ImageGenerationSessionDraft = {
   sessionId: ImageGenerationSessionId,
   revision: number,
   updatedAt: number,
-  request: ImageGenerationRecord['request'],
+  request: ImageGenerationDraftRequest,
+  inferenceLocation: ImageInferenceLocationPreference | undefined,
   seedMode: 'random' | 'fixed',
   layout: 'checkpoint' | 'components',
   modelSelection: BrowserImageModelSelection | undefined,
+  remoteModelEditor: RemoteImageModelEditor | undefined,
   loraStates: { enabled: boolean, strength: number }[],
   count: number,
   debug: 'on' | 'off',

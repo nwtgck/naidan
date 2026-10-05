@@ -1,4 +1,9 @@
 export type RpcOwnerLease = { release(): void };
+export class RpcOwnerBusyError extends Error {
+  constructor() {
+    super('Naidan RPC is managed by another tab'); this.name = 'RpcOwnerBusyError';
+  }
+}
 /** The lock belongs to the manager, not a Settings component. Never steal an
  * existing owner: a frozen tab may still own native work and relay readers. */
 export function acquireRpcOwner({ signal }: { signal: AbortSignal }): Promise<RpcOwnerLease> {
@@ -12,7 +17,7 @@ export function acquireRpcOwner({ signal }: { signal: AbortSignal }): Promise<Rp
     // grant must return without publishing a lease before the manager retires.
     const pending = navigator.locks.request('naidan-peer-rpc-owner/v1', { ifAvailable: true }, async lock => {
       if (!lock) {
-        reject(new Error('Naidan RPC is managed by another tab')); return;
+        reject(new RpcOwnerBusyError()); return;
       }
       if (signal.aborted) {
         reject(signal.reason); return;

@@ -5,7 +5,7 @@ import { reactive } from 'vue';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
 import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
-import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental.dto';
+import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 
@@ -34,6 +34,8 @@ it('preserves unknown recovery facts while retaining a valid image asset', () =>
   };
   const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
   expect(imageGenerationToDomain({ dto })).toEqual(record);
+  const extended = ExperimentalImageGenerationSchemaDto.parse({ ...dto, result: { ...dto.result, future: true } });
+  expect(imageGenerationToDomain({ dto: extended })).toEqual(record);
   expect(dto.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined });
   expect(ExperimentalImageGenerationSchemaDto.safeParse({ ...dto, result: { ...dto.result, confirmation: 'confirmed' } }).success).toBe(false);
 });

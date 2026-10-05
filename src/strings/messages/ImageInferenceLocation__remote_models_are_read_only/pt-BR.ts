@@ -1,0 +1,1 @@
+export const ImageInferenceLocation__remote_models_are_read_only = (): string => "Só é possível selecionar arquivos de modelo já existentes no dispositivo remoto. Downloads, importações e alterações nas configurações do provedor não são oferecidos intencionalmente.";

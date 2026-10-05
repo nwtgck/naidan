@@ -9,7 +9,9 @@ import ImageModelConfiguration from '@/features/stable-diffusion-cpp-browser/com
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageLoraControls from '@/features/stable-diffusion-cpp-browser/components/ImageLoraControls.vue';
 import ImageInputControls from './ImageInputControls.vue';
-import ImageExecutionTarget from './ImageExecutionTarget.vue';
+import ImageInferenceLocation from './ImageInferenceLocation.vue';
+import ImageRemoteModelConfiguration from './ImageRemoteModelConfiguration.vue';
+import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components/ImageModelPicker.vue';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePrompt', text: string }): unknown }>();
@@ -18,8 +20,8 @@ const id = useId();
 const configurationOpen = ref(false);
 const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
-const remote = computed(() => props.view.executionTarget?.kind.value === 'naidan_rpc');
-const hasModel = computed(() => remote.value ? !!props.view.executionTarget?.selection.value && !!props.view.executionTarget?.connected.value : !!library.main.value || !!files.value.model || !!files.value.diffusion);
+const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
+const hasModel = computed(() => remote.value ? !!props.view.inferenceLocation?.ready.value && !!props.view.inferenceLocation?.connected.value : !!library.main.value || !!files.value.model || !!files.value.diffusion);
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -64,16 +66,23 @@ function swapResolution(): void {
   setResolution({ width: parameters.value.height, height: parameters.value.width });
 }
 const resolutionInvalid = computed(() => ![parameters.value.width, parameters.value.height].every(value => Number.isInteger(value) && value >= 128 && value <= 2048 && value % 64 === 0));
-const componentSummary = computed(() => library.components.value.map(component => component.choices.find(choice => choice.id === component.selected)?.label).filter(Boolean).join(' · '));
+const componentSummary = computed(() => {
+  const location = props.view.inferenceLocation;
+  const components = remote.value && location ? location.components.value : library.components.value;
+  return [location ? (remote.value ? location.label.value || 'Naidan RPC' : lazyStrings.ImageInferenceLocation__this_device()) : undefined,
+    ...components.map(component => component.choices.find(choice => choice.id === component.selected)?.label)].filter(Boolean).join(' · ');
+});
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <form @submit.prevent="generate()" tw-class="min-w-0 space-y-4">
-    <ImageExecutionTarget v-if="view.executionTarget" :target="view.executionTarget" :disabled="busy || view.historyActions.busy.value" />
-    <section v-if="!remote" :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-model-setup">
-      <ImageModelLibrary :active="active" :manual-name="(files.model || files.diffusion)?.name" :view="library" :disabled="formDisabled" @prepare="emit('manageModels')" />
-      <fieldset :disabled="formDisabled" tw-class="min-w-0 space-y-2" data-testid="image-model-options">
-        <ImageSettingsSection embedded v-model:open="configurationOpen" :title="lazyStrings.ImageGenerationEditor__model_configuration()" :summary="componentSummary" data-testid="image-component-settings">
+  <form @submit.prevent="generate({ submission: undefined })" tw-class="min-w-0 space-y-4">
+    <section :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="image-model-setup">
+      <ImageModelPicker v-if="remote && view.inferenceLocation" :active="active" :model-value="view.inferenceLocation.primaryKey.value" :choices="view.inferenceLocation.primaryChoices.value" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" :disabled="formDisabled || view.inferenceLocation.loading.value || !view.inferenceLocation.peerId.value" compact @update:model-value="view.inferenceLocation.choosePrimary({ id: $event })" data-testid="image-main-model" />
+      <ImageModelLibrary v-else :active="active" :manual-name="(files.model || files.diffusion)?.name" :view="library" :disabled="formDisabled" @prepare="emit('manageModels')" />
+      <ImageSettingsSection embedded v-model:open="configurationOpen" :title="lazyStrings.ImageGenerationEditor__model_configuration()" :summary="componentSummary" data-testid="image-component-settings">
+        <ImageInferenceLocation v-if="view.inferenceLocation" :inference-location="view.inferenceLocation" :disabled="busy || view.historyActions.busy.value || !!view.draftRestoreDisabled?.value" />
+        <ImageRemoteModelConfiguration v-if="remote && view.inferenceLocation" :inference-location="view.inferenceLocation" :disabled="formDisabled" :active="active" />
+        <fieldset v-else :disabled="formDisabled" tw-class="min-w-0 space-y-4" data-testid="image-model-options">
           <ImageModelConfiguration :active="active" :view="library" :disabled="formDisabled" />
           <ImageLoraControls :active="active" embedded v-model="loras" :saved="library.savedLoras.value" :disabled="formDisabled || !supported || library.importing.value" />
           <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__manual_model_files()" :summary="(files.model || files.diffusion)?.name" data-testid="image-manual-settings">
@@ -91,8 +100,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__companion_files_help() }}</p>
 
           </ImageSettingsSection>
-        </ImageSettingsSection>
-      </fieldset>
+        </fieldset>
+      </ImageSettingsSection>
     </section>
     <section tw-class="space-y-2" data-testid="image-prompt-section">
       <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div></div>

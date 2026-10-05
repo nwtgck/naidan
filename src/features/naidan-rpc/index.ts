@@ -5,8 +5,8 @@ export type { NaidanRpcCall, NaidanRpcClient, NaidanRpcImplementation, NaidanRpc
 export { rpc } from '@/features/naidan-rpc/schema';
 export type { SendValue, ReceiveValue } from '@/features/naidan-rpc/schema';
 export type { NaidanRpcTransport, NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
-export { NaidanRpcError } from '@/features/naidan-rpc/primitives';
-export type { NaidanRpcErrorCode } from '@/features/naidan-rpc/primitives';
+export { NaidanRpcError, NaidanRpcPublicError, describeNaidanRpcError } from '@/features/naidan-rpc/primitives';
+export type { NaidanRpcErrorCode, NaidanRpcPublicErrorDetails } from '@/features/naidan-rpc/primitives';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -96,6 +96,11 @@ interface UseSettingsApi {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
   }) => Promise<void>,
+  captureExperimentalStorage(): () => boolean,
+  updateExperimentalForStorage: ({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }) => Promise<'saved' | 'changed'>,
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
@@ -530,6 +535,30 @@ export function useSettings(): UseSettingsApi {
     }
   }
 
+  function captureExperimentalStorage(): () => boolean {
+    return storageService.captureSettingsStorage();
+  }
+
+  async function updateExperimentalForStorage({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }): Promise<'saved' | 'changed'> {
+    let savedSettings: Settings | undefined;
+    const outcome = await storageService.updateSettingsForStorage({ isCurrent, updater: ({ current }) => {
+      const base = current ?? _settings.value;
+      savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
+      return savedSettings;
+    } });
+    switch (outcome) {
+    case 'changed': return outcome;
+    case 'saved':
+      if (!isCurrent()) return 'changed';
+      if (savedSettings) _settings.value = savedSettings;
+      return outcome;
+    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    }
+  }
+
   // --- Explicit Actions ---
 
   async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
@@ -788,6 +817,8 @@ export function useSettings(): UseSettingsApi {
     init,
     save,
     updateExperimental,
+    captureExperimentalStorage,
+    updateExperimentalForStorage,
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,

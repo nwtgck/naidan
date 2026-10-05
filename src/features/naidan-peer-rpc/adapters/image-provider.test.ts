@@ -1,8 +1,11 @@
+// @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { startPeerImage } from './image-provider';
 import type { PeerImageInput } from '@/features/naidan-peer-rpc/handlers/inference/resources';
+import type { ReadOnlyInferenceResources } from '@/features/naidan-peer-rpc/handlers/inference/resources';
 import type { NaidanPeerClient, PeerImageEvent } from '@/features/naidan-peer-rpc/contract';
-import { NaidanRpcPeer, expose } from '@/features/naidan-rpc';
+import { NaidanRpcPeer, expose, NaidanRpcError } from '@/features/naidan-rpc';
+import { createImageGenerationFailure } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
 import { naidanPeerContract } from '@/features/naidan-peer-rpc/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-peer-rpc/implementation';
 import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/inference/budget';
@@ -37,7 +40,7 @@ function mockClient({ image = stream({ values: [png()] }), events = stream({ val
   const unsupported = (): never => {
     throw new Error('Unexpected method');
   };
-  const client: NaidanPeerClient = { generateImage, listChatModels: unsupported, generateChat: unsupported, listImageModels: unsupported };
+  const client: NaidanPeerClient = { getProvidedMethods: unsupported, generateImage, listChatModels: unsupported, generateChat: unsupported, listImageModels: unsupported };
   return { client, cancel, generateImage };
 }
 function start({ client, value = input() }: { client: NaidanPeerClient, value?: PeerImageInput }) {
@@ -62,6 +65,30 @@ it('never promotes a seed mismatch to confirmed completion or retries generation
   const fixture = mockClient({ events: stream({ values: [{ ...terminal, seed: '43' }] }) });
   const result = await start({ client: fixture.client }).result;
   expect(result.status).not.toBe('completed'); expect(fixture.cancel).toHaveBeenCalled(); expect(fixture.generateImage).toHaveBeenCalledOnce();
+  if (result.status !== 'failed' && result.status !== 'interrupted') throw new Error('Expected failure detail');
+  expect(result.message).toContain('Caller stage: completion-validation');
+  expect(result.message).toContain('Image confirmation differs from the request');
+});
+
+it('keeps the RPC error from final confirmation together with recoverable pixels', async () => {
+  const fixture = mockClient({ closed: Promise.reject(new NaidanRpcError({ code: 'TRANSPORT_ERROR' })) });
+  const result = await start({ client: fixture.client }).result;
+  expect(result.status).toBe('interrupted');
+  if (result.status !== 'interrupted') throw new Error('Expected recoverable pixels');
+  expect(result.message).toContain('Caller stage: completion-confirmation');
+  expect(result.message).toContain('RPC code: TRANSPORT_ERROR');
+});
+
+it('does not replace an event-stream RPC failure with sibling cancellation', async () => {
+  const imageCancelled = vi.fn();
+  const fixture = mockClient({ image: new ReadableStream({ cancel: imageCancelled }), events: new ReadableStream({ start(controller) {
+    controller.error(new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' }));
+  } }) });
+  const result = await start({ client: fixture.client }).result;
+  if (result.status !== 'failed') throw new Error('Expected failure');
+  expect(result.message).toContain('Caller stage: events-transfer');
+  expect(result.message).toContain('RPC code: RESOURCE_EXHAUSTED');
+  expect(result.message).not.toContain('CANCELLED'); expect(imageCancelled).toHaveBeenCalledOnce();
 });
 it('assembles small previews without applying the final-image minimum dimensions', async () => {
   const bytes = png({ width: 64, height: 64 });
@@ -101,12 +128,71 @@ it('uses the real typed RPC transport and invokes provider computation exactly o
   const unexpected = (): never => {
     throw new Error('Unexpected resource');
   };
-  const implementation = createNaidanPeerImplementation({ inference: { resources: { generateImage, listChatModels: unexpected, generateChat: unexpected, listImageModels: unexpected },
+  const implementation = createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: { resources: { generateImage, listChatModels: unexpected, generateChat: unexpected, listImageModels: unexpected },
     inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }) } });
   new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract, implementation, allowedMethods: ['generateImage'] })], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const outcome = await start({ client: caller.client({ contract: naidanPeerContract }) }).result;
   expect(outcome.status).toBe('completed'); expect(generateImage).toHaveBeenCalledOnce();
+});
+
+it('delivers a remote native failure stage through the actual typed RPC with previews disabled', async () => {
+  const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), stop = new AbortController(); cleanup.push(() => {
+    stop.abort(); pair.close();
+  });
+  const native = new WebAssembly.RuntimeError('private model path and prompt');
+  native.stack = `\
+private-native-stack
+wasm-function[42]:0xab`;
+  const generateImage = vi.fn(async () => {
+    throw createImageGenerationFailure({ error: native, stage: 'sampling', reason: 'engine-failed', profile: 'webgpu-wasm32-asyncify', gpu: false, nativeContext: undefined });
+  });
+  const unexpected = (): never => {
+    throw new Error('Unexpected resource');
+  };
+  const implementation = createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: {
+    resources: { generateImage, listChatModels: unexpected, generateChat: unexpected, listImageModels: unexpected },
+    inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }),
+  } });
+  new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract, implementation, allowedMethods: ['generateImage'] })], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
+  const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
+  const value = input(); value.preview.enabled = false;
+  const outcome = await start({ client: caller.client({ contract: naidanPeerContract }), value }).result;
+  if (outcome.status !== 'failed') throw new Error('Expected native failure');
+  expect(outcome.message).toContain('"stage": "sampling"');
+  expect(outcome.message).toContain('RPC code: HANDLER_FAILED');
+  expect(outcome.message).toContain('"errorType": "wasm-trap"');
+  expect(outcome.message).toContain('wasm-function[42]:0xab');
+  expect(outcome.message).not.toContain('private'); expect(generateImage).toHaveBeenCalledOnce();
+});
+
+it('delivers a preview larger than one RPC item without aborting the native job', async () => {
+  const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), stop = new AbortController(); cleanup.push(() => {
+    stop.abort(); pair.close();
+  });
+  // A structural PNG with a large IDAT payload exercises actual wire limits.
+  const small = png({ width: 64, height: 64 }), payloadBytes = 50000;
+  const preview = new Uint8Array(small.length + payloadBytes);
+  preview.set(small.subarray(0, 41)); preview.set(small.subarray(41), 41 + payloadBytes);
+  new DataView(preview.buffer).setUint32(33, payloadBytes);
+  const generateImage = vi.fn<ReadOnlyInferenceResources['generateImage']>(async ({ onPreview }) => {
+    onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 1, step: 2, steps: 4, width: 64, height: 64,
+      mode: 'projection', png: new Blob([preview], { type: 'image/png' }) } });
+    return { png: new Blob([png()], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' };
+  });
+  const unexpected = (): never => {
+    throw new Error('Unexpected resource');
+  };
+  const implementation = createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: {
+    resources: { generateImage, listChatModels: unexpected, generateChat: unexpected, listImageModels: unexpected },
+    inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }),
+  } });
+  new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract, implementation, allowedMethods: ['generateImage'] })], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
+  const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
+  const job = start({ client: caller.client({ contract: naidanPeerContract }) });
+  expect((await job.result).status).toBe('completed');
+  expect(job.onPreview).toHaveBeenCalledOnce(); expect(generateImage).toHaveBeenCalledOnce();
+  expect(new Uint8Array(await job.onPreview.mock.calls[0]![0].frame.png.arrayBuffer())).toEqual(preview);
 });
 it('does not open a call or input streams when already cancelled', async () => {
   const fixture = mockClient();

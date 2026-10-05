@@ -1,3 +1,4 @@
+import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorToDomain, remoteImageModelEditorToDto } from './image-generation-editor';
 import { endpointToDomain, endpointToDto } from './mappers';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import type { ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -8,15 +9,17 @@ import type { ImageGenerationAsset, ImageGenerationAssetAnnotations, ImageGenera
 import { idToRaw, toChatId, toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationSessionId, toImageGenerationStoreId, toImageGenerationTagId } from '@/01-models/ids';
 import { exactObject } from '@/utils/exact-object';
 import type { ExperimentalImageGenerationAssetAnnotationsDto, ExperimentalImageGenerationAssetDto, ExperimentalImageGenerationAssetSummaryDto, ExperimentalImageGenerationCatalogDto, ExperimentalImageGenerationRunDto, ExperimentalImageGenerationRunSummaryDto, ExperimentalImageGenerationSessionDto, ExperimentalImageGenerationTagReferenceDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationRequestToDomain, imageGenerationRequestToDto } from './image-generation-history';
+import { imageGenerationRuntimeToDomain, imageGenerationRuntimeToDto, imageGenerationRequestBodyToDomain, imageGenerationRequestBodyToDto, imageGenerationRequestToDomain, imageGenerationRequestToDto } from './image-generation-history';
 
 export function imageGenerationDraftToDto({ draft }: { draft: ImageGenerationSessionDraft }): ExperimentalImageGenerationDraftDto {
-  const { sessionId, request, modelSelection, loraStates, ...metadata } = draft;
-  return exactObject<ExperimentalImageGenerationDraftDto>()({ ...metadata, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), loraStates: loraStates.map(state => ({ ...state })), sessionId: idToRaw({ id: sessionId }), request: imageGenerationRequestToDto({ request }) });
+  const { sessionId, request, inferenceLocation, modelSelection, remoteModelEditor, loraStates, ...metadata } = draft;
+  const { runtime, ...body } = request;
+  return exactObject<ExperimentalImageGenerationDraftDto>()({ ...metadata, inferenceLocation: inferenceLocation && imageInferenceLocationToDto({ location: inferenceLocation }), remoteModelEditor: remoteModelEditor && remoteImageModelEditorToDto({ editor: remoteModelEditor }), modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), loraStates: loraStates.map(state => ({ ...state })), sessionId: idToRaw({ id: sessionId }), request: { ...imageGenerationRequestBodyToDto({ request: body }), runtime: runtime && imageGenerationRuntimeToDto({ runtime }) } });
 }
 export function imageGenerationDraftToDomain({ dto }: { dto: ExperimentalImageGenerationDraftDto }): ImageGenerationSessionDraft {
-  const { sessionId, request, modelSelection, loraStates, ...metadata } = dto;
-  return exactObject<ImageGenerationSessionDraft>()({ ...metadata, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), loraStates: loraStates.map(state => ({ ...state })), sessionId: toImageGenerationSessionId({ raw: sessionId }), request: imageGenerationRequestToDomain({ request }) });
+  const { sessionId, request, inferenceLocation, modelSelection, remoteModelEditor, loraStates, ...metadata } = dto;
+  const { runtime, ...body } = request;
+  return exactObject<ImageGenerationSessionDraft>()({ ...metadata, inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }), remoteModelEditor: remoteModelEditor && remoteImageModelEditorToDomain({ dto: remoteModelEditor }), modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), loraStates: loraStates.map(state => ({ ...state })), sessionId: toImageGenerationSessionId({ raw: sessionId }), request: { ...imageGenerationRequestBodyToDomain({ request: body }), runtime: runtime && imageGenerationRuntimeToDomain({ runtime }) } });
 }
 
 export function imageGenerationTranslationToDto({ value }: { value: ImageGenerationTranslationOverride | undefined }): ExperimentalImageGenerationTranslationOverrideDto | undefined {

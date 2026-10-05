@@ -1,7 +1,9 @@
 import type { PeerImageEvent } from '@/features/naidan-peer-rpc/contract';
+import { PEER_IMAGE_PREVIEW_CHUNK_BYTES } from '@/features/naidan-peer-rpc/contract';
 import type { ImageExecutionOutput, ImageExecutionPreview } from '@/features/image-generation/execution/types';
 import type { InferenceBudget } from './budget';
 import { validatePng } from '@/features/naidan-peer-rpc/codecs/png';
+import { createImageGenerationFailure } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
 
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 const MAX_PREVIEW_BYTES = 4 * 1024 * 1024;
@@ -79,6 +81,7 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     // Reserve before input or native work. Slow readers retain a delivery slot,
     // not the engine's compute lease, which ends when run() settles.
     reservation = budget.reserve({ bytes: MAX_IMAGE_BYTES + 2 * MAX_PREVIEW_BYTES });
+    let validating = false;
     job = Promise.resolve().then(async () => {
       stop.signal.throwIfAborted();
       const result = await run({ signal: stop.signal, onPreview({ frame }) {
@@ -87,12 +90,15 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
         pendingPreview = frame; changed();
       } });
       stop.signal.throwIfAborted();
+      validating = true;
       if (result.png.type !== 'image/png' || result.png.size < 33 || result.png.size > MAX_IMAGE_BYTES || result.width !== width || result.height !== height) throw new Error('Unexpected generated image');
       validatePng({ bytes: new Uint8Array(await result.png.slice(0, 33).arrayBuffer()), width, height });
       stop.signal.throwIfAborted();
       output = result; return result;
     }).catch(error => {
-      abort({ reason: error }); throw error;
+      const failure = stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: validating ? 'output-validation' : 'generation',
+        reason: validating ? 'invalid-output' : 'generation-failed', profile: undefined, gpu: false, nativeContext: undefined });
+      abort({ reason: failure }); throw failure;
     }).finally(() => {
       nativeDone = true; changed(); cleanup();
     });
@@ -116,9 +122,11 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
         stop.signal.throwIfAborted();
         yield { type: 'preview-start', revision: ++revision, step: preview.step, steps: preview.steps, width: preview.width, height: preview.height,
           mode: preview.mode, byteLength: bytes.length };
-        for (let at = 0; at < bytes.length; at += 16384) {
+        // Base64 and the event's CBOR fields both count toward the RPC item
+        // budget. Raw 16 KiB chunks exceed that budget after encoding.
+        for (let at = 0; at < bytes.length; at += PEER_IMAGE_PREVIEW_CHUNK_BYTES) {
           stop.signal.throwIfAborted();
-          yield { type: 'preview-chunk', data: btoa(String.fromCharCode(...bytes.subarray(at, at + 16384))) };
+          yield { type: 'preview-chunk', data: btoa(String.fromCharCode(...bytes.subarray(at, at + PEER_IMAGE_PREVIEW_CHUNK_BYTES))) };
         }
         yield { type: 'preview-end' };
       } else if (nativeDone) {
@@ -150,7 +158,7 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
             imageDone = true; controller.close(); imageReader.releaseLock(); imageReader = undefined; cleanup();
           } else controller.enqueue(item.value);
         } catch (error) {
-          abort({ reason: error });
+          abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'image-delivery', reason: 'image-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
         }
       } });
     },
@@ -169,7 +177,7 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
             eventsDone = true; controller.close(); cleanup();
           } else controller.enqueue(item.value);
         } catch (error) {
-          abort({ reason: error });
+          abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'preview-delivery', reason: 'preview-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
         }
       } });
     },

@@ -4,11 +4,11 @@ import { chatModelReferenceSchema, imageModelSelectionSchema, naidanPeerContract
 import type { NaidanPeerMethodName } from './contract';
 
 it('derives a closed method vocabulary with a single explicit image entry', () => {
-  expect(methodNames({ contract: naidanPeerContract })).toEqual(['listChatModels', 'generateChat', 'listImageModels', 'generateImage']);
+  expect(methodNames({ contract: naidanPeerContract })).toEqual(['getProvidedMethods', 'listChatModels', 'generateChat', 'listImageModels', 'generateImage']);
   const names: readonly NaidanPeerMethodName[] = ['listChatModels', 'generateChat'];
   expect(peerAllowedMethodsSchema.parse(names)).toEqual(names);
   expect(peerAllowedMethodsSchema.safeParse(['generateImage', 'generateImage']).success).toBe(false);
-  for (const unknown of ['*', 'image', 'imageFromFiles', 'downloadModel', '__proto__', 'constructor']) expect(peerAllowedMethodsSchema.safeParse([unknown]).success).toBe(false);
+  for (const unknown of ['getProvidedMethods', '*', 'image', 'imageFromFiles', 'downloadModel', '__proto__', 'constructor']) expect(peerAllowedMethodsSchema.safeParse([unknown]).success).toBe(false);
 });
 it.each(['../private', '/absolute', 'models//file', 'https://example.invalid/file', 'a/./b', 'a/%2e%2e/b', 'a\\b', 'a\0b'])('rejects unsafe model path %s', path => {
   expect(relativeModelPathSchema.safeParse(path).success).toBe(false);

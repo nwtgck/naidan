@@ -1,4 +1,4 @@
-import type { ImageExecutionTargetView } from './composables/use-image-execution-target';
+import type { ImageInferenceLocationView } from './composables/use-image-inference-location';
 import type { ImageGenerationDraftAccess } from './generation-draft';
 import type { ImageGenerationSubmission } from './generation-submission';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
@@ -30,7 +30,7 @@ export type ImageEngineStateView = {
 };
 
 export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<ImageGenerationDraftAccess> & {
-  executionTarget?: ImageExecutionTargetView;
+  inferenceLocation?: ImageInferenceLocationView;
   engineState: ImageEngineStateView;
   seedMode: Ref<'random' | 'fixed'>;
   randomizeSeed(): void;
@@ -66,7 +66,7 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<I
   chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void;
   resetFiles(): void;
   removeResult({ resultId }: { resultId: number }): void;
-  generate({ submission }?: { submission?: ImageGenerationSubmission }): Promise<void>;
+  generate({ submission }: { submission: ImageGenerationSubmission | undefined }): Promise<void>;
   cancel(): void;
   forceCancel(): void;
   releaseModel(): void;

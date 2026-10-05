@@ -1,3 +1,4 @@
+import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { expect, it, vi } from 'vitest';
 import { NaidanPeerManager } from './manager';
 import type { RpcLink } from './manager';
@@ -7,18 +8,20 @@ import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/infer
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
 
+const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
+
 function fixture({ cleanupFailure, count }: { cleanupFailure: Error | undefined, count: number }) {
   const local = new Uint8Array(32).fill(1);
   const records: NaidanRpcConnection[] = Array.from({ length: count }, (_, index) => ({
     id: toNaidanRpcConnectionId({ raw: `connection-${index}` }),
     peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(index + 2) }) }),
-    localPublicKey: encodePeerKey({ bytes: local }), label: `Peer ${index}`,
+    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: `Peer ${index}`,
     transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0,
   }));
   const links: { pair: ReturnType<typeof transportPair>, closed: ReturnType<typeof Promise.withResolvers<void>>, abort: ReturnType<typeof vi.fn<() => void>> }[] = [];
   const release = vi.fn(), retireResources = vi.fn(async () => {});
   const manager = new NaidanPeerManager({ dependencies: {
-    storage: { readIdentity: async () => undefined, list: async () => records, remember: async () => {}, update: async ({ connection }) => connection.revision, remove: async () => {} },
+    storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: records }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
     identity: async () => ({ privateKey: {} as CryptoKey, publicKey: local }), acquireOwner: async () => ({ release }),
     open: async () => {
       const index = links.length, pair = transportPair({ capacity: 2, fragmentBytes: 79 }), closed = Promise.withResolvers<void>();

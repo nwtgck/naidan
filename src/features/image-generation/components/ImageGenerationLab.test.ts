@@ -43,14 +43,14 @@ it('defaults to F32 and releases retained weights when BF16 conversion changes b
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
   expect(wrapper.get('[data-testid="image-bf16-weight-type"]').element).toHaveProperty('value', 'f32');
-  await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   expect(mocks.generate.mock.calls[0]?.[0].request.parameters.bf16WeightType).toBe('f32');
   expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
   mocks.release.mockClear();
   await wrapper.get('[data-testid="image-bf16-weight-type"]').setValue('f16'); await flushPromises();
   expect(mocks.release).toHaveBeenCalledOnce();
   expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
-  await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
 });
 it('snapshots LoRA files and strength, excludes disabled adapters, and clears selections when the base model changes', async () => {
@@ -62,7 +62,7 @@ it('snapshots LoRA files and strength, excludes disabled adapters, and clears se
   view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'a small tree';
   const file = new File(['adapter fixture'], 'style.safetensors');
   view.loras.value = [{ file, strength: 0.75, enabled: true }];
-  const task = view.generate(); await flushPromises();
+  const task = view.generate({ submission: undefined }); await flushPromises();
   expect(wrapper.get('[data-testid="image-lora-files"]').element.matches(':disabled')).toBe(true);
   const request = mocks.generate.mock.calls[0]![0].request;
   view.loras.value[0]!.strength = 2;
@@ -71,11 +71,11 @@ it('snapshots LoRA files and strength, excludes disabled adapters, and clears se
   first.resolve({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' });
   await task; await flushPromises();
   await wrapper.get('[data-testid="image-lora-enabled"]').setValue(false);
-  await view.generate();
+  await view.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[1]![0].request.loras).toEqual([]);
   view.files.value = { model: ggufFile() };
   expect(view.loras.value).toEqual([]);
-  await view.generate();
+  await view.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[2]![0].request.loras).toEqual([]);
 });
 it('rejects an invalid active LoRA strength before creating a client', async () => {
@@ -83,7 +83,7 @@ it('rejects an invalid active LoRA strength before creating a client', async () 
   const view = wrapper.vm.TEST_ONLY;
   view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'test';
   view.loras.value = [{ file: new File(['adapter fixture'], 'style.gguf'), strength: NaN, enabled: true }];
-  await view.generate();
+  await view.generate({ submission: undefined });
   expect(mocks.create).not.toHaveBeenCalled();
 });
 it('clears ordinary LoRA selections when choosing another model from the library', async () => {
@@ -106,7 +106,7 @@ it('uses independent requests, saves a temporary result, and revokes it on unmou
   wrapper = mount(ImageGenerationLab);
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
-  await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   expect(mocks.generate).toHaveBeenCalledTimes(1); expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
   let downloadedName: string | undefined;
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
@@ -138,10 +138,10 @@ it('forwards an explicit budget and unsets it when the number input is cleared',
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
   const memory = wrapper.get('[data-testid="image-memory-budget"]');
   await memory.setValue('3072');
-  await wrapper.vm.TEST_ONLY.generate();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[0]?.[0]?.request.gpuBudgetMiB).toBe(3072);
   await memory.setValue('');
-  await wrapper.vm.TEST_ONLY.generate();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[1]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
 });
 it('keeps copy/save diagnostics usable while a native request is indefinitely pending', async () => {
@@ -160,7 +160,7 @@ it('keeps copy/save diagnostics usable while a native request is indefinitely pe
     wrapper = mount(ImageGenerationLab); await flushPromises();
     await wrapper.get('[data-testid="image-debug-mode"]').setValue(true);
     wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'private prompt';
-    const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+    const running = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
     expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
     const copy = wrapper.get('[data-testid="image-copy-diagnostics"]');
     expect(copy.element.closest('fieldset')).toBeNull(); expect(copy.element.matches(':disabled')).toBe(false);
@@ -188,7 +188,7 @@ it('shows image decoding separately from sampling without changing requested ste
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
   wrapper.vm.TEST_ONLY.parameters.value.steps = 8;
-  const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const running = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   notify!({ event: { phase: 'decoding', step: 0, steps: 1 } }); await flushPromises();
   expect(wrapper.text()).toContain('Decoding image…');
   expect(wrapper.vm.TEST_ONLY.parameters.value.steps).toBe(8);
@@ -202,7 +202,7 @@ it('retains one client over six results, supports explicit release, and does not
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'first'; await flushPromises();
   for (let n = 0; n < 6; n++) {
-    wrapper.vm.TEST_ONLY.parameters.value.prompt = `image ${n}`; await wrapper.vm.TEST_ONLY.generate();
+    wrapper.vm.TEST_ONLY.parameters.value.prompt = `image ${n}`; await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
   }
   await flushPromises();
   expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.dispose).not.toHaveBeenCalled();
@@ -222,7 +222,7 @@ it('keeps live preview ON/OFF and interval/size controls usable while sampling, 
   mocks.generate.mockReturnValueOnce(finish.promise);
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
-  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   const enabled = wrapper.get('[data-testid="image-preview-enabled"]');
   expect(enabled.element.closest('fieldset')).toBeNull(); expect(enabled.element.matches(':disabled')).toBe(false);
   expect(wrapper.get('[data-testid="image-preview-mode"]').element.matches(':disabled')).toBe(true);
@@ -244,7 +244,7 @@ it('keeps snapshot URLs valid when the live image changes, bounds history, and r
   await wrapper.get('[data-testid="image-preview-enabled"]').setValue(true);
   expect(wrapper.get<HTMLInputElement>('[data-testid="image-keep-previews"]').element.checked).toBe(true);
   wrapper.vm.TEST_ONLY.maxPreviews.value = 2; await flushPromises();
-  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   const onPreview = mocks.generate.mock.calls[0]![0].onPreview;
   for (let step = 1; step <= 3; step++) {
     onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step, steps: 20, width: 32, height: 32, mode: 'projection', png: new Blob(['preview'], { type: 'image/png' }) } });
@@ -267,7 +267,7 @@ it('leaves explicit generation parameters untouched and releases after success w
   await wrapper.get('[data-testid="image-seed-mode"]').setValue('fixed');
   Object.assign(wrapper.vm.TEST_ONLY.parameters.value, { prompt: 'test', guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
   await wrapper.get('[data-testid="image-retain-model"]').setValue(false); await flushPromises();
-  await wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   expect(mocks.generate.mock.calls[0]![0].request.parameters).toMatchObject({ guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
   expect(mocks.release).toHaveBeenCalled(); expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
   expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(1);
@@ -286,7 +286,7 @@ it('uses a fresh nanoid suffix for every diagnostic save during and after genera
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a private description';
-  const running = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const running = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   const save = wrapper.get('[data-testid="image-save-diagnostics"]');
   expect(save.element.matches(':disabled')).toBe(false);
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -306,7 +306,7 @@ it('waits for cooperative stop before enabling generation and leaves the model r
   const gate = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(gate.promise);
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
-  const task = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  const task = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   const released = mocks.release.mock.calls.length;
   await wrapper.get('[data-testid="image-cancel"]').trigger('click');
   expect(mocks.cancel).toHaveBeenCalledOnce(); expect(wrapper.vm.TEST_ONLY.stopping.value).toBe(true);
@@ -355,7 +355,7 @@ it('shows the debug toggle only for generation and locks it while generating', a
   await wrapper.get('[data-testid="image-tab-generate"]').trigger('click');
   const toggle = wrapper.get('[data-testid="image-debug-mode"]');
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'test'; await flushPromises();
-  await toggle.setValue(true); const operation = wrapper.vm.TEST_ONLY.generate(); await flushPromises();
+  await toggle.setValue(true); const operation = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
   expect(toggle.element.matches(':disabled')).toBe(true);
   expect(mocks.generate.mock.calls[0]?.[0].request.debug).toBe('on');
   finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
@@ -381,7 +381,7 @@ it('uses saved adapters explicitly in normal generation and independently in one
   wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-lora-saved')!.vm.$emit('update:modelValue', 'saved-style'); await flushPromises();
   await wrapper.get('[data-testid="image-lora-add-saved"]').trigger('click');
   view.parameters.value.prompt = 'saved adapter';
-  await view.generate(); await flushPromises();
+  await view.generate({ submission: undefined }); await flushPromises();
   const request = mocks.generate.mock.calls[0]![0].request;
   expect(request.loras).toEqual([{ file, path: 'style.safetensors', strength: 1 }]);
   expect(request.loras[0].file).toBe(file);
@@ -517,7 +517,7 @@ it('locks normal generation during a frozen multi-model run, reuses per model, a
   // Even a programmatic form edit cannot alter requests already in the batch.
   b.common.value.steps = 91;
   await wrapper.get('[data-testid="image-tab-generate"]').trigger('click');
-  await wrapper.vm.TEST_ONLY.generate(); expect(mocks.generate).toHaveBeenCalledTimes(1);
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); expect(mocks.generate).toHaveBeenCalledTimes(1);
   expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
   first.resolve(undefined); await task; await flushPromises();
   expect(mocks.generate).toHaveBeenCalledTimes(6); expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.dispose).toHaveBeenCalledTimes(2);
@@ -613,7 +613,7 @@ it('does not start a benchmark while ordinary generation is active or change its
   const hold = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(hold.promise);
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   const normal = wrapper.vm.TEST_ONLY; normal.files.value = { model: ggufFile() }; normal.parameters.value.prompt = 'normal prompt';
-  const task = normal.generate(); await flushPromises(); await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
+  const task = normal.generate({ submission: undefined }); await flushPromises(); await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
   expect(wrapper.get('[data-testid="benchmark-start"]').element.matches(':disabled')).toBe(true);
   await normal.benchmark.start(); expect(mocks.generate).toHaveBeenCalledTimes(1);
   expect(normal.parameters.value.prompt).toBe('normal prompt');
@@ -623,7 +623,7 @@ it('releases the normally retained model before benchmark execution, then leaves
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
   wrapper = mount(ImageGenerationLab); await flushPromises();
-  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'ordinary'; await wrapper.vm.TEST_ONLY.generate();
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'ordinary'; await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
   expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
   const benchmark = wrapper.vm.TEST_ONLY.benchmark; benchmark.protocol.value.cooldownSeconds = 0; benchmark.protocol.value.repeats = 1;
   const countBefore = mocks.release.mock.calls.length;
@@ -654,16 +654,16 @@ it('snapshots image conditioning, accepts changed images on the next run and cle
   view.files.value = { model: ggufFile() }; view.parameters.value.prompt = 'change the background';
   const first = new File(['one'], 'same.png', { type: 'image/png' }), second = new File(['two'], 'same.png', { type: 'image/png' });
   view.imageInputs.value = { initImage: first, strength: 0.4, referenceImages: [first] };
-  const task = view.generate(); await flushPromises();
+  const task = view.generate({ submission: undefined }); await flushPromises();
   expect(wrapper.get('[data-testid="image-input-initial"]').element.matches(':disabled')).toBe(true);
   view.imageInputs.value = { initImage: undefined, strength: 0.9, referenceImages: [second] };
   expect(mocks.generate.mock.calls[0]![0].request.imageInputs).toEqual({ initImage: first, strength: 0.4, referenceImages: [first] });
   pending.resolve({ png: new Blob(['PNG']), width: 256, height: 256, modelVersion: 'fixture' }); await task; await flushPromises();
-  await view.generate();
+  await view.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[1]![0].request.imageInputs.referenceImages[0]).toBe(second);
   view.files.value = { model: ggufFile() };
   expect(view.imageInputs.value).toEqual({ initImage: undefined, strength: 0.75, referenceImages: [] });
-  await view.generate(); expect(mocks.generate.mock.calls[2]![0].request.imageInputs.referenceImages).toEqual([]);
+  await view.generate({ submission: undefined }); expect(mocks.generate.mock.calls[2]![0].request.imageInputs.referenceImages).toEqual([]);
 });
 
 it('keeps conditioning per target and lets completed measurements change image export inclusion without rerunning', async () => {
@@ -692,7 +692,7 @@ it('preserves ordinary inputs and an active run when visiting model management a
   const pending = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(pending.promise);
   wrapper = mount(ImageGenerationLab); await flushPromises();
   const state = wrapper.vm.TEST_ONLY; state.files.value = { model: ggufFile() }; state.parameters.value.prompt = 'keep this prompt';
-  const task = state.generate(); await flushPromises();
+  const task = state.generate({ submission: undefined }); await flushPromises();
   expect(wrapper.get('[data-testid="image-retain-model"]').element.matches(':disabled')).toBe(false);
   for (const tab of ['models', 'history', 'generate']) {
     await wrapper.get(`[data-testid="image-tab-${tab}"]`).trigger('click');

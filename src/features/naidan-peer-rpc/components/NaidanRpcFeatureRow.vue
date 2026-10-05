@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onScopeDispose } from 'vue';
+import { NetworkIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { lazyStrings, ensureStrings } from '@/strings';
 import ExperimentalFeatureRow from '@/components/ExperimentalFeatureRow.vue';
@@ -59,7 +60,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <ExperimentalFeatureRow v-if="copy" id="feature-naidan-rpc" :title="copy.title" :summary="copy.summary" :details="copy.details"
                           :status="status" :toggle-availability="pending ? 'unavailable' : 'available'" :toggle-label="copy.toggleLabel"
-                          toggle-test-id="feature-naidan-rpc-toggle" @toggle="toggle" />
+                          toggle-test-id="feature-naidan-rpc-toggle" @toggle="toggle">
+    <template #icon>
+      <NetworkIcon tw-class="h-4 w-4" />
+    </template>
+  </ExperimentalFeatureRow>
   <p v-if="stopMessage" role="status" data-testid="rpc-stop-status" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ stopMessage }}</p>
   <button v-if="stopStatus === 'unconfirmed'" type="button" data-testid="rpc-retry-stop" tw-class="text-sm underline" @click="requestRpcStop()">{{ lazyStrings.naidanRpc__check_stop_again() }}</button>
   <p v-if="failed" role="alert" tw-class="text-sm text-red-600">{{ failed }}</p>

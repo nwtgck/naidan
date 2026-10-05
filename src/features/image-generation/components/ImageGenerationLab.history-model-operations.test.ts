@@ -152,7 +152,7 @@ it('publishes downloaded inventory during independent history save retries witho
   const view = wrapper.getComponent(ImageGenerationEditor).props('view');
   view.parameters.value = requestFixture().parameters;
   view.files.value = { model: requestFixture().models[0]!.file };
-  await view.generate(); await flushPromises();
+  await view.generate({ submission: undefined }); await flushPromises();
   expect(view.historySaving.pendingCount.value).toBe(1);
   const pendingDownload = Promise.withResolvers<void>();
   mocks.download.mockReturnValue(pendingDownload.promise);

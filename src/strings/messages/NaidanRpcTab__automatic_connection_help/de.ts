@@ -1,0 +1,1 @@
+export const NaidanRpcTab__automatic_connection_help = (): string => "Diese Verbindung beim Start von Naidan fortsetzen und nach einer unerwarteten Trennung erneut versuchen. Manuelles Trennen pausiert die automatische Verbindung auf dieser Seite; nach dem Neuladen gilt die Einstellung wieder.";

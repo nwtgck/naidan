@@ -8,7 +8,7 @@ import { BOUNDARY_STRING_LOCALES, createBoundaryStringProjectPaths, readBoundary
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
 import { createTwClassNodeTransform } from './static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './static-tailwind/tw-class-vite-plugin';
-import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild } from '@/features/stable-diffusion-cpp-browser/build-runtime';
+import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild } from '../src/features/stable-diffusion-cpp-browser/build-runtime';
 
 const root = process.cwd();
 const feature = 'src/features/stable-diffusion-cpp-browser/';

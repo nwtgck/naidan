@@ -1,3 +1,4 @@
+import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { expect, it, vi } from 'vitest';
 import { NaidanPeerManager } from './manager';
 import type { RpcLink, RpcManagerDependencies } from './manager';
@@ -6,10 +7,12 @@ import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/infer
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
 
+const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
+
 it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link and does not return its owner lease', async mode => {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
   const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'late-startup-connection' }),
-    peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }), localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer',
+    peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }), autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer',
     transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0 };
   const opening = Promise.withResolvers<RpcLink>(), linkClosed = Promise.withResolvers<void>();
   const open = vi.fn(() => opening.promise), release = vi.fn(), failure = new Error('Unaccepted link cleanup failed');
@@ -18,7 +21,7 @@ it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link
   });
   const resourcesDone = Promise.withResolvers<void>(), retireResources = vi.fn(() => resourcesDone.promise);
   const dependencies: RpcManagerDependencies = {
-    storage: { readIdentity: async () => undefined, list: async () => [record], remember: async () => {}, update: async ({ connection }) => connection.revision, remove: async () => {} },
+    storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
     identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }), acquireOwner: async () => ({ release }), open,
     inference: { inputBudget: createInferenceBudget({ capacity: 1024 }), deliveryBudget: createInferenceBudget({ capacity: 1024 }),
       resources: { listChatModels: async () => [], listImageModels: async () => [],

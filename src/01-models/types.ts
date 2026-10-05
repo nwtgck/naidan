@@ -1,3 +1,4 @@
+import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreference } from './image-generation-preferences';
 import type { NaidanRpcConnectionId } from '@/01-models/ids';
 /**
  * Domain Definitions (Single Source of Truth)
@@ -429,6 +430,8 @@ export type BrowserImageGenerationSettings = {
   modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
   imageDownload?: { format?: 'png' | 'webp' | 'jpeg', metadata?: 'include' | 'omit' },
   modelSelection?: BrowserImageModelSelection,
+  inferenceLocation?: ImageInferenceLocationPreference,
+  remoteModelEditors?: RemoteImageModelEditorPreference[],
   preview?: {
     enabled?: 'enabled' | 'disabled',
     mode?: 'projection' | 'vae',
@@ -453,6 +456,8 @@ export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
   modelDownloadDestination: { kind: 'opfs' },
   imageDownload: { format: 'png', metadata: 'omit' },
   modelSelection: undefined,
+  inferenceLocation: { kind: 'local' },
+  remoteModelEditors: [],
   preview: { enabled: 'disabled', mode: 'vae', interval: 2, startStep: 1, maxEdge: 256 },
   keepPreviews: 'enabled',
   maxPreviews: 16,

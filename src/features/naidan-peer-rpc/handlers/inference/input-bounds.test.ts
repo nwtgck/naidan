@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { generateChat } from './handlers';
 import { createInferenceBudget } from './budget';
@@ -62,7 +63,7 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
   const engine = resources(), lifetime = new AbortController();
   const budget = createInferenceBudget({ capacity: 256 * 1024 * 1024 });
   const provider = new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract,
-    implementation: createNaidanPeerImplementation({ inference: { resources: engine.value, inputBudget: budget, deliveryBudget: budget } }),
+    implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: { resources: engine.value, inputBudget: budget, deliveryBudget: budget } }),
     allowedMethods: ['generateChat'] })], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   try {

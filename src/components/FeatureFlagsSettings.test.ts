@@ -58,6 +58,7 @@ vi.mock('lucide-vue-next', () => ({
   FlaskConicalIcon: { template: '<span>FlaskConical</span>' },
   FolderIcon: { template: '<span>Folder</span>' },
   ListRestartIcon: { template: '<span>ListRestart</span>' },
+  NetworkIcon: { template: '<span>Network</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
 }));
 
