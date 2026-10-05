@@ -2,7 +2,7 @@ import { protocolSchema, MAX_BENCHMARK_RUNS } from './types';
 import type { BenchmarkPlan } from './types';
 import { requestSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Parameters, Artifact, PreviewSettings, WeightResidency, ImageInputs } from '@/features/stable-diffusion-cpp-browser/types';
-import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 import type { ImageBenchmarkTarget } from '@/features/stable-diffusion-cpp-browser/library-view';
 import { recommendationForSelection } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import { imageLoraRequests, type ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';

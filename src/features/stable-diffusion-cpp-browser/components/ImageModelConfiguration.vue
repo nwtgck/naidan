@@ -2,7 +2,7 @@
 import { lazyStrings } from '@/strings';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 const props = defineProps<{ view: ImageLibraryView, disabled: boolean, active: boolean }>();
 const { components, showAll, importing, issues } = props.view;

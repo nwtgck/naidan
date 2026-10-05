@@ -4,9 +4,9 @@ import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import { ensureStrings } from '@/strings';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
-import type { ImageGenerationView } from './use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import { configurationSchema } from './types';
-import { createImageClient } from '@/features/stable-diffusion-cpp-browser/worker/client';
+import { createImageEngineClient } from '@/features/stable-diffusion-cpp-browser/inference/engine';
 import { createBenchmarkRunner } from './benchmark/runner';
 import { createBenchmarkPlan, benchmarkParameters } from './benchmark/plan';
 import { benchmarkArchiveBlob } from './benchmark/archive';
@@ -21,7 +21,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
   });
   const busy = computed(() => form.state.value === 'running');
   const targets = computed(() => generation.library.benchmarkTargets({ selections: form.componentSelections.value }));
-  const runner = createBenchmarkRunner({ createClient: () => createImageClient(), now: () => performance.now(), date: () => new Date().toISOString(),
+  const runner = createBenchmarkRunner({ createClient: () => createImageEngineClient({ onReleased: undefined }), now: () => performance.now(), date: () => new Date().toISOString(),
     observeVisibility({ changed }) {
       changed({ hidden: document.visibilityState === 'hidden' });
       const listener = () => changed({ hidden: document.visibilityState === 'hidden' });

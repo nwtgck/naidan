@@ -4,7 +4,7 @@ import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 
 // Pure local choices: opening/searching this picker never contacts a provider,
 // reads model files, or changes the chat endpoint's settings.

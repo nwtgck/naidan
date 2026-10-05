@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, effectScope } from 'vue';
 import JSZip from 'jszip';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from './use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
 import { useImageBenchmark } from './use-image-benchmark-hosted';
 import { targetFixture } from './benchmark/test-fixtures';
 import { manifestSchema } from './benchmark/types';

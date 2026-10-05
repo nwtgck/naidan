@@ -3,7 +3,7 @@ import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-var
 import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
 import { listHuggingFaceModels, withRepositoryLock, resolveRepositoryModel, parseModelReference, readJournal, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { pendingName } from '@/features/llama-cpp-browser/hugging-face/types';
-import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, userModelDirectory, validSegment, type ModelDirectory } from './model-directory';
+import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, userModelDirectory, existingUserModelDirectory, validSegment, type ModelDirectory } from './model-directory';
 import { LlamaCppBrowserError, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 
@@ -27,8 +27,8 @@ export async function withModelMutationLock<T>({ operation }: { operation: () =>
   return navigator.locks.request(mutationLockName, operation);
 }
 export async function listStoredModels(): Promise<LocalModel[]> {
-  const root = await userModelDirectory(); const result: LocalModel[] = [];
-  for await (const [name, folder] of root.entries()) {
+  const root = await existingUserModelDirectory(); const result: LocalModel[] = [];
+  for await (const [name, folder] of root?.entries() ?? []) {
     if (folder.kind !== 'directory' || !allowedModelDirectory({ name })) continue;
     try {
       const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${name}`, name }) });
@@ -129,7 +129,9 @@ export async function storedModelDirectory({ name }: { name: string }): Promise<
   if (name.startsWith('hf.co/')) return resolveRepositoryModel({ name });
   const directory = userModelName({ id: name });
   try {
-    const folder = await (await userModelDirectory()).getDirectoryHandle(directory);
+    const parent = await existingUserModelDirectory();
+    if (!parent) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    const folder = await parent.getDirectoryHandle(directory);
     return await resolveDirectory({ folder, id: name, name: directory });
   } catch (error) {
     if (isMissing({ error })) throw new LlamaCppBrowserError({ code: 'missing-model' });

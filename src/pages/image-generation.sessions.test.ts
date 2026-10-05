@@ -5,27 +5,27 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { idToRaw } from '@/01-models/ids';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
-import type { ImageGenerationDraft } from '@/features/stable-diffusion-cpp-browser/generation-draft';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
+import type { ImageGenerationDraft } from '@/features/image-generation/generation-draft';
 import { createImageGenerationStorageHarness, generationSessionFixture, generationDraftFixture } from '@/00-storage/service/image-generation/test-support';
 import * as persistence from '@/00-storage/service/image-generation';
 import type { storageService } from '@/00-storage/service';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
-import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
-import { createImageGenerationQueryWorker } from '@/features/stable-diffusion-cpp-browser/session/query-worker/impl';
-import { generationQueryResultSchema } from '@/features/stable-diffusion-cpp-browser/session/query-worker/types';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
+import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import { createImageGenerationQueryWorker } from '@/features/image-generation/session/query-worker/impl';
+import { generationQueryResultSchema } from '@/features/image-generation/session/query-worker/types';
 // Compile the actual surfaces during module collection, like other component
 // integration tests. A route's first lazy import must not charge the whole UI
 // transform graph to the first session-navigation test's 5-second deadline.
 // Keep the generated routes and the real workspace/storage/controller below.
 import ImageGenerationPage from './image-generation.vue';
-import ImageGenerationWorkspace from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue';
+import ImageGenerationWorkspace from '@/features/image-generation/components/ImageGenerationWorkspace.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), publish: vi.fn(), restore: vi.fn(), confirm: vi.fn(), owners: 0, disposed: 0 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
-vi.mock('@/features/stable-diffusion-cpp-browser/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
-vi.mock('@/features/stable-diffusion-cpp-browser/use-image-generation', async () => {
-  const { useImageGeneration } = await import('@/features/stable-diffusion-cpp-browser/use-image-generation-standalone');
+vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
+vi.mock('@/features/image-generation/use-image-generation', async () => {
+  const { useImageGeneration } = await import('@/features/image-generation/use-image-generation-standalone');
   return { useImageGeneration(): ImageGenerationView {
     mocks.owners++; onScopeDispose(() => {
       mocks.disposed++;

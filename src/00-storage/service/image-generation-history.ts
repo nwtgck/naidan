@@ -1,3 +1,5 @@
+import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
+import { imageGenerationRoot } from './image-generation/context';
 import { z } from 'zod';
 import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGenerationRecord } from '@/01-models/image-generation-history';
 import { idToRaw, type ImageGenerationId } from '@/01-models/ids';
@@ -139,21 +141,48 @@ async function readIndex({ directory, shard }: { directory: FileSystemDirectoryH
   return index;
 }
 
-export async function saveImageGenerationRecord({ storageType, record, writeImages }: {
+/** Called once when a direct-generation save owner is created. */
+export async function captureImageGenerationHistoryTarget({ storageType }: { storageType: StorageType }): Promise<FileSystemDirectoryHandle> {
+  assertStorage({ storageType });
+  return withHistoryLock({ operation: async () => {
+    const directory = await getDirectory({ create: true });
+    if (!directory) throw new Error('Image generation directory unavailable');
+    return directory;
+  } });
+}
+
+async function isDeleted({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<boolean> {
+  const text = await readText({ directory, name: `${rawId}.deleted` });
+  if (text === undefined) return false;
+  const marker = z.strictObject({ id: rawIdSchema }).parse(JSON.parse(text));
+  if (marker.id !== rawId) throw new Error('Image history deletion identity mismatch');
+  return true;
+}
+
+export async function saveImageGenerationRecord({ storageType, record, writeImages, expectedDirectory }: {
   storageType: StorageType,
   record: ImageGenerationRecord,
   writeImages: () => Promise<void>,
+  expectedDirectory?: FileSystemDirectoryHandle,
 }): Promise<void> {
   assertStorage({ storageType });
   const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
   await withHistoryLock({ operation: async () => {
-    const parent = await getDirectory({ create: true });
+    const parent = await getDirectory({ create: expectedDirectory === undefined });
+    if (expectedDirectory && (!parent || !await expectedDirectory.isSameEntry(parent))) throw new Error('Image history store changed or was removed');
     if (!parent) throw new Error('Image generation directory unavailable');
     const shard = dto.id.slice(-2).toLowerCase();
     const directory = await parent.getDirectoryHandle(shard, { create: true });
+    if (await isDeleted({ directory, rawId: dto.id })) throw new Error('This image history record was deleted');
     const index = await readIndex({ directory, shard });
     const existing = await readRecord({ directory, rawId: dto.id });
     if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) throw new Error('Image generation records are immutable');
+    const root = await imageGenerationRoot({ create: false });
+    if (!root) throw new Error('Image generation directory unavailable');
+    await assertImageGenerationBinariesNotDeleted({ directory: root, ids: [dto.result.binaryObjectId,
+      ...dto.previews.map(image => image.binaryObjectId),
+      ...(dto.request.imageInputs.initImage ? [dto.request.imageInputs.initImage.binaryObjectId] : []),
+      ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
     await writeImages();
     if (!existing) await writeText({ directory, name: `${dto.id}.json`, text: JSON.stringify(dto) });
     Object.defineProperty(index.generations, dto.id, { value: summarize({ record: dto }), configurable: true, enumerable: true, writable: true });
@@ -182,17 +211,20 @@ export async function deleteImageGenerationRecord({ storageType, id }: { storage
   assertStorage({ storageType });
   const rawId = rawIdSchema.parse(idToRaw({ id }));
   await withHistoryLock({ operation: async () => {
-    const parent = await getDirectory({ create: false });
+    const parent = await getDirectory({ create: true });
     if (!parent) return;
     const shard = rawId.slice(-2).toLowerCase();
     let directory: FileSystemDirectoryHandle;
     try {
-      directory = await parent.getDirectoryHandle(shard);
+      directory = await parent.getDirectoryHandle(shard, { create: true });
     } catch (error) {
       if (isNotFound({ error })) return; throw error;
     }
     const index = await readIndex({ directory, shard });
     const existing = await readRecord({ directory, rawId });
+    // Commit deletion intent before removing metadata. Even a lost response
+    // cannot make a retained save recreate this identity on another attempt.
+    if (!await isDeleted({ directory, rawId })) await writeText({ directory, name: `${rawId}.deleted`, text: JSON.stringify({ id: rawId }) });
     if (existing) await directory.removeEntry(`${rawId}.json`);
     delete index.generations[rawId];
     await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });

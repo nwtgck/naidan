@@ -2,7 +2,7 @@ import { onScopeDispose, watch, type Ref } from 'vue';
 import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, type BrowserImageGenerationSettings, type Settings } from '@/01-models/types';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import { parametersSchema, previewSettingsSchema } from './types';
-import type { createImageForm } from './form';
+import type { createImageForm } from '@/features/image-generation/form';
 import type { ImageLibraryView } from './library-view';
 
 /** The editor stores preferences, never a draft prompt, image or temporary File. */

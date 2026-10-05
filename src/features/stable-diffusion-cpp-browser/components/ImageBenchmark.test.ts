@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone';
 import ImageBenchmark from './ImageBenchmark.vue';
 

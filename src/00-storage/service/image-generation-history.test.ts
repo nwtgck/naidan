@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBinaryObjectId, toImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
-import { deleteImageGenerationRecord, loadImageGenerationRecord, queryImageGenerationHistory, saveImageGenerationRecord } from './image-generation-history';
+import { captureImageGenerationHistoryTarget, deleteImageGenerationRecord, loadImageGenerationRecord, queryImageGenerationHistory, saveImageGenerationRecord } from './image-generation-history';
 
 const failures = new Set<string>();
 class MockFile {
@@ -30,6 +30,9 @@ class MockFile {
 }
 class MockDirectory {
   readonly kind = 'directory';
+  async isSameEntry(other: MockDirectory) {
+    return this === other;
+  }
   readonly children = new Map<string, MockDirectory | MockFile>();
   constructor(readonly name: string) {}
   // FileSystemDirectoryHandle uses positional arguments.
@@ -213,4 +216,43 @@ describe('experimental image history storage', () => {
     expect((await queryImageGenerationHistory({ storageType: 'opfs', query })).total).toBe(0);
     expect(root.children.has('naidan-storage')).toBe(true);
   });
+});
+
+
+it('never republishes a deleted record, including an absent record with a pending save', async () => {
+  const original = record({ id: 'pending-aB', prompt: 'cat', createdAt: 1 });
+  const writeImages = vi.fn();
+  await deleteImageGenerationRecord({ storageType: 'opfs', id: original.id });
+  await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('deleted');
+  expect(writeImages).not.toHaveBeenCalled();
+});
+it('rejects a lost-acknowledgement retry after deleting its saved record', async () => {
+  const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
+  await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
+  await deleteImageGenerationRecord({ storageType: 'opfs', id: original.id });
+  const writeImages = vi.fn();
+  await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('deleted');
+  expect(writeImages).not.toHaveBeenCalled();
+});
+it('does not recreate a removed or replaced captured history store', async () => {
+  const expectedDirectory = await captureImageGenerationHistoryTarget({ storageType: 'opfs' });
+  const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
+  root = new MockDirectory('replacement');
+  getDirectory.mockResolvedValue(root);
+  const writeImages = vi.fn();
+  await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages, expectedDirectory })).rejects.toThrow('changed or was removed');
+  expect(root.children.size).toBe(0); expect(writeImages).not.toHaveBeenCalled();
+});
+it('does not republish an input deleted through the workspace deletion boundary', async () => {
+  const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
+  const { imageGenerationRoot } = await import('./image-generation/context');
+  const { markImageGenerationBinariesDeleted } = await import('./image-generation/deletions');
+  const directory = await imageGenerationRoot({ create: true });
+  if (!directory) throw new Error('Missing root');
+  const id = toBinaryObjectId({ raw: 'input-aa' });
+  original.request.imageInputs.initImage = { binaryObjectId: id, name: 'input.png' };
+  await markImageGenerationBinariesDeleted({ directory, ids: ['input-aa'] });
+  const writeImages = vi.fn();
+  await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('permanently deleted');
+  expect(writeImages).not.toHaveBeenCalled();
 });

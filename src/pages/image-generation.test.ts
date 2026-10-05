@@ -1,12 +1,12 @@
 import { defineComponent, h } from 'vue';
-import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
+import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import ImageGenerationLab from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';
+import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn() }));

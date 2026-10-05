@@ -1,3 +1,8 @@
+import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/ko';
+import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/ko';
+import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/ko';
+import { ImagePendingHistory__save_without_generating_again } from '@/strings/messages/ImagePendingHistory__save_without_generating_again/ko';
+import { ImagePendingHistory__unsaved_images } from '@/strings/messages/ImagePendingHistory__unsaved_images/ko';
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ko';
@@ -20,6 +25,13 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/ko';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ko';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ko';
+import { ImagePendingRuns__save_without_generating_again } from '@/strings/messages/ImagePendingRuns__save_without_generating_again/ko';
+import { ImagePendingRuns__download_image } from '@/strings/messages/ImagePendingRuns__download_image/ko';
+import { ImagePendingRuns__discard_warning } from '@/strings/messages/ImagePendingRuns__discard_warning/ko';
+import { ImagePendingRuns__run_information_pending } from '@/strings/messages/ImagePendingRuns__run_information_pending/ko';
+import { ImageGenerationWorkspace__generate_without_saving } from '@/strings/messages/ImageGenerationWorkspace__generate_without_saving/ko';
+import { ImagePendingRuns__unsaved_runs } from '@/strings/messages/ImagePendingRuns__unsaved_runs/ko';
+import { ImagePendingRuns__discard_pending_save } from '@/strings/messages/ImagePendingRuns__discard_pending_save/ko';
 import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/ko';
 import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/ko';
 import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/ko';
@@ -2581,6 +2593,11 @@ import { ImageInputControls__model_support_required } from '@/strings/messages/I
 import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/ko';
 
 export const catalog = {
+  ImagePendingHistory__discard_warning,
+  ImagePendingHistory__discard,
+  ImagePendingHistory__download_image,
+  ImagePendingHistory__save_without_generating_again,
+  ImagePendingHistory__unsaved_images,
   // SHARED__ intentionally couples every call site. Follow messages/AGENTS.md.
   SHARED__all_chats,
   SHARED__assistant,
@@ -5109,4 +5126,11 @@ export const catalog = {
   imageGeneration__choose_chat_help,
   imageGeneration__close_chat,
   imageGeneration__open_assistant_chat,
+  ImagePendingRuns__save_without_generating_again,
+  ImagePendingRuns__download_image,
+  ImagePendingRuns__discard_warning,
+  ImagePendingRuns__run_information_pending,
+  ImageGenerationWorkspace__generate_without_saving,
+  ImagePendingRuns__unsaved_runs,
+  ImagePendingRuns__discard_pending_save,
 } satisfies Strings;

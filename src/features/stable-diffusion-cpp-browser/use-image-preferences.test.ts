@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { DEFAULT_SETTINGS, type BrowserImageGenerationSettings, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
-import { createImageForm } from './form';
+import { createImageForm } from '@/features/image-generation/form';
 import { useImagePreferences } from './use-image-preferences';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories } from './logic/model-candidates';

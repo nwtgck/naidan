@@ -1,4 +1,4 @@
-import { getImageGenerationToolsForChat } from '@/features/stable-diffusion-cpp-browser/session/assistant-registry';
+import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';

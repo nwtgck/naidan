@@ -2,8 +2,8 @@
 import { computed, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { idToRaw, toImageGenerationSessionId } from '@/01-models/ids';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
-import ImageGenerationLab from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
+import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 
 // Nested locations share this parent: models and running work never remount.
 const route = useRoute(), router = useRouter();

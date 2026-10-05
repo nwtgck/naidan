@@ -25,6 +25,16 @@ export async function userModelDirectory(): Promise<FileSystemDirectoryHandle> {
   const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
   return models.getDirectoryHandle('user', { create: true });
 }
+/** Read-only lookup. Listing or opening a model must never create storage. */
+export async function existingUserModelDirectory(): Promise<FileSystemDirectoryHandle | undefined> {
+  try {
+    const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR);
+    return await models.getDirectoryHandle('user');
+  } catch (error) {
+    if (missing({ error })) return undefined;
+    throw error;
+  }
+}
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === 'NotFoundError' || error.name === 'TypeMismatchError');
 }

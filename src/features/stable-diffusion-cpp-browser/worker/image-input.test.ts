@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { writeImageInputs } from './image-input';
-import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 
 function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const memory = new Uint8Array(8192), fields = new Map<string, number | bigint>();
