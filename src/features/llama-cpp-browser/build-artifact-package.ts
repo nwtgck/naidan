@@ -5,12 +5,15 @@ import { z } from 'zod';
 
 const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
 const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);
+// The combined artifact manifest and nested runtime manifest version independently.
+const artifactManifestFormatVersion = 3;
+const llamaManifestFormatVersion = 2;
 const rootManifestSchema = z.object({
-  formatVersion: z.literal(3), sourceCommit,
-  runtimes: z.object({ 'llama-cpp': z.object({ manifest: z.literal('llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }) }),
+  formatVersion: z.literal(artifactManifestFormatVersion), sourceCommit,
+  runtimes: z.object({ 'llama-cpp': z.object({ manifest: z.literal('llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(llamaManifestFormatVersion) }) }),
   files: z.array(fileSchema),
 });
-const llamaManifestSchema = z.object({ formatVersion: z.literal(2), sourceCommit, files: z.array(fileSchema) });
+const llamaManifestSchema = z.object({ formatVersion: z.literal(llamaManifestFormatVersion), sourceCommit, files: z.array(fileSchema) });
 const innerPrefix = 'llama-cpp-browser-core/';
 
 /** Read only the reviewed llama subtree from the combined bicore package. */
