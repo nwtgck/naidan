@@ -6,6 +6,7 @@ import { contract, procedure, expose, rpc, NaidanRpcPeer, NaidanRpcPublicError }
 import type { NaidanRpcExposure } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { promiseAllKeyed } from '@/utils/promise';
+import { VALUE_BYTES } from './primitives';
 
 const stops: (() => void)[] = [];
 afterEach(() => {
@@ -64,14 +65,28 @@ it('preserves public context on a late stream failure and still completes retire
   expect(transport.stats().active).toBe(0);
 });
 
-it('delivers the precise generic item limit when serialization fails at the provider', async () => {
+it('transfers a valid typed item beyond the internal transfer piece size', async () => {
   const definition = contract({ name: 'example.item-limit', methods: { run: procedure({ input: z.object({}), result: rpc.stream({ item: z.string() }), notifications: {} }) } });
   const exports = expose({ contract: definition, allowedMethods: ['run'], implementation: { run: () => source({ items: ['x'.repeat(21848)] }) } });
   const { a } = peers({ aExports: [], bExports: [exports], capacity: 2 });
   const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
-  const expected = { code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'string-code-units', limit: 16384, observed: 21848 } };
-  await expect((await call.result).getReader().read()).rejects.toMatchObject(expected);
-  await expect(call.closed).rejects.toMatchObject(expected);
+  const reader = (await call.result).getReader();
+  expect((await reader.read()).value).toBe('x'.repeat(21848));
+  expect((await reader.read()).done).toBe(true);
+  await call.closed;
+});
+
+it('transfers large finite input, reverse callback, notification and result without producer chunk tuning', async () => {
+  const api = contract({ name: 'example.large-finite', methods: { run: procedure({ input: z.object({ text: z.string(), answer: rpc.callback({ input: z.string(), result: z.string() }) }), result: z.object({ text: z.string() }), notifications: { progress: z.object({ text: z.string() }) } }) } });
+  const text = '🌲'.repeat(32768), notices: string[] = [];
+  const { a } = peers({ aExports: [], bExports: [expose({ contract: api, allowedMethods: ['run'], implementation: { async run({ input, notify }) {
+    notify.progress({ value: { text: input.text } });
+    return { text: await input.answer(input.text) };
+  } } })], capacity: 2 });
+  const call = a.client({ contract: api }).run({ input: { text, answer: value => value }, on: { progress: ({ value }) => {
+    notices.push(value.text);
+  } }, signal: undefined, timeoutMs: undefined });
+  expect(await call.result).toEqual({ text }); await call.closed; expect(notices).toEqual([text]);
 });
 
 it('two peers call concurrently and return finite values with optional field normalization', async () => {
@@ -283,7 +298,7 @@ it('oversized finite metadata fails without opening a lower stream or starting a
   const { a, transport } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => {
     called++; return 1;
   } } })], capacity: 1 });
-  const call = a.client({ contract: definition }).run({ input: 'x'.repeat(65536), on: {}, signal: undefined, timeoutMs: 500 });
+  const call = a.client({ contract: definition }).run({ input: 'x'.repeat(VALUE_BYTES + 1), on: {}, signal: undefined, timeoutMs: 500 });
   await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
   expect(called).toBe(0); expect(transport.stats()).toEqual({ active: 0, total: 0 });
 });

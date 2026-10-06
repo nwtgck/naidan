@@ -87,8 +87,12 @@ export async function receiveEvents({ readable, onEvent, signal }: {
   readable: ReadableStream<Uint8Array>; onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent']; signal: AbortSignal;
 }): Promise<GenerationResult> {
   const reader = readable.getReader(); let current = new Uint8Array(), at = 0, total = 0;
+  let cancellation: Promise<void> | undefined;
+  const cancelReader = ({ reason }: { reason: unknown }): Promise<void> => {
+    return cancellation ??= reader.cancel(reason).catch(() => {});
+  };
   const cancel = () => {
-    void reader.cancel(signal.reason).catch(() => {});
+    void cancelReader({ reason: signal.reason });
   };
   signal.addEventListener('abort', cancel, { once: true });
   const exact = async ({ size, allowEnd }: { size: number; allowEnd: boolean }): Promise<Uint8Array<ArrayBuffer> | undefined> => {
@@ -130,9 +134,11 @@ export async function receiveEvents({ readable, onEvent, signal }: {
     if (finishReason === undefined) throw new Error('Remote inference ended without completion');
     return { content, reasoningContent, toolCalls, finishReason };
   } catch (error) {
-    await reader.cancel(error).catch(() => {}); throw error;
+    await cancelReader({ reason: error }); throw error;
   } finally {
-    signal.removeEventListener('abort', cancel); reader.releaseLock();
+    signal.removeEventListener('abort', cancel);
+    if (cancellation) await cancellation;
+    reader.releaseLock();
   }
 }
 export const TEST_ONLY = {

@@ -17,6 +17,7 @@ export class NaidanRpcPeer {
   private readonly calls = new Set<RpcConversation>();
   private readonly limits: NaidanRpcLimits;
   private opening = 0;
+  private activityRevision = 0;
   private readonly pendingInvocations = new Set<Promise<void>>();
   private inputRetirement: Promise<unknown> = Promise.resolve();
   private incomingAdmission: 'open' | 'suspended' = 'open';
@@ -122,6 +123,7 @@ export class NaidanRpcPeer {
     for (const call of this.calls) call.revokeMethods({ contract: contract.name, removed });
   }
   private adopt({ duplex, role, timeoutMs }: { duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined }): RpcConversation {
+    this.activityRevision++;
     const call = new RpcConversation({ duplex, role, timeoutMs, resolveMethod: ({ contract, method }) => this.lookup({ contract, method }) });
     this.calls.add(call);
     // Native/user work that ignores cancellation keeps its reservation until its promise settles.
@@ -169,6 +171,7 @@ export class NaidanRpcPeer {
     // A lower transport may finish opening after cancellation; retirement must
     // wait until that late duplex has been aborted, not merely count live calls.
     const invocationRetired = deferred<void>();
+    this.activityRevision++;
     this.pendingInvocations.add(invocationRetired.promise);
     const task = async () => {
       try {
@@ -221,6 +224,12 @@ export class NaidanRpcPeer {
       }
     }
     if (this.retirementFailure) throw this.retirementFailure.error;
+  }
+  /** A stable idle generation excludes opens, unread streams and native work
+   * until their actual retirement, including a call that began and ended
+   * between two observations. This never proves network reachability. */
+  idleRevision(): number | undefined {
+    return !this.stop.signal.aborted && this.calls.size === 0 && this.opening === 0 && this.pendingInvocations.size === 0 ? this.activityRevision : undefined;
   }
   /** Stops owned calls and the exclusive iterator, not the borrowed transport's entire session. */
   dispose(): void {

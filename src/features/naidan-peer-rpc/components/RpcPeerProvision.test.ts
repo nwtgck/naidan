@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanPeerManager, RpcConnectionView } from '@/features/naidan-peer-rpc/runtime/manager';
+import { describePeerMethods } from '@/features/naidan-peer-rpc/contract';
 import type { PeerProvidedMethods } from '@/features/naidan-peer-rpc/contract';
 import RpcPeerProvision from './RpcPeerProvision.vue';
 
@@ -17,7 +18,7 @@ function connection({ id, phase }: { id: string, phase: RpcConnectionView['phase
   return {
     connection: { id: toNaidanRpcConnectionId({ raw: id }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), autoConnect: 'disabled', localPublicKey: 'A'.repeat(43),
       label: id, transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] }, allowedMethods: [], revision: 0 },
-    phase, persistence: 'saved', registryPersistence: 'durable', access: { effective: [], desired: [], saved: [], revision: 0, persistence: 'saved' }, failure: undefined,
+    phase, persistence: 'saved', registryPersistence: 'durable', access: { effective: [], desired: [], saved: [], revision: 0, persistence: 'saved' }, failure: undefined, health: undefined, session: phase === 'connected' ? {} : undefined,
   };
 }
 function panel({ view }: { view: RpcConnectionView }) {
@@ -38,7 +39,7 @@ it('waits for a live connection and queries only its provision metadata', async 
 });
 it('shows the peer grants independently of this connection offering no inference', async () => {
   const { wrapper, getPeerProvidedMethods } = panel({ view: connection({ id: 'one', phase: 'disconnected' }) });
-  getPeerProvidedMethods.mockResolvedValue({ status: 'ready', methods: ['listChatModels', 'generateChat', 'generateImage'] });
+  getPeerProvidedMethods.mockResolvedValue({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels', 'generateChat', 'generateImage'] }) });
   await wrapper.setProps({ connection: connection({ id: 'one', phase: 'connected' }) }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Provided');
   expect(wrapper.get('[data-testid="rpc-peer-images"]').text()).toBe('Partially provided');
@@ -66,7 +67,7 @@ it('aborts a superseded query and ignores a late response for a different peer',
   await wrapper.setProps({ connection: connection({ id: 'two', phase: 'connected' }) }); await flushPromises();
   expect(signal.aborted).toBe(true);
   expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Not provided');
-  old.resolve({ status: 'ready', methods: ['listChatModels', 'generateChat'] }); await flushPromises();
+  old.resolve({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels', 'generateChat'] }) }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Not provided');
   expect(getPeerProvidedMethods.mock.lastCall?.[0].id).toBe(toNaidanRpcConnectionId({ raw: 'two' }));
 });
@@ -89,7 +90,7 @@ it('rechecks a new connected snapshot for the same ID instead of retaining the p
   await wrapper.setProps({ connection: connection({ id: 'one', phase: 'connected' }) });
   expect(wrapper.find('[data-testid="rpc-peer-chat"]').exists()).toBe(false);
   expect(getPeerProvidedMethods).toHaveBeenCalledTimes(2);
-  replacement.resolve({ status: 'ready', methods: ['listChatModels', 'generateChat'] }); await flushPromises();
+  replacement.resolve({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels', 'generateChat'] }) }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Provided');
 });
 it('refreshes provision when the window regains focus without repeating a pending query', async () => {
@@ -98,7 +99,7 @@ it('refreshes provision when the window regains focus without repeating a pendin
   const pending = Promise.withResolvers<PeerProvidedMethods>(); getPeerProvidedMethods.mockReturnValueOnce(pending.promise);
   window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('focus'));
   expect(getPeerProvidedMethods).toHaveBeenCalledTimes(2);
-  pending.resolve({ status: 'ready', methods: ['listImageModels', 'generateImage'] }); await flushPromises();
+  pending.resolve({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-images"]').text()).toBe('Provided');
 });
 it('lets an explicit refresh replace a pending query without an arbitrary query deadline', async () => {
@@ -110,6 +111,13 @@ it('lets an explicit refresh replace a pending query without an arbitrary query 
   expect(wrapper.find('[data-testid="rpc-peer-chat"]').exists()).toBe(false);
   await wrapper.get('[data-testid="rpc-peer-provision-refresh"]').trigger('click'); await flushPromises();
   expect(signal.aborted).toBe(true); expect(getPeerProvidedMethods).toHaveBeenCalledTimes(3);
-  pending.resolve({ status: 'ready', methods: ['listChatModels', 'generateChat'] }); await flushPromises();
+  pending.resolve({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels', 'generateChat'] }) }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Not provided');
+});
+it('does not query again for health or local-setting snapshots of the same live session', async () => {
+  const view = connection({ id: 'one', phase: 'connected' });
+  const { wrapper, getPeerProvidedMethods } = panel({ view }); await flushPromises();
+  await wrapper.setProps({ connection: { ...view, health: 'checking' } }); await flushPromises();
+  await wrapper.setProps({ connection: { ...view, health: 'paused', connection: { ...view.connection, label: 'Desk' } } }); await flushPromises();
+  expect(getPeerProvidedMethods).toHaveBeenCalledOnce(); expect(wrapper.get('[data-testid="rpc-peer-chat"]').text()).toBe('Not provided');
 });

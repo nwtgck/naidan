@@ -19,6 +19,18 @@ export type Snapshot = {
     states: StreamState[];
     data: Segment[];
 };
+export type RecordPayload = {
+    receiptRequest: 'requested' | 'not-requested';
+    receivedRecord: bigint | undefined;
+    snapshot: Snapshot;
+};
+export function receiptRequested({ request }: { request: RecordPayload['receiptRequest'] }): boolean {
+  switch (request) {
+  case 'requested': return true;
+  case 'not-requested': return false;
+  default: { const unreachable: never = request; throw new Error(`Invalid receipt request: ${unreachable}`); }
+  }
+}
 const HEADER_BYTES = 5, STATE_BYTES = 27, DATA_HEADER_BYTES = 12;
 function unsigned({ value, max }: {
     value: number;
@@ -120,6 +132,34 @@ export function decodeSnapshot({ bytes }: {
   }
   requireValue({ condition: at === owned.length, message: 'Trailing bytes' });
   return snapshotSchema.parse({ goaway: owned[0] === 1, finished, reset, states, data });
+}
+
+/** Receipt metadata shares the existing record authentication and size budget. */
+export function encodeRecordPayload({ payload }: { payload: RecordPayload }): Uint8Array {
+  const { receiptRequest, receivedRecord, snapshot, ...rest } = payload;
+  rest satisfies Record<PropertyKey, never>;
+  requireValue({ condition: receivedRecord === undefined || (receivedRecord >= 0n && receivedRecord <= MAX_OFFSET), message: 'Receipt number range' });
+  const body = encodeSnapshot({ snapshot });
+  const headerBytes = receivedRecord === undefined ? 1 : 9;
+  requireValue({ condition: headerBytes + body.length <= CAPSULE_BYTES - 25, message: 'Record payload size' });
+  const bytes = new Uint8Array(headerBytes + body.length);
+  bytes[0] = (receiptRequested({ request: receiptRequest }) ? 1 : 0) | (receivedRecord === undefined ? 0 : 2);
+  if (receivedRecord !== undefined) new DataView(bytes.buffer).setBigUint64(1, receivedRecord, false);
+  bytes.set(body, headerBytes);
+  return bytes;
+}
+
+export function decodeRecordPayload({ bytes }: { bytes: Uint8Array }): RecordPayload {
+  const owned = ownBytes({ bytes, maxBytes: CAPSULE_BYTES - 25 });
+  requireValue({ condition: owned.length >= 1 && owned[0]! <= 3, message: 'Receipt flags' });
+  const headerBytes = (owned[0]! & 2) === 0 ? 1 : 9;
+  requireValue({ condition: owned.length >= headerBytes, message: 'Truncated receipt' });
+  const receivedRecord = headerBytes === 1 ? undefined : new DataView(owned.buffer).getBigUint64(1, false);
+  requireValue({ condition: receivedRecord === undefined || receivedRecord <= MAX_OFFSET, message: 'Receipt number range' });
+  return {
+    receiptRequest: (owned[0]! & 1) === 0 ? 'not-requested' : 'requested', receivedRecord,
+    snapshot: decodeSnapshot({ bytes: owned.subarray(headerBytes) }),
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

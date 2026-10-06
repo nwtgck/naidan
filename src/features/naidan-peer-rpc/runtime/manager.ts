@@ -1,13 +1,13 @@
 import { nanoid } from 'nanoid';
 import { expose, NaidanRpcPeer } from '@/features/naidan-rpc';
 import type { NaidanRpcTransport } from '@/features/naidan-rpc';
-import type { NaidanPipingIdentity, NaidanPipingPeerVerifier, NaidanPipingRole } from '@/features/naidan-piping-duplex';
+import type { NaidanPipingIdentity, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex';
 import type { NaidanRpcConnection, NaidanRpcTransportSettings } from '@/01-models/naidan-rpc';
 import { idToRaw, toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanRpcConnectionId } from '@/01-models/ids';
 import type { NaidanRpcStorage, NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from '@/00-storage/service/naidan-rpc';
 import { validateRpcTransport, sameNaidanRpcRegistry } from '@/00-storage/service/naidan-rpc';
-import { naidanPeerContract, peerAllowedMethodsSchema } from '@/features/naidan-peer-rpc/contract';
+import { describePeerMethods, naidanPeerContract, peerAllowedMethodsSchema } from '@/features/naidan-peer-rpc/contract';
 import type { NaidanPeerClient, NaidanPeerControlledMethodName, PeerProvidedMethods } from '@/features/naidan-peer-rpc/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-peer-rpc/implementation';
 import type { InferenceDependencies } from '@/features/naidan-peer-rpc/handlers/inference/handlers';
@@ -17,9 +17,11 @@ import { normalizeRpcPairingCode } from './pairing-code';
 import type { RpcOwnerLease } from './owner';
 import { RpcOwnerBusyError } from './owner';
 import { AttemptError } from '@/features/naidan-piping-duplex/finite';
+import { monitorRpcConnection } from './connection-health';
+import type { RpcConnectionHealth, RpcResponseConfirmation } from './connection-health';
 
 type Names = readonly NaidanPeerControlledMethodName[];
-export type RpcLink = NaidanRpcTransport & { readonly peerIdentity: Uint8Array, abort({ reason }: { reason: string }): void };
+export type RpcLink = NaidanRpcTransport & { readonly peerIdentity: Uint8Array, confirmResponse: RpcResponseConfirmation, abort({ reason }: { reason: string }): void };
 /** A caller is pinned to one authenticated session, never a reconnecting lookup.
  * Labels are display metadata; peerId is the identity used for provenance. */
 export type RpcClientBinding = {
@@ -35,6 +37,9 @@ export type RpcConnectionView = {
   registryPersistence: NaidanRpcRegistryAccess['persistence'] | undefined,
   access: ReturnType<typeof createMethodAccess>['state'] extends () => infer T ? T : never,
   failure: string | undefined,
+  health: RpcConnectionHealth | undefined,
+  /** Opaque live-session identity, never persisted or used as authority. */
+  session: object | undefined,
 };
 type Entry = {
   connection: NaidanRpcConnection, persistence: 'temporary' | 'saved', phase: RpcConnectionPhase,
@@ -42,6 +47,7 @@ type Entry = {
   stale: boolean, removed: boolean,
   automatic: 'active' | 'paused' | 'failed', automaticAttempts: number, nextAutomaticAttempt: number,
   stop: AbortController, link: RpcLink | undefined, rpc: NaidanRpcPeer | undefined,
+  health: RpcConnectionHealth | undefined, healthTask: Promise<void> | undefined,
   access: ReturnType<typeof createMethodAccess>, startup: Promise<void> | undefined,
   closing: Promise<void> | undefined, mutation: Promise<void> | undefined, change: 'idle' | 'remembering' | 'editing' | 'forgetting', failure: string | undefined,
 };
@@ -49,9 +55,9 @@ export type RpcManagerDependencies = {
   storage: NaidanRpcStorage,
   identity(): Promise<NaidanPipingIdentity>,
   acquireOwner({ signal }: { signal: AbortSignal }): Promise<RpcOwnerLease>,
-  open({ settings, identity, peerKey, code, role, verifyPeer, signal }: {
+  open({ settings, identity, peerKey, code, verifyPeer, signal }: {
     settings: NaidanRpcTransportSettings, identity: NaidanPipingIdentity, peerKey: string | undefined,
-    code: string | undefined, role: NaidanPipingRole | undefined, verifyPeer: NaidanPipingPeerVerifier | undefined, signal: AbortSignal,
+    code: string | undefined, verifyPeer: NaidanPipingPeerVerifier | undefined, signal: AbortSignal,
   }): Promise<RpcLink>,
   inference: InferenceDependencies,
   retireResources(): Promise<void>,
@@ -184,7 +190,8 @@ export class NaidanPeerManager {
   }
   list(): RpcConnectionView[] {
     return [...this.entries.values()].map(entry => ({ connection: copyConnection({ connection: entry.connection }),
-      phase: entry.phase, persistence: entry.persistence, registryPersistence: entry.registryAccess?.persistence, access: entry.access.state(), failure: entry.failure }));
+      phase: entry.phase, persistence: entry.persistence, registryPersistence: entry.registryAccess?.persistence, access: entry.access.state(), failure: entry.failure, health: entry.health,
+      session: entry.rpc === undefined ? undefined : entry.stop.signal }));
   }
   async reload(): Promise<void> {
     const epoch = this.registryEpoch, sequence = ++this.reloadSequence;
@@ -408,7 +415,7 @@ export class NaidanPeerManager {
     const parsed = peerAllowedMethodsSchema.safeParse(connection.allowedMethods);
     const entry: Entry = { connection: copyConnection({ connection }), persistence, registryAccess, phase: 'disconnected', stale: false, removed: false, stop: new AbortController(),
       automatic: 'active', automaticAttempts: 0, nextAutomaticAttempt: 0,
-      link: undefined, rpc: undefined, startup: undefined, closing: undefined, mutation: undefined, change: 'idle',
+      link: undefined, rpc: undefined, health: undefined, healthTask: undefined, startup: undefined, closing: undefined, mutation: undefined, change: 'idle',
       failure: parsed.success ? undefined : 'Stored methods are not supported; no methods are provided',
       access: createMethodAccess({ initial: [], stored: [], revision: connection.revision, persist: undefined, apply: () => {}, changed: () => {} }),
     };
@@ -445,7 +452,7 @@ export class NaidanPeerManager {
       allowedMethods: ['getProvidedMethods', ...entry.access.state().effective], implementation: createNaidanPeerImplementation({ inference: this.dependencies.inference, providedMethods: () => {
         entry.stop.signal.throwIfAborted();
         if (this.validation && isSaved({ persistence: entry.persistence })) return { status: 'checking', methods: [] };
-        return { status: 'ready', methods: [...entry.access.state().effective] };
+        return { status: 'ready', methods: describePeerMethods({ names: [...entry.access.state().effective] }) };
       } }) })],
     limits: { maxCalls: 6, maxCallTimeoutMs: undefined }, signal: entry.stop.signal });
     entry.rpc.allowIncomingWhileSuspended({ contract: naidanPeerContract, allowedMethods: ['getProvidedMethods'] });
@@ -455,6 +462,27 @@ export class NaidanPeerManager {
     entry.phase = 'connected'; entry.failure = undefined; this.changed();
     const rpc = entry.rpc;
     const current = () => this.entries.get(entry.connection.id) === entry && entry.rpc === rpc;
+    entry.healthTask = monitorRpcConnection({ signal: entry.stop.signal,
+      confirmResponse: ({ signal, onRequestStarted, ...rest }) => {
+        rest satisfies Record<PropertyKey, never>;
+        return link.confirmResponse({ signal, onRequestStarted });
+      }, idleRevision: () => rpc.idleRevision(),
+      policy: { intervalMs: 15000, responseMs: 15000, missedResponses: 3, suspensionToleranceMs: 5000 },
+      changed: ({ state }) => {
+        if (current() && entry.phase === 'connected' && entry.health !== state) {
+          entry.health = state; this.changed();
+        }
+      }, unresponsive: ({ revision }) => {
+        if (!current() || entry.phase !== 'connected' || rpc.idleRevision() !== revision) return 'observe-again';
+        entry.failure = 'RPC peer stopped responding';
+        void this.closeEntry({ id: entry.connection.id }).catch(() => {});
+        return 'retiring';
+      },
+    }).catch(() => {
+      if (!current() || entry.stop.signal.aborted) return;
+      entry.automatic = 'failed'; entry.failure = 'RPC connection interrupted';
+      void this.closeEntry({ id: entry.connection.id }).catch(() => {});
+    });
     void rpc.closed.then(() => {
       if (current()) return this.closeEntry({ id: entry.connection.id });
       return undefined;
@@ -498,7 +526,7 @@ export class NaidanPeerManager {
         const identity = await this.dependencies.identity(); signal.throwIfAborted();
         if (encodePeerKey({ bytes: identity.publicKey }) !== entry.connection.localPublicKey) throw new Error('This connection belongs to a different local identity');
         link = await this.dependencies.open({ settings: copyConnection({ connection: entry.connection }).transport, identity,
-          peerKey: idToRaw({ id: entry.connection.peerId }), code: undefined, role: undefined, verifyPeer: undefined, signal });
+          peerKey: idToRaw({ id: entry.connection.peerId }), code: undefined, verifyPeer: undefined, signal });
         signal.throwIfAborted(); this.ready({ entry, link });
       } catch (error) {
         let failure = error;
@@ -522,8 +550,8 @@ export class NaidanPeerManager {
     })();
     return entry.startup;
   }
-  async pair({ settings, code, role, verifyPeer, signal }: {
-    settings: NaidanRpcTransportSettings, code: string, role: NaidanPipingRole,
+  async pair({ settings, code, verifyPeer, signal }: {
+    settings: NaidanRpcTransportSettings, code: string,
     verifyPeer: NaidanPipingPeerVerifier, signal: AbortSignal,
   }): Promise<NaidanRpcConnectionId> {
     if (!this.enabled || this.pairing) throw new Error('RPC is disabled or another pairing is pending');
@@ -538,7 +566,7 @@ export class NaidanPeerManager {
       try {
         await this.ensureOwner(); combined.throwIfAborted();
         const identity = await this.dependencies.identity(); combined.throwIfAborted();
-        link = await this.dependencies.open({ settings: transport, identity, peerKey: undefined, code: pairingCode, role, verifyPeer, signal: combined });
+        link = await this.dependencies.open({ settings: transport, identity, peerKey: undefined, code: pairingCode, verifyPeer, signal: combined });
         combined.throwIfAborted();
         const publicKey = encodePeerKey({ bytes: link.peerIdentity }), localPublicKey = encodePeerKey({ bytes: identity.publicKey });
         decodePeerKey({ value: publicKey });
@@ -606,6 +634,7 @@ export class NaidanPeerManager {
       const cleanup = await Promise.allSettled([
         entry.mutation?.catch(() => {}), entry.rpc?.retire(),
         entry.link?.closed.catch(() => {}), entry.access.settled(),
+        entry.healthTask,
       ]);
       for (const result of cleanup) {
         switch (result.status) {
@@ -615,7 +644,7 @@ export class NaidanPeerManager {
         }
       }
       if (failures.length) throw failures[0];
-      entry.rpc = undefined; entry.link = undefined; entry.phase = 'disconnected'; entry.startup = undefined;
+      entry.rpc = undefined; entry.link = undefined; entry.health = undefined; entry.healthTask = undefined; entry.phase = 'disconnected'; entry.startup = undefined;
       // A failed restriction save must not resurrect the old stored grants on reconnect.
       entry.access = this.access({ entry, initial: restricted });
       if (!isSaved({ persistence: entry.persistence }) || entry.removed) {

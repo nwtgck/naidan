@@ -33,9 +33,10 @@ async function refresh(): Promise<void> {
     if (pending === controller) pending = undefined;
   }
 }
-// Manager snapshots also change when the same ID acquires a new session. Do
-// not keep confirmed metadata just because its visible phase stayed connected.
-watch([() => props.manager, () => props.connection], () => {
+// Health and local setting snapshots do not create a new peer. Requery only
+// for the actual session, or an explicit refresh/focus, to avoid discovery
+// calls themselves perpetually invalidating idle connection observations.
+watch([() => props.manager, () => props.connection?.connection.id, () => props.connection?.phase, () => props.connection?.session], () => {
   invalidate();
   if (connected.value) void refresh();
 }, { immediate: true, flush: 'sync' });
@@ -47,7 +48,7 @@ onScopeDispose(() => {
   disposed = true; invalidate(); window.removeEventListener('focus', focus);
 });
 function groupState({ names }: { names: readonly NaidanPeerControlledMethodName[] }): string | undefined {
-  const count = names.filter(name => provided.value?.methods.includes(name)).length;
+  const count = names.filter(name => provided.value?.methods.some(method => method.name === name)).length;
   if (count === 0) return lazyStrings.RpcPeerProvision__not_provided();
   if (count === names.length) return lazyStrings.RpcPeerProvision__provided();
   return lazyStrings.RpcPeerProvision__partially_provided();

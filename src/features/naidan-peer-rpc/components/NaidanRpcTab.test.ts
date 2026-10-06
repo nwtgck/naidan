@@ -19,7 +19,7 @@ const id = toNaidanRpcConnectionId({ raw: 'connection-1' });
 function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcConnectionView['phase'], persistence?: RpcConnectionView['persistence'] } = {}): RpcConnectionView {
   return { connection: { id, peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), autoConnect: 'disabled', localPublicKey: 'A'.repeat(43), label: 'Peer 1234',
     transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] }, allowedMethods: [], revision: 0 },
-  phase, persistence, registryPersistence: persistence === 'saved' ? 'durable' : undefined, access: { effective: [], desired: [], saved: [], revision: 0, persistence }, failure: undefined };
+  phase, persistence, registryPersistence: persistence === 'saved' ? 'durable' : undefined, access: { effective: [], desired: [], saved: [], revision: 0, persistence }, failure: undefined, health: undefined, session: phase === 'connected' ? {} : undefined };
 }
 beforeEach(() => {
   fixture.rows = []; vi.clearAllMocks(); fixture.reload.mockResolvedValue(undefined); fixture.connect.mockResolvedValue(undefined);
@@ -33,6 +33,7 @@ afterEach(() => {
 it('opens the pairing form for an empty registry without pairing, connecting or remembering a peer', async () => {
   const wrapper = panel(); await flushPromises(); expect(wrapper.find('[data-testid="naidan-rpc-tab"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(true);
+  expect(wrapper.find('select').exists()).toBe(false);
   expect(wrapper.get('[data-testid="rpc-start"]').element).toHaveProperty('disabled', true);
   expect(fixture.reload).toHaveBeenCalledOnce(); expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.remember).not.toHaveBeenCalled();
 });

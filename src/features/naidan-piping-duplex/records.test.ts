@@ -2,7 +2,7 @@
 import { expect, it, vi } from 'vitest';
 import { CAPSULE_BYTES, MAX_OFFSET } from '@/features/naidan-piping-duplex/bytes';
 import { Records } from '@/features/naidan-piping-duplex/records';
-import { encodeSnapshot } from '@/features/naidan-piping-duplex/wire';
+import { encodeRecordPayload } from '@/features/naidan-piping-duplex/wire';
 import { emptySnapshot, keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
@@ -18,7 +18,7 @@ async function codecs() {
 }
 
 function plaintext(): Uint8Array {
-  return encodeSnapshot({ snapshot: emptySnapshot() });
+  return encodeRecordPayload({ payload: { snapshot: emptySnapshot(), receiptRequest: 'not-requested', receivedRecord: undefined } });
 }
 
 it('authenticated but malformed plaintext never advances the replay watermark or invokes the application', async () => {

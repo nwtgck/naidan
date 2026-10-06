@@ -31,6 +31,10 @@ export class Deadline {
   dispose(): void {
     clearTimeout(this.internalTimer); this.internalParent.removeEventListener('abort', this.internalListener); this.internalController.abort();
   }
+  /** The automatic candidate was confirmed; retain parent cancellation without a deadline. */
+  stopTimer(): void {
+    clearTimeout(this.internalTimer);
+  }
 }
 export async function sleep({ milliseconds, signal }: {
     milliseconds: number;
@@ -67,7 +71,7 @@ export async function readBounded({ response, maxBytes }: {
         break;
       size += item.value.byteLength;
       if (size > maxBytes) {
-        void reader.cancel().catch(() => { });
+        await reader.cancel().catch(() => { });
         throw new AttemptError({ kind: 'transient' });
       }
       buffer.set(item.value, size - item.value.byteLength);
@@ -142,9 +146,9 @@ export class FiniteEndpoint implements FiniteTransport {
         options.body = new Uint8Array(body);
       const response = await fetch(`${this.internalBase}/${route}`, options);
       if (response.status !== 200 && response.status !== 400) {
-        // These statuses need no server-specific diagnostic. A stalled or oversized
-        // error page must not postpone or change the status classification.
-        void response.body?.cancel().catch(() => {});
+        // Headers determine the status without reading a diagnostic body.
+        // Join cancellation before relinquishing this request's POST ownership.
+        await response.body?.cancel().catch(() => {});
         throw new AttemptError({ kind: response.status === 408 || response.status === 429 || response.status >= 500
           ? 'transient' : 'fatal' });
       }

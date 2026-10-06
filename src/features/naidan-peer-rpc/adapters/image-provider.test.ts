@@ -56,6 +56,27 @@ it('returns a confirmed image only after both streams and the RPC close', async 
   gate.resolve(); expect(await job.result).toMatchObject({ status: 'completed', seed: '42', output: { modelVersion: 'test-v1', width: 256 } });
   expect(fixture.generateImage).toHaveBeenCalledOnce();
 });
+it('does not retain empty image chunks and preserves reused byte chunks', async () => {
+  const expected = png(), empty = new Uint8Array(), byte = new Uint8Array(1);
+  let emptyCount = 65536, at = 0;
+  const image = new ReadableStream<Uint8Array>({ pull(controller) {
+    if (emptyCount-- > 0) controller.enqueue(empty);
+    else if (at < expected.length) {
+      byte[0] = expected[at++]!; controller.enqueue(byte);
+    } else controller.close();
+  } }, { highWaterMark: 0 });
+  const fixture = mockClient({ image }), copies = vi.spyOn(Uint8Array.prototype, 'slice');
+  try {
+    const result = await start({ client: fixture.client }).result;
+    if (result.status !== 'completed') throw new Error('Expected confirmed image');
+    expect(new Uint8Array(await result.output.png.arrayBuffer())).toEqual(expected);
+    // Empty chunks consume no payload budget; do not create a retained copy per chunk.
+    expect(copies.mock.contexts.filter(bytes => bytes instanceof Uint8Array && bytes.byteLength === 0)).toHaveLength(0);
+    expect(fixture.generateImage).toHaveBeenCalledOnce();
+  } finally {
+    copies.mockRestore();
+  }
+});
 it('preserves received pixels as interrupted when only final RPC confirmation fails', async () => {
   const fixture = mockClient({ closed: Promise.reject(new Error('Disconnected')) });
   expect(await start({ client: fixture.client }).result).toMatchObject({ status: 'interrupted', recoverable: { width: 256, reported: { seed: '42' } } });

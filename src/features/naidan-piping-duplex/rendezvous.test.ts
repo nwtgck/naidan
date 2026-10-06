@@ -1,19 +1,25 @@
 // @vitest-environment node
 import { expect, onTestFinished, it, vi } from 'vitest';
-import { RendezvousChannel, createNaidanPipingCode, normalizeRendezvousCode } from '@/features/naidan-piping-duplex/rendezvous';
+import { RendezvousChannel, createNaidanPipingCode, normalizeRendezvousCode, rendezvousRoom } from '@/features/naidan-piping-duplex/rendezvous';
 import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
 async function pair() {
-  const a = await RendezvousChannel.create({ role: 'initiator', code: 'abcd-efgh', origin: 'https://relay.invalid/' });
-  const b = await RendezvousChannel.create({ role: 'responder', code: 'ABCDEFGH', origin: 'https://relay.invalid' });
+  const inputs = {
+    attemptI: crypto.getRandomValues(new Uint8Array(32)), attemptR: crypto.getRandomValues(new Uint8Array(32)),
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+  };
+  const a = await RendezvousChannel.create({ ...inputs, role: 'initiator',
+    room: await rendezvousRoom({ code: 'abcd-efgh', origin: 'https://RELAY.invalid:443/' }) });
+  const b = await RendezvousChannel.create({ ...inputs, role: 'responder',
+    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://relay.invalid' }) });
   onTestFinished(() => {
     a.dispose(); b.dispose();
   });
-  return { a, b };
+  return { a, b, inputs };
 }
 function snapshot({ channel }: { channel: RendezvousChannel }): Uint8Array {
-  const bytes = channel.snapshot(); if (!bytes) throw new Error('Missing advertisement'); return bytes;
+  return channel.snapshot();
 }
 
 it('normalization handles only explicit ASCII spelling and never approximates ambiguous characters', () => {
@@ -23,8 +29,9 @@ it('normalization handles only explicit ASCII spelling and never approximates am
   for (let index = 0; index < 100; index++) expect(createNaidanPipingCode()).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
 });
 
-it('independent discovery produces reciprocal routes and a matching binding without sharing attempts', async () => {
-  const { a, b } = await pair(); expect(b.snapshot()).toBeUndefined();
+it('independent selected candidates produce reciprocal routes and a matching binding', async () => {
+  const { a, b } = await pair();
+  expect(a.bound).toBe(false); expect(b.bound).toBe(false);
   expect(a.routes.send).toBe(b.routes.receive); expect(a.routes.receive).toBe(b.routes.send);
   expect(a.routes.send).not.toBe(a.routes.receive); expect(Object.isFrozen(a.routes)).toBe(true);
   b.accept({ bytes: snapshot({ channel: a }) }); a.accept({ bytes: snapshot({ channel: b }) });
@@ -32,46 +39,49 @@ it('independent discovery produces reciprocal routes and a matching binding with
   expect(await a.binding({ signal })).toEqual(await b.binding({ signal }));
   await a.send({ bytes: new Uint8Array([7, 8]) }); b.accept({ bytes: snapshot({ channel: a }) });
   expect(await b.receive({ signal })).toEqual(new Uint8Array([7, 8]));
+  expect(b.peerStartedNoise).toBe(true);
 });
 
-it('delayed initial and unrelated initiator attempts cannot replace a selected pair or journal', async () => {
+it('delayed selection and unrelated attempts cannot replace a selected pair or journal', async () => {
   const { a, b } = await pair(), initial = snapshot({ channel: a });
   b.accept({ bytes: initial }); a.accept({ bytes: snapshot({ channel: b }) });
   const binding = await b.binding({ signal: new AbortController().signal });
   await b.send({ bytes: new Uint8Array([19]) }); const selected = snapshot({ channel: b });
-  b.accept({ bytes: initial }); expect(snapshot({ channel: b })).toEqual(selected);
-  const other = await pair(); b.accept({ bytes: snapshot({ channel: other.a }) });
+  expect(b.accept({ bytes: initial })).toBe(false); expect(snapshot({ channel: b })).toEqual(selected);
+  const other = await pair(); expect(b.accept({ bytes: snapshot({ channel: other.a }) })).toBe(false);
   expect(await b.binding({ signal: new AbortController().signal })).toEqual(binding);
   expect(snapshot({ channel: b })).toEqual(selected);
 });
 
-it('a malformed first response cannot lock the initiator to its attempt', async () => {
-  const { a, b } = await pair(); b.accept({ bytes: snapshot({ channel: a }) });
-  const bad = snapshot({ channel: b }); bad[66] = 1;
+it('a malformed first acknowledgement cannot publish the initiator binding', async () => {
+  const { a, b } = await pair();
+  const bad = snapshot({ channel: b }); bad[98] = 1;
   expect(() => a.accept({ bytes: bad })).toThrow(); expect(a.bound).toBe(false);
   a.accept({ bytes: snapshot({ channel: b }) }); expect(a.bound).toBe(true);
 });
 
-it('a response from a previous initiator attempt cannot bind a new attempt', async () => {
-  const first = await pair(), second = await pair(); first.b.accept({ bytes: snapshot({ channel: first.a }) });
-  second.a.accept({ bytes: snapshot({ channel: first.b }) }); expect(second.a.bound).toBe(false);
+it('an acknowledgement from a previous attempt cannot bind a new candidate', async () => {
+  const first = await pair(), second = await pair();
+  expect(second.a.accept({ bytes: snapshot({ channel: first.b }) })).toBe(false); expect(second.a.bound).toBe(false);
 });
 
 it('room and canonical origin separate routing and cryptographic bindings', async () => {
-  const { a } = await pair();
-  const other = await RendezvousChannel.create({ role: 'responder', code: 'ABCDEFGH', origin: 'https://other.invalid' });
+  const { a, inputs } = await pair();
+  const other = await RendezvousChannel.create({ ...inputs, role: 'responder',
+    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://other.invalid' }) });
   onTestFinished(() => other.dispose());
   other.accept({ bytes: snapshot({ channel: a }) }); a.accept({ bytes: snapshot({ channel: other }) });
   const signal = new AbortController().signal;
   expect(await a.binding({ signal })).not.toEqual(await other.binding({ signal }));
   expect(a.routes.send).not.toBe(other.routes.receive);
-  const different = await RendezvousChannel.create({ role: 'initiator', code: '12345678', origin: 'https://relay.invalid' });
+  const different = await RendezvousChannel.create({ ...inputs, role: 'initiator',
+    room: await rendezvousRoom({ code: '12345678', origin: 'https://relay.invalid' }) });
   onTestFinished(() => different.dispose()); expect(a.routes.send).not.toBe(different.routes.send);
 });
 
 it.each(['https://user:pass@relay.invalid', 'https://relay.invalid/path', 'https://relay.invalid/?query',
   'https://relay.invalid/#hash', 'file:///tmp/relay', 'ws://relay.invalid'])('origin %s is rejected before constructing a discovery channel', async origin => {
-  await expect(RendezvousChannel.create({ role: 'initiator', code: 'ABCD-EFGH', origin })).rejects.toThrow('origin');
+  await expect(rendezvousRoom({ code: 'ABCD-EFGH', origin })).rejects.toThrow('origin');
 });
 
 it('binding waits can be cancelled without publishing a partial result', async () => {
@@ -92,15 +102,20 @@ it('disposing wakes pending discovery and rejects subsequent journal operations'
 });
 
 it.each(['cancel', 'dispose'] as const)('%s during the binding digest cannot publish its eventual result', async action => {
-  const { a, b } = await pair(), stop = new AbortController(), reason = new Error('Binding cancelled');
-  const release = Promise.withResolvers<void>();
+  const { a, inputs } = await pair(), stop = new AbortController(), reason = new Error('Binding cancelled');
+  const room = await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://relay.invalid' });
+  const release = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const digest = crypto.subtle.digest.bind(crypto.subtle);
-  const entered = Promise.withResolvers<void>();
-  vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(async (algorithm, bytes) => {
-    entered.resolve(); await release.promise; return digest(algorithm, bytes);
+  let calls = 0;
+  vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (algorithm, bytes) => {
+    if (++calls === 3) {
+      entered.resolve(); await release.promise;
+    }
+    return digest(algorithm, bytes);
   });
-  b.accept({ bytes: snapshot({ channel: a }) });
-  await entered.promise;
+  const b = await RendezvousChannel.create({ ...inputs, room, role: 'responder' });
+  onTestFinished(() => b.dispose());
+  b.accept({ bytes: snapshot({ channel: a }) }); await entered.promise;
   const binding = b.binding({ signal: stop.signal });
   const rejected = action === 'cancel' ? expect(binding).rejects.toBe(reason) : expect(binding).rejects.toThrow('disposed');
   if (action === 'cancel') stop.abort(reason); else b.dispose();
@@ -117,11 +132,7 @@ it('returns independent binding copies without exposing the stored digest', asyn
 });
 
 it('canonical origin spelling produces the same routes and binding on both peers', async () => {
-  const a = await RendezvousChannel.create({ role: 'initiator', code: 'abcd-efgh', origin: 'https://RELAY.invalid:443/' });
-  const b = await RendezvousChannel.create({ role: 'responder', code: 'ABCDEFGH', origin: 'https://relay.invalid' });
-  onTestFinished(() => {
-    a.dispose(); b.dispose();
-  });
+  const { a, b } = await pair();
   expect(a.routes.send).toBe(b.routes.receive); expect(a.routes.receive).toBe(b.routes.send);
   b.accept({ bytes: snapshot({ channel: a }) }); a.accept({ bytes: snapshot({ channel: b }) });
   const signal = new AbortController().signal;

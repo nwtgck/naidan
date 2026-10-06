@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ModelCandidate } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageClient } from '@/features/stable-diffusion-cpp-browser/worker/types';
+import { createImageSessionKeys } from '@/features/stable-diffusion-cpp-browser/session-key';
 import { createReadOnlyResources } from './resources-hosted';
 import type { PeerImageInput } from './resources';
 const mocks = vi.hoisted(() => {
@@ -73,6 +74,65 @@ it('cannot read an ungranted host directory or silently choose the owner preset'
 it('rejects unsupported sampler values rather than dropping a caller setting', async () => {
   const input = request(); input.parameters.sampler = 'unknown-sampler';
   await expect(generate({ input })).rejects.toThrow(); expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('reuses model, component, shard and LoRA snapshots across fresh inventories and per-run parameter changes', async () => {
+  const resources = resource(), signal = new AbortController().signal;
+  mocks.scan.mockImplementation(async () => {
+    const model = candidate({ path: 'model.gguf', roles: ['model'] });
+    model.files.push({ path: 'shard.gguf', file: new File(['model shard'], 'shard.gguf', { lastModified: 123 }) });
+    const vae = candidate({ path: 'vae.gguf', roles: ['vae'] }), lora = candidate({ path: 'lora.gguf', roles: [] }); lora.classes = ['lora'];
+    return { candidates: [model, vae, lora] };
+  });
+  const input = request();
+  input.modelSelection.components.push({ slot: 'vae', file: { location: { kind: 'opfs', path: 'models/user/model/vae.gguf' } } });
+  input.modelSelection.loras.push({ file: { location: { kind: 'opfs', path: 'models/user/model/lora.gguf' } }, strength: 0.5 });
+  await resources.generateImage({ input, signal, onPreview: () => {}, onProgress: () => {} });
+  input.parameters.seed = '43'; input.parameters.prompt = 'second image'; input.modelSelection.loras[0]!.strength = 0.75;
+  await resources.generateImage({ input, signal, onPreview: () => {}, onProgress: () => {} });
+  const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request;
+  expect(second.models[0]?.file).toBe(first.models[0]?.file); expect(second.models[1]?.file).toBe(first.models[1]?.file);
+  expect(second.models[0]?.companions?.[0]?.file).toBe(first.models[0]?.companions?.[0]?.file);
+  expect(second.loras[0]?.file).toBe(first.loras[0]?.file); expect(second.loras[0]?.strength).toBe(0.75);
+  const sessions = createImageSessionKeys(); expect(sessions.key({ request: second })).toBe(sessions.key({ request: first }));
+  await resources.dispose();
+});
+
+it('a same-size same-time change in a non-primary shard invalidates the native session key', async () => {
+  const resources = resource(), signal = new AbortController().signal;
+  let body = 'old shard';
+  mocks.scan.mockImplementation(async () => {
+    const model = candidate({ path: 'model.gguf', roles: ['model'] });
+    model.files.push({ path: 'shard.gguf', file: new File([body], 'shard.gguf', { lastModified: 123 }) });
+    return { candidates: [model] };
+  });
+  await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
+  body = 'new shard';
+  await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
+  const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request;
+  expect(second.models[0]?.file).toBe(first.models[0]?.file);
+  expect(second.models[0]?.companions?.[0]?.file).not.toBe(first.models[0]?.companions?.[0]?.file);
+  const sessions = createImageSessionKeys(); expect(sessions.key({ request: second })).not.toBe(sessions.key({ request: first }));
+  await resources.dispose();
+});
+
+it('native release clears retained references and a release during regeneration cannot erase its successful configuration', async () => {
+  const resources = resource(), signal = new AbortController().signal;
+  mocks.scan.mockImplementation(async () => ({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] }));
+  await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
+  const released: () => void = mocks.create.mock.calls[0]![0].onReleased;
+  released();
+  mocks.generate.mockImplementationOnce(async () => {
+    released();
+    return { png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' };
+  });
+  await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
+  await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
+  const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request,
+    third: Request = mocks.generate.mock.calls[2]![0].request;
+  expect(second.models[0]?.file).not.toBe(first.models[0]?.file);
+  expect(third.models[0]?.file).toBe(second.models[0]?.file);
+  await resources.dispose();
 });
 
 it('reports the failing native stage and Wasm locations without exporting native text', async () => {

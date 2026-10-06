@@ -248,8 +248,9 @@ const ExperimentalImageGenerationDraftParametersSchemaDto = ExperimentalImageGen
   vaeTileSize: z.number().finite().optional(), conditioningCacheSize: z.number().finite().optional(),
 }).strict();
 
-// The legacy preferences schema tolerates future fields. Workspace checkpoints
-// must fail closed instead: a read-modify-write must never erase unknown data.
+// Workspace-owned selections reject unknown fields during read-modify-write.
+// Shared experimental runtime/result schemas intentionally ignore extensions;
+// only their declared fields belong to the persisted contract.
 const ExperimentalImageGenerationSelectionLocationSchemaDto = z.discriminatedUnion('kind', [
   ExperimentalBrowserImageModelSelectionSchemaDto.shape.primary.shape.location.options[0].strict(),
   ExperimentalBrowserImageModelSelectionSchemaDto.shape.primary.shape.location.options[1].strict(),

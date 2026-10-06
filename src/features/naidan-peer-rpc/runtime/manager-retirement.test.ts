@@ -29,7 +29,7 @@ function fixture({ cleanupFailure, count }: { cleanupFailure: Error | undefined,
       links.push({ pair, closed, abort });
       const input = pair.a.incomingStreams[Symbol.asyncIterator]();
       return {
-        ...pair.a, closed: closed.promise, peerIdentity: new Uint8Array(32).fill(index + 2),
+        ...pair.a, closed: closed.promise, peerIdentity: new Uint8Array(32).fill(index + 2), confirmResponse: async () => {},
         abort,
         incomingStreams: { [Symbol.asyncIterator]() {
           return {

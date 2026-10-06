@@ -89,6 +89,26 @@ it('discards queued edits when the settings provider changes while a write waits
   h.replaceStorage(); h.settings.value.experimental = { browserImageGeneration: { width: 1024 } }; gate.resolve(); await settle();
   expect(h.settings.value.experimental).toEqual({ browserImageGeneration: { width: 1024 } }); expect(h.update).toHaveBeenCalledOnce(); expect(h.failed).not.toHaveBeenCalled();
 });
+it('resumes new provider edits while an obsolete save still owns its cleanup', async () => {
+  const h = harness({ preferences: saved() }); await settle();
+  const gate = Promise.withResolvers<void>();
+  h.update.mockImplementationOnce(async ({ isCurrent }) => {
+    await gate.promise; return isCurrent() ? 'saved' : 'changed';
+  });
+  h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.3 }); await settle();
+  h.replaceStorage();
+  const two = preference({ name: 'two' });
+  h.settings.value.experimental = { browserImageGeneration: { width: 1024,
+    inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } }, remoteModelEditors: [two] } };
+  await settle(); expect(h.update).toHaveBeenCalledOnce();
+  expect(h.inferenceLocation.connectionId.value).toBe(two.connectionId);
+  h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.9 }); h.inferenceLocation.setKind({ value: 'local' }); await settle();
+  gate.resolve(); await settle();
+  expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ width: 1024, inferenceLocation: { kind: 'local' },
+    remoteModelEditors: [{ connectionId: two.connectionId, editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }] });
+  expect(h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors).toHaveLength(1);
+  expect(h.update).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
+});
 it('drains accepted edits after leaving the view when storage still belongs to it', async () => {
   const h = harness({ preferences: saved() }); await settle();
   const gate = Promise.withResolvers<void>();

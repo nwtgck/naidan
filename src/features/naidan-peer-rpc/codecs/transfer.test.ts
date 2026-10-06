@@ -18,6 +18,36 @@ it('preserves large byte streams through bounded reads', async () => {
   const bytes = new Uint8Array(200003).map((_, i) => i % 251);
   expect(await collectBytes({ readable: bytesSource({ bytes }), limit: bytes.length, signal: signal() })).toEqual(bytes);
 });
+it('bounds byte-buffer allocation overhead independently of tiny chunk count', async () => {
+  const original = Uint8Array, chunk = new original([7]), length = 65536;
+  let at = 0, allocations = 0;
+  const readable = new ReadableStream<Uint8Array>({ pull(controller) {
+    if (at++ === length) controller.close(); else controller.enqueue(chunk);
+  } }, { highWaterMark: 0 });
+  vi.stubGlobal('Uint8Array', new Proxy(original, { construct(constructor, args, newTarget) {
+    allocations++; return Reflect.construct(constructor, args, newTarget);
+  } }));
+  try {
+    const bytes = await collectBytes({ readable, limit: length, signal: signal() });
+    expect(bytes.byteLength).toBe(length);
+    expect(bytes.every(byte => byte === 7)).toBe(true);
+    // A byte cap must also bound retained object overhead, even for 1-byte chunks.
+    // This allows different growth policies without prescribing an exact capacity.
+    expect(allocations).toBeLessThan(64);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+it('snapshots reused mutable byte chunks without including spare buffer capacity', async () => {
+  const chunk = new Uint8Array(3); let at = 0;
+  const readable = new ReadableStream<Uint8Array>({ pull(controller) {
+    if (at === 3) controller.close(); else {
+      chunk.fill(++at); controller.enqueue(chunk);
+    }
+  } }, { highWaterMark: 0 });
+  expect(await collectBytes({ readable, limit: 100, signal: signal() }))
+    .toEqual(new Uint8Array([1, 1, 1, 2, 2, 2, 3, 3, 3]));
+});
 it('bounded reads reject overflow and cancel producers', async () => {
   const cancel = vi.fn();
   const readable = new ReadableStream<Uint8Array>({ start(c) {
@@ -30,6 +60,38 @@ it('a waiting producer is cancelled through the lifetime signal', async () => {
   const work = collectBytes({ readable: new ReadableStream({ cancel }), limit: 32, signal: stop.signal });
   const rejected = expect(work).rejects.toBeDefined(); stop.abort(); await rejected; expect(cancel).toHaveBeenCalledOnce();
 });
+for (const consumer of ['bytes', 'events'] as const) {
+  for (const cleanupOutcome of ['resolved', 'rejected'] as const) {
+    it(`${consumer} joins the first cancellation even when producer cleanup is ${cleanupOutcome}`, async () => {
+      const cleanup = Promise.withResolvers<void>(), stop = new AbortController();
+      const reason = new Error('Stop remote inference'), cancel = vi.fn(() => cleanup.promise);
+      const readable = new ReadableStream<Uint8Array>({ cancel });
+      const work = consumer === 'bytes'
+        ? collectBytes({ readable, limit: 32, signal: stop.signal })
+        : receiveEvents({ readable, onEvent: () => {}, signal: stop.signal });
+      let settled = false;
+      const observed = work.then(() => {
+        settled = true;
+      }, (error: unknown) => {
+        settled = true; return error;
+      });
+      try {
+        stop.abort(reason);
+        await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+        // Drain the read/catch continuations while native cancellation remains held.
+        for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(readable.locked).toBe(true);
+        if (cleanupOutcome === 'resolved') cleanup.resolve(); else cleanup.reject(new Error('Cleanup failed'));
+        expect(await observed).toBe(reason);
+        expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
+        expect(readable.locked).toBe(false);
+      } finally {
+        cleanup.resolve(); await observed;
+      }
+    });
+  }
+}
 it('computation starts only when the returned output is consumed', async () => {
   const run = vi.fn(async ({ emit }: { emit: ({ value }: { value: number }) => Promise<void>; signal: AbortSignal }) => {
     await emit({ value: 7 });

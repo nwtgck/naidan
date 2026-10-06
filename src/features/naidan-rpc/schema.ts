@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { check, FRAME_BYTES, validKey } from '@/features/naidan-rpc/primitives';
+import { check, VALUE_BYTES, validKey } from '@/features/naidan-rpc/primitives';
 import { encode, decode, Reference } from '@/features/naidan-rpc/codec';
 import type { WireValue, ReferenceMode } from '@/features/naidan-rpc/codec';
 
@@ -115,10 +115,10 @@ function properties({ value }: { value: unknown }): Record<string, unknown> {
 }
 function finite({ schema, value }: { schema: z.ZodType; value: unknown }): WireValue {
   // Validate a finite, plain input before executing trusted application refinements.
-  const input = decode({ bytes: encode({ value, limit: FRAME_BYTES }) });
+  const input = decode({ bytes: encode({ value, limit: VALUE_BYTES }) });
   check({ condition: references({ value: input }).size === 0, code: 'INVALID_ARGUMENT' });
   const result: unknown = schema.parse(input);
-  const output = decode({ bytes: encode({ value: result, limit: FRAME_BYTES }) });
+  const output = decode({ bytes: encode({ value: result, limit: VALUE_BYTES }) });
   check({ condition: references({ value: output }).size === 0, code: 'INVALID_ARGUMENT' }); return output;
 }
 
@@ -170,7 +170,7 @@ export function pack({ plan, value, allocate }: { plan: Plan; value: unknown; al
     default: { const unreachable: never = node; throw new Error(String(unreachable)); }
     }
   };
-  const packed = visit({ plan, value, depth: 0 }); encode({ value: packed, limit: FRAME_BYTES }); return { value: packed, sources };
+  const packed = visit({ plan, value, depth: 0 }); encode({ value: packed, limit: VALUE_BYTES }); return { value: packed, sources };
 }
 
 /** Project known fields only; the caller declines all valid but unused references after full validation. */

@@ -1,12 +1,19 @@
 import { peerDocumentLimits } from '@/features/naidan-peer-rpc/contract';
+import { ByteAssembly } from '@/features/naidan-rpc/assembly';
 
 /** These helpers bound integration payloads; RPC frame limits are a separate transport budget. */
 export async function collectBytes({ readable, limit, signal }: { readable: ReadableStream<Uint8Array>; limit: number; signal: AbortSignal }): Promise<Uint8Array<ArrayBuffer>> {
   if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid transfer limit');
   signal.throwIfAborted();
-  const reader = readable.getReader(); const chunks: Uint8Array[] = []; let length = 0;
+  const reader = readable.getReader(), bytes = new ByteAssembly({ limit });
+  let cancellation: Promise<void> | undefined;
+  const cancelReader = ({ reason }: { reason: unknown }): Promise<void> => {
+    // A second native cancel resolves immediately after the stream closes;
+    // only the first promise owns the underlying producer's cleanup.
+    return cancellation ??= reader.cancel(reason).catch(() => {});
+  };
   const cancel = () => {
-    void reader.cancel(signal.reason).catch(() => {});
+    void cancelReader({ reason: signal.reason });
   };
   signal.addEventListener('abort', cancel, { once: true });
   try {
@@ -15,18 +22,16 @@ export async function collectBytes({ readable, limit, signal }: { readable: Read
       if (item.done) break;
       if (!(item.value instanceof Uint8Array)) throw new Error('Remote inference returned a non-byte chunk');
       if (item.value.byteLength === 0) continue;
-      length += item.value.byteLength; if (length > limit) throw new Error('Remote inference transfer exceeds its limit');
-      chunks.push(new Uint8Array(item.value));
+      if (bytes.byteLength + item.value.byteLength > limit) throw new Error('Remote inference transfer exceeds its limit');
+      bytes.append({ bytes: item.value });
     }
-    const result = new Uint8Array(length); let at = 0;
-    for (const bytes of chunks) {
-      result.set(bytes, at); at += bytes.length;
-    }
-    return result;
+    return bytes.finish();
   } catch (error) {
-    await reader.cancel(error).catch(() => {}); throw error;
+    await cancelReader({ reason: error }); throw error;
   } finally {
-    signal.removeEventListener('abort', cancel); reader.releaseLock();
+    signal.removeEventListener('abort', cancel);
+    if (cancellation) await cancellation;
+    reader.releaseLock();
   }
 }
 export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Uint8Array> {

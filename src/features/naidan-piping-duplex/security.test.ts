@@ -8,7 +8,7 @@ import { establishNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-c
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import type { NaidanPipingKeyContext, NaidanPipingHandshakeChannel } from '@/features/naidan-piping-duplex/key-context';
 import { Records } from '@/features/naidan-piping-duplex/records';
-import { encodeSnapshot } from '@/features/naidan-piping-duplex/wire';
+import { encodeRecordPayload } from '@/features/naidan-piping-duplex/wire';
 import { StreamSession } from '@/features/naidan-piping-duplex/session';
 
 beforeEach(() => {
@@ -59,7 +59,8 @@ function codecs({ keys, label }: { keys: { a: NaidanPipingKeyContext; b: NaidanP
   };
 }
 function empty({ goaway }: { goaway: boolean }): Uint8Array {
-  return encodeSnapshot({ snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] } });
+  return encodeRecordPayload({ payload: { receiptRequest: 'not-requested', receivedRecord: undefined,
+    snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] } } });
 }
 
 for (const usage of ['encrypt', 'decrypt'] as const) {
@@ -209,18 +210,18 @@ it('a failed encryption burns its record number rather than reusing its nonce', 
 it('authenticated protocol violations reject the runner lifetime instead of looking like a clean stop', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });
   const session = await StreamSession.create({ keys: keys.b });
-  const domain = keys.a.createDomain({ label: 'piping-duplex-record/v2', context: keys.a.contextId });
+  const domain = keys.a.createDomain({ label: 'piping-duplex-record/v3', context: keys.a.contextId });
   const sender = new Records({ domain, context: keys.a.contextId, direction: 1, usage: 'encrypt' });
   // A responder-local ID cannot be allocated by an incoming initiator advertisement.
-  const invalid = await sender.seal({ plaintext: encodeSnapshot({ snapshot: {
+  const invalid = await sender.seal({ plaintext: encodeRecordPayload({ payload: { receiptRequest: 'not-requested', receivedRecord: undefined, snapshot: {
     goaway: false, finished: new Uint8Array(), reset: new Uint8Array(),
     states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 0n, final: 0n }], data: [],
-  } }) });
+  } } }) });
   const stop = new AbortController();
   try {
     await expect(runDuplex({ session, signal: stop.signal,
       endpoint: { origin: 'https://relay.invalid', send: async () => {}, receive: async () => invalid, repair: async () => {} },
-      pacing: { minimumMs: 2, heartbeatMs: 100, retryBaseMs: 10, retryMaximumMs: 100 }, onEvent: () => {},
+      pacing: { minimumMs: 2, idleResendIntervalMs: 100, retryBaseMs: 10, retryMaximumMs: 100 }, onEvent: () => {},
     })).rejects.toThrow('Record processing failed');
     expect(session.stopped).toBe(true);
   } finally {

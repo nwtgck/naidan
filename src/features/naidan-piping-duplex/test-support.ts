@@ -72,9 +72,17 @@ export async function sessionPair() {
 }
 
 export async function exchange({ a, b }: { a: StreamSession; b: StreamSession }): Promise<void> {
-  const capsules = await promiseAllKeyed({ left: a.makeCapsule(), right: b.makeCapsule() });
+  const capsules = await promiseAllKeyed({ left: offeredCapsule({ session: a }), right: offeredCapsule({ session: b }) });
   await b.acceptCapsule({ capsule: capsules.left });
   await a.acceptCapsule({ capsule: capsules.right });
+}
+
+/** Simulate a POST offer without treating delivery as peer acknowledgement. */
+export async function offeredCapsule({ session }: { session: StreamSession }): Promise<Uint8Array> {
+  const transmission = await session.makeCapsule({ reason: 'idle-resend' });
+  const release = transmission.start({ onReceived: () => {} });
+  release();
+  return transmission.bytes;
 }
 
 /** A bounded local driver; no socket, retries on wall-clock races, or private-state writes. */

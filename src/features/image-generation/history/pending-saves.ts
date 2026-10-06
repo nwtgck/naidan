@@ -1,7 +1,6 @@
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
 import { copyImageGenerationSnapshot, type HistoryBinaryFile } from './snapshot';
-import { protectUnsavedImages } from '@/features/image-generation/execution/unsaved-exit';
 
 type SaveEvent = { type: 'changed' } | { type: 'saved' | 'discarded', id: ImageGenerationId };
 type Publication = { record: ImageGenerationRecord, files: HistoryBinaryFile[] };
@@ -80,8 +79,5 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
   };
 }
 export const pendingImageHistory = createPendingImageHistory({ maxEntries: 32, byteLimit: 128 * 1024 * 1024 });
-if (typeof window !== 'undefined') {
-  protectUnsavedImages({ target: window, subscribe: pendingImageHistory.subscribe, hasPending: () => pendingImageHistory.list().length > 0 });
-}
 export const TEST_ONLY = {
 };

@@ -3,11 +3,18 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { promiseAllKeyed } from '@/utils/promise';
 import { Pulse } from '@/features/naidan-piping-duplex/bytes';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
-import { establishVerifiedNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
+import { establishVerifiedNaidanPipingKeys, TEST_ONLY } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingHandshakeChannel, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
-import { RendezvousChannel } from '@/features/naidan-piping-duplex/rendezvous';
+import { rendezvousRoom, rendezvousRoute } from '@/features/naidan-piping-duplex/rendezvous';
 
 const stops = new Set<AbortController>();
+it('does not open an obsolete comparison callback when cancelled before its microtask', async () => {
+  const stop = new AbortController(), verifyPeer = vi.fn(async () => true);
+  const verification = TEST_ONLY.verifyComparison({ verifyPeer, peerIdentity: new Uint8Array(32), comparison: new Uint8Array(32), signal: stop.signal });
+  const rejected = expect(verification).rejects.toMatchObject({ name: 'AbortError' });
+  stop.abort(); await rejected; await Promise.resolve();
+  expect(verifyPeer).not.toHaveBeenCalled();
+});
 afterEach(() => {
   for (const stop of stops) stop.abort(); stops.clear(); vi.restoreAllMocks();
 });
@@ -110,11 +117,10 @@ it('unknown-peer establishment without a verifier fails closed', async () => {
     binding: new Uint8Array(32), channel: channel(), signal: new AbortController().signal })).rejects.toThrow();
 });
 it('short numeric rendezvous preserves leading zeros and does not act as the authentication value', async () => {
-  const a = await RendezvousChannel.create({ role: 'initiator', code: '0042', origin: 'https://relay.invalid' });
-  const b = await RendezvousChannel.create({ role: 'responder', code: '0042', origin: 'https://relay.invalid' });
-  expect(a.routes.send).toBe(b.routes.receive); expect(a.routes.receive).toBe(b.routes.send);
-  const different = await RendezvousChannel.create({ role: 'responder', code: '0420', origin: 'https://relay.invalid' });
-  expect(a.routes.send).not.toBe(different.routes.receive);
-  for (const code of ['123', '123456789', '００４２', ' 0042', '00 42']) await expect(RendezvousChannel.create({ role: 'initiator', code, origin: 'https://relay.invalid' })).rejects.toThrow();
-  a.dispose(); b.dispose(); different.dispose();
+  const a = await rendezvousRoom({ code: '0042', origin: 'https://relay.invalid' });
+  const b = await rendezvousRoom({ code: '0042', origin: 'https://relay.invalid' });
+  const different = await rendezvousRoom({ code: '0420', origin: 'https://relay.invalid' });
+  expect(await rendezvousRoute({ room: a, kind: 'offer', attempts: [] })).toBe(await rendezvousRoute({ room: b, kind: 'offer', attempts: [] }));
+  expect(a).not.toEqual(different);
+  for (const code of ['123', '123456789', '００４２', ' 0042', '00 42']) await expect(rendezvousRoom({ code, origin: 'https://relay.invalid' })).rejects.toThrow();
 });

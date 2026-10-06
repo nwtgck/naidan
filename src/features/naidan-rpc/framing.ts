@@ -1,27 +1,30 @@
 import { z } from 'zod';
 import { decode, encode } from '@/features/naidan-rpc/codec';
 import type { WireValue } from '@/features/naidan-rpc/codec';
-import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, NaidanRpcError, NaidanRpcPublicError, publicErrorDetailsSchema, RPC_VERSION } from '@/features/naidan-rpc/primitives';
+import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, publicErrorDetailsSchema, RPC_VERSION } from '@/features/naidan-rpc/primitives';
+import { references } from './schema';
+import { ByteAssembly } from './assembly';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
 
 const id = z.number().int().min(1).max(65535), sequence = z.number().int().min(1).max(0xffffffff);
 const scope = z.enum(['input', 'result']);
 export const frameSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('open'), version: z.literal(RPC_VERSION), contract: z.string().max(64), method: z.string().max(64), timeoutMs: z.number().int().positive().max(2147483647).optional(), value: z.unknown() }),
-  z.strictObject({ type: z.literal('result'), value: z.unknown() }),
-  z.strictObject({ type: z.literal('accept'), scope, ids: z.array(id).max(16) }),
-  z.strictObject({ type: z.literal('pull'), id, sequence }),
-  z.strictObject({ type: z.literal('item'), id, sequence, value: z.unknown() }),
-  z.strictObject({ type: z.literal('end'), id, sequence }),
-  z.strictObject({ type: z.literal('stop'), id }),
-  z.strictObject({ type: z.literal('stopped'), id }),
-  z.strictObject({ type: z.literal('invoke'), id, invocation: sequence, value: z.unknown() }),
-  z.strictObject({ type: z.literal('returned'), invocation: sequence, value: z.unknown() }),
-  z.strictObject({ type: z.literal('raised'), invocation: sequence }),
-  z.strictObject({ type: z.literal('notice'), name: z.string().max(64), value: z.unknown() }),
-  z.strictObject({ type: z.literal('finish'), code: z.enum(codes).optional(), details: publicErrorDetailsSchema.optional() })
+  z.object({ type: z.literal('open'), version: z.literal(RPC_VERSION), contract: z.string().max(64), method: z.string().max(64), timeoutMs: z.number().int().positive().max(2147483647).optional(), value: z.unknown() }),
+  z.object({ type: z.literal('result'), value: z.unknown() }),
+  z.object({ type: z.literal('accept'), scope, ids: z.array(id).max(16) }),
+  z.object({ type: z.literal('pull'), id, sequence }),
+  z.object({ type: z.literal('item'), id, sequence, value: z.unknown() }),
+  z.object({ type: z.literal('item-fragment'), id, sequence, total: z.number().int().min(1).max(VALUE_BYTES), offset: z.number().int().nonnegative().max(VALUE_BYTES), data: z.instanceof(Uint8Array).refine(bytes => bytes.length > 0 && bytes.length <= TRANSFER_BYTES) }),
+  z.object({ type: z.literal('end'), id, sequence }),
+  z.object({ type: z.literal('stop'), id }),
+  z.object({ type: z.literal('stopped'), id }),
+  z.object({ type: z.literal('invoke'), id, invocation: sequence, value: z.unknown() }),
+  z.object({ type: z.literal('returned'), invocation: sequence, value: z.unknown() }),
+  z.object({ type: z.literal('raised'), invocation: sequence }),
+  z.object({ type: z.literal('notice'), name: z.string().max(64), value: z.unknown() }),
+  z.object({ type: z.literal('finish'), code: z.enum(codes).optional(), details: publicErrorDetailsSchema.optional() })
     .refine(value => value.code !== undefined || value.details === undefined),
-  z.strictObject({ type: z.literal('ack') }),
+  z.object({ type: z.literal('ack') }),
 ]);
 export type Frame = z.output<typeof frameSchema>;
 type Pending = { bytes: Uint8Array; settled: ReturnType<typeof deferred<void>> };
@@ -68,7 +71,10 @@ export class FramedDuplex {
     try {
       while (this.queue.length) {
         const next = this.queue[0]!;
-        await this.writer.write(next.bytes);
+        for (let offset = 0; offset < next.bytes.length; offset += TRANSFER_BYTES) {
+          await this.writer.write(next.bytes.subarray(offset, offset + TRANSFER_BYTES));
+          if (this.failure) return;
+        }
         if (this.failure) return;
         this.queue.shift(); this.queuedBytes -= next.bytes.length; next.settled.resolve();
       }
@@ -105,7 +111,7 @@ export class FramedDuplex {
     this.chunk = new Uint8Array();
   }
   private async bytes({ length, allowEnd }: { length: number; allowEnd: boolean }): Promise<Uint8Array | undefined> {
-    const bytes = new Uint8Array(length); let written = 0;
+    const bytes = new ByteAssembly({ limit: length }); let written = 0;
     while (written < length) {
       if (this.cursor === this.chunk.length) {
         const next = await this.reader.read();
@@ -117,9 +123,9 @@ export class FramedDuplex {
         this.chunk = next.value; this.cursor = 0;
       }
       const size = Math.min(length - written, this.chunk.length - this.cursor);
-      bytes.set(this.chunk.subarray(this.cursor, this.cursor + size), written); this.cursor += size; written += size;
+      bytes.append({ bytes: this.chunk.subarray(this.cursor, this.cursor + size) }); this.cursor += size; written += size;
     }
-    return bytes;
+    return bytes.finish();
   }
   async read(): Promise<Frame | undefined> {
     const header = await this.bytes({ length: 4, allowEnd: true }); if (!header) return undefined;
@@ -127,7 +133,15 @@ export class FramedDuplex {
     check({ condition: length > 0 && length <= FRAME_BYTES, code: 'PROTOCOL_ERROR' });
     const body = await this.bytes({ length, allowEnd: false });
     if (!body) throw new Error('Missing frame');
-    return frameSchema.parse(decode({ bytes: body }));
+    const raw = decode({ bytes: body });
+    // Inspect before stripping extensions: hidden/duplicate capabilities must
+    // not escape direction, ownership or acceptance checks.
+    const all = references({ value: raw });
+    const frame = frameSchema.parse(raw);
+    const payload = 'value' in frame ? wireValue({ value: frame.value }) : undefined;
+    const allowed = references({ value: payload });
+    check({ condition: all.size === allowed.size && [...all].every(([id, reference]) => allowed.get(id)?.mode === reference.mode), code: 'PROTOCOL_ERROR' });
+    return frame;
   }
 }
 export function wireValue({ value }: { value: unknown }): WireValue {

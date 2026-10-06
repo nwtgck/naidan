@@ -4,18 +4,20 @@ import { FramedDuplex, wireValue } from '@/features/naidan-rpc/framing';
 import type { Frame } from '@/features/naidan-rpc/framing';
 import { compile, pack, project, references, isStream } from '@/features/naidan-rpc/schema';
 import type { Capability, Packed, Plan, Source } from '@/features/naidan-rpc/schema';
-import { CALLBACK_LIMIT, check, deferred, duration, ITEM_BYTES, NaidanRpcError, NaidanRpcPublicError, RPC_VERSION } from '@/features/naidan-rpc/primitives';
+import { CALLBACK_LIMIT, check, deferred, duration, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, RPC_VERSION } from '@/features/naidan-rpc/primitives';
 import type { NaidanRpcErrorCode } from '@/features/naidan-rpc/primitives';
 import type { PreparedMethod } from '@/features/naidan-rpc/contract';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
+import { ByteAssembly } from '@/features/naidan-rpc/assembly';
 
 type Scope = 'input' | 'result';
-const BYTE_SEGMENT = ITEM_BYTES - 4;
+const BYTE_SEGMENT = TRANSFER_BYTES;
 type Phase = 'offered' | 'accepted' | 'pulling' | 'stopping' | 'terminal';
 type Exported = Source & { scope: Scope; phase: Phase; sequence: number; reader: ReadableStreamDefaultReader<unknown> | undefined;
   pendingBytes: Uint8Array | undefined; offset: number; sending: Promise<void> | undefined; stopRequested: boolean };
 type Imported = { scope: Scope; capability: Capability; phase: Phase; sequence: number;
-  controller: ReadableStreamDefaultController<unknown> | undefined; granted: boolean; pending: ReturnType<typeof deferred<void>> | undefined };
+  controller: ReadableStreamDefaultController<unknown> | undefined; granted: boolean; pending: ReturnType<typeof deferred<void>> | undefined;
+  fragment: { bytes: ByteAssembly | undefined; total: number; offset: number } | undefined };
 type PendingCallback = { result: ReturnType<typeof deferred<unknown>>; plan: Plan };
 export type Observer = ({ value }: { value: unknown }) => void | Promise<void>;
 
@@ -40,6 +42,7 @@ export class RpcConversation {
   private lastInvocation = 0;
   private readonly exports = new Map<number, Exported>();
   private readonly imports = new Map<number, Imported>();
+  private partialBytes = 0;
   private readonly invocations = new Map<number, PendingCallback>();
   private readonly notices = new Map<string, WireValue>();
   private readonly observed = new Map<string, { running: boolean; latest: WireValue | undefined; present: boolean }>();
@@ -105,7 +108,7 @@ export class RpcConversation {
   }
   private maybeRetire(): void {
     if (!this.wireEnded || this.jobs !== 0) return;
-    this.exports.clear(); this.imports.clear(); this.notices.clear(); this.observed.clear(); this.method = undefined; this.observers = {};
+    this.exports.clear(); this.imports.clear(); this.partialBytes = 0; this.notices.clear(); this.observed.clear(); this.method = undefined; this.observers = {};
     if (this.retirementFailure) this.retired.reject(this.retirementFailure.error); else this.retired.resolve();
   }
   private register({ packed, scope }: { packed: Packed; scope: Scope }): void {
@@ -128,7 +131,7 @@ export class RpcConversation {
     }
   }
   private proxy({ reference, capability, scope }: { reference: Reference; capability: Capability; scope: Scope }): unknown {
-    const state: Imported = { scope, capability, phase: 'offered', sequence: 0, controller: undefined, granted: false, pending: undefined };
+    const state: Imported = { scope, capability, phase: 'offered', sequence: 0, controller: undefined, granted: false, pending: undefined, fragment: undefined };
     this.imports.set(reference.id, state);
     switch (capability.kind) {
     case 'stream': return new ReadableStream<unknown>({
@@ -209,6 +212,7 @@ export class RpcConversation {
       if (acknowledge) void this.send({ frame: { type: 'stopped', id } }); return;
     }
     state.phase = 'stopping'; state.pendingBytes = undefined;
+    const sending = state.sending;
     this.task({ run: async () => {
       try {
         if (isStream(state.capability)) {
@@ -216,6 +220,8 @@ export class RpcConversation {
           else await (state.value as ReadableStream<unknown>).cancel();
         }
       } finally {
+        // A STOP acknowledgement cannot overtake a fragment already queued.
+        await sending?.catch(() => {});
         state.phase = 'terminal';
         try {
           state.reader?.releaseLock();
@@ -229,6 +235,9 @@ export class RpcConversation {
     if (phaseIs({ phase: state.phase, expected: 'stopping' })) return state.pending?.promise ?? Promise.resolve();
     check({ condition: isStream(state.capability), code: 'PROTOCOL_ERROR' });
     state.phase = 'stopping'; state.pending?.resolve();
+    if (state.fragment?.bytes) {
+      this.partialBytes -= state.fragment.bytes.byteLength; state.fragment.bytes = undefined;
+    }
     const completion = deferred<void>(); state.pending = completion;
     if (this.active()) void this.send({ frame: { type: 'stop', id } }); else completion.reject(this.failure);
     return completion.promise;
@@ -259,7 +268,7 @@ export class RpcConversation {
         if (!this.active() || state.phase !== 'pulling') return;
         ended = next.done === true; item = next.value;
         if (!ended && capability.mode === 'bytes') {
-          check({ condition: item instanceof Uint8Array && item.buffer instanceof ArrayBuffer && item.length > 0 && item.length <= 64 * 1024 * 1024, code: 'INVALID_ARGUMENT' });
+          check({ condition: item instanceof Uint8Array && item.buffer instanceof ArrayBuffer && item.length > 0, code: 'INVALID_ARGUMENT' });
           const bytes = item as Uint8Array;
           // Retain one source-owned chunk, never concatenate an unbounded stream.
           state.pendingBytes = bytes; item = bytes.subarray(0, BYTE_SEGMENT); state.offset = (item as Uint8Array).length;
@@ -271,10 +280,20 @@ export class RpcConversation {
         await this.send({ frame: { type: 'end', id, sequence } }); return;
       }
       const parsed = capability.item.parse(item);
-      const value = decode({ bytes: encode({ value: parsed, limit: ITEM_BYTES }) });
+      if (!this.active() || state.phase !== 'pulling') return;
+      const value = decode({ bytes: encode({ value: parsed, limit: VALUE_BYTES }) });
       check({ condition: references({ value }).size === 0, code: 'INVALID_ARGUMENT' });
       state.phase = 'accepted';
-      const sent = this.send({ frame: { type: 'item', id, sequence, value } }); state.sending = sent;
+      const bytes = encode({ value, limit: VALUE_BYTES });
+      const sent = Promise.resolve().then(async () => {
+        if (capability.mode === 'bytes' || bytes.length <= TRANSFER_BYTES) {
+          await this.send({ frame: { type: 'item', id, sequence, value } }); return;
+        }
+        for (let offset = 0; offset < bytes.length; offset += TRANSFER_BYTES) {
+          if (!this.active() || phaseIs({ phase: state.phase, expected: 'stopping' }) || phaseIs({ phase: state.phase, expected: 'terminal' })) return;
+          await this.send({ frame: { type: 'item-fragment', id, sequence, total: bytes.length, offset, data: bytes.subarray(offset, offset + TRANSFER_BYTES) } });
+        }
+      }); state.sending = sent;
       await sent; if (state.sending === sent) state.sending = undefined;
     } });
   }
@@ -283,7 +302,8 @@ export class RpcConversation {
     check({ condition: state !== undefined && isStream(state.capability) && sequence === state.sequence, code: 'PROTOCOL_ERROR' });
     if (!state || state.capability.kind !== 'stream') throw new Error('Unknown stream');
     check({ condition: state.granted && (state.phase === 'pulling' || phaseIs({ phase: state.phase, expected: 'stopping' })), code: 'PROTOCOL_ERROR' });
-    encode({ value, limit: ITEM_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+    check({ condition: state.fragment === undefined, code: 'PROTOCOL_ERROR' });
+    encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     state.granted = false;
     if (phaseIs({ phase: state.phase, expected: 'stopping' })) return; // At most the single previously granted item may still arrive.
     const pending = state.pending; state.pending = undefined;
@@ -291,9 +311,34 @@ export class RpcConversation {
       state.phase = 'terminal'; state.controller?.close();
     } else {
       const parsed = state.capability.item.parse(value);
+      if (!this.active() || phaseIs({ phase: state.phase, expected: 'stopping' }) || phaseIs({ phase: state.phase, expected: 'terminal' })) return;
       state.phase = 'accepted'; state.controller?.enqueue(parsed);
     }
     pending?.resolve(); this.maybeFinish();
+  }
+  private receiveFragment({ id, sequence, total, offset, data }: { id: number; sequence: number; total: number; offset: number; data: Uint8Array }): void {
+    const state = this.imports.get(id);
+    check({ condition: state?.capability.kind === 'stream' && state.capability.mode === 'items' && state.granted && sequence === state.sequence &&
+      (state.phase === 'pulling' || state.phase === 'stopping'), code: 'PROTOCOL_ERROR' });
+    if (!state) throw new Error('Missing item stream');
+    if (!state.fragment) {
+      check({ condition: offset === 0 && total > TRANSFER_BYTES, code: 'PROTOCOL_ERROR' });
+      const discarded = phaseIs({ phase: state.phase, expected: 'stopping' });
+      state.fragment = { bytes: discarded ? undefined : new ByteAssembly({ limit: total }), total, offset: 0 };
+    }
+    const partial = state.fragment;
+    check({ condition: total === partial.total && offset === partial.offset && offset + data.length <= total, code: 'PROTOCOL_ERROR' });
+    if (partial.bytes) {
+      check({ condition: this.partialBytes + data.length <= VALUE_BYTES, code: 'RESOURCE_EXHAUSTED' });
+      partial.bytes.append({ bytes: data }); this.partialBytes += data.length;
+    }
+    partial.offset += data.length;
+    if (partial.offset !== partial.total) return;
+    state.fragment = undefined;
+    if (partial.bytes) {
+      this.partialBytes -= total;
+      this.receiveItem({ id, sequence, value: decode({ bytes: partial.bytes.finish() }), ended: false });
+    } else state.granted = false;
   }
   private invoke({ id, invocation, value }: { id: number; invocation: number; value: WireValue }): void {
     const target = this.exports.get(id);
@@ -333,7 +378,7 @@ export class RpcConversation {
     const packed = pack({ plan, value, allocate: () => {
       throw new Error('Finite notification required');
     } });
-    encode({ value: packed.value, limit: ITEM_BYTES }); this.notices.set(name, packed.value);
+    encode({ value: packed.value, limit: VALUE_BYTES }); this.notices.set(name, packed.value);
     if (this.noticeSending) return; this.noticeSending = true;
     this.task({ run: async () => {
       try {
@@ -348,7 +393,7 @@ export class RpcConversation {
   }
   private notice({ name, value }: { name: string; value: WireValue }): void {
     check({ condition: isCaller({ role: this.role }), code: 'PROTOCOL_ERROR' });
-    encode({ value, limit: ITEM_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+    encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     const plan = this.method?.notifications.get(name); if (!plan) return;
     const output = project({ plan, value, proxy: () => {
       throw new Error('No capabilities in notifications');
@@ -392,8 +437,10 @@ export class RpcConversation {
   private cancelCapabilities({ error }: { error: unknown }): void {
     this.controller.abort(error); this.notices.clear();
     for (const state of this.imports.values()) {
+      state.fragment = undefined;
       state.phase = 'terminal'; state.controller?.error(error); state.pending?.reject(error); state.pending = undefined;
     }
+    this.partialBytes = 0;
     for (const [id, state] of this.exports) if (isStream(state.capability) && state.phase !== 'terminal' && state.phase !== 'stopping') this.stopExport({ id, acknowledge: false });
     for (const pending of this.invocations.values()) pending.result.reject(error);
     this.invocations.clear();
@@ -445,7 +492,7 @@ export class RpcConversation {
       check({ condition: this.finishSent !== undefined && !this.acknowledged, code: 'PROTOCOL_ERROR' });
       this.acknowledged = true; void this.channel.finish().catch(() => this.abort({ code: 'TRANSPORT_ERROR' })); return;
     }
-    case 'open': case 'result': case 'accept': case 'pull': case 'item': case 'end': case 'stop': case 'stopped':
+    case 'open': case 'result': case 'accept': case 'pull': case 'item': case 'item-fragment': case 'end': case 'stop': case 'stopped':
     case 'invoke': case 'returned': case 'raised': case 'notice': break;
     default: { const unreachable: never = frame; throw new Error(String(unreachable)); }
     }
@@ -500,12 +547,15 @@ export class RpcConversation {
     case 'accept': this.accept({ scope: frame.scope, ids: frame.ids }); return;
     case 'pull': this.pullExport({ id: frame.id, sequence: frame.sequence }); return;
     case 'item': this.receiveItem({ id: frame.id, sequence: frame.sequence, value: wireValue({ value: frame.value }), ended: false }); return;
+    case 'item-fragment': this.receiveFragment({ id: frame.id, sequence: frame.sequence, total: frame.total, offset: frame.offset, data: frame.data }); return;
     case 'end': this.receiveItem({ id: frame.id, sequence: frame.sequence, value: undefined, ended: true }); return;
     case 'stop': this.stopExport({ id: frame.id, acknowledge: true }); return;
     case 'stopped': {
       const state = this.imports.get(frame.id);
       check({ condition: state?.phase === 'stopping', code: 'PROTOCOL_ERROR' });
       if (!state) throw new Error('Missing stopped stream');
+      if (state.fragment?.bytes) this.partialBytes -= state.fragment.bytes.byteLength;
+      state.fragment = undefined; state.granted = false;
       state.phase = 'terminal'; state.pending?.resolve(); state.pending = undefined;
       this.maybeFinish(); return;
     }
@@ -514,14 +564,19 @@ export class RpcConversation {
       const pending = this.invocations.get(frame.invocation);
       check({ condition: pending !== undefined, code: 'PROTOCOL_ERROR' });
       if (!pending) throw new Error('Unknown invocation');
-      this.invocations.delete(frame.invocation);
       switch (frame.type) {
-      case 'raised': pending.result.reject(new NaidanRpcError({ code: 'HANDLER_FAILED' })); break;
+      case 'raised':
+        this.invocations.delete(frame.invocation);
+        pending.result.reject(new NaidanRpcError({ code: 'HANDLER_FAILED' })); break;
       case 'returned': {
         const value = wireValue({ value: frame.value }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
-        pending.result.resolve(project({ plan: pending.plan, value, proxy: () => {
+        const projected = project({ plan: pending.plan, value, proxy: () => {
           throw new Error('Finite callback result');
-        } }).value); break;
+        } }).value;
+        // Keep ownership until validation succeeds so abort rejects a callback
+        // awaiting a malformed return and can join its handler.
+        this.invocations.delete(frame.invocation);
+        pending.result.resolve(projected); break;
       }
       default: { const unreachable: never = frame; throw new Error(String(unreachable)); }
       }

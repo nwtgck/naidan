@@ -143,6 +143,9 @@ export class Machine {
   drain(): void {
     this.internalGoaway = true;
   }
+  receiptSnapshot(): Snapshot {
+    return { goaway: this.internalGoaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] };
+  }
   checkWrite({ id, length }: {
         id: number;
         length: number;

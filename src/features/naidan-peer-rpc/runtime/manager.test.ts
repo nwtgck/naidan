@@ -11,7 +11,7 @@ import type { NaidanRpcStorage, NaidanRpcRegistryAccess, NaidanRpcRegistrySnapsh
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId, toNaidanRpcRegistryId } from '@/01-models/ids';
 import type { ReadOnlyInferenceResources } from '@/features/naidan-peer-rpc/handlers/inference/resources';
 import { expose, NaidanRpcPeer } from '@/features/naidan-rpc';
-import { naidanPeerContract } from '@/features/naidan-peer-rpc/contract';
+import { describePeerMethods, naidanPeerContract } from '@/features/naidan-peer-rpc/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-peer-rpc/implementation';
 import { RpcOwnerBusyError } from './owner';
 
@@ -51,7 +51,7 @@ function fixture() {
         pair.close(); closed.resolve();
       };
       signal.addEventListener('abort', abort, { once: true });
-      return { ...pair.a, closed: closed.promise, peerIdentity: remote, abort } satisfies RpcLink;
+      return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort } satisfies RpcLink;
     }),
     inference: { resources, inputBudget: createInferenceBudget({ capacity: 256 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 128 * 1024 * 1024 }) },
     changed: vi.fn(), retireResources: vi.fn(async () => {}),
@@ -72,6 +72,48 @@ function automaticFixture() {
   });
   return result;
 }
+it('joins an unresponsive idle session before automatically reconnecting without replaying inference', async () => {
+  const { manager, dependencies, links, resources } = automaticFixture();
+  const original = vi.mocked(dependencies.open).getMockImplementation();
+  if (!original) throw new Error('Missing opener');
+  const retired = Promise.withResolvers<void>(); let aborted = false;
+  vi.mocked(dependencies.open).mockImplementationOnce(async args => {
+    const link = await original(args);
+    return { ...link, closed: retired.promise,
+      confirmResponse: ({ signal, onRequestStarted }) => new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }); onRequestStarted();
+      }),
+      abort: args => {
+        aborted = true; link.abort(args);
+      },
+    };
+  });
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  const binding = manager.bindClient({ id: record.id });
+  await vi.advanceTimersByTimeAsync(75000);
+  expect(aborted).toBe(true); expect(binding.signal.aborted).toBe(true); expect(manager.list()[0]?.phase).toBe('stopping');
+  expect(dependencies.open).toHaveBeenCalledTimes(1);
+  for (const method of Object.values(resources)) expect(method).not.toHaveBeenCalled();
+  retired.resolve(); await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledTimes(2); expect(links).toHaveLength(2); expect(manager.list()[0]?.phase).toBe('connected');
+  expect(manager.bindClient({ id: record.id }).signal).not.toBe(binding.signal);
+});
+
+it('keeps the manual page pause when disconnect wins a health retirement race', async () => {
+  const { manager, dependencies } = automaticFixture();
+  const original = vi.mocked(dependencies.open).getMockImplementation(); if (!original) throw new Error('Missing opener');
+  const retired = Promise.withResolvers<void>();
+  vi.mocked(dependencies.open).mockImplementationOnce(async args => ({ ...await original(args), closed: retired.promise,
+    confirmResponse: ({ signal, onRequestStarted }) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true }); onRequestStarted();
+    }),
+  }));
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(75000); expect(manager.list()[0]?.phase).toBe('stopping');
+  const stopped = manager.disconnect({ id: record.id }); retired.resolve(); await stopped;
+  await vi.advanceTimersByTimeAsync(120000); expect(dependencies.open).toHaveBeenCalledTimes(1);
+  expect(manager.list()[0]).toMatchObject({ phase: 'disconnected', connection: { autoConnect: 'enabled' } });
+});
 it('automatic startup restores a pinned saved identity without providing or replaying inference', async () => {
   const { manager, dependencies, resources } = automaticFixture();
   await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
@@ -203,7 +245,7 @@ it('a late identity load after OFF cannot publish or open a connection', async (
 it('successful pairing does not save trust, and closing the initiating UI does not disconnect it', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
   const ui = new AbortController();
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: ui.signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: ui.signal });
   ui.abort(); expect(manager.list()[0]?.phase).toBe('connected');
   expect(storage.remember).not.toHaveBeenCalled(); expect(manager.list()[0]?.access.effective).toEqual([]);
   await manager.updateAllowedMethods({ id, allowedMethods: ['generateChat'] });
@@ -214,12 +256,12 @@ it('successful pairing does not save trust, and closing the initiating UI does n
 });
 it('a temporary disconnected peer is not silently promoted to a remembered record', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   await manager.disconnect({ id }); expect(manager.list()).toEqual([]); expect(storage.remember).not.toHaveBeenCalled();
 });
 it('a failed trust save leaves the verified temporary connection usable', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   vi.mocked(storage.remember).mockRejectedValueOnce(new Error('quota'));
   await expect(manager.remember({ id, label: undefined })).rejects.toThrow('quota');
   expect(manager.list()[0]).toMatchObject({ phase: 'connected', persistence: 'temporary' });
@@ -231,10 +273,10 @@ it('provides discovery with no inference grants and reports effective restrictio
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [expose({ contract: naidanPeerContract,
     allowedMethods: ['getProvidedMethods'], implementation: createNaidanPeerImplementation({ inference: dependencies.inference,
-      providedMethods: () => ({ status: 'ready', methods: ['listImageModels', 'generateImage'] }) }) })],
+      providedMethods: () => ({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }) }) })],
   limits: { maxCalls: 4, maxCallTimeoutMs: 1000 }, signal: new AbortController().signal });
   try {
-    expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: ['listImageModels', 'generateImage'] });
+    expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
     vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
     await expect(manager.updateAllowedMethods({ id: record.id, allowedMethods: [] })).rejects.toThrow('quota');
     expect(manager.list()[0]?.access.saved).toEqual(['listChatModels']);
@@ -244,7 +286,7 @@ it('provides discovery with no inference grants and reports effective restrictio
     const validated = manager.revalidate();
     try {
       expect(() => manager.client({ id: record.id })).toThrow('verification');
-      expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: ['listImageModels', 'generateImage'] });
+      expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
     } finally {
       checking.resolve(snapshot({ connections: [{ ...record, allowedMethods: ['listChatModels'] }] })); await validated;
     }
@@ -266,7 +308,7 @@ it('failed restriction persistence remains restricted on explicit reconnection',
 });
 it('remembering and disconnecting concurrently preserves only the explicitly saved record', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   const gate = Promise.withResolvers<NaidanRpcRegistryAccess>(); vi.mocked(storage.remember).mockReturnValue(gate.promise);
   const save = manager.remember({ id, label: 'Saved' }); await vi.waitFor(() => expect(storage.remember).toHaveBeenCalledOnce());
   const stop = manager.disconnect({ id }); gate.resolve(registryAccess); await save; await stop;
@@ -369,7 +411,7 @@ it('deletion waits for an already submitted grant write even on a disconnected r
 });
 it('forgetting an active temporary connection does not wait for its own deletion', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   await manager.forget({ id }); expect(manager.list()).toEqual([]); expect(storage.remove).not.toHaveBeenCalled();
 });
 it('master OFF retains ownership until pending registry deletion settles', async () => {
@@ -424,7 +466,7 @@ it('a failed rename does not change the displayed name or disconnect the peer', 
 });
 it('temporary names do not imply remembered trust and blank names keep the automatic label', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   const before = manager.list()[0]!.connection.label;
   await manager.rename({ id, label: '  ' }); expect(manager.list()[0]?.connection.label).toBe(before);
   await manager.rename({ id, label: 'Desk' }); expect(manager.list()[0]).toMatchObject({ persistence: 'temporary', connection: { label: 'Desk' } });
@@ -476,7 +518,7 @@ it('suspends inbound admission while checking storage without connecting or scan
     gate.resolve(snapshot({ connections: [current] })); await checking;
     expect(manager.list()[0]?.phase).toBe('connected');
     const confirmed = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    expect(await confirmed.result).toEqual({ status: 'ready', methods: ['listChatModels'] }); await confirmed.closed;
+    expect(await confirmed.result).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels'] }) }); await confirmed.closed;
     const accepted = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
     const reader = (await accepted.result).getReader(); expect((await reader.read()).value?.ref).toBe('models/local.gguf');
     expect((await reader.read()).done).toBe(true); await accepted.closed;
@@ -530,7 +572,7 @@ it('never silently rebinds an existing connection ID to another peer identity', 
 });
 it('temporary-only connections do not require storage to revalidate on focus', async () => {
   const { manager, storage } = fixture(); await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   vi.mocked(storage.list).mockRejectedValue(new Error('storage unavailable')); await manager.revalidate();
   expect(manager.bindClient({ id }).signal.aborted).toBe(false); expect(storage.list).not.toHaveBeenCalled();
 });
@@ -623,7 +665,7 @@ it('a stop captured during connection startup still cancels that exact startup',
 it('a captured stop can finish an already stopping session but cannot resurrect a removed temporary row', async () => {
   const { manager } = fixture();
   await manager.setEnabled({ enabled: true });
-  const id = await manager.pair({ settings: transport, code: '1234', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+  const id = await manager.pair({ settings: transport, code: '1234', verifyPeer: async () => true, signal: new AbortController().signal });
   const stopThisSession = manager.prepareDisconnect({ id });
   await stopThisSession();
   await expect(stopThisSession()).rejects.toThrow('session changed');

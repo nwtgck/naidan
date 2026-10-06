@@ -39,7 +39,7 @@ function endpoint() {
       pair.close(); closed.resolve();
     };
     signal.addEventListener('abort', abort, { once: true });
-    return { ...pair.a, closed: closed.promise, peerIdentity: remote, abort } satisfies RpcLink;
+    return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort } satisfies RpcLink;
   });
   const manager = new NaidanPeerManager({ dependencies: {
     storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },

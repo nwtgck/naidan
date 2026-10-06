@@ -103,14 +103,8 @@ onBeforeRouteLeave(async to => {
   await view.flushDraft();
   return !unsafeToLeave.value || await showConfirm({ message: await ensureStrings.imageGeneration__leave_warning() });
 });
-function beforeUnload({ event }: { event: BeforeUnloadEvent }): void {
-  if (unsafeToLeave.value) event.preventDefault();
-}
-// eslint-disable-next-line local-rules-named-args/require-named-args -- DOM EventListener callback signature is external.
-const onUnload = (event: BeforeUnloadEvent) => beforeUnload({ event });
-window.addEventListener('beforeunload', onUnload);
 onScopeDispose(() => {
-  unregister(); exportAbort?.abort(); window.removeEventListener('beforeunload', onUnload);
+  unregister(); exportAbort?.abort();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen } }) || {}) });
 </script>

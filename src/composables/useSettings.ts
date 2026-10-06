@@ -144,6 +144,18 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
         await setStringLocale({
           locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
         });
+      } else {
+        const type = event.type;
+        switch (type) {
+        case 'settings': break;
+        case 'migration':
+          // Clearing storage still retires editor write owners. Republish the
+          // current UI settings so mounted editors can capture the new provider
+          // boundary even when no saved Settings record exists yet.
+          _settings.value = { ..._settings.value };
+          break;
+        default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+        }
       }
     } catch (error) {
       console.error('Failed to synchronize settings:', error);

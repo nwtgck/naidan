@@ -4,10 +4,11 @@ import { AttemptError, Deadline, sleep } from '@/features/naidan-piping-duplex/f
 import type { AttemptKind, FiniteTransport } from '@/features/naidan-piping-duplex/finite';
 import { retryDelay, runDuplex, validatePacing } from '@/features/naidan-piping-duplex/runner';
 import type { RunnerEvent } from '@/features/naidan-piping-duplex/runner';
-import { sessionPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { StreamSession } from '@/features/naidan-piping-duplex/session';
+import { keyPair, mailbox, opened, offeredCapsule, sessionPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
-const pacing = { minimumMs: 2, heartbeatMs: 100, retryBaseMs: 10, retryMaximumMs: 80 };
+const pacing = { minimumMs: 2, idleResendIntervalMs: 100, retryBaseMs: 10, retryMaximumMs: 80 };
 
 async function waitForAbort({ signal }: { signal: AbortSignal }): Promise<never> {
   signal.throwIfAborted();
@@ -43,8 +44,8 @@ it.each([
 });
 
 it.each([
-  { minimumMs: 0 }, { minimumMs: 1.5 }, { heartbeatMs: 1 }, { retryBaseMs: 1 },
-  { retryMaximumMs: 9 }, { heartbeatMs: Infinity }, { retryMaximumMs: 2147483648 },
+  { minimumMs: 0 }, { minimumMs: 1.5 }, { idleResendIntervalMs: 1 }, { retryBaseMs: 1 },
+  { retryMaximumMs: 9 }, { idleResendIntervalMs: Infinity }, { retryMaximumMs: 2147483648 },
 ])('invalid pacing is rejected before taking transport ownership: %j', async invalid => {
   const { a } = await sessionPair(), endpoint = idleEndpoint(), send = vi.spyOn(endpoint, 'send');
   expect(() => validatePacing({ pacing: { ...pacing, ...invalid } })).toThrow('parameters');
@@ -98,7 +99,7 @@ it('a revision made during an outstanding POST bypasses the long heartbeat', asy
     } else second.resolve();
   };
   vi.useFakeTimers();
-  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing: { ...pacing, heartbeatMs: 10000 }, onEvent: () => {} });
+  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing: { ...pacing, idleResendIntervalMs: 10000 }, onEvent: () => {} });
   try {
     await first.promise; await a.drain({ signal: undefined }); release.resolve();
     await vi.advanceTimersByTimeAsync(0); await vi.advanceTimersByTimeAsync(2); await second.promise;
@@ -132,7 +133,7 @@ it.each(['waiting-sender', 'waiting-receiver', 'established', 'transient'] as At
 );
 
 it('invalid ciphertext backs off before a valid authenticated snapshot without applying the invalid data', async () => {
-  const { a, b } = await sessionPair(), capsule = await b.makeCapsule(), endpoint = idleEndpoint(), stop = new AbortController();
+  const { a, b } = await sessionPair(), capsule = await offeredCapsule({ session: b }), endpoint = idleEndpoint(), stop = new AbortController();
   let calls = 0; const events: RunnerEvent['kind'][] = [];
   endpoint.receive = async () => {
     calls++; return calls === 1 ? new Uint8Array([0]) : capsule;
@@ -206,4 +207,113 @@ it('pre-cancelled transport performs no HTTP call and releases its owner', async
   await runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent: () => {} });
   expect(send).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
   const release = a.claimTransport(); release();
+});
+
+it('authenticated receipt releases a stalled POST only after that POST finishes its owned cleanup', async () => {
+  const { a, b } = await sessionPair(), stop = new AbortController(), endpoint = idleEndpoint(), toA = mailbox();
+  const delivered = Promise.withResolvers<void>(), cancelling = Promise.withResolvers<void>();
+  const join = Promise.withResolvers<void>(), second = Promise.withResolvers<void>();
+  let sends = 0;
+  endpoint.send = async ({ bytes, signal }) => {
+    sends++;
+    if (sends === 1) {
+      await b.acceptCapsule({ capsule: bytes }); delivered.resolve();
+      try {
+        await waitForAbort({ signal });
+      } finally {
+        cancelling.resolve(); await join.promise;
+      }
+    } else {
+      second.resolve(); stop.abort();
+    }
+  };
+  endpoint.receive = toA.receive;
+  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent: () => {} });
+  try {
+    await delivered.promise;
+    await toA.send({ bytes: await offeredCapsule({ session: b }) });
+    await cancelling.promise;
+    expect(sends).toBe(1);
+    expect(() => a.claimTransport()).toThrow('owned');
+    join.resolve();
+    await second.promise; await running;
+    expect(sends).toBe(2); expect(a.stopped).toBe(false);
+  } finally {
+    stop.abort(); join.resolve(); await running;
+  }
+});
+
+it('repeated receipt requests cannot interrupt an unreceived DATA POST or starve its stream', async () => {
+  const { a, b } = await sessionPair(), { aStream } = await opened({ a, b });
+  const writer = aStream.writable.getWriter(), writing = writer.write(new Uint8Array(32000));
+  const rejected = expect(writing).rejects.toThrow('Stream reset');
+  await vi.waitFor(() => expect(a.debug()).toMatchObject({ streams: [expect.objectContaining({ txEnd: '32000' })] }));
+  const endpoint = idleEndpoint(), stop = new AbortController(), toA = mailbox();
+  const entered = Promise.withResolvers<AbortSignal>(), requestsReceived = Promise.withResolvers<void>();
+  let sends = 0, requests = 0;
+  endpoint.send = async ({ bytes, signal }) => {
+    sends++; expect(bytes.length).toBeGreaterThan(16384); entered.resolve(signal);
+    await waitForAbort({ signal });
+  };
+  endpoint.receive = toA.receive;
+  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent: ({ event }) => {
+    if (event.kind === 'received' && ++requests === 3) requestsReceived.resolve();
+  } });
+  try {
+    const sending = await entered.promise;
+    for (let attempt = 0; attempt < 3; attempt++) await toA.send({ bytes: await offeredCapsule({ session: b }) });
+    await requestsReceived.promise;
+    expect(sends).toBe(1); expect(sending.aborted).toBe(false);
+  } finally {
+    stop.abort(); await running;
+    aStream.abort({ reason: 'Test cleanup' }); await rejected; writer.releaseLock();
+  }
+});
+
+it.each([false, true])('starts new idle probes, preserves the response request across a dropped candidate (%s), and stops echoing', async dropInitialProbe => {
+  const keys = await keyPair();
+  const a = await StreamSession.create({ keys: keys.a }), b = await StreamSession.create({ keys: keys.b });
+  const stop = new AbortController(), toA = mailbox(), toB = mailbox();
+  let aPosts = 0, bPosts = 0, activeA = 0, activeB = 0;
+  const endpoint = ({ outgoing, incoming, side }: { outgoing: ReturnType<typeof mailbox>; incoming: ReturnType<typeof mailbox>; side: 'a' | 'b' }): FiniteTransport => ({
+    origin: 'https://piping.example',
+    send: async ({ bytes, signal }) => {
+      if (side === 'a') {
+        aPosts++; activeA++; expect(activeA).toBe(1);
+      } else {
+        bPosts++; activeB++; expect(activeB).toBe(1);
+      }
+      const ordinal = side === 'a' ? aPosts : bPosts;
+      try {
+        if (!(dropInitialProbe && side === 'a' && ordinal === 3)) await outgoing.send({ bytes });
+        if (ordinal > 1) await waitForAbort({ signal });
+      } finally {
+        if (side === 'a') activeA--; else activeB--;
+      }
+    },
+    receive: incoming.receive,
+    repair: async () => {
+      throw new Error('Unexpected repair');
+    },
+  });
+  const pacing = { minimumMs: 1, idleResendIntervalMs: 20000, retryBaseMs: 2, retryMaximumMs: 2 };
+  const left = runDuplex({ session: a, endpoint: endpoint({ outgoing: toB, incoming: toA, side: 'a' }), signal: stop.signal, pacing, onEvent: () => {} });
+  const right = runDuplex({ session: b, endpoint: endpoint({ outgoing: toA, incoming: toB, side: 'b' }), signal: stop.signal, pacing, onEvent: () => {} });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect({ aPosts, bPosts }).toEqual({ aPosts: 2, bPosts: 2 });
+    const startedA = vi.fn(), startedB = vi.fn();
+    const confirmedA = a.confirmResponse({ signal: stop.signal, onRequestStarted: startedA });
+    const confirmedB = b.confirmResponse({ signal: stop.signal, onRequestStarted: startedB });
+    await Promise.all([confirmedA, confirmedB]);
+    expect(startedA).toHaveBeenCalledOnce(); expect(startedB).toHaveBeenCalledOnce();
+    await new Promise(resolve => setTimeout(resolve, 25));
+    const settled = { aPosts, bPosts };
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect({ aPosts, bPosts }).toEqual(settled);
+    expect(aPosts + bPosts).toBeLessThan(15);
+    expect(a.stopped).toBe(false); expect(b.stopped).toBe(false);
+  } finally {
+    stop.abort(); await Promise.all([left, right]); a.abort({ reason: 'Done' }); b.abort({ reason: 'Done' });
+  }
 });

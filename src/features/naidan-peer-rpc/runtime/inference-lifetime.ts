@@ -4,7 +4,7 @@ import type { OwnedInferenceResources, ReadOnlyInferenceResources } from '@/feat
 /** Native imports are owned by the manager, not by a view or one connection.
  * Retiring a pending load prevents its handlers from running when it arrives.
  * It never loads a provider just to turn an unused feature off. */
-export function createInferenceLifetime({ load, budgets = [] }: { load(): Promise<OwnedInferenceResources>; budgets?: readonly InferenceBudget[] }): {
+export function createInferenceLifetime({ load, budgets }: { load(): Promise<OwnedInferenceResources>; budgets: readonly InferenceBudget[] }): {
   resources: ReadOnlyInferenceResources,
   retire(): Promise<void>,
 } {

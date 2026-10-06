@@ -254,7 +254,10 @@ async function verifyComparison({ verifyPeer, peerIdentity, comparison, signal }
     const abort = () => reject(signal.reason);
     signal.addEventListener('abort', abort, { once: true });
     // Own late rejection even when the user never completes the obsolete confirmation dialog.
-    Promise.resolve().then(() => verifyPeer({ peerIdentity: peerIdentity.slice(), comparison: comparison.slice(), signal }))
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return verifyPeer({ peerIdentity: peerIdentity.slice(), comparison: comparison.slice(), signal });
+    })
       .then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
@@ -270,4 +273,5 @@ export function establishNaidanPipingKeys({ role, identity, expectedPeer, bindin
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  verifyComparison,
 };

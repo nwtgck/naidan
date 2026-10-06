@@ -1,6 +1,6 @@
 import { CAPSULE_BYTES, MAX_OFFSET, ownBytes, fields, ascii, u64, joinBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
-import { decodeSnapshot } from '@/features/naidan-piping-duplex/wire';
-import type { Snapshot } from '@/features/naidan-piping-duplex/wire';
+import { decodeRecordPayload } from '@/features/naidan-piping-duplex/wire';
+import type { RecordPayload } from '@/features/naidan-piping-duplex/wire';
 import type { NaidanPipingKeyDomain, NaidanPipingDirection } from '@/features/naidan-piping-duplex/key-context';
 const FAILED_AUTHENTICATION_LIMIT = 65536;
 export class Records {
@@ -57,7 +57,7 @@ export class Records {
         header: Uint8Array;
     }): AesGcmParams {
     return { name: 'AES-GCM', iv: joinBytes({ parts: [new Uint8Array(4), u64({ value: number % 16384n })] }), tagLength: 128,
-      additionalData: fields({ parts: [ascii({ text: 'piping-duplex-record/v2' }), this.internalContext, new Uint8Array([this.internalDirection]), header] }) };
+      additionalData: fields({ parts: [ascii({ text: 'piping-duplex-record/v3' }), this.internalContext, new Uint8Array([this.internalDirection]), header] }) };
   }
   async seal({ plaintext }: {
         plaintext: Uint8Array;
@@ -79,9 +79,7 @@ export class Records {
   }
   async accept({ capsule, apply }: {
         capsule: Uint8Array;
-        apply: ({ snapshot }: {
-            snapshot: Snapshot;
-        }) => undefined;
+        apply: ({ snapshot, receiptRequest, receivedRecord, number }: RecordPayload & { number: bigint }) => undefined;
     }): Promise<'accepted' | 'stale' | 'unauthenticated'> {
     requireValue({ condition: this.internalUsage === 'decrypt', message: 'Record reader unavailable' });
     if (!(capsule instanceof Uint8Array) || !(capsule.buffer instanceof ArrayBuffer) || capsule.byteLength > CAPSULE_BYTES)
@@ -115,8 +113,8 @@ export class Records {
     this.internalDomain.assertActive();
     if (number <= this.internalHigh)
       return 'stale';
-    const snapshot = decodeSnapshot({ bytes: plaintext });
-    apply({ snapshot });
+    const payload = decodeRecordPayload({ bytes: plaintext });
+    apply({ ...payload, number });
     this.internalHigh = number;
     this.internalRemember({ number, key });
     return 'accepted';

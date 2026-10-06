@@ -1,11 +1,14 @@
 import { z } from 'zod';
 
 export const RPC_VERSION = 1;
-export const FRAME_BYTES = 65536;
-export const ITEM_BYTES = 16384;
+/** Finite values have an explicit memory budget; stream length is unbounded. */
+export const VALUE_BYTES = 64 * 1024 * 1024;
+export const FRAME_BYTES = VALUE_BYTES + 1024;
+/** Internal transfer pieces, never a constraint on a producer's chunk or item. */
+export const TRANSFER_BYTES = 16 * 1024;
 export const REFERENCE_LIMIT = 16;
 export const CALLBACK_LIMIT = 8;
-export const QUEUE_BYTES = 1024 * 1024;
+export const QUEUE_BYTES = 2 * FRAME_BYTES;
 export const QUEUE_FRAMES = 64;
 export const codes = ['INVALID_ARGUMENT', 'METHOD_NOT_FOUND', 'METHOD_NOT_ALLOWED', 'RESOURCE_EXHAUSTED', 'HANDLER_FAILED',
   'PROTOCOL_ERROR', 'CANCELLED', 'DEADLINE_EXCEEDED', 'TRANSPORT_ERROR'] as const;

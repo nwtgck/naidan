@@ -19,9 +19,11 @@ it('keeps peer management and image RPC copy translated and independently regist
       expect(preProcessFile(source, true, true).importedFiles, key + '/' + locale).toHaveLength(0);
       expect(catalogs.get(locale)).toContain(`import { ${key} } from '@/strings/messages/${key}/${locale}';`);
       expect(catalogs.get(locale)).toContain(`  ${key},`);
-      // The product name deliberately remains the same; ordinary messages must
-      // no longer be unmarked copies of their English implementation.
-      if (locale !== 'en' && key !== 'naidanRpc__title') expect(source.trim(), key + '/' + locale).not.toBe(english.trim());
+      // The product name and the German "Details" label intentionally match English.
+      // They still need independent locale implementations and catalog registrations.
+      const intentionallyMatchesEnglish = key === 'naidanRpc__title'
+        || (key === 'NaidanRpcTab__method_details' && locale === 'de');
+      if (locale !== 'en' && !intentionallyMatchesEnglish) expect(source.trim(), key + '/' + locale).not.toBe(english.trim());
     }
   }
 });

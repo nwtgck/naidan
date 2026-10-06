@@ -2271,7 +2271,7 @@ async function evaluateLeafExpression({
     return EVAL_NOT_MATCHED;
   case 'exec': {
     const execMode: 'single' | 'batch' = expr.mode;
-    const inferenceLocation: { readonly cwd: string | undefined, readonly path: string } = (() => {
+    const executionTarget: { readonly cwd: string | undefined, readonly path: string } = (() => {
       switch (expr.executionDirectory) {
       case 'current':
         return { cwd: undefined, path: entry.displayPath };
@@ -2286,8 +2286,8 @@ async function evaluateLeafExpression({
       }
       }
     })();
-    const executionCwd = inferenceLocation.cwd;
-    const executionPath = inferenceLocation.path;
+    const executionCwd = executionTarget.cwd;
+    const executionPath = executionTarget.path;
     switch (execMode) {
     case 'batch': {
       const pendingKey = getPendingExecBatchKey({ id: expr.id, executionCwd });

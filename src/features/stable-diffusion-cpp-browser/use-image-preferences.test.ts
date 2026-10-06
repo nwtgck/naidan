@@ -28,6 +28,7 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
   return scope.run(() => {
     const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { browserImageGeneration: saved, locale: 'en' } });
     const ready = ref(initialized), localModels = ref(true), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
+    let generation = 0;
     const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
     const download = vi.fn(), onSelection = vi.fn(), restored = vi.fn(), failed = vi.fn();
     const list = vi.fn(async () => entries);
@@ -35,10 +36,18 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
     const updateExperimental = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
       settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
     });
-    const preferences = useImagePreferences({ settings, initialized: ready, captureStorage: () => () => true, updateForStorage: async ({ updater }) => {
+    const updateForStorage = vi.fn(async ({ isCurrent, updater }: {
+      isCurrent(): boolean, updater({ experimental }: { experimental: Settings['experimental'] }): Settings['experimental'],
+    }): Promise<'saved' | 'changed'> => {
+      if (!isCurrent()) return 'changed';
       await updateExperimental({ updater }); return 'saved';
-    }, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed });
-    return { preferences, scope, settings, ready, localModels, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, download, onSelection, list };
+    });
+    const preferences = useImagePreferences({ settings, initialized: ready, captureStorage() {
+      const captured = generation; return () => captured === generation;
+    }, updateForStorage, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed });
+    return { preferences, scope, settings, ready, localModels, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, updateForStorage, download, onSelection, list, replaceStorage() {
+      generation++;
+    } };
   })!;
 }
 async function settled(): Promise<void> {
@@ -213,4 +222,19 @@ it('drains already accepted preference edits after leaving the workspace during 
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ width: 512, height: 768 });
   const reopened = harness({ initialized: true, saved: h.settings.value.experimental?.browserImageGeneration, entries: [] }); await settled();
   expect(reopened.form.parameters.value).toMatchObject({ width: 512, height: 768 });
+});
+
+it('rehydrates a replaced provider and saves subsequent edits after an old write retires', async () => {
+  const h = harness({ initialized: true, entries: [], saved: { width: 512 } }); await settled();
+  const gate = Promise.withResolvers<void>();
+  h.updateForStorage.mockImplementationOnce(async ({ isCurrent }) => {
+    await gate.promise; return isCurrent() ? 'saved' : 'changed';
+  });
+  h.form.parameters.value.width = 768; await settled();
+  h.replaceStorage(); h.settings.value.experimental = { locale: 'ja', browserImageGeneration: { width: 1024, height: 256 } }; await settled();
+  expect(h.form.parameters.value).toMatchObject({ width: 1024, height: 256 }); expect(h.updateForStorage).toHaveBeenCalledOnce();
+  h.form.parameters.value.width = 640; h.form.parameters.value.height = 512; await settled();
+  gate.resolve(); await settled();
+  expect(h.settings.value.experimental).toMatchObject({ locale: 'ja', browserImageGeneration: { width: 640, height: 512 } });
+  expect(h.updateForStorage).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
 });

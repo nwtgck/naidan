@@ -1,4 +1,3 @@
-import { protectUnsavedImages } from '@/features/image-generation/execution/unsaved-exit';
 import { generateId } from '@/01-models/id';
 import type { ImageGenerationId, ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationSource } from '@/01-models/image-generation';
@@ -104,8 +103,5 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
   };
 }
 export const imagePendingRuns = createImagePendingRuns({ maxRuns: 8, byteLimit: 128 * 1024 * 1024 });
-if (typeof window !== 'undefined') {
-  protectUnsavedImages({ target: window, subscribe: imagePendingRuns.subscribe, hasPending: () => imagePendingRuns.list().length > 0 });
-}
 export const TEST_ONLY = {
 };

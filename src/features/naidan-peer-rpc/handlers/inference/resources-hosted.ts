@@ -17,6 +17,7 @@ import { NaidanRpcError } from '@/features/naidan-rpc';
 import { createImageGenerationFailure, readImageGenerationNativeFailureContext } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
 import type { ImageGenerationFailure, ImageGenerationNativeFailureContext } from '@/features/naidan-peer-rpc/handlers/inference/image-generation-failure';
 import { sanitizeImageLog } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+import { createVerifiedImageModelFiles } from './verified-image-model-files';
 
 function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFile {
   const file = candidate.files.find(item => item.path === candidate.path)?.file;
@@ -44,7 +45,7 @@ function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: Model
   const main = candidate.files.find(file => file.path === candidate.path);
   if (!main) throw new Error('The model file is missing');
   return { slot, file: main.file, path: candidate.path,
-    companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })) };
+    companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })).sort((left, right) => left.path.localeCompare(right.path)) };
 }
 /** Existing files and explicit per-call selections only. Download, import,
  * model deletion, provider preference changes and provider history writes are
@@ -58,6 +59,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
     combined.throwIfAborted(); return combined;
   };
   let image: ImageClient | undefined;
+  const verifiedModels = createVerifiedImageModelFiles();
   let imageBusy = false;
   let imageRetirement: Promise<void> = Promise.resolve();
   const inventory = async ({ signal }: { signal: AbortSignal }) => {
@@ -130,11 +132,14 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           if (!candidate) throw new Error('The requested model is missing or outside the permitted roots');
           return candidate;
         };
-        const models = [modelFile({ candidate: find({ file: selection.primary.file }), slot: selection.primary.slot }),
-          ...selection.components.map(({ slot, file }) => modelFile({ candidate: find({ file }), slot }))];
+        const selectedModels = [{ candidate: find({ file: selection.primary.file }), slot: selection.primary.slot },
+          ...selection.components.map(({ slot, file }) => ({ candidate: find({ file }), slot }))];
+        const models = selectedModels.map(({ candidate, slot }) => modelFile({ candidate, slot }));
+        const selectedLoras: ModelCandidate[] = [];
         const loras = selection.loras.map(({ file, strength }) => {
           const candidate = find({ file });
           if (!candidate.classes.includes('lora') || candidate.files.length !== 1) throw new Error('The requested adapter is not a single LoRA file');
+          selectedLoras.push(candidate);
           return { file: candidate.files[0]!.file, path: candidate.path, strength };
         });
         stage = 'runtime-init'; reason = 'runtime-unavailable';
@@ -155,8 +160,34 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           parameters: { ...input.parameters, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32',
             qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' },
         });
+        stage = 'model-selection'; reason = 'model-selection-failed';
+        const preparedModels = await verifiedModels.prepare({ signal, files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
+          candidate.files.map(({ path, file, receipt }) => ({
+            key: JSON.stringify({ location: selectedFile({ candidate }).location, member: path, publication: receipt?.source }),
+            file,
+            expectedSha256: (() => {
+              const source = receipt?.source;
+              if (!source) return undefined;
+              switch (source.kind) {
+              case 'local': return undefined;
+              case 'hugging-face': return source.sha256;
+              default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
+              }
+            })(),
+          }))) });
+        const retainedFile = ({ file }: { file: File }): File => {
+          const retained = preparedModels.replacements.get(file);
+          if (!retained) throw new Error('Model file was not verified');
+          return retained;
+        };
+        // Request is our private validated snapshot; replace only the verified File references.
+        for (const model of request.models) {
+          model.file = retainedFile({ file: model.file });
+          for (const companion of model.companions ?? []) companion.file = retainedFile({ file: companion.file });
+        }
+        for (const lora of request.loras) lora.file = retainedFile({ file: lora.file });
         stage = 'runtime-init'; reason = 'runtime-unavailable';
-        signal.throwIfAborted(); image ??= createImageEngineClient({ onReleased: undefined });
+        signal.throwIfAborted(); image ??= createImageEngineClient({ onReleased: () => verifiedModels.clear() });
         stage = 'worker'; reason = 'engine-failed';
         const rawResult = await image.generate({ request, signal, onPreview: ({ frame }) => {
           signal.throwIfAborted(); onPreview({ frame });
@@ -199,6 +230,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         stage = 'output-validation'; reason = 'invalid-output';
         const result = workerResultSchema.parse(rawResult);
         if ('cancelled' in result) throw new DOMException('Image generation cancelled', 'AbortError');
+        preparedModels.commit();
         return result;
       } catch (error) {
         signal.throwIfAborted();
@@ -222,6 +254,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       const completed = Promise.withResolvers<void>();
       closing = completed.promise;
       lifetime.abort();
+      verifiedModels.clear();
       const retiring = chat.dispose();
       // The image owner aborts immediately; acknowledgment also waits for the
       // in-flight resource call. Never release another local UI owner's cache.

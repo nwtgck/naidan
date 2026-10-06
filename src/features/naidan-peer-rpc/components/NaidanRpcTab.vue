@@ -6,7 +6,7 @@ import { lazyStrings, ensureStrings } from '@/strings';
 import { idToRaw } from '@/01-models/ids';
 import type { NaidanRpcConnectionId } from '@/01-models/ids';
 import type { NaidanRpcTransportSettings } from '@/01-models/naidan-rpc';
-import type { NaidanPipingPeerVerifier, NaidanPipingRole } from '@/features/naidan-piping-duplex';
+import type { NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex';
 import { getRpcManager, subscribeRpcState } from '@/features/naidan-peer-rpc/runtime/feature';
 import type { NaidanPeerManager, RpcConnectionView, RpcConnectionPhase } from '@/features/naidan-peer-rpc/runtime/manager';
 import type { NaidanPeerControlledMethodName } from '@/features/naidan-peer-rpc/contract';
@@ -17,7 +17,7 @@ import RpcPeerProvision from './RpcPeerProvision.vue';
 const views = shallowRef<RpcConnectionView[]>([]), manager = shallowRef<NaidanPeerManager>();
 const selected = shallowRef<NaidanRpcConnectionId>(), busy = ref(false), failure = ref('');
 const adding = ref(false), server = ref(''), headers = ref<{ name: string, value: string }[]>([]);
-const code = ref(''), role = ref<NaidanPipingRole>('initiator'), label = ref('');
+const code = ref(''), label = ref('');
 const methods = ref<NaidanPeerControlledMethodName[]>([]);
 const verification = shallowRef<{ text: string, decide({ approved }: { approved: boolean }): void }>();
 const pending = new AbortController();
@@ -105,7 +105,7 @@ const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Pro
 });
 async function pair(): Promise<void> {
   if (!manager.value) return;
-  const id = await manager.value.pair({ settings: settings(), code: code.value, role: role.value, verifyPeer, signal: pending.signal });
+  const id = await manager.value.pair({ settings: settings(), code: code.value, verifyPeer, signal: pending.signal });
   code.value = ''; sync(); choose({ id });
 }
 function toggleMethod({ name, enabled }: { name: NaidanPeerControlledMethodName, enabled: boolean }): void {
@@ -213,7 +213,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div tw-class="space-y-4 rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
             <label tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.naidanRpc__code() }}<input v-model="code" :disabled="busy" :maxlength="RPC_PAIRING_CODE_MAX_LENGTH" autocomplete="off" tw-class="mt-2 block w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 shadow-sm outline-none transition-all focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white" data-testid="rpc-code" /></label>
             <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.naidanRpc__code_help() }}</p>
-            <select v-model="role" :disabled="busy" tw-class="w-full rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 shadow-sm outline-none transition-all focus:ring-4 focus:ring-blue-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"><option value="initiator">{{ lazyStrings.naidanRpc__initiator() }}</option><option value="responder">{{ lazyStrings.naidanRpc__responder() }}</option></select>
           </div>
         </template>
         <template v-else-if="current">
@@ -221,6 +220,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div tw-class="flex flex-wrap items-center justify-between gap-3"><h3 tw-class="min-w-0 break-words text-sm font-bold text-gray-800 dark:text-white">{{ current.connection.label }}</h3><span :tw-class="['rounded-lg px-2.5 py-1 text-xs font-medium', current.phase === 'connected' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300']">{{ phaseLabel({ phase: current.phase }) }}</span></div>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ current.persistence === 'saved' ? lazyStrings.naidanRpc__saved() : lazyStrings.naidanRpc__temporary() }}</p>
             <p v-if="current.failure" tw-class="text-sm text-amber-700 dark:text-amber-300">{{ current.failure }}</p>
+            <p v-if="current.phase === 'connected' && current.health === 'checking'" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="rpc-health-checking">{{ lazyStrings.NaidanRpcTab__checking_connection() }}</p>
+            <p v-if="current.phase === 'connected' && current.health === 'paused'" tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="rpc-health-paused">{{ lazyStrings.NaidanRpcTab__connection_check_paused() }}</p>
             <button v-if="current.phase === 'disconnected'" type="button" :disabled="busy" @click="action({ run: connect })" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50" data-testid="rpc-connect">{{ lazyStrings.naidanRpc__connect() }}</button>
             <button v-else type="button" @click="disconnectSafely" tw-class="rounded-xl border border-red-100 bg-white px-4 py-2.5 text-sm font-bold text-red-600 shadow-sm transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-500/20 dark:border-red-900/40 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/20" data-testid="rpc-disconnect">{{ lazyStrings.naidanRpc__disconnect() }}</button>
           </div>

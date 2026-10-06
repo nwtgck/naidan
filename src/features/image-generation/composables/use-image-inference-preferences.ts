@@ -20,14 +20,16 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
   let pendingLocation: ImageInferenceLocationPreference | undefined;
   let pendingEditors = new Map<string, RemoteImageModelEditorPreference>();
   const key = ({ preference }: { preference: RemoteImageModelEditorPreference }) => `${idToRaw({ id: preference.connectionId })}:${idToRaw({ id: preference.peerId })}`;
-  function invalidate(): void {
-    hydrated = false; pendingLocation = undefined; pendingEditors.clear();
+  function invalidate({ owner }: { owner: (() => boolean) | undefined }): void {
+    if (owner !== isCurrent) return;
+    hydrated = false; isCurrent = undefined; previous = undefined;
+    pendingLocation = undefined; pendingEditors.clear();
   }
   async function save(): Promise<void> {
     if (writing || !isCurrent || (!pendingLocation && !pendingEditors.size)) return;
     const owner = isCurrent;
     if (!owner()) {
-      invalidate(); return;
+      invalidate({ owner }); return;
     }
     const changedLocation = pendingLocation, changedEditors = pendingEditors;
     pendingLocation = undefined; pendingEditors = new Map(); writing = true;
@@ -42,33 +44,39 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
         } };
       } });
       switch (outcome) {
-      case 'saved': if (!owner()) invalidate(); break;
-      case 'changed': invalidate(); break;
+      case 'saved': if (!owner()) invalidate({ owner }); break;
+      case 'changed': invalidate({ owner }); break;
       default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
       }
     } catch (error) {
       if (!owner()) {
-        invalidate(); return;
+        invalidate({ owner });
+      } else {
+        pendingLocation ??= changedLocation;
+        for (const [id, preference] of changedEditors) if (!pendingEditors.has(id)) pendingEditors.set(id, preference);
+        failed({ error }); return;
       }
-      pendingLocation ??= changedLocation;
-      for (const [id, preference] of changedEditors) if (!pendingEditors.has(id)) pendingEditors.set(id, preference);
-      failed({ error }); return;
     } finally {
       writing = false;
     }
     if (pendingLocation || pendingEditors.size) void save();
   }
-  watch(initialized, ready => {
-    if (!ready || hydrated || disposed || isCurrent) return;
+  watch([initialized, settings], ([ready]) => {
+    if (disposed) return;
+    if (!ready) {
+      invalidate({ owner: isCurrent }); return;
+    }
+    if (hydrated && isCurrent?.()) return;
+    invalidate({ owner: isCurrent });
     isCurrent = captureStorage();
     const saved = settings.value.experimental?.browserImageGeneration;
     inferenceLocation.restorePreferences({ inferenceLocation: saved?.inferenceLocation, remoteModelEditors: saved?.remoteModelEditors });
     previous = inferenceLocation.capturePreferences(); hydrated = true;
-  }, { immediate: true, flush: 'sync' });
+  }, { immediate: true, deep: true, flush: 'sync' });
   watch(inferenceLocation.capturePreferences, value => {
     if (!hydrated || disposed || !previous || !isCurrent) return;
     if (!isCurrent()) {
-      invalidate(); return;
+      invalidate({ owner: isCurrent }); return;
     }
     if (JSON.stringify(value.inferenceLocation) !== JSON.stringify(previous.inferenceLocation)) pendingLocation = value.inferenceLocation;
     const oldEditors = new Map(previous.remoteModelEditors.map(preference => [key({ preference }), preference]));

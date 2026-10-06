@@ -70,8 +70,8 @@ it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects expli
     await Promise.all([a.manager.setEnabled({ enabled: true }), b.manager.setEnabled({ enabled: true })]);
     expect(relay.stats().requests).toBe(0);
     const paired = await promiseAllKeyed({
-      aId: a.manager.pair({ settings, code: '3907', role: 'initiator', verifyPeer: verifier, signal: lifetime.signal }),
-      bId: b.manager.pair({ settings, code: '3907', role: 'responder', verifyPeer: verifier, signal: lifetime.signal }),
+      aId: a.manager.pair({ settings, code: '3907', verifyPeer: verifier, signal: lifetime.signal }),
+      bId: b.manager.pair({ settings, code: '3907', verifyPeer: verifier, signal: lifetime.signal }),
     });
     expect(compared).toHaveLength(2); expect(compared[0]).toHaveLength(32); expect(compared[0]).toEqual(compared[1]);
     expect(a.store.remember).not.toHaveBeenCalled(); expect(b.store.remember).not.toHaveBeenCalled();
@@ -135,10 +135,10 @@ it('rejecting the full comparison over real HTTP never publishes trust or an inf
   let other: Promise<unknown> | undefined;
   try {
     await Promise.all([a.manager.setEnabled({ enabled: true }), b.manager.setEnabled({ enabled: true })]);
-    const denied = a.manager.pair({ settings, code: '0921', role: 'initiator', verifyPeer: rejectPeer, signal: lifetime.signal });
+    const denied = a.manager.pair({ settings, code: '0921', verifyPeer: rejectPeer, signal: lifetime.signal });
     // Observe both pending attempts immediately. Cancel the remaining discovery
     // explicitly once refusal has completed; no arbitrary inference deadline.
-    other = b.manager.pair({ settings, code: '0921', role: 'responder', verifyPeer: async () => true, signal: lifetime.signal });
+    other = b.manager.pair({ settings, code: '0921', verifyPeer: async () => true, signal: lifetime.signal });
     void other.catch(() => {});
     await expect(denied).rejects.toBeDefined(); lifetime.abort();
     await expect(other).rejects.toBeDefined();

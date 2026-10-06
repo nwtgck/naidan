@@ -51,7 +51,7 @@ async function setup() {
   limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const open = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
     signal.addEventListener('abort', abort, { once: true });
-    return { ...pair.a, closed: closed.promise, peerIdentity: remote, abort };
+    return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort };
   });
   const manager = new NaidanPeerManager({ dependencies: {
     storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },

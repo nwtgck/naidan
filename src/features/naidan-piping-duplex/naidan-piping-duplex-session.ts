@@ -17,7 +17,7 @@ export type NaidanPipingDuplexOptions = {
   policy: 'https-only' | 'allow-loopback-http';
   requestTimeoutMs: number;
   repairTimeoutMs: number;
-  connectionTimeoutMs: number | undefined;
+  candidateConfirmationTimeoutMs: number;
   handshakeRetentionMs: number | undefined;
   headers?: { name: string; value: string }[];
   pacing: NaidanPipingDuplexPacing;
@@ -29,12 +29,12 @@ const optionsSchema = z.strictObject({
   policy: z.enum(['https-only', 'allow-loopback-http']),
   requestTimeoutMs: duration,
   repairTimeoutMs: duration,
-  connectionTimeoutMs: duration.optional(),
+  candidateConfirmationTimeoutMs: duration,
   handshakeRetentionMs: duration.optional(),
   headers: restrictedFetchHeadersSchema.optional(),
   pacing: z.strictObject({
     minimumMs: duration,
-    heartbeatMs: duration,
+    idleResendIntervalMs: duration,
     retryBaseMs: duration,
     retryMaximumMs: duration,
   }),
@@ -88,7 +88,7 @@ export class NaidanPipingDuplexSession {
   private static async connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer, signal }: {
     piping: NaidanPipingDuplexOptions;
     code: string;
-    role: NaidanPipingRole;
+    role: NaidanPipingRole | undefined;
     identity: NaidanPipingIdentity;
     expectedPeer: Uint8Array | undefined;
     verifyPeer: NaidanPipingPeerVerifier | undefined;
@@ -117,10 +117,10 @@ export class NaidanPipingDuplexSession {
     try {
       bootstrap = await startPinnedConnection({
         role, identity: localIdentity, expectedPeer: pin, verifyPeer, code, endpoint: bootstrapEndpoint, signal: stop.signal,
-        activeTimeoutMs: settings.connectionTimeoutMs, completionLeaseMs: settings.handshakeRetentionMs,
+        confirmationTimeoutMs: settings.candidateConfirmationTimeoutMs, completionLeaseMs: settings.handshakeRetentionMs,
         intervalMs: settings.pacing.minimumMs,
         // A different stream profile must fail authentication, not silently produce two idle routes.
-        purpose: ascii({ text: 'naidan-piping-streams/v2' }),
+        purpose: ascii({ text: 'naidan-piping-streams/v3' }),
       });
       keys = await bootstrap.ready;
       stop.signal.throwIfAborted();
@@ -144,11 +144,11 @@ export class NaidanPipingDuplexSession {
   }): Promise<NaidanPipingDuplexSession> {
     return this.connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer: undefined, signal });
   }
-  static pair({ piping, code, role, identity, verifyPeer, signal }: {
-    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole;
+  static pair({ piping, code, identity, verifyPeer, signal }: {
+    piping: NaidanPipingDuplexOptions; code: string;
     identity: NaidanPipingIdentity; verifyPeer: NaidanPipingPeerVerifier; signal: AbortSignal;
   }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ piping, code, role, identity, expectedPeer: undefined, verifyPeer, signal });
+    return this.connectInternal({ piping, code, role: undefined, identity, expectedPeer: undefined, verifyPeer, signal });
   }
   get peerIdentity(): Uint8Array {
     return this.keys.peerIdentity;
@@ -158,6 +158,10 @@ export class NaidanPipingDuplexSession {
   }
   openStream({ signal }: { signal: AbortSignal | undefined }): Promise<NaidanPipingDuplexStream> {
     return this.streams.openStream({ signal });
+  }
+  /** Confirm a new authenticated round trip; timing and disconnect policy belong to the caller. */
+  confirmResponse({ signal, onRequestStarted }: { signal: AbortSignal, onRequestStarted(): void }): Promise<void> {
+    return this.streams.confirmResponse({ signal, onRequestStarted });
   }
   /** Stop new streams, then wait for local protocol termination; unread data is preserved. */
   drain({ signal }: { signal: AbortSignal | undefined }): Promise<void> {

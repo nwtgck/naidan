@@ -29,10 +29,17 @@ function utf8({ text }: { text: string }): Uint8Array<ArrayBuffer> {
 /** A closed RFC 8949 subset: definite lengths, string keys, finite numbers and two application-local tags. */
 export function encode({ value, limit }: { value: unknown; limit: number }): Uint8Array<ArrayBuffer> {
   check({ condition: Number.isInteger(limit) && limit >= 1 && limit <= FRAME_BYTES, code: 'INVALID_ARGUMENT' });
-  const buffer = new Uint8Array(limit), view = new DataView(buffer.buffer);
+  let buffer = new Uint8Array(Math.min(limit, 1024)), view = new DataView(buffer.buffer);
   let at = 0, nodes = 0;
   const ancestors = new Set<object>();
-  const reserve = ({ count }: { count: number }) => enforceCodecLimit({ constraint: 'encoded-bytes', limit, observed: at + count });
+  const reserve = ({ count }: { count: number }) => {
+    const required = at + count;
+    enforceCodecLimit({ constraint: 'encoded-bytes', limit, observed: required });
+    if (required > buffer.length) {
+      const expanded = new Uint8Array(Math.min(limit, Math.max(required, buffer.length * 2)));
+      expanded.set(buffer.subarray(0, at)); buffer = expanded; view = new DataView(buffer.buffer);
+    }
+  };
   const byte = ({ value }: { value: number }) => {
     reserve({ count: 1 }); buffer[at++] = value;
   };

@@ -81,6 +81,8 @@ import { RpcPeerProvision__partially_provided } from '@/strings/messages/RpcPeer
 import { RpcPeerProvision__chat_inference } from '@/strings/messages/RpcPeerProvision__chat_inference/de';
 import { RpcPeerProvision__image_generation } from '@/strings/messages/RpcPeerProvision__image_generation/de';
 import { NaidanRpcTab__method_details } from '@/strings/messages/NaidanRpcTab__method_details/de';
+import { NaidanRpcTab__connection_check_paused } from '@/strings/messages/NaidanRpcTab__connection_check_paused/de';
+import { NaidanRpcTab__checking_connection } from '@/strings/messages/NaidanRpcTab__checking_connection/de';
 import { NaidanRpcTab__partially_enabled } from '@/strings/messages/NaidanRpcTab__partially_enabled/de';
 import { naidanRpc__remember_help } from '@/strings/messages/naidanRpc__remember_help/de';
 import { naidanRpc__remember } from '@/strings/messages/naidanRpc__remember/de';
@@ -5286,6 +5288,8 @@ export const catalog = {
   RpcPeerProvision__chat_inference,
   RpcPeerProvision__image_generation,
   NaidanRpcTab__method_details,
+  NaidanRpcTab__connection_check_paused,
+  NaidanRpcTab__checking_connection,
   NaidanRpcTab__partially_enabled,
   naidanRpc__save_connection,
   naidanRpc__forget,

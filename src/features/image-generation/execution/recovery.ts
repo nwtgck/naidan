@@ -1,4 +1,3 @@
-import { protectUnsavedImages } from '@/features/image-generation/execution/unsaved-exit';
 import { generateId } from '@/01-models/id';
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
@@ -63,8 +62,5 @@ export function createImageRecoveryStore({ capacity }: { capacity: number }) {
   };
 }
 export const imageRecoveryStore = createImageRecoveryStore({ capacity: 128 * 1024 * 1024 });
-if (typeof window !== 'undefined') {
-  protectUnsavedImages({ target: window, subscribe: imageRecoveryStore.subscribe, hasPending: () => imageRecoveryStore.list().length > 0 });
-}
 export const TEST_ONLY = {
 };

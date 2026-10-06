@@ -37,7 +37,7 @@ it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link
     const start = (() => {
       switch (mode) {
       case 'connect': return manager.connect({ id: record.id });
-      case 'pair': return manager.pair({ settings: record.transport, code: '0042', role: 'initiator', verifyPeer: async () => true, signal: new AbortController().signal });
+      case 'pair': return manager.pair({ settings: record.transport, code: '0042', verifyPeer: async () => true, signal: new AbortController().signal });
       default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
       }
     })();
@@ -49,7 +49,7 @@ it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link
     }, () => {
       settled = true;
     });
-    opening.resolve({ peerIdentity: remote, incomingStreams: { async *[Symbol.asyncIterator]() {} }, closed: linkClosed.promise,
+    opening.resolve({ peerIdentity: remote, confirmResponse: async () => {}, incomingStreams: { async *[Symbol.asyncIterator]() {} }, closed: linkClosed.promise,
       openStream: async () => {
         throw new Error('Not used');
       }, abort });

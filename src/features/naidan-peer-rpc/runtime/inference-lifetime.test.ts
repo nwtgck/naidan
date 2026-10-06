@@ -12,12 +12,12 @@ function resource(): OwnedInferenceResources {
 }
 it('does not import resources when constructed or when an unused feature stops', async () => {
   const load = vi.fn(async () => resource());
-  const owner = createInferenceLifetime({ load });
+  const owner = createInferenceLifetime({ load, budgets: [] });
   await owner.retire(); expect(load).not.toHaveBeenCalled();
 });
 it('shares one lazy resource owner across calls and retires it once', async () => {
   const native = resource(), load = vi.fn(async () => native);
-  const owner = createInferenceLifetime({ load });
+  const owner = createInferenceLifetime({ load, budgets: [] });
   const signal = new AbortController().signal;
   await Promise.all([owner.resources.listChatModels({ signal }), owner.resources.listImageModels({ signal })]);
   expect(load).toHaveBeenCalledOnce();
@@ -25,7 +25,7 @@ it('shares one lazy resource owner across calls and retires it once', async () =
 });
 it('a cancelled call cannot enter a native method after its import completes', async () => {
   const native = resource(), gate = Promise.withResolvers<OwnedInferenceResources>();
-  const owner = createInferenceLifetime({ load: () => gate.promise }), stop = new AbortController();
+  const owner = createInferenceLifetime({ load: () => gate.promise, budgets: [] }), stop = new AbortController();
   const call = owner.resources.listImageModels({ signal: stop.signal });
   const rejected = expect(call).rejects.toMatchObject({ name: 'AbortError' });
   stop.abort(); gate.resolve(native); await rejected;
@@ -34,7 +34,7 @@ it('a cancelled call cannot enter a native method after its import completes', a
 });
 it('retirement fences a pending import and joins repeated retirement requests', async () => {
   const native = resource(), gate = Promise.withResolvers<OwnedInferenceResources>();
-  const owner = createInferenceLifetime({ load: () => gate.promise });
+  const owner = createInferenceLifetime({ load: () => gate.promise, budgets: [] });
   const call = owner.resources.listImageModels({ signal: new AbortController().signal });
   const rejected = expect(call).rejects.toMatchObject({ name: 'AbortError' });
   const first = owner.retire(), second = owner.retire();
@@ -48,7 +48,7 @@ it('retirement fences a pending import and joins repeated retirement requests', 
 it('an old import cannot dispose or supply a newer generation', async () => {
   const old = resource(), next = resource(), gate = Promise.withResolvers<OwnedInferenceResources>();
   const load = vi.fn<() => Promise<OwnedInferenceResources>>().mockImplementationOnce(() => gate.promise).mockResolvedValue(next);
-  const owner = createInferenceLifetime({ load }), signal = new AbortController().signal;
+  const owner = createInferenceLifetime({ load, budgets: [] }), signal = new AbortController().signal;
   const abandoned = owner.resources.listImageModels({ signal });
   const rejected = expect(abandoned).rejects.toThrow('retired');
   const retirement = owner.retire();
@@ -59,12 +59,12 @@ it('an old import cannot dispose or supply a newer generation', async () => {
 });
 it('a failed import can be retried by a later explicit call', async () => {
   const native = resource(), load = vi.fn<() => Promise<OwnedInferenceResources>>().mockRejectedValueOnce(new Error('load failed')).mockResolvedValue(native);
-  const owner = createInferenceLifetime({ load }), signal = new AbortController().signal;
+  const owner = createInferenceLifetime({ load, budgets: [] }), signal = new AbortController().signal;
   await expect(owner.resources.listChatModels({ signal })).rejects.toThrow('load failed');
   await owner.resources.listChatModels({ signal }); expect(native.listChatModels).toHaveBeenCalledOnce(); await owner.retire();
 });
 it('already cancelled calls do not import a provider', async () => {
-  const load = vi.fn(async () => resource()), owner = createInferenceLifetime({ load });
+  const load = vi.fn(async () => resource()), owner = createInferenceLifetime({ load, budgets: [] });
   await expect(owner.resources.listChatModels({ signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
   expect(load).not.toHaveBeenCalled();
 });
@@ -72,7 +72,7 @@ it('native disposal failure is not reported as successful retirement', async () 
   const native = resource(); vi.mocked(native.dispose).mockImplementation(() => {
     throw new Error('dispose failed');
   });
-  const owner = createInferenceLifetime({ load: async () => native });
+  const owner = createInferenceLifetime({ load: async () => native, budgets: [] });
   await owner.resources.listChatModels({ signal: new AbortController().signal });
   await expect(owner.retire()).rejects.toThrow('dispose failed');
 });
@@ -80,7 +80,7 @@ it('native disposal failure is not reported as successful retirement', async () 
 it('does not forget a failed native disposal on a later retirement request', async () => {
   const native = resource(), failure = new Error('native release failed');
   vi.mocked(native.dispose).mockRejectedValue(failure);
-  const owner = createInferenceLifetime({ load: async () => native });
+  const owner = createInferenceLifetime({ load: async () => native, budgets: [] });
   await owner.resources.listChatModels({ signal: new AbortController().signal });
   await expect(owner.retire()).rejects.toBe(failure);
   await expect(owner.retire()).rejects.toBe(failure);
@@ -93,7 +93,7 @@ it('waits for a slow retired generation even if another disposal fails', async (
   vi.mocked(old.dispose).mockReturnValue(slow.promise);
   vi.mocked(next.dispose).mockRejectedValue(failure);
   const load = vi.fn<() => Promise<OwnedInferenceResources>>().mockResolvedValueOnce(old).mockResolvedValue(next);
-  const owner = createInferenceLifetime({ load }), signal = new AbortController().signal;
+  const owner = createInferenceLifetime({ load, budgets: [] }), signal = new AbortController().signal;
   await owner.resources.listChatModels({ signal }); const first = owner.retire();
   await owner.resources.listChatModels({ signal }); const second = owner.retire();
   const failed = expect(second).rejects.toBe(failure);

@@ -5,6 +5,7 @@ import type { ImageExecutionOutput, ImageExecutionPreview, RecoverableImageExecu
 import { peerImageDimensions } from '@/features/naidan-peer-rpc/codecs/image-bounds';
 import { validatePng } from '@/features/naidan-peer-rpc/codecs/png';
 import { describeNaidanRpcError } from '@/features/naidan-rpc';
+import { ByteAssembly } from '@/features/naidan-rpc/assembly';
 
 export type PeerImageOutcome =
   | { status: 'completed', output: ImageExecutionOutput, seed: string }
@@ -76,19 +77,16 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
       imageReader = response.image.getReader(); eventsReader = response.events.getReader();
       let imageStage = 'image-transfer', eventStage = 'events-transfer';
       const readImage = async () => {
-        const chunks: Uint8Array[] = []; let size = 0;
+        const limit = 32 * 1024 * 1024, assembly = new ByteAssembly({ limit });
         for (;;) {
           const item = await imageReader!.read(); lifetime.throwIfAborted();
           if (item.done) break;
           if (!(item.value instanceof Uint8Array)) throw new Error('Invalid image chunk');
-          size += item.value.length;
-          if (size > 32 * 1024 * 1024) throw new Error('Image exceeds its transfer limit');
-          chunks.push(item.value.slice());
+          if (item.value.byteLength === 0) continue;
+          if (assembly.byteLength + item.value.byteLength > limit) throw new Error('Image exceeds its transfer limit');
+          assembly.append({ bytes: item.value });
         }
-        const bytes = new Uint8Array(size); let at = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, at); at += chunk.length;
-        }
+        const bytes = assembly.finish();
         imageStage = 'image-validation';
         validatePng({ bytes, width: parameters.width, height: parameters.height });
         peerImageDimensions({ bytes, mimeType: 'image/png' });

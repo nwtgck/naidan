@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { promiseAllKeyed } from '@/utils/promise';
-import { sessionPair, opened, drive, exchange, pattern, readAll, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { offeredCapsule, sessionPair, opened, drive, exchange, pattern, readAll, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
 
@@ -133,8 +133,8 @@ it('empty and terminal-only repeated snapshots do not create acknowledgement fee
   for (let step = 0; step < 5; step++) await exchange({ a, b });
   expect({ a: a.revision, b: b.revision }).toEqual(before);
   const stop = new AbortController(), pending = expect(a.openStream({ signal: stop.signal })).rejects.toThrow(); stop.abort(); await pending;
-  const previous = b.revision; await b.acceptCapsule({ capsule: await a.makeCapsule() }); expect(b.revision).toBeGreaterThan(previous);
-  const next = b.revision; await b.acceptCapsule({ capsule: await a.makeCapsule() }); expect(b.revision).toBe(next);
+  const previous = b.revision; await b.acceptCapsule({ capsule: await offeredCapsule({ session: a }) }); expect(b.revision).toBeGreaterThan(previous);
+  const next = b.revision; await b.acceptCapsule({ capsule: await offeredCapsule({ session: a }) }); expect(b.revision).toBe(next);
 });
 
 it('standard pipeTo handles arbitrarily fragmented finite writes without a separate chunking helper', async () => {
@@ -173,12 +173,12 @@ it('detaching the caller input between accepted windows never silently discards 
   const input = pattern({ size: 150000, seed: 41 }), writer = aStream.writable.getWriter();
   const writing = expect(writer.write(input)).rejects.toThrow(/detached|resized/); await Promise.resolve();
   for (let step = 0; step < 4; step++) {
-    await b.acceptCapsule({ capsule: await a.makeCapsule() });
-    if (step !== 3) await a.acceptCapsule({ capsule: await b.makeCapsule() });
+    await b.acceptCapsule({ capsule: await offeredCapsule({ session: a }) });
+    if (step !== 3) await a.acceptCapsule({ capsule: await offeredCapsule({ session: b }) });
   }
   expect(b.debug()).toMatchObject({ streams: [{ rxNext: '65536' }] });
   structuredClone(input.buffer, { transfer: [input.buffer] });
-  await a.acceptCapsule({ capsule: await b.makeCapsule() }); await writing;
+  await a.acceptCapsule({ capsule: await offeredCapsule({ session: b }) }); await writing;
   await exchange({ a, b }); await expect(bStream.closed).rejects.toThrow('reset');
 });
 
@@ -186,9 +186,9 @@ it('duplicate and lost acceptance snapshots preserve exactly the intended byte p
   const { a, b } = await sessionPair(), { aStream, bStream } = await opened({ a, b });
   const data = pattern({ size: 65536, seed: 876 }), wa = aStream.writable.getWriter(), wb = bStream.writable.getWriter();
   const received = readAll({ readable: bStream.readable }), writing = wa.write(data); await Promise.resolve();
-  const old = await a.makeCapsule(); await b.acceptCapsule({ capsule: old });
+  const old = await offeredCapsule({ session: a }); await b.acceptCapsule({ capsule: old });
   for (let step = 0; step < 4; step++) {
-    await b.acceptCapsule({ capsule: await a.makeCapsule() }); await b.makeCapsule();
+    await b.acceptCapsule({ capsule: await offeredCapsule({ session: a }) }); await offeredCapsule({ session: b });
   }
   await drive({ a, b, operation: () => writing, limit: 50 });
   expect(await b.acceptCapsule({ capsule: old })).toBe('stale');
