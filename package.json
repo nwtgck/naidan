@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.50.1-dev",
+  "version": "0.51.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
