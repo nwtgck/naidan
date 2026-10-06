@@ -515,7 +515,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       checkCancelled();
       setStage({ value: 'native-sample' });
       const token = await chatSampler.sample({ context });
-      measurements.sampled();
+      const throughput = measurements.sampled();
+      if (throughput) {
+        try {
+          logDiagnostic({ diagnostic: { ...throughput, profile: request.options.profile } });
+        } catch { /* Progress telemetry must not interrupt inference. */ }
+      }
       if (generated === 0) logDiagnostic({ diagnostic: { event: 'first-token-sampled' } });
       setStage({ value: 'token-render' });
       checkCancelled();

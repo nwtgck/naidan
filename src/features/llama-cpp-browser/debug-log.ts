@@ -12,8 +12,20 @@ const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
   'load-start', 'file-read-performance', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-performance', 'generation-progress', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
+const sampleRateSchema = z.object({
+  unit: z.literal('t/s'),
+  sampledTokens: z.number().int().nonnegative(),
+  elapsedMs: z.number().finite().nonnegative(),
+  tokensPerSecond: z.number().finite().nonnegative().optional(),
+}).strict();
 export const diagnosticSchema = z.object({
   event: eventSchema,
+  generationThroughput: z.object({
+    sampledTokens: z.number().int().positive(),
+    firstSampleMs: z.number().finite().nonnegative(),
+    postFirstSample: sampleRateSchema,
+    interval: sampleRateSchema,
+  }).strict().optional(),
   fileReads: z.object({
     target: z.enum(['model', 'projector']),
     mode: z.enum(['read-ahead', 'direct']),
@@ -115,6 +127,10 @@ export const diagnosticSchema = z.object({
       peakEntries: z.number().int().nonnegative().max(1024),
       peakCachedBytes: z.number().int().nonnegative().max(256 * 1024),
     }).strict().optional(),
+    // Worker wall time from the first to the last returned sampler token.
+    // Includes sampled stop/EOG tokens, not text chunks or decoded prompt tokens.
+    // Excludes the first sample from the numerator and final delivery/cleanup.
+    postFirstSample: sampleRateSchema.optional(),
     firstSampleMs: z.number().finite().nonnegative().optional(),
     firstDeliveryMs: z.number().finite().nonnegative().optional(),
     // Exclusive Worker wall-clock intervals, not GPU kernel durations. Missing

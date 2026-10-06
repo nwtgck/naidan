@@ -84,7 +84,7 @@ function fixture() {
     sequenceRemoval: 'partial', slidingWindow: 0, nativeRollbackTokens: 0, prefillBatchTokens: 512,
     projector: 0n, cache, preparation: { projector: 'absent', releasedTextContext: false } } as Awaited<ReturnType<typeof prepareGenerationSession>>;
   host.session.mockResolvedValue(session);
-  const parse = vi.fn(({ text }: { text: string, partial: boolean }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
+  const parse = vi.fn<ReturnType<typeof prepareChat>['parse']>(({ text }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
   host.chat.mockReturnValue({ params: { prompt: 'prompt', generation_prompt: '' }, images: [], additionalStops: [], parse, dispose: vi.fn() } as unknown as ReturnType<typeof prepareChat>);
   host.sampler.mockResolvedValue({ sample: vi.fn(async () => 7), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
   const request: WorkerGenerateInput = { debug: 'on', model: 'fixture', messages: [{ role: 'user', content: 'hello' }],
@@ -112,6 +112,113 @@ function reports() {
 }
 
 describe('generation loop performance invariants', () => {
+  it.each(['on', 'off'] as const)('publishes three-second progress only with debug %s', async debug => {
+    const f = fixture(); f.request.maxTokens = 101; f.request.debug = debug;
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      at += 30; return 7;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await f.run({ signal: undefined });
+    const progress = readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).filter(entry => entry.generationThroughput !== undefined);
+    if (debug === 'on') {
+      expect(progress).toHaveLength(1);
+      expect(diagnosticSchema.parse(progress[0]).generationThroughput).toMatchObject({ sampledTokens: 101, firstSampleMs: 30,
+        postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+        interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 } });
+      expect(reports()).toHaveLength(1);
+    } else {
+      expect(progress).toEqual([]); expect(reports()).toEqual([]);
+    }
+    expect(f.allocations.size).toBe(0);
+  });
+  it('leaves the rate unavailable when cancellation arrives during the first sample', async () => {
+    const f = fixture(); const controller = new AbortController();
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      controller.abort(); return 7;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await expect(f.run({ signal: controller.signal })).rejects.toThrow('aborted');
+    expect(reports()[0]!.performance).toMatchObject({ outcome: 'aborted', sampledTokens: 1,
+      postFirstSample: { unit: 't/s', sampledTokens: 0, elapsedMs: 0 } });
+    expect(reports()[0]!.performance!.postFirstSample!.tokensPerSecond).toBeUndefined();
+    expect(f.allocations.size).toBe(0);
+  });
+  it.each(['reasoning', 'tool', 'invisible'] as const)('counts %s generation without relying on visible text', async kind => {
+    const f = fixture(); f.request.maxTokens = 3;
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      at += 20; return 7;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    f.parse.mockImplementation(({ text }) => {
+      switch (kind) {
+      case 'reasoning': return { content: '', reasoningContent: text, toolCalls: [] };
+      case 'tool': return { content: '', reasoningContent: '', toolCalls: [{ id: 'call', type: 'function', function: { name: 'fixture', arguments: text } }] };
+      case 'invisible': return { content: '', reasoningContent: '', toolCalls: [] };
+      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      }
+    });
+    if (kind === 'tool') f.request.tools = [{ type: 'function', function: { name: 'fixture', description: '', parameters: {} } }];
+    expect((await f.run({ signal: undefined })).content).toBe('');
+    expect(reports()[0]!.performance).toMatchObject({ sampledTokens: 3, firstSampleMs: 20,
+      postFirstSample: { sampledTokens: 2, elapsedMs: 40, tokensPerSecond: 50 } });
+    expect(f.allocations.size).toBe(0);
+  });
+  it.each(['aborted', 'failed'] as const)('stops %s throughput at the last successful sample', async outcome => {
+    const f = fixture(); f.request.maxTokens = 3;
+    const controller = new AbortController();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      at += 20; return 7;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {
+      at += 1000;
+    }) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    const decode = f.api.llama_decode.getMockImplementation()!;
+    f.api.llama_decode.mockImplementationOnce(decode).mockImplementationOnce(decode).mockImplementationOnce(async () => {
+      at += 500;
+      if (outcome === 'aborted') {
+        controller.abort(); return 2;
+      }
+      throw new WebAssembly.RuntimeError('fixture failure');
+    });
+    await expect(f.run({ signal: controller.signal })).rejects.toThrow();
+    expect(reports()).toHaveLength(1);
+    expect(reports()[0]!.performance).toMatchObject({ outcome, sampledTokens: 2,
+      postFirstSample: { sampledTokens: 1, elapsedMs: 20, tokensPerSecond: 50 } });
+    expect(f.allocations.size).toBe(0);
+  });
+  it('counts native samples rather than coalesced delivery events for token throughput', async () => {
+    const f = fixture();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      at += 20; return 7;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {
+      at += 1000;
+    }) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await f.run({ signal: undefined });
+    expect(reports()).toHaveLength(1);
+    expect(reports()[0]!.performance).toMatchObject({ sampledTokens: 65, firstSampleMs: 20,
+      postFirstSample: { sampledTokens: 64, elapsedMs: 1280, tokensPerSecond: 50 } });
+    expect(reports()[0]!.performance!.streaming!.deliveredEvents).toBeLessThan(65);
+    expect(f.allocations.size).toBe(0);
+  });
+  it('includes a sampled EOG token even though it emits no text', async () => {
+    const f = fixture();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({ sample: vi.fn(async () => {
+      at += 20; return at === 20 ? 7 : 99;
+    }), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    f.api.llama_vocab_is_eog.mockImplementation(async (...args: unknown[]) => args[1] === 99 ? 1 : 0);
+    const piece = f.api.llama_token_to_piece.getMockImplementation()!;
+    f.api.llama_token_to_piece.mockImplementation(async (vocab, token, pointer) => token === 99 ? 0 : piece(vocab, token, pointer));
+    expect((await f.run({ signal: undefined })).content).toBe('x');
+    expect(reports()[0]!.performance).toMatchObject({ sampledTokens: 2, decodedTokens: 1,
+      postFirstSample: { sampledTokens: 1, elapsedMs: 20, tokensPerSecond: 50 } });
+    expect(f.allocations.size).toBe(0);
+  });
   it('reduces parse work against a per-token control without changing content', async () => {
     const optimized = fixture(); const expected = await optimized.run({ signal: undefined });
     const optimizedReport = reports().at(-1)?.performance;

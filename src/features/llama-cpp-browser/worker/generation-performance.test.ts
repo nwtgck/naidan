@@ -26,6 +26,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance).toEqual({ version: 1, outcome: 'completed', input: 'unknown',
       sampledTokens: 2, decodedTokens: 0, prefillDecodedTokens: 0, prefillDecodeCalls: 0, maximumPrefillBatchTokens: 0, tokenizeCalls: 1, checkpointTokenizeCalls: 0,
       terminalDecodeDeferred: false, firstSampleMs: 11, firstDeliveryMs: 15,
+      postFirstSample: { unit: 't/s', sampledTokens: 1, elapsedMs: 7, tokensPerSecond: 1000 / 7 },
       stages: [
         { stage: 'session', visits: 1, elapsedMs: 5 }, { stage: 'tokenize', visits: 1, elapsedMs: 4 },
         { stage: 'native-sample', visits: 2, elapsedMs: 5 }, { stage: 'stream-emit', visits: 1, elapsedMs: 4 },
@@ -207,5 +208,84 @@ describe('session preparation measurements', () => {
     preparation.releasedTextContext = true;
     expect(diagnosticSchema.parse(report).performance!.sessionPreparation).toEqual({ projector, releasedTextContext: false });
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sessionPreparation: { ...preparation, model: 'private' } } }).success).toBe(false);
+  });
+});
+
+
+describe('post-first-sample throughput', () => {
+  it('requires 100 total samples and three seconds, then reports each three-second sample window', () => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 1000; expect(metrics.sampled()).toBeUndefined();
+    at = 3999;
+    for (let i = 1; i < 100; i++) expect(metrics.sampled()).toBeUndefined();
+    at = 4000;
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 101, firstSampleMs: 1000,
+      postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+      interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 } });
+    at = 6999; expect(metrics.sampled()).toBeUndefined();
+    at = 7000;
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 103, firstSampleMs: 1000,
+      postFirstSample: { unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 },
+      interval: { unit: 't/s', sampledTokens: 2, elapsedMs: 3000, tokensPerSecond: 2000 / 3000 } });
+    at = 9000;
+    expect(metrics.finish({ outcome: 'completed', profile })!.performance!.postFirstSample)
+      .toEqual({ unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 });
+    expect(metrics.sampled()).toBeUndefined();
+  });
+  it('starts reporting on sample 100 when the time threshold is already met', () => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    expect(metrics.sampled()).toBeUndefined();
+    at = 4000;
+    for (let i = 1; i < 99; i++) expect(metrics.sampled()).toBeUndefined();
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 100, firstSampleMs: 0,
+      postFirstSample: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
+      interval: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 } });
+  });
+  it.each(['completed', 'aborted', 'failed'] as const)('keeps %s throughput separate from TTFT, delivery and cleanup', outcome => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 1000; metrics.sampled();
+    at = 1040; metrics.sampled();
+    at = 1100; metrics.sampled();
+    at = 2000; metrics.delivered(); metrics.enter({ next: 'cleanup' });
+    at = 3000;
+    const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
+    expect(report.elapsedMs).toBe(3000);
+    expect(report.performance).toMatchObject({ outcome, sampledTokens: 3, firstSampleMs: 1000, firstDeliveryMs: 2000,
+      postFirstSample: { unit: 't/s', sampledTokens: 2, elapsedMs: 100, tokensPerSecond: 20 } });
+  });
+  it.each([0, 1, 2])('omits an undefined rate for %s samples with no measurable interval', count => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    for (let i = 0; i < count; i++) metrics.sampled();
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: Math.max(0, count - 1), elapsedMs: 0 });
+    expect(report.performance!.firstSampleMs).toBe(count ? 0 : undefined);
+  });
+  it('keeps interleaved requests and finished reports independent', () => {
+    let at = 0;
+    const first = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 100; first.sampled();
+    const second = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 200; second.sampled();
+    at = 300; first.sampled();
+    const report = first.finish({ outcome: 'completed', profile })!;
+    at = 400; second.sampled(); first.sampled();
+    at = 500; second.sampled();
+    expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 1, elapsedMs: 200, tokensPerSecond: 5 });
+    expect(report.performance!.sampledTokens).toBe(2);
+    expect(first.finish({ outcome: 'failed', profile })).toBeUndefined();
+    expect(second.finish({ outcome: 'aborted', profile })!.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 2, elapsedMs: 300, tokensPerSecond: 2000 / 300 });
+  });
+  it('accepts older summaries but rejects invalid rates and content-bearing fields', () => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    const report = metrics.finish({ outcome: 'completed', profile })!;
+    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, postFirstSample: undefined } }).success).toBe(true);
+    for (const extra of [{ tokensPerSecond: Infinity }, { tokensPerSecond: NaN }, { tokensPerSecond: -1 },
+      { elapsedMs: -1 }, { sampledTokens: 0.5 }, { text: 'private' }, { tokenIds: [123] }]) {
+      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
+        postFirstSample: { ...report.performance!.postFirstSample!, ...extra } } }).success).toBe(false);
+    }
   });
 });
