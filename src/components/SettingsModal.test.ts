@@ -417,12 +417,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(titleTrigger.text()).toBe('Use Current Chat Model (Default)');
     });
 
-
-
-
-
-
-
     it('applies animation classes for entrance effects', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
@@ -829,7 +823,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(localStorage.getItem('naidan:settings-test')).toBeNull();
     expect(useRouter().replace).toHaveBeenCalledWith('/');
     expect(window.location.reload).toHaveBeenCalled();
-
   });
 
   describe('Auto-Title Integration', () => {
@@ -966,6 +959,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.form.providerProfiles[0]!.name).toBe('New Test Profile');
       expect(vm.form.providerProfiles[0]!.titleModelId).toBe('special-title-model');
     });
+
     it('allows selecting "None" or "Default" for models and saves it to profile', async () => {
       // Simulate user entering a profile name (or cancelling)
       mockShowPrompt.mockResolvedValueOnce('None Profile');
@@ -1003,6 +997,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       wrapper.unmount();
     });
+
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = {
         id: 'p1',
@@ -1160,8 +1155,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('deletes a profile immediately and allows undo via toast', async () => {
-
-
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
@@ -1287,7 +1280,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(connectionVm.form.endpoint.httpHeaders).toHaveLength(0);
     });
   });
-
 
   describe('Recipe Integration', () => {
     it('creates chat groups when handleImportRecipes is called', async () => {

@@ -8,6 +8,7 @@ import { attachCore, createCore, type Core } from './core';
 
 describe('native call adaptation', () => {
   let core: Core;
+
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({
@@ -20,6 +21,7 @@ describe('native call adaptation', () => {
       },
     });
   });
+
   afterEach(() => vi.restoreAllMocks());
 
   it('allows optional allocations to decline without hiding native traps', () => {
@@ -105,6 +107,7 @@ describe('native call adaptation', () => {
     expect(() => asyncCore.assertIdle()).not.toThrow();
     expect(typeof await asyncCore.api.ggml_backend_dev_count()).toBe('bigint');
   });
+
   it('reuses only signature metadata while keeping call values independent', async () => {
     const asyncCore = attachCore({ module: core.module, callMode: 'asyncify' });
     const ccall = vi.spyOn(core.module, 'ccall').mockReturnValue(0);
@@ -162,5 +165,4 @@ describe('native call adaptation', () => {
     expect(run).toThrow('out of bounds'); expect(freed).toHaveLength(1); expect(freed[0]).not.toBe(0n);
     truncated = false;
   });
-
 });

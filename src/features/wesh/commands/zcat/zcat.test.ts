@@ -120,7 +120,6 @@ describe('wesh zcat', () => {
     expect(result.exitCode).toBe(0);
   });
 
-
   it('accepts gzip compatibility flags and force-copies plain input', async () => {
     await writeBinaryFile({
       path: 'plain.txt',
@@ -231,5 +230,4 @@ describe('wesh zcat', () => {
     expect(stderr.text).not.toBe('');
     expect(result.exitCode).toBe(1);
   });
-
 });

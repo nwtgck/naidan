@@ -20,7 +20,6 @@ describe('parseCoreutilsLineOrByteCount', () => {
     });
   });
 
-
   it('accepts leading C-locale whitespace but rejects trailing and Unicode whitespace', () => {
     for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
       expect(parseCoreutilsLineOrByteCount({

@@ -162,6 +162,7 @@ printf 'status=%s file=%s\n' "$?" "$(test -e /file.txt; echo $?)"`,
     await expect(wesh.vfs.lstat({ path: '/empty' })).rejects.toThrow();
     expect((await wesh.vfs.lstat({ path: '/full' })).type).toBe('directory');
   });
+
   it('does not let force suppress directory and root safety failures', async () => {
     await writeFile({ path: 'directory/file.txt', data: 'payload' });
     await writeFile({ path: 'keep.txt', data: 'payload' });
@@ -197,7 +198,6 @@ printf 'status=%s target=%s child=%s link=%s\n' "$?" "$(test -d target; echo $?)
     expect(execution.result.exitCode).toBe(0);
   });
 
-
   it('matches GNU force handling for a trailing slash on a directory symlink', async () => {
     const recursive = await execute({
       script: `\
@@ -225,7 +225,6 @@ printf 'status=%s target=%s link=%s\n' "$?" "$(test -d nonrecursive-target; echo
     expect(nonRecursive.stderr.text).not.toBe('');
     expect(nonRecursive.result.exitCode).toBe(0);
   });
-
 
   it('supports verbose removal and GNU interactive option precedence', async () => {
     await writeFile({ path: 'verbose.txt', data: 'payload' });
@@ -332,7 +331,6 @@ printf 'status=%s target=%s link=%s\n' "$?" "$(test -d nonrecursive-target; echo
     expect((await wesh.vfs.lstat({ path: '/d' })).type).toBe('file');
   });
 
-
   it('rejects invalid GNU --preserve-root optional arguments before removing operands', async () => {
     await writeFile({ path: 'keep.txt', data: 'keep\n' });
 
@@ -410,8 +408,6 @@ rm: descend into directory 'tree'? rm: descend into directory 'tree/sub'? rm: re
     expect(three.stderr.text).toBe('');
   });
 
-
-
   it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
     const ambiguous = await execute({ script: 'rm --v' });
 
@@ -421,5 +417,4 @@ rm: descend into directory 'tree'? rm: descend into directory 'tree/sub'? rm: re
     expect(ambiguous.stderr.text).toContain("'--version'");
     expect(ambiguous.result.exitCode).not.toBe(0);
   });
-
 });

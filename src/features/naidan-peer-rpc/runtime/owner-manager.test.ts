@@ -13,6 +13,7 @@ import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
 const cleanups: (() => Promise<void>)[] = [];
+
 afterEach(async () => {
   try {
     for (const cleanup of cleanups.splice(0)) await cleanup();
@@ -20,6 +21,7 @@ afterEach(async () => {
     vi.unstubAllGlobals();
   }
 });
+
 function endpoint() {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
   const record: NaidanRpcConnection = {

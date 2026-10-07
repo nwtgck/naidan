@@ -410,7 +410,6 @@ describe('wesh date', () => {
     expect(stderr.text).toContain('invalid argument');
   });
 
-
   it('validates fatal output-format semantics before a later --help', async () => {
     const invalidPrecision = await execute({ script: 'date --rfc-3339=bogus --help' });
     const multipleFormats = await execute({ script: 'date --rfc-3339=date --iso-8601=date --help' });
@@ -484,7 +483,6 @@ describe('wesh date', () => {
     expect(offset.result.exitCode).toBe(0);
   });
 
-
   it('reuses the bounded shared DATE expression semantics for -d', async () => {
     const tomorrow = await execute({
       script: "date -u -d tomorrow '+%F %T'",
@@ -548,7 +546,6 @@ describe('wesh date', () => {
     expect(missing.stderr.text).toContain("date: 'missing':");
     expect(missing.result.exitCode).toBe(1);
   });
-
 
   it('supports -f bulk input, continues after invalid lines, and preserves order', async () => {
     await writeFile({
@@ -631,5 +628,4 @@ tomorrow
     expect(help.stdout.text).not.toBe('');
     expect(help.stderr.text).toBe('');
   });
-
 });

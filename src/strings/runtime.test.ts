@@ -51,7 +51,6 @@ afterEach(() => {
 });
 
 describe('Boundary Strings runtime', () => {
-
   it('falls back to English when the runtime does not expose a browser language', () => {
     vi.stubGlobal('navigator', {});
     expect(TEST_ONLY.resolveBrowserLocale()).toBe('en');

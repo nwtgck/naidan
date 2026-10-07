@@ -9,6 +9,7 @@ function fixture() {
   const message = ({ revision, enabled, startStep = 1 }: { revision: number, enabled: boolean, startStep?: number }): PreviewControl => ({ type: 'naidan-image-preview-control-v1', runId: 4, revision, settings: { ...defaultPreviewSettings, enabled, startStep, interval: 1 } });
   return { control, core, set, raw, message };
 }
+
 it('passes the actual six-argument ABI in mode/interval/denoised/noisy order and keeps OFF callback nonnull', async () => {
   const h = fixture(); await h.control.start();
   expect(h.set).toHaveBeenCalledExactlyOnceWith(123n, 3, 2, 0, 0, 0n);
@@ -21,6 +22,7 @@ it('passes the actual six-argument ABI in mode/interval/denoised/noisy order and
   expect(h.raw).toHaveBeenLastCalledWith(123n, 3, 1, 0, 0, 0n);
   expect(h.set).toHaveBeenCalledTimes(1);
 });
+
 it('rejects malformed, old, foreign and mode-changing updates; close never calls native', async () => {
   const h = fixture(); await h.control.start(); const valid = h.message({ revision: 2, enabled: true });
   expect(h.control.update({ control: valid })).toBe(true);
@@ -29,6 +31,7 @@ it('rejects malformed, old, foreign and mode-changing updates; close never calls
   expect(h.control.update({ control: h.message({ revision: 3, enabled: false }) })).toBe(false);
   expect(h.raw).toHaveBeenCalledTimes(1); expect(h.set).toHaveBeenCalledTimes(1);
 });
+
 it('accepts configuration changes before startup and reconciles the await handoff', async () => {
   const h = fixture(), wait = Promise.withResolvers<void>();
   h.set.mockReturnValueOnce(wait.promise);
@@ -39,6 +42,7 @@ it('accepts configuration changes before startup and reconciles the await handof
   wait.resolve(); await start;
   expect(h.raw).toHaveBeenLastCalledWith(123n, 3, 1, 0, 0, 0n);
 });
+
 it('waits until the configured step threshold before enabling previews', async () => {
   const h = fixture(); const c = createNativePreviewControl({ core: h.core, callback: 99n, runId: 1, initial: { ...defaultPreviewSettings, enabled: true, startStep: 4, interval: 7 } });
   await c.start(); expect(h.set).toHaveBeenLastCalledWith(99n, 3, 7, 0, 0, 0n);
@@ -46,6 +50,7 @@ it('waits until the configured step threshold before enabling previews', async (
   c.observeStep({ step: 3 }); expect(h.raw).toHaveBeenLastCalledWith(99n, 3, 7, 1, 0, 0n);
   c.observeStep({ step: 4 }); expect(h.raw).toHaveBeenCalledTimes(1);
 });
+
 it('fails explicitly rather than re-entering the generic API if the reviewed scalar setter is absent', async () => {
   const h = fixture(); delete h.core.module._sdc_sd_set_preview_callback; await h.control.start();
   expect(() => h.control.update({ control: h.message({ revision: 1, enabled: true }) })).toThrow('live preview control');
@@ -58,6 +63,7 @@ it('allows an enabled step-one preview before the first completion callback', as
   await c.start();
   expect(h.set).toHaveBeenCalledExactlyOnceWith(99n, 3, 1, 1, 0, 0n);
 });
+
 it('re-evaluates a live threshold against the next denoising step without changing the native interval', async () => {
   const h = fixture();
   h.control.update({ control: h.message({ revision: 1, enabled: true, startStep: 6 }) });

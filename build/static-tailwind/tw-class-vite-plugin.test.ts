@@ -705,7 +705,6 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(plugin.api.getPlan()?.candidates).not.toContain('text-blue-500');
   });
 
-
   it('serializes overlapping HMR replans so an older slow plan cannot overwrite the newest state', async () => {
     const root = createFixture();
     const sourceRoot = path.join(root, 'src');
@@ -818,6 +817,7 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(plugin.api.getPlan()?.candidates).toContain('m-4');
     expect(plugin.api.getPlan()?.candidates).not.toContain('p-4');
   });
+
   it('skips the sequential SSR environment invocation after the client refresh', async () => {
     const root = createFixture();
     const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
@@ -1400,7 +1400,6 @@ describe('static Tailwind production bundle integrity', () => {
       ]),
     })).not.toThrow();
   });
-
 
   it('accepts registration modules promoted into the initial graph', () => {
     expect(() => assertCssRegistrationBundleIntegrity({

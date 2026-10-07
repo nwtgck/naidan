@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({ inspect: vi.fn(), load: vi.fn(), generate: vi.
 vi.mock('./core-loader', () => ({ loadCoreFactory: mocks.load }));
 vi.mock('./session', () => ({ createImageGenerationSession: mocks.createSession }));
 vi.mock('./image-output', () => ({ encodeImagePixels: mocks.encode }));
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('FileReaderSync', class {});
@@ -14,7 +15,9 @@ beforeEach(() => {
   mocks.createSession.mockReturnValue({ inspectEngine: mocks.inspect, generate: mocks.generate, updatePreview: mocks.updatePreview, close: mocks.close, cancel: mocks.cancel });
   mocks.encode.mockImplementation(async ({ image }) => ({ width: image.width, height: image.height, png: new Blob(['png'], { type: 'image/png' }) }));
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 function loaded() {
   let callbacks: Parameters<CoreFactory>[0] | undefined;
   const create = vi.fn(async (options: Parameters<CoreFactory>[0]) => {
@@ -27,6 +30,7 @@ function loaded() {
 function pixels() {
   return { pixels: new Uint8ClampedArray(256 * 256 * 4), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false };
 }
+
 it('never initializes a runtime for inspection and keeps active or failed Workers out of the getter', async () => {
   const worker = createImageWorker({ reportDiagnostic: undefined });
   expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
@@ -37,6 +41,7 @@ it('never initializes a runtime for inspection and keeps active or failed Worker
   pending.reject(new Error('Native failure')); await expect(generation).rejects.toThrow('Native failure');
   expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' }); expect(mocks.inspect).not.toHaveBeenCalled();
 });
+
 it('keeps profile/source/runtime stage on artifact loading errors', async () => {
   mocks.load.mockRejectedValue(new Error('Image Wasm integrity mismatch'));
   const worker = createImageWorker({ reportDiagnostic: undefined });
@@ -44,6 +49,7 @@ it('keeps profile/source/runtime stage on artifact loading errors', async () => 
   expect(mocks.generate).not.toHaveBeenCalled();
   await expect(worker.generate(requestFixture(), vi.fn())).rejects.toThrow('failed'); expect(mocks.load).toHaveBeenCalledOnce();
 });
+
 it('retains the original error and last native diagnostics when model initialization fails, with no native teardown', async () => {
   loaded();
   mocks.generate.mockImplementation(async ({ onProgress, onLog }) => {
@@ -58,6 +64,7 @@ it('retains the original error and last native diagnostics when model initializa
   expect(failure.message).toContain('native diagnostic 29'); expect(failure.message).not.toContain('native diagnostic 0\n');
   await expect(worker.generate(requestFixture(), vi.fn())).rejects.toThrow('failed'); expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('keeps the first numeric Wasm frames without exporting raw stacks or retrying a failed runtime', async () => {
   loaded();
   const original = new WebAssembly.RuntimeError('memory access out of bounds');
@@ -79,6 +86,7 @@ RuntimeError
   await expect(worker.generate(requestFixture(), vi.fn())).rejects.toThrow('failed');
   expect(mocks.load).toHaveBeenCalledOnce(); expect(mocks.generate).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('publishes onAbort independently of native promises, including debug off', async () => {
   const source = loaded(), request = requestFixture(); request.debug = 'off'; const requestAdapter = navigator.gpu.requestAdapter;
   mocks.generate.mockImplementation(async ({ onProgress }) => {
@@ -89,6 +97,7 @@ it('publishes onAbort independently of native promises, including debug off', as
   expect(reportDiagnostic).toHaveBeenCalledWith({ diagnostic: expect.objectContaining({ event: 'failed', stage: 'decoding', message: 'Device callback aborted', fields: expect.objectContaining({ kind: 'native-abort', phase: 'decoding' }) }) });
   expect(navigator.gpu.requestAdapter).toBe(requestAdapter); expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('initializes module/context once across successful runs and routes permanent logs/abort to the CURRENT run', async () => {
   const source = loaded(), reportDiagnostic = vi.fn(), worker = createImageWorker({ reportDiagnostic });
   const first = requestFixture(); first.runId = 1; first.debug = 'on'; first.parameters.prompt = 'first secret';
@@ -107,6 +116,7 @@ it('initializes module/context once across successful runs and routes permanent 
   expect(JSON.stringify(calls)).not.toContain('second secret'); expect(mocks.load).toHaveBeenCalledOnce();
   expect(source.create).toHaveBeenCalledOnce(); expect(source.helpers.attachCore).toHaveBeenCalledOnce(); expect(mocks.createSession).toHaveBeenCalledOnce();
 });
+
 it('rejects concurrent generation and changed runtime identity without creating a second native instance', async () => {
   loaded(); const gate = Promise.withResolvers<ReturnType<typeof pixels>>(), entered = Promise.withResolvers<void>();
   mocks.generate.mockImplementationOnce(() => {
@@ -118,6 +128,7 @@ it('rejects concurrent generation and changed runtime identity without creating 
   await expect(worker.generate({ ...request, sessionId: 'two' }, vi.fn())).rejects.toThrow('Replace the Worker');
   expect(mocks.createSession).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('validates live controls and applies early updates after runtime initialization; late messages never affect the next run', async () => {
   const source = loaded(), loadGate = Promise.withResolvers<Awaited<ReturnType<typeof mocks.load>>>();
   const value = await mocks.load(); mocks.load.mockReturnValueOnce(loadGate.promise);
@@ -136,6 +147,7 @@ it('validates live controls and applies early updates after runtime initializati
   worker.updatePreview({ control: { ...control, revision: 2 } }); expect(mocks.updatePreview).toHaveBeenCalledTimes(updates);
   expect(source.create).toHaveBeenCalledOnce();
 });
+
 it('publishes bounded preview pixels while generation remains pending and tags the actual run/step', async () => {
   loaded(); const gate = Promise.withResolvers<ReturnType<typeof pixels>>(), entered = Promise.withResolvers<void>();
   const request = requestFixture(); request.runId = 7; request.preview.enabled = true;
@@ -149,6 +161,7 @@ it('publishes bounded preview pixels while generation remains pending and tags t
   expect(reportPreview).toHaveBeenCalledWith({ frame: expect.objectContaining({ runId: 7, step: 2, revision: 0, png: expect.any(Blob) }) });
   gate.resolve(pixels()); await task;
 });
+
 it('treats an idle native abort as terminal without publishing a previous prompt', async () => {
   const source = loaded(), reportDiagnostic = vi.fn(), worker = createImageWorker({ reportDiagnostic });
   mocks.generate.mockResolvedValueOnce(pixels()); await worker.generate(requestFixture(), vi.fn());
@@ -181,6 +194,7 @@ it('delivers an early cancellation after initialization and retains the same ses
   expect(source.create).toHaveBeenCalledOnce(); expect(mocks.createSession).toHaveBeenCalledOnce();
   expect(mocks.cancel).toHaveBeenCalledOnce();
 });
+
 it('discards a late-cancelled encoded image without discarding the context', async () => {
   const source = loaded(), encoded = Promise.withResolvers<{ png: Blob, width: number, height: number }>(), entered = Promise.withResolvers<void>();
   mocks.generate.mockResolvedValue(pixels());
@@ -195,6 +209,7 @@ it('discards a late-cancelled encoded image without discarding the context', asy
   await worker.generate({ ...request, runId: 5 }, vi.fn());
   expect(source.create).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('does not treat a native abort after a cancel request as successful cancellation', async () => {
   const source = loaded(), gate = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>(), entered = Promise.withResolvers<void>();
   mocks.generate.mockImplementationOnce(() => {
@@ -228,6 +243,7 @@ it('emits complete debug measurement scopes for each retained run without recrea
   expect(records.filter(e => e.fields.metric === 'gpu-counters' && e.fields.scope === 'run-total')).toHaveLength(2);
   expect(mocks.load).toHaveBeenCalledOnce(); expect(mocks.createSession).toHaveBeenCalledOnce();
 });
+
 it('flushes cancelled and failing measurement scopes but never enters native cleanup after a failure', async () => {
   loaded(); const request = requestFixture(); request.debug = 'on';
   const cancelledLog = vi.fn(); mocks.generate.mockResolvedValueOnce({ cancelled: true, modelResident: true });
@@ -239,6 +255,7 @@ it('flushes cancelled and failing measurement scopes but never enters native cle
   expect(failedLog.mock.calls.some(([e]) => e.diagnostic.fields.metric === 'gpu-counters' && e.diagnostic.fields.scope === 'run-total')).toBe(true);
   expect(mocks.close).not.toHaveBeenCalled();
 });
+
 it('does not add detailed performance records for debug OFF', async () => {
   loaded(); mocks.generate.mockResolvedValue(pixels()); const diagnostic = vi.fn(); const request = requestFixture(); request.debug = 'off';
   await createImageWorker({ reportDiagnostic: diagnostic }).generate(request, vi.fn());

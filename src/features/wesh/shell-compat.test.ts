@@ -475,7 +475,6 @@ printf 'AFTER\\n'
     expect(stderr.text).toBe('');
   });
 
-
   it('preserves invalid UTF-8 bytes when a command drains the shared shell source', async () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -533,8 +532,6 @@ printf 'AFTER\\n'
       expect(stderr.text).toBe('');
     }
   });
-
-
 
   it('applies ANSI-C control escapes to raw invalid source bytes like Bash', async () => {
     const prefix = new TextEncoder().encode(String.raw`printf '%s' $'\c`);
@@ -961,7 +958,6 @@ after
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('stops the current shell when exit is executed', async () => {
     const result = await execute({
       script: `\
@@ -1273,6 +1269,7 @@ value#suffix
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
+
   it('matches Bash locale-quoted word semantics when no message translation is present', async () => {
     const result = await execute({
       script: `\
@@ -2236,7 +2233,6 @@ printf '<%s>|<%s>|<%s>\\n' "${'${value:1:3}'}" "${'${value: -2}'}" "${'${!target
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('iterates shell options with getopts and updates OPTIND and OPTARG', async () => {
     const result = await execute({
       script: `\
@@ -2871,7 +2867,6 @@ cat output
     expect(second.stderr.text).toBe('');
   });
 
-
   it('does not print job notifications in non-interactive execution', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -2886,5 +2881,4 @@ printf 'wait:%s pid:%s\n' "$?" "$pid"
     expect(stdout.text).toMatch(/^wait:0 pid:[0-9]+\n$/);
     expect(stderr.text).toBe('');
   });
-
 });

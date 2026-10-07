@@ -823,6 +823,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     await client.dispose();
     expect(mocks.workerInstances).toHaveLength(3);
   });
+
   it("treats settled Worker release failures as best-effort cleanup", async () => {
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async () => planningRun()),
@@ -1679,7 +1680,6 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(planningRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
   });
 
-
   it('does not start redundant accepted-cache template work before continuing to the next target', async () => {
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision: 'b'.repeat(40) });
     const planningRemote = remote({
@@ -2014,5 +2014,4 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
-
 });

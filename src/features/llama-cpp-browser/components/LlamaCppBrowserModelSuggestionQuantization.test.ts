@@ -67,6 +67,7 @@ function holdDownloadUntilPaused(): void {
     signal.addEventListener('abort', () => reject(new DOMException('Paused', 'AbortError')), { once: true });
   }));
 }
+
 beforeEach(async () => {
   vi.resetAllMocks(); queueTest.reset(); metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
@@ -78,6 +79,7 @@ beforeEach(async () => {
   });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });

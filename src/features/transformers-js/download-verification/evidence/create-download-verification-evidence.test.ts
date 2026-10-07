@@ -174,7 +174,6 @@ describe('createDownloadVerificationEvidence', () => {
     });
   });
 
-
   it('records observed and failed artifact-request candidates separately in events', async () => {
     const evidence = sampleEvidence();
     const failed = evidence.modelArtifactObservations[2];
@@ -260,6 +259,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
     evidence.runtimeCompletion.source = 'production-download-preparation';
     await expect(createDownloadVerificationEvidence({ evidence })).rejects.toThrow('timing does not match its investigation owner');
   });
+
   it('exports accepted cache revision, selected candidate, preparation, and post-run cache without model bodies', async () => {
     const evidence = sampleEvidence();
     evidence.mode = 'runtime-complete';

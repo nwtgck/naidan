@@ -212,6 +212,7 @@ git diff HEAD~1 HEAD --name-status`,
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('M\ta.txt\n');
   });
+
   it('filters changes by pathspec after -- and treats a missing path as no match', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -770,7 +771,6 @@ git diff --name-only -- '*.txt' ':(exclude)del.txt'`,
     expect(stdout.text).toBe('a.txt\n');
   });
 
-
   it('orders diff path output by UTF-8 bytes', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -887,7 +887,6 @@ space name.txt\0日本語.txt\0M\0space name.txt\0M\0日本語.txt\0space name.t
 `);
   });
 
-
   it('renders exact staged renames consistently across diff name and patch output', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1002,7 +1001,6 @@ R100\ta\tb
 `);
   });
 
-
   it('rejects incompatible diff name output modes instead of silently choosing one', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1037,5 +1035,4 @@ M\ta.txt
 D\tdel.txt
 `);
   });
-
 });

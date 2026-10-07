@@ -935,6 +935,7 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each([
     { effort: 'none', enableThinking: false, expectedText: disabledThinkingText },
     { effort: 'low', enableThinking: true, expectedText: defaultText },
@@ -1123,6 +1124,7 @@ describe('Qwen3.5 4B Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: replay.close });
     }
   }, 30_000);
+
   it('retains supplied call content and string-valued arguments through the public native mapping', async () => {
     const replay = await createQwen4ToolReplay();
     const captures: ProviderChatCapture[] = [];
@@ -1267,6 +1269,7 @@ describe('Qwen3.5 4B Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: replay.close });
     }
   }, 30_000);
+
   it('retains supplied association IDs at builder entry and serializes result content without natural generation output', async () => {
     const replay = await createQwen4ToolReplay();
     const captures: ProviderChatCapture[] = [];

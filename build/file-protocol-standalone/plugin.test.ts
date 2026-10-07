@@ -249,7 +249,6 @@ describe('createNaidanStandalonePlugin', () => {
     expect(source).toContain('packageLocale: resolvePackageLocale(),');
   });
 
-
   it('keeps the default source audit inline when the option is omitted', () => {
     const names = pluginNames(createNaidanStandalonePlugin({
       workers: createOptions().workers,
@@ -320,7 +319,6 @@ describe('createNaidanStandalonePlugin', () => {
       virtualId: 'virtual:file-protocol-standalone/worker/relative-worker',
     });
   });
-
 
   it('keeps mutable diagnostics state isolated between plugin factory instances', () => {
     const firstDiagnostics: Record<string, unknown> = {};
@@ -479,6 +477,7 @@ describe('createNaidanStandalonePlugin', () => {
       },
     })).toThrow('sourceAudit.evidence is required');
   });
+
   it('keeps cheap source-policy guards enabled with external audit evidence', () => {
     const names = pluginNames(createNaidanStandalonePlugin(createOptions()));
 
@@ -515,7 +514,6 @@ describe('createNaidanStandalonePlugin', () => {
       '/tmp/source.ts',
     )).rejects.toThrow('Dynamic importScripts() URL is unsupported');
   });
-
 
   it('emits the complete static importScripts asset graph with stable output names', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-importscripts-policy-'));
@@ -719,7 +717,6 @@ function deferredAccess() {
     )).rejects.toThrow('Node.js builtin "node:fs" is unsupported');
   });
 
-
   it('keeps final-output Raw Worker rejection active with external source audit evidence', async () => {
     const rawWorkerPolicy = findPlugin(
       createNaidanStandalonePlugin(createOptions()),
@@ -736,7 +733,6 @@ function deferredAccess() {
       },
     })).rejects.toThrow('Raw Worker constructors survive tree-shaking');
   });
-
 
   it('rejects Worker-only stylesheet side effects before packaging', async () => {
     await expect(runWorkerCssGenerateBundle({
@@ -895,5 +891,4 @@ function deferredAccess() {
       },
     })).rejects.toThrow('External WebAssembly assets cannot be loaded');
   });
-
 });

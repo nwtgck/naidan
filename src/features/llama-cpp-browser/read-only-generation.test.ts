@@ -14,22 +14,27 @@ vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ resolveR
 vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ listStoredModels: vi.fn(async () => []), removeStoredModel: vi.fn(), withModelMutationLock: vi.fn() }));
 let module: typeof import('./index-hosted');
 let reader: ReturnType<typeof module.createReadOnlyLlamaCppClient>;
+
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); fixture.canReuse.mockReturnValue(true);
   fixture.generate.mockResolvedValue({ content: 'text', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); module = await import('./index-hosted');
   reader = module.createReadOnlyLlamaCppClient();
 });
+
 afterEach(async () => {
   await reader.dispose(); module.llamaCppBrowserService.release();
 });
+
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
   return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [], debug: 'on' };
 }
+
 it('uses existing files without probing writable storage and forces debugging off', async () => {
   await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
   expect(fixture.probeProfiles).not.toHaveBeenCalled(); expect(fixture.resolve).toHaveBeenCalledOnce();
   expect(fixture.generate).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ debug: 'off', options: { profile: 'cpu-wasm32' } }) }));
 });
+
 it('keeps the shared lane reserved until cancelled physical work actually finishes', async () => {
   const gate = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>(), stop = new AbortController();
   fixture.generate.mockReturnValueOnce(gate.promise);
@@ -40,11 +45,13 @@ it('keeps the shared lane reserved until cancelled physical work actually finish
   gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await rejected;
   await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} }); expect(fixture.generate).toHaveBeenCalledTimes(2);
 });
+
 it('does not create or probe a worker for a pre-cancelled call', async () => {
   const stop = new AbortController(); stop.abort();
   await expect(reader.generate({ input: input(), signal: stop.signal, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('aborted');
   expect(fixture.generate).not.toHaveBeenCalled(); expect(fixture.probeProfiles).not.toHaveBeenCalled();
 });
+
 it('local unscoped cancel and release cannot stop a read-only invocation, including its reservation gap', async () => {
   const gate = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>();
   const controller = new AbortController(); fixture.generate.mockReturnValueOnce(gate.promise);
@@ -64,6 +71,7 @@ it('local unscoped cancel and release cannot stop a read-only invocation, includ
   }
   module.llamaCppBrowserService.release(); expect(fixture.dispose).toHaveBeenCalledOnce();
 });
+
 it('restart cannot acquire the shared worker while a read-only call is reserved but not yet running', async () => {
   const gate = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>(); fixture.generate.mockReturnValueOnce(gate.promise);
   const task = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
@@ -75,6 +83,7 @@ it('restart cannot acquire the shared worker while a read-only call is reserved 
   gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await task;
   expect(await result).toBe('llama.cpp browser: busy'); expect(fixture.probeProfiles).not.toHaveBeenCalled();
 });
+
 it('retirement during profile resolution waits for the reserved operation and never starts inference', async () => {
   const profile = Promise.withResolvers<string>(); fixture.resolve.mockReturnValueOnce(profile.promise);
   const task = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
@@ -89,6 +98,7 @@ it('retirement during profile resolution waits for the reserved operation and ne
   expect(fixture.generate).not.toHaveBeenCalled(); expect(fixture.dispose).toHaveBeenCalledOnce();
   await expect(reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('aborted');
 });
+
 it('a capability probe does not take over the read-only model cache', async () => {
   await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
   fixture.probeProfiles.mockResolvedValueOnce({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -96,6 +106,7 @@ it('a capability probe does not take over the read-only model cache', async () =
   await reader.dispose(); expect(fixture.dispose).toHaveBeenCalledOnce();
   expect(module.llamaCppBrowserService.getProfileState()).toEqual({ status: 'idle' });
 });
+
 it('retirement failures remain failures and do not strand the shared operation lane', async () => {
   await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
   fixture.dispose.mockImplementationOnce(() => {

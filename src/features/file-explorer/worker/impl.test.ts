@@ -25,7 +25,6 @@ describe('file-explorer.worker.impl', () => {
     worker = createFileExplorerWorker();
   });
 
-
   it.each(['opfs-root', 'native-directory', 'wesh-mounts'] as const)('prepares a native File without reading its bytes from %s', async kind => {
     const root = new MockFileSystemDirectoryHandle({ name: 'download-root' });
     const handle = await root.getFileHandle('model.gguf', { create: true });
@@ -295,7 +294,6 @@ describe('file-explorer.worker.impl', () => {
     expect(Object.keys(zip.files).some(path => path.startsWith('my-project/dist/'))).toBe(false);
   });
 
-
   it('lists exclusion suggestions without reading file metadata', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     const projectHandle = await rootHandle.getDirectoryHandle('project', { create: true });
@@ -355,7 +353,6 @@ describe('file-explorer.worker.impl', () => {
       resultState: 'complete',
     });
   });
-
 
   it('does not traverse a directory that is already excluded', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });

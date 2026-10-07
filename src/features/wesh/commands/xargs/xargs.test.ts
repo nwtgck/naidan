@@ -1126,7 +1126,6 @@ beta
     }
   });
 
-
   it('accepts explicit positive signs in numeric options and obsolete -l', async () => {
     const maxArgs = await execute({
       script: 'xargs -n +1 echo',
@@ -1147,5 +1146,4 @@ beta
     expect(obsoleteMaxLines.stderr.text).toBe('');
     expect(obsoleteMaxLines.result.exitCode).toBe(0);
   });
-
 });

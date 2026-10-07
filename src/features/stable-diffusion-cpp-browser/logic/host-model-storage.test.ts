@@ -47,6 +47,7 @@ function serve({ offset }: { offset: number }): void {
     }),
   });
 }
+
 beforeEach(() => {
   root = new MemoryDirectory('models'); opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
@@ -60,6 +61,7 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });

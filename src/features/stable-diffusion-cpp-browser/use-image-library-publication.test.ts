@@ -22,15 +22,18 @@ vi.mock('./composables/use-host-model-directories', async () => {
   };
 });
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.refresh.mockResolvedValue(undefined);
   mocks.download.mockResolvedValue(undefined);
   mocks.inspect.mockResolvedValue({ candidates: [], issues: [] });
 });
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 function harness() {
   const blocked = ref(false), scope = effectScope(); scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;

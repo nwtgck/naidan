@@ -7,13 +7,16 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import ImageGenerationResults from './ImageGenerationResults.vue';
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
   vi.unstubAllGlobals();
 });
+
 it('keeps engine state as a closed, unavailable detail in the standalone results workspace', () => {
   const view = useImageGeneration();
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
@@ -24,6 +27,7 @@ it('keeps engine state as a closed, unavailable detail in the standalone results
   expect(panel.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]').element.disabled).toBe(true);
   expect(view.engineState.snapshot.value).toBeUndefined();
 });
+
 it.each([
   { draft: '101', expected: 100 },
   { draft: '', expected: 20 },
@@ -95,6 +99,7 @@ it('keeps result images while typing a larger retention limit, including when an
     stop(); gallery.clear();
   }
 });
+
 it.each(['card', 'viewer'])('keeps an existing result downloadable from its %s after selecting an unsupported profile', async location => {
   const supported = ref(true);
   const view = useImageGeneration();

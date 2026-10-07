@@ -121,6 +121,7 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => fs.root } });
   forbiddenFetch.mockClear(); vi.stubGlobal('fetch', forbiddenFetch);
 });
+
 afterEach(async () => {
   try {
     await Promise.all(owners.splice(0).map(owner => owner.dispose())); expect(forbiddenFetch).not.toHaveBeenCalled();
@@ -564,5 +565,4 @@ describe('hosted structured generation with the real service lane', () => {
     expect(result.result).toEqual({ type: 'error', error: failure }); expect(read).toHaveBeenCalledOnce();
     expect(f.client.loadDownloadedModel).not.toHaveBeenCalled();
   });
-
 });

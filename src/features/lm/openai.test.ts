@@ -279,6 +279,7 @@ data: [DONE]
       });
       expect(capturedRequests[0]!.body.stop).toEqual(['A', 'B']);
     });
+
     it('should handle complex parameters in chat request', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });

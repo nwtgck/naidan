@@ -160,6 +160,7 @@ describe("runProductionLaneComparison", () => {
     expect(runProductionScenario).toHaveBeenCalledOnce();
     expect(result.currentOperation).toContain("Production Lane evidence collected");
   });
+
   it("compares observed Reference and Production inputs even when the earlier template probe was marked failed", async () => {
     const run = structuredClone(baseRun);
     const userGenerationCase = run.templateBehavior?.cases.find(item => item.caseId === "user-generation");
@@ -285,6 +286,7 @@ describe("runProductionLaneComparison", () => {
     expect(result.loadAttempts).toHaveLength(1);
     expect(result.laneComparison).toBeUndefined();
   });
+
   it("passes recognized Reference parser roundtrip evidence into Production continuation", async () => {
     const run = structuredClone(baseRun);
     run.loadAttempts[0]!.toolProtocolProbe = {
@@ -344,5 +346,4 @@ describe("runProductionLaneComparison", () => {
       onObservationCheckpoint: expect.any(Function),
     });
   });
-
 });

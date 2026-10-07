@@ -279,6 +279,7 @@ vi.mock('../composables/useSettings', () => ({
 
 describe('ChatPane Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
+
   beforeEach(() => {
     setupScrollToMock();
     const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();

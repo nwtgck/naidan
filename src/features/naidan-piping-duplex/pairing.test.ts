@@ -8,6 +8,7 @@ import type { NaidanPipingHandshakeChannel, NaidanPipingPeerVerifier } from '@/f
 import { rendezvousRoom, rendezvousRoute } from '@/features/naidan-piping-duplex/rendezvous';
 
 const stops = new Set<AbortController>();
+
 it('does not open an obsolete comparison callback when cancelled before its microtask', async () => {
   const stop = new AbortController(), verifyPeer = vi.fn(async () => true);
   const verification = TEST_ONLY.verifyComparison({ verifyPeer, peerIdentity: new Uint8Array(32), comparison: new Uint8Array(32), signal: stop.signal });
@@ -15,9 +16,11 @@ it('does not open an obsolete comparison callback when cancelled before its micr
   stop.abort(); await rejected; await Promise.resolve();
   expect(verifyPeer).not.toHaveBeenCalled();
 });
+
 afterEach(() => {
   for (const stop of stops) stop.abort(); stops.clear(); vi.restoreAllMocks();
 });
+
 function channel(): NaidanPipingHandshakeChannel {
   const messages: Uint8Array[] = [], change = new Pulse();
   return {
@@ -64,6 +67,7 @@ async function start({ verifyA, verifyB, known, corruptStatus }: {
   void a.catch(error => stop.abort(error)); void b.catch(error => stop.abort(error));
   return { a, b, identities, stop };
 }
+
 it('both peers compare the complete binding and neither can export keys before both explicit approvals', async () => {
   const pendingA = Promise.withResolvers<boolean>(), pendingB = Promise.withResolvers<boolean>();
   const reachedA = Promise.withResolvers<Parameters<NaidanPipingPeerVerifier>[0]>(), reachedB = Promise.withResolvers<Parameters<NaidanPipingPeerVerifier>[0]>();
@@ -89,10 +93,12 @@ it('both peers compare the complete binding and neither can export keys before b
   pendingB.resolve(true); const keys = await promiseAllKeyed({ a: pair.a, b: pair.b });
   expect(keys.a.contextId).toEqual(keys.b.contextId); keys.a.dispose(); keys.b.dispose();
 });
+
 it('rejecting a comparison prevents either peer from returning a usable context', async () => {
   const pair = await start({ known: false, corruptStatus: false, verifyA: async () => false, verifyB: async () => true });
   const settled = await Promise.allSettled([pair.a, pair.b]); expect(settled.every(value => value.status === 'rejected')).toBe(true);
 });
+
 it('a late acceptance of an obsolete dialog cannot resume a cancelled key exchange', async () => {
   const gate = Promise.withResolvers<boolean>(), shown = Promise.withResolvers<void>();
   const pair = await start({
@@ -106,6 +112,7 @@ it('a late acceptance of an obsolete dialog cannot resume a cancelled key exchan
   await shown.promise; pair.stop.abort(new Error('Dialog closed'));
   await expect(pair.a).rejects.toThrow('Dialog closed'); gate.resolve(true); await expect(pair.b).rejects.toThrow();
 });
+
 it('the verification callback receives copies and cannot rewrite the authenticated identity or binding', async () => {
   const verify: NaidanPipingPeerVerifier = async ({ peerIdentity, comparison }) => {
     peerIdentity.fill(0); comparison.fill(0); return true;
@@ -115,11 +122,13 @@ it('the verification callback receives copies and cannot rewrite the authenticat
   expect(keys.a.peerIdentity).toEqual(pair.identities.b.publicKey); expect(keys.b.peerIdentity).toEqual(pair.identities.a.publicKey);
   expect(keys.a.contextId).toEqual(keys.b.contextId); keys.a.dispose(); keys.b.dispose();
 });
+
 it('an authenticated-status modification fails before requesting human approval', async () => {
   const verifyA = vi.fn(async () => true), verifyB = vi.fn(async () => true);
   const pair = await start({ known: false, corruptStatus: true, verifyA, verifyB });
   await expect(pair.a).rejects.toThrow(); await expect(pair.b).rejects.toThrow(); expect(verifyA).not.toHaveBeenCalled();
 });
+
 it('different handshake transcripts cannot produce the same displayed full comparison text', async () => {
   const shown: Uint8Array[] = [];
   for (let n = 0; n < 2; n++) {
@@ -135,6 +144,7 @@ it('different handshake transcripts cannot produce the same displayed full compa
   }
   expect(shown[0]).not.toEqual(shown[1]);
 });
+
 it('two pinned peers do not need to display or approve another comparison', async () => {
   const verify = vi.fn(async () => {
     throw new Error('Known peer must not prompt');
@@ -142,6 +152,7 @@ it('two pinned peers do not need to display or approve another comparison', asyn
   const pair = await start({ known: true, corruptStatus: false, verifyA: verify, verifyB: verify });
   const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); expect(verify).not.toHaveBeenCalled(); keys.a.dispose(); keys.b.dispose();
 });
+
 it('unknown-peer establishment without a verifier fails closed', async () => {
   const identity = await createNaidanPipingIdentity();
   await expect(establishVerifiedNaidanPipingKeys({
@@ -154,6 +165,7 @@ it('unknown-peer establishment without a verifier fails closed', async () => {
     signal: new AbortController().signal,
   })).rejects.toThrow();
 });
+
 it('short numeric rendezvous preserves leading zeros and does not act as the authentication value', async () => {
   const a = await rendezvousRoom({ code: '0042', origin: 'https://relay.invalid' });
   const b = await rendezvousRoom({ code: '0042', origin: 'https://relay.invalid' });

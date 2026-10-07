@@ -243,6 +243,7 @@ describe('completed tool call execution', () => {
     await late?.({ event: { type: 'output', stream: 'stdout', text: 'late' } });
     expect(observer).not.toHaveBeenCalled();
   });
+
   it('waits for accepted event callbacks even if the tool does not await them', async () => {
     const release = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
     let settled = false; const node = fresh();
@@ -360,5 +361,4 @@ describe('completed tool call execution', () => {
     })).rejects.toThrow('removed or replaced');
     expect(node.parts).toEqual([replacement]);
   });
-
 });

@@ -19,9 +19,11 @@ function fixture() {
   writeFileSync(path.join(root, 'main.js'), `globalThis.loadBinary = () => import(${JSON.stringify(binary.virtualId)});`);
   return { root, bytes, binary };
 }
+
 afterEach(() => {
   for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true });
 });
+
 async function buildBinary({ root, binary, diagnostics }: { root: string, binary: StandaloneEmbeddedBinary, diagnostics: Record<string, unknown> }) {
   const result = await build({
     configFile: false,
@@ -34,6 +36,7 @@ async function buildBinary({ root, binary, diagnostics }: { root: string, binary
   if (Array.isArray(result) || !('output' in result)) throw new Error('Unexpected fixture result');
   return result.output;
 }
+
 describe('standalone binary embedding', () => {
   it('creates one lazy compressed module with verified source provenance and no WASM sidecar', async () => {
     const { root, bytes, binary } = fixture(); const diagnostics: Record<string, unknown> = {};
@@ -48,6 +51,7 @@ describe('standalone binary embedding', () => {
     expect(output.filter(file => file.type === 'chunk' && file.isEntry).every(file => file.type === 'chunk' && !file.code.includes(base64))).toBe(true);
     expect(diagnostics.embeddedBinaries).toEqual([expect.objectContaining({ compression: 'brotli', compressedBytes: Buffer.from(base64, 'base64').length, sha256: binary.sha256, bytes: bytes.length, owners: [payload.fileName] })]);
   });
+
   it.each(['unexpected.wasm', 'unexpected.wasm.gz', 'unexpected.wasm.br'])('rejects emitted sidecar %s', async fileName => {
     const { root } = fixture();
     writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');
@@ -64,16 +68,19 @@ describe('standalone binary embedding', () => {
       build: { write: false, rollupOptions: { input: path.join(root, 'main.js') } },
     })).rejects.toThrow('External WebAssembly');
   });
+
   it.each(['size', 'hash'] as const)('rejects an input with incorrect %s before emitting data', async corruption => {
     const { root, binary } = fixture();
     const input = corruption === 'size' ? { ...binary, bytes: 9 } : { ...binary, sha256: '0'.repeat(64) };
     await expect(buildBinary({ root, binary: input, diagnostics: {} })).rejects.toThrow('integrity mismatch');
   });
+
   it('rejects duplicate registrations and relative source paths', () => {
     const { binary } = fixture();
     expect(() => createEmbeddedBinaryPlugin({ binaries: [binary, binary], diagnostics: {} })).toThrow('duplicate');
     expect(() => createEmbeddedBinaryPlugin({ binaries: [{ ...binary, filePath: 'input.wasm' }], diagnostics: {} })).toThrow('Invalid');
   });
+
   it.each(['copied.wasm', 'nested/copied.wasm.gz', 'nested/copied.wasm.br', 'nested/COPIED.WASM.BR'])('rejects publicDir sidecars before later packaging hooks: %s', async name => {
     const { root } = fixture();
     const asset = path.join(root, 'public', name); mkdirSync(path.dirname(asset), { recursive: true }); writeFileSync(asset, 'unexpected');

@@ -13,6 +13,7 @@ import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-bro
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
+
 describe('shared browser core adapter', () => {
   it('reads the combined inventory and emits five verified hosted Wasm payloads', async () => {
     const files = new Map<string, Uint8Array>();
@@ -32,6 +33,7 @@ describe('shared browser core adapter', () => {
       expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
     }
   });
+
   it.each(profiles)('transforms %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));
     const server = await createServer({
@@ -70,6 +72,7 @@ describe('shared browser core adapter', () => {
       await server.close(); rmSync(root, { recursive: true, force: true });
     }
   });
+
   it('rejects an unreviewed but internally consistent revision when creating the dev plugin, before the first import', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-pin-'));
     try {
@@ -100,6 +103,7 @@ describe('shared browser core adapter', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
   it('initializes real CPU Wasm from the original non-zero-offset byte view with no fetch or Node imports', async () => {
     const profile = 'cpu-wasm32';
     const id = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);

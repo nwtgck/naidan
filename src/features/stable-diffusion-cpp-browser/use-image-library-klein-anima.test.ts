@@ -11,6 +11,7 @@ import { parametersFixture } from './test-fixtures';
 import { recommendationForSelection } from './recommendations';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });

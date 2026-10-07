@@ -26,6 +26,7 @@ function setup({ run }: { run: Parameters<typeof createImageResponse>[0]['run'] 
   const response = createImageResponse({ signal: lifetime.signal, seed: '42', width: 256, height: 256, budget, run });
   return { budget, lifetime, response };
 }
+
 it('produces two concurrently consumed streams with exactly one native job', async () => {
   const run = vi.fn(async () => output()); const { response, budget, lifetime } = setup({ run });
   await Promise.resolve(); expect(run).not.toHaveBeenCalled(); expect(budget.reserved).toBe(0);
@@ -33,11 +34,13 @@ it('produces two concurrently consumed streams with exactly one native job', asy
   expect(result.image.length).toBe(33); expect(result.events).toEqual([{ type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test', uniformOutput: false }]);
   expect(run).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
 });
+
 it('does not start when either required output is cancelled before reading', async () => {
   const run = vi.fn(async () => output()); const { response, budget } = setup({ run });
   await response.events.cancel(); await expect(response.image.getReader().read()).rejects.toThrow();
   expect(run).not.toHaveBeenCalled(); expect(budget.reserved).toBe(0);
 });
+
 it('holds physical-work reservations while cancellation waits for an uncooperative producer', async () => {
   const gate = Promise.withResolvers<ImageExecutionOutput>(), started = Promise.withResolvers<void>();
   const { response, budget } = setup({
@@ -53,6 +56,7 @@ it('holds physical-work reservations while cancellation waits for an uncooperati
   await failed; await Promise.resolve(); expect(cancelled).toBe(false); expect(budget.reserved).toBeGreaterThan(0);
   gate.resolve(output()); await cancelling; expect(budget.reserved).toBe(0); reader.releaseLock();
 });
+
 it('fails both readers on native failure and releases the delivery reservation', async () => {
   const { response, budget } = setup({
     run: async () => {
@@ -63,6 +67,7 @@ it('fails both readers on native failure and releases the delivery reservation',
     expect(response.events.getReader().read()).rejects.toMatchObject({ details: { stage: 'generation', reason: 'generation-failed' } })]);
   expect(budget.reserved).toBe(0);
 });
+
 it('bounds pending previews without blocking native computation behind a slow events reader', async () => {
   const completed = Promise.withResolvers<void>();
   const { response, lifetime, budget } = setup({
@@ -79,6 +84,7 @@ it('bounds pending previews without blocking native computation behind a slow ev
   // EOF is visible before the underlying pull promise retires.
   await vi.waitFor(() => expect(budget.reserved).toBe(0));
 });
+
 it('does not invoke native code when retained deliveries exhausted the shared budget', async () => {
   const budget = createInferenceBudget({ capacity: 40 * 1024 * 1024 }); const lifetime = new AbortController();
   const first = createImageResponse({ signal: lifetime.signal, seed: '1', width: 256, height: 256, budget, run: async () => output() });
@@ -88,6 +94,7 @@ it('does not invoke native code when retained deliveries exhausted the shared bu
   await expect(second.image.getReader().read()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' }); expect(run).not.toHaveBeenCalled();
   await first.events.cancel(); expect(budget.reserved).toBe(0);
 });
+
 it('propagates external revocation to both outputs before native work settles', async () => {
   const gate = Promise.withResolvers<ImageExecutionOutput>(), started = Promise.withResolvers<void>();
   const { response, lifetime, budget } = setup({
@@ -101,12 +108,14 @@ it('propagates external revocation to both outputs before native work settles', 
   expect(budget.reserved).toBeGreaterThan(0); gate.resolve(output());
   await vi.waitFor(() => expect(budget.reserved).toBe(0));
 });
+
 it('rejects returned pixels with unexpected dimensions', async () => {
   const { response, budget } = setup({ run: async () => ({ ...output(), width: 512 }) });
   await Promise.all([expect(collect({ stream: response.image })).rejects.toMatchObject({ details: { stage: 'output-validation', reason: 'invalid-output' } }),
     expect(collect({ stream: response.events })).rejects.toMatchObject({ details: { stage: 'output-validation', reason: 'invalid-output' } })]);
   expect(budget.reserved).toBe(0);
 });
+
 it('retains delivery ownership while a cancelled preview is still materializing bytes', async () => {
   const materializing = Promise.withResolvers<void>(), bytes = Promise.withResolvers<ArrayBuffer>();
   class SlowPreview extends Blob {
@@ -148,6 +157,7 @@ it('retains delivery ownership while a cancelled preview is still materializing 
   }
   expect(budget.reserved).toBe(0);
 });
+
 it('external revocation retains the preview reservation until its byte read ends', async () => {
   const materializing = Promise.withResolvers<void>(), bytes = Promise.withResolvers<ArrayBuffer>();
   class SlowPreview extends Blob {
@@ -184,6 +194,7 @@ it('external revocation retains the preview reservation until its byte read ends
   }
   await vi.waitFor(() => expect(budget.reserved).toBe(0));
 });
+
 it('waits for output-reader cancellation cleanup instead of just native completion', async () => {
   const reading = Promise.withResolvers<void>(), cleanup = Promise.withResolvers<void>();
   class SlowCleanup extends Blob {

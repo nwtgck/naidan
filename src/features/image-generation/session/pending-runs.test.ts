@@ -26,6 +26,7 @@ function harness() {
   });
   return { registry, owner, create, snapshot, output, plan, persistence, store };
 }
+
 it('keeps confirmed pixels and original identities after the view unsubscribes', async () => {
   const h = harness(), view = vi.fn(); const unsubscribe = h.registry.subscribe({ listener: view });
   await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
@@ -39,6 +40,7 @@ it('keeps confirmed pixels and original identities after the view unsubscribes',
   expect(h.persistence.commit.mock.calls[1]![0]).toBe(attempted);
   expect(h.persistence.create).toHaveBeenCalledOnce(); expect(view).not.toHaveBeenCalled(); expect(h.registry.list()).toEqual([]);
 });
+
 it('retains a failed terminal acknowledgement even when no pixels remain pending', async () => {
   const h = harness(); await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   await h.owner.submission.output({ index: 0, ...h.output });
@@ -48,6 +50,7 @@ it('retains a failed terminal acknowledgement even when no pixels remain pending
   const attempted = h.persistence.update.mock.calls[1]![0]; await h.registry.retry({ id: h.owner.id });
   expect(h.persistence.update.mock.calls[2]![0]).toEqual(attempted); expect(h.registry.list()).toEqual([]);
 });
+
 it('does not discard or retry a live producer and never evicts another run at capacity', async () => {
   const h = harness(); const other = h.create();
   expect(() => h.registry.discard({ id: h.owner.id })).toThrow('finish');
@@ -56,6 +59,7 @@ it('does not discard or retry a live producer and never evicts another run at ca
   await other.retire(); expect(h.registry.list()).toHaveLength(1);
   await h.owner.retire(); expect(h.registry.list()).toEqual([]);
 });
+
 it('a persistence observer exception cannot reclassify a successful storage operation', async () => {
   const h = harness(); h.registry.subscribe({
     listener: () => {
@@ -67,12 +71,14 @@ it('a persistence observer exception cannot reclassify a successful storage oper
   await h.owner.submission.finished({ completion: { type: 'completed' } }); await h.owner.retire();
   expect(h.registry.list()).toEqual([]); expect(h.persistence.commit).toHaveBeenCalledOnce();
 });
+
 it('retirement without a terminal notification marks a partial run as failed', async () => {
   const h = harness(); await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   await h.owner.retire();
   expect(h.persistence.update).toHaveBeenLastCalledWith(expect.objectContaining({ execution: expect.objectContaining({ type: 'failed' }) }));
   expect(h.registry.list()).toEqual([]);
 });
+
 it('repeated failed retries retain the same record until explicit discard', async () => {
   const h = harness(); h.persistence.create.mockRejectedValue(new Error('deleted store'));
   await expect(h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds })).rejects.toThrow();
@@ -82,9 +88,11 @@ it('repeated failed retries retain the same record until explicit discard', asyn
   expect(h.registry.list()[0]?.state.run).toBe(before);
   h.registry.discard({ id: h.owner.id }); expect(h.registry.list()).toEqual([]);
 });
+
 it('keeps the original storage address despite later mutation of the caller object', () => {
   const h = harness(); h.store.storeId = toImageGenerationStoreId({ raw: 'other-store' }); expect(h.registry.list()[0]?.store.storeId).toBe('store-aa');
 });
+
 it('does not leave a raw retry closure able to save a discarded run', async () => {
   const h = harness(); await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   h.persistence.commit.mockRejectedValueOnce(new Error('quota'));
@@ -94,6 +102,7 @@ it('does not leave a raw retry closure able to save a discarded run', async () =
   h.registry.discard({ id: h.owner.id });
   await expect(retry()).rejects.toThrow('saved or discarded'); expect(h.persistence.commit).toHaveBeenCalledOnce();
 });
+
 it('a save in progress cannot be discarded and a second retry cannot duplicate publication', async () => {
   const h = harness(); await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   h.persistence.commit.mockRejectedValueOnce(new Error('quota'));

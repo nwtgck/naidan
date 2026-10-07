@@ -26,6 +26,7 @@ describe('bounded native event acknowledgement', () => {
     release.resolve(); await pending; expect(seen).toEqual([delta({ text: ' A ' }), delta({ text: 'B' })]);
     expect(() => owner.enqueue({ event })).toThrow('closed');
   });
+
   it('interrupts overflow while still draining all earlier accepted data', async () => {
     const onFailure = vi.fn(); const seen: string[] = [];
     const owner = createInferenceEventDelivery({
@@ -40,6 +41,7 @@ describe('bounded native event acknowledgement', () => {
     expect(onFailure).toHaveBeenCalledOnce(); expect(seen).toHaveLength(TEST_ONLY.limits.events);
     expect(seen.at(-1)).toBe(String(TEST_ONLY.limits.events - 1));
   });
+
   it('bounds text size and restores capacity after successful deliveries', async () => {
     let owner = createInferenceEventDelivery({ onFailure: vi.fn(), onEvent: vi.fn() });
     expect(() => owner.enqueue({ event: delta({ text: 'x'.repeat(TEST_ONLY.limits.textCodeUnits + 1) }) })).toThrow('limit');
@@ -52,6 +54,7 @@ describe('bounded native event acknowledgement', () => {
     }
     await owner.finish(); expect(onEvent).toHaveBeenCalledTimes(TEST_ONLY.limits.events + 5);
   });
+
   it('does not retry a failed consumer and preserves its failure', async () => {
     const error = new Error('host failed'); const onFailure = vi.fn(() => {
       throw new Error('interrupt failed');

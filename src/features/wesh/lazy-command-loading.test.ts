@@ -153,7 +153,6 @@ describe("Wesh lazy command loading", () => {
     expect(command).not.toHaveBeenCalled();
   });
 
-
   it("reaps the command process when implementation loading fails", async () => {
     const wesh = createWesh();
     await wesh.init();
@@ -183,5 +182,4 @@ describe("Wesh lazy command loading", () => {
     expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
     expect(load).toHaveBeenCalledTimes(1);
   });
-
 });

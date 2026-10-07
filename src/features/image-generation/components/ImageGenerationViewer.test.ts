@@ -3,12 +3,15 @@ import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationViewer>> | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 it('supports explicit zoom, keyboard next/previous and closing without owning image storage', async () => {
   wrapper = mount(ImageGenerationViewer, { props: { downloadEnabled: true, count: 3, index: 0, 'onUpdate:index': value => wrapper?.setProps({ index: value }) }, global: { stubs: { Teleport: true } } });
   await wrapper.get('[data-testid="image-viewer-zoom-in"]').trigger('click');

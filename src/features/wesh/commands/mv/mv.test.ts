@@ -625,5 +625,4 @@ renamed 'two' -> 'dest/two'
     expect(moved.stderr.text).toBe('');
     expect(moved.result.exitCode).toBe(0);
   });
-
 });

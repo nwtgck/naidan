@@ -95,7 +95,9 @@ function opfsFixture() {
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
   return { files: directory.files, failures, aborted, root, storage, directory, provider: new OPFSStorageProvider() };
 }
+
 afterEach(() => vi.unstubAllGlobals());
+
 it('stores the registry in the experimental directory under the Naidan OPFS root', async () => {
   const { provider, root, storage, files } = opfsFixture();
   expect(await provider.loadNaidanRpcRegistry()).toBeUndefined();
@@ -107,6 +109,7 @@ it('stores the registry in the experimental directory under the Naidan OPFS root
   expect([...files.keys()]).toEqual([filename]);
   expect(await provider.loadNaidanRpcRegistry()).toEqual(registry);
 });
+
 it('does not create a missing experimental directory when reading or removing the registry', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
@@ -118,6 +121,7 @@ it('does not create a missing experimental directory when reading or removing th
     ['experimental', { create: false }],
   ]);
 });
+
 it('creates the experimental directory on the first registry save', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
@@ -125,12 +129,14 @@ it('creates the experimental directory on the first registry save', async () => 
   expect(storage.directories.get('experimental')?.files.get(filename)?.content).toBe(JSON.stringify(registry));
   expect(await provider.loadNaidanRpcRegistry()).toEqual(registry);
 });
+
 it('validates the registry before creating its directory', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
   await expect(provider.saveNaidanRpcRegistry({ registry: { ...registry, id: 'bad' } })).rejects.toThrow();
   expect(storage.directories.has('experimental')).toBe(false);
 });
+
 it('propagates directory access failures for reads, writes and removals', async () => {
   const { provider, failures } = opfsFixture();
   failures.directoryLookup = new DOMException('Directory denied', 'NotAllowedError');
@@ -138,6 +144,7 @@ it('propagates directory access failures for reads, writes and removals', async 
   await expect(provider.saveNaidanRpcRegistry({ registry })).rejects.toThrow('Directory denied');
   await expect(provider.saveNaidanRpcRegistry({ registry: undefined })).rejects.toThrow('Directory denied');
 });
+
 it('leaves the old root-level registry untouched without reading or migrating it', async () => {
   const { provider, storage, files } = opfsFixture();
   const oldFilename = 'experimental-naidan-rpc-connections.json';
@@ -150,6 +157,7 @@ it('leaves the old root-level registry untouched without reading or migrating it
   expect(storage.files.get(oldFilename)?.content).toBe(oldContent);
   expect(storage.getFileHandle).not.toHaveBeenCalled();
 });
+
 it('removes only the registry and preserves the shared experimental directory and image data', async () => {
   const { provider, storage, directory, files } = opfsFixture();
   const images = await directory.getDirectoryHandle('image-generation', { create: true });
@@ -162,6 +170,7 @@ it('removes only the registry and preserves the shared experimental directory an
   expect(directory.directories.get('image-generation')?.files.get('catalog.json')?.content).toBe('image catalog');
   expect(await provider.loadNaidanRpcRegistry()).toBeUndefined();
 });
+
 it('reopens the experimental directory after clearing all storage', async () => {
   const { provider, storage, directory } = opfsFixture();
   await provider.saveNaidanRpcRegistry({ registry });
@@ -174,6 +183,7 @@ it('reopens the experimental directory after clearing all storage', async () => 
   expect(storage.directories.get('experimental')).not.toBe(directory);
   expect(await provider.loadNaidanRpcRegistry()).toEqual(replacement);
 });
+
 it('does not turn access failures or failures after lookup into an empty registry', async () => {
   const { provider, failures, files } = opfsFixture();
   failures.lookup = new DOMException('Denied', 'NotAllowedError');
@@ -182,17 +192,20 @@ it('does not turn access failures or failures after lookup into an empty registr
   failures.read = new DOMException('Removed after lookup', 'NotFoundError');
   await expect(provider.loadNaidanRpcRegistry()).rejects.toThrow('Removed after lookup');
 });
+
 it('rejects corrupted content without replacing it', async () => {
   const { provider, files } = opfsFixture(); files.set(filename, { content: '{' });
   await expect(provider.loadNaidanRpcRegistry()).rejects.toThrow();
   expect(files.get(filename)?.content).toBe('{');
 });
+
 it('aborts a failed replacement and preserves the previously committed registry', async () => {
   const { provider, failures, files, aborted } = opfsFixture();
   await provider.saveNaidanRpcRegistry({ registry }); failures.close = new Error('close failed');
   await expect(provider.saveNaidanRpcRegistry({ registry: { ...registry, id: 'replacement-example' } })).rejects.toThrow('close failed');
   expect(aborted).toHaveBeenCalledOnce(); expect(JSON.parse(files.get(filename)!.content)).toEqual(registry);
 });
+
 it('removes a newly created empty file after the first save fails, allowing retry', async () => {
   const { provider, failures, files } = opfsFixture(); failures.write = new Error('quota');
   await expect(provider.saveNaidanRpcRegistry({ registry })).rejects.toThrow('quota');
@@ -200,6 +213,7 @@ it('removes a newly created empty file after the first save fails, allowing retr
   failures.write = undefined; await provider.saveNaidanRpcRegistry({ registry });
   expect(await provider.loadNaidanRpcRegistry()).toEqual(registry);
 });
+
 it('keeps memory registries private to a provider instance and clears them with the other data', async () => {
   const first = new MemoryStorageProvider(), other = new MemoryStorageProvider();
   await first.saveNaidanRpcRegistry({ registry });

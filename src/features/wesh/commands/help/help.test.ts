@@ -83,5 +83,4 @@ describe('wesh help', () => {
     expect(helped.stderr.text).toBe("help: no help topics match 'definitely_missing'\n");
     expect(helped.result.exitCode).toBe(1);
   });
-
 });

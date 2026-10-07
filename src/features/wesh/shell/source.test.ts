@@ -49,7 +49,6 @@ describe('ShellSource', () => {
     await expect(readShellSourceToText({ source })).resolves.toBe('before😀after');
   });
 
-
   it('preserves a UTF-8 BOM split across byte-backed source chunks', async () => {
     const chunks = [
       Uint8Array.of(0xef),
@@ -487,5 +486,4 @@ body
       }
     }
   });
-
 });

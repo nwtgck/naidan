@@ -15,9 +15,11 @@ vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn().mock
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 describe('message parts UI boundaries', () => {
   it('shows volatile tool arguments without adding content or a result to the message', async () => {
     const message = assistant({ parts: [], interruption: undefined });
@@ -46,6 +48,7 @@ describe('message parts UI boundaries', () => {
     expect(wrapper.find('[data-testid="error-message"]').text()).toContain('通信に失敗しました。');
     expect(message.parts).toEqual([]); wrapper.unmount();
   });
+
   it('a cancelled native partial is displayed without a running border or a fabricated tag', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });
@@ -53,6 +56,7 @@ describe('message parts UI boundaries', () => {
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);
     expect(message.parts[0]).toEqual({ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }); wrapper.unmount();
   });
+
   it('copy raw uses the original text instead of the read-only thinking projection', async () => {
     const raw = '<think> R </think> Answer\n';
     const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
@@ -66,6 +70,7 @@ describe('message parts UI boundaries', () => {
     expect(writeText).toHaveBeenCalledWith(raw);
     expect(message.parts[0]).toMatchObject({ text: raw }); wrapper.unmount();
   });
+
   it('empty earlier text becoming visible does not change the later reasoning identity', () => {
     const message = assistant({ parts: [{ type: 'text', text: '', completeness: 'partial' }, { type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const chat = ref({ id: toChatId({ raw: 'c' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
@@ -77,6 +82,7 @@ describe('message parts UI boundaries', () => {
     const second = chatFlow.value[1];
     expect(second?.type === 'message' && second.key).toBe(first?.type === 'message' && first.key);
   });
+
   it('edit emits the complete raw body with whitespace instead of its rendered projection', async () => {
     const raw = '<think>Reason</think> Body \n';
     const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });

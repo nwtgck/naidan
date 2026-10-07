@@ -70,7 +70,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
     currentChat.value = chat;
   },
 }));
-const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M','Q8_0'].map(quant => ({ label: quant, size: 256, files: [{ path: `Model-${quant}.gguf`, size: 256 }] })) };
+const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M', 'Q8_0'].map(quant => ({ label: quant, size: 256, files: [{ path: `Model-${quant}.gguf`, size: 256 }] })) };
 const base = resolveModelLaunchTarget({ input: catalog.repository, catalog });
 const scopes: ReturnType<typeof effectScope>[] = [];
 function mountState() {
@@ -78,6 +78,7 @@ function mountState() {
   const state = scope.run(() => useModelLaunchChat({ chat: computed(() => currentChat.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' as const }, modelId: activeLaunch.target.modelId })) }))!;
   return { scope, state };
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.clearAllMocks(); installed.clear(); launchEnabled = true; modelListListener = undefined; storageVersion = 0;
@@ -95,13 +96,16 @@ beforeEach(async () => {
   });
   initialize.mockResolvedValue('applied'); inspect.mockResolvedValue(catalog);
 });
+
 afterEach(() => scopes.splice(0).forEach(scope => scope.stop()));
+
 describe('model launch chat workflow', () => {
   it('checks local files but never downloads or fetches metadata on mount', async () => {
     const { state } = mountState(); await flushPromises();
     expect(state.readiness.value).toBe('missing'); expect(state.maySend.value).toBe(false);
     expect(download).not.toHaveBeenCalled(); expect(inspect).not.toHaveBeenCalled(); expect(initialize).not.toHaveBeenCalled();
   });
+
   it('downloads once on explicit action, reports readiness, and initializes only after verification', async () => {
     const gate = Promise.withResolvers<void>();
     download.mockImplementationOnce(async () => {
@@ -113,6 +117,7 @@ describe('model launch chat workflow', () => {
     gate.resolve(); await vi.waitFor(() => expect(state.maySend.value).toBe(true));
     expect(state.readiness.value).toBe('ready'); expect(initialize).toHaveBeenCalledOnce();
   });
+
   it('does not mutate shared settings merely because an unpinned selector changed', async () => {
     const { state } = mountState(); await flushPromises();
     state.selectPath({ path: 'Model-Q8_0.gguf' }); await flushPromises();
@@ -122,17 +127,20 @@ describe('model launch chat workflow', () => {
     expect(prepare).toHaveBeenCalledOnce(); expect(prepare.mock.calls[0]![0].request.mode).toBe('retarget');
     expect(activeLaunch.target.mainFilePath).toBe('Model-Q8_0.gguf');
   });
+
   it('uses an already installed newly selected model without a payload download', async () => {
     const other = targetForChoice({ catalog, path: 'Model-Q8_0.gguf' }); installed.add(other.modelId);
     const { state } = mountState(); await flushPromises(); state.selectPath({ path: other.mainFilePath }); await flushPromises();
     expect(state.maySend.value).toBe(false); await state.adoptAndDownload(); await flushPromises();
     expect(download).not.toHaveBeenCalled(); expect(state.maySend.value).toBe(true);
   });
+
   it('cannot change a URL-pinned quantization through the card selector action', async () => {
     activeLaunch = { ...activeLaunch, requestedVariant: 'Q4_K_M' };
     const { state } = mountState(); await flushPromises(); state.selectPath({ path: 'Model-Q8_0.gguf' });
     expect(state.selectedPath.value).toBe('Model-Q4_K_M.gguf');
   });
+
   it('keeps a page-owned download alive when its card unmounts, without applying stale global changes', async () => {
     const gate = Promise.withResolvers<void>(); download.mockImplementationOnce(async () => {
       await gate.promise; installed.add(base.target.modelId);
@@ -141,22 +149,24 @@ describe('model launch chat workflow', () => {
     scope.stop(); gate.resolve(); await flushPromises();
     expect(queue.jobs.value[0]?.status).toBe('complete'); expect(initialize).not.toHaveBeenCalled();
   });
+
   it('allows chat after file verification even if writing global defaults fails', async () => {
     installed.add(base.target.modelId); initialize.mockRejectedValueOnce(new Error('quota'));
     const { state } = mountState(); await flushPromises();
     expect(state.defaultWarning.value).toBe(true); expect(state.maySend.value).toBe(true);
   });
+
   it('invalidates readiness when files are removed and does not refresh metadata', async () => {
     installed.add(base.target.modelId); const { state } = mountState(); await flushPromises(); expect(state.maySend.value).toBe(true);
     installed.clear(); await state.refresh(); expect(state.maySend.value).toBe(false); expect(inspect).not.toHaveBeenCalled();
   });
+
   it('repairs a saved incomplete reservation without automatically downloading', async () => {
     activeLaunch = { ...activeLaunch, phase: 'reserved' };
     const { state } = mountState(); expect(state.maySend.value).toBe(false); await flushPromises();
     expect(prepare).toHaveBeenCalledOnce(); expect(state.launch.value?.phase).toBe('active'); expect(download).not.toHaveBeenCalled();
   });
 });
-
 
 describe('model launch card rendering', () => {
   async function renderCard() {
@@ -166,12 +176,14 @@ describe('model launch card rendering', () => {
     const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state }, global: { plugins: [router] } });
     await flushPromises(); return { wrapper, state };
   }
+
   it('shows quantization choices for an unpinned link and exposes an explicit download button', async () => {
     const { wrapper } = await renderCard();
     expect(wrapper.find('[data-testid="model-launch-quantization"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(true);
     expect(download).not.toHaveBeenCalled(); wrapper.unmount();
   });
+
   it('hides only the central quantization selector when the link specifies a variant', async () => {
     activeLaunch = { ...activeLaunch, requestedVariant: 'Q4_K_M' };
     const { wrapper } = await renderCard();
@@ -179,6 +191,7 @@ describe('model launch card rendering', () => {
     expect(wrapper.find('[data-testid="model-launch-fixed-quantization"]').text()).toContain('Q4_K_M');
     wrapper.unmount();
   });
+
   it('renders the ready status for verified local files without downloading', async () => {
     installed.add(base.target.modelId);
     const { wrapper, state } = await renderCard();
@@ -190,7 +203,6 @@ describe('model launch card rendering', () => {
   });
 });
 
-
 describe('automatic local preparation', () => {
   it('prepares only once after files are verified and does not block sending during the load', async () => {
     const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
@@ -200,28 +212,31 @@ describe('automatic local preparation', () => {
     gate.resolve('ready'); await flushPromises(); expect(state.warmup.value).toBe('ready');
     expect(download).not.toHaveBeenCalled(); expect(inspect).not.toHaveBeenCalled();
   });
+
   it('waits until a hidden tab becomes visible', async () => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); installed.add(base.target.modelId);
     const { state } = mountState(); await flushPromises(); expect(prepareModel).not.toHaveBeenCalled();
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); await flushPromises();
     expect(prepareModel).toHaveBeenCalledOnce(); expect(state.warmup.value).toBe('ready');
   });
+
   it('cancels only its own preparation when leaving and ignores late success', async () => {
     const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
     const { scope, state } = mountState(); await flushPromises(); const signal: AbortSignal = prepareModel.mock.calls[0]![0].signal;
     scope.stop(); expect(signal.aborted).toBe(true); gate.resolve('ready'); await flushPromises(); expect(state.warmup.value).not.toBe('ready');
   });
+
   it('does not spin when another operation owns the worker', async () => {
     prepareModel.mockResolvedValueOnce('skipped-busy'); installed.add(base.target.modelId); const { state } = mountState(); await flushPromises();
     expect(state.warmup.value).toBe('deferred'); await state.refresh(); window.dispatchEvent(new Event('focus')); await flushPromises();
     expect(prepareModel).toHaveBeenCalledOnce(); expect(state.maySend.value).toBe(true);
   });
+
   it('does not prevent a normal send after speculative preparation failed', async () => {
     prepareModel.mockRejectedValueOnce(new Error('device lost')); installed.add(base.target.modelId); const { state } = mountState(); await flushPromises();
     expect(state.warmup.value).toBe('failed'); expect(state.maySend.value).toBe(true); expect(download).not.toHaveBeenCalled();
   });
 });
-
 
 describe('stable file verification and focused setup', () => {
   async function renderCard() {
@@ -428,7 +443,6 @@ describe('model-list notifications after preload', () => {
   });
 });
 
-
 describe('composer scope boundaries', () => {
   it('does not hide an existing conversation when its setup model files are missing', async () => {
     const node: MessageNode = {
@@ -480,6 +494,7 @@ describe('operation-scoped model loading display', () => {
     expect(state.warmupProgress.value).toBe(before);
     gate.resolve('ready'); await flushPromises(); wrapper.unmount();
   });
+
   it('does not accept late load progress after the storage provider changes', async () => {
     const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
     const { state } = mountState(); await flushPromises(); const callback = prepareModel.mock.calls[0]![0].onProgress;

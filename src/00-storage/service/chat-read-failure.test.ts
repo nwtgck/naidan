@@ -76,6 +76,7 @@ function installOpfs() {
 beforeEach(() => {
   localStorage.clear();
 });
+
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -155,6 +156,7 @@ for (const backend of ['local', 'opfs'] as const) {
         await expect(provider.loadChat({ id })).rejects.toThrow();
         expect(await read({ kind })).toBe('{');
       });
+
       it(`keeps a valid orphaned ${kind} unchanged`, async () => {
         const { provider, write, read } = await setup();
         const value = kind === 'meta' ? meta : content;

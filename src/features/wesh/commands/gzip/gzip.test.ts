@@ -370,7 +370,6 @@ keep me
     expect(result.exitCode).toBe(0);
   });
 
-
   it('keeps gzip -d and gunzip aligned for shared decompression behavior', async () => {
     await writeFile({ path: 'plain.txt', data: 'shared decompression semantics\n' });
     await execute({ script: 'gzip -nc plain.txt > payload.gz', stdinText: '' });
@@ -473,7 +472,6 @@ keep me
     expect(first.stderr.text).toBe('');
     expect(first.result.exitCode).toBe(0);
   });
-
 
   it('stores the named input basename and modification time by default', async () => {
     const mtime = Date.UTC(2024, 0, 2, 3, 4, 5, 987);
@@ -845,5 +843,4 @@ existing`);
     expect(stdoutWithoutSuffix.stderr.text).toBe('');
     expect(stdoutWithoutSuffix.result.exitCode).toBe(0);
   });
-
 });

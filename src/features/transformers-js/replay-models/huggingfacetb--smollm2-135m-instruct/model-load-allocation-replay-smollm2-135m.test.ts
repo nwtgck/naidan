@@ -8,11 +8,14 @@ import { getProductionTransformersArtifact } from '@/features/transformers-js/ru
 
 const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 const resources = [{ path: 'onnx/model_q4f16.onnx', bytes: 117691126 }];
+
 describe('SmolLM2 135M model Load allocation boundaries', () => {
   beforeAll(async () => {
     await getProductionTransformersArtifact();
   }, 60000);
+
   afterEach(() => vi.unstubAllGlobals());
+
   it('preserves the independent successful browser allocation observation', () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.modelId).toBe(modelId);
@@ -22,6 +25,7 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     expect(evidence.success.successfulAllocationBytes).toBe(117691126);
     expect(evidence.success.returnedReadBufferBytes).toBe(117691126);
   });
+
   it('refuses the real 117691126-byte request before allocation, never pretending a tiny body loaded the full model', async () => {
     const target = resources[0]!;
     let targetPulls = 0;
@@ -63,6 +67,7 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       }
     }
   }, 60000);
+
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.missingCache).toMatchObject({ fileCount: 0, load: 'rejected-before-candidate', weightReads: 0, ortEntries: 0, modelDownloads: 0 });
@@ -91,6 +96,7 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       download.mockRestore(); await h.close();
     }
   }, 60000);
+
   it('copies an explicitly tiny two-chunk body into the spied session boundary', async () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

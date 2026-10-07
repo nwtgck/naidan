@@ -174,6 +174,7 @@ printf '%s' alpha | tee good.txt blocked`,
     expect(result.exitCode).toBe(1);
     expect(await readTextFile({ path: 'good.txt' })).toBe('alpha');
   });
+
   it('stops argv processing when --help is reached before a later invalid option', async () => {
     const helpFirst = await execute({ script: 'tee --help --definitely-invalid-option' });
     const invalidFirst = await execute({ script: 'tee --definitely-invalid-option --help' });
@@ -185,5 +186,4 @@ printf '%s' alpha | tee good.txt blocked`,
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

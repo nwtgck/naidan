@@ -912,7 +912,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
   });
 
-
   it('keeps editor text when switching through No Prompt while the panel is open', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -1480,5 +1479,4 @@ describe('ChatGroupSettingsPanel.vue', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

@@ -76,9 +76,11 @@ vi.mock('../runtime/load-runtime', () => ({
     return host.core;
   },
 }));
+
 afterAll(async () => {
   await releaseSession({ releaseRuntime: true });
 });
+
 function request({ messages }: { messages: WorkerGenerateInput['messages'] }): WorkerGenerateInput {
   return { model: 'private-local-name.gguf', messages, temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/' };
 }
@@ -100,6 +102,7 @@ async function readNativeLogits(): Promise<number[]> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return Array.from({ length: count }, (_, index) => view.getFloat32(index * 4, true));
 }
+
 describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   it('loads a chat-template GGUF, prefills, generates and closes the reader without logging content', async () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -126,6 +129,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(readDiagnostics({ calls: debug.mock.calls }).some(item => item.event === 'generation-performance')).toBe(false);
     debug.mockRestore();
   }, 30000);
+
   it('reuses repeated token rendering without changing output, decoding or request isolation', async () => {
     const factory = renderingModule.createTokenRenderer;
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'repeat fixture' }] }), maxTokens: 33, debug: 'on' as const };
@@ -155,6 +159,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       referenceFactory?.mockRestore(); log.mockRestore();
     }
   }, 30000);
+
   it('keeps real native output and logits when optional token caching cannot allocate a copy', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: 'chatml' }));
@@ -191,6 +196,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       factory.mockRestore(); log.mockRestore();
     }
   }, 30000);
+
   it('renders every native byte token and both special modes equivalently with and without caching', async () => {
     const req = request({ messages: [{ role: 'user', content: 'rendering fixture' }] });
     const { core, vocab } = await prepareSession({ request: req, onProgress: () => {}, signal: undefined });
@@ -210,6 +216,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       a.dispose(); b.dispose();
     }
   }, 30000);
+
   it.each(['', 'plain ASCII', '日本語の入力 🐈 café', `\
 <|im_start|>assistant
 <|im_end|>`])('matches the two-pass native tokenizer for %j', async text => {
@@ -238,6 +245,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       core.free({ pointer: prompt });
     }
   }, 30000);
+
   it('tokenizes once and reports the unevaluated terminal token after cleanup', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -289,6 +297,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       tokenize.mockRestore(); decode.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it.each([
     { model: 'attention', limit: 1 }, { model: 'attention', limit: 5 },
     { model: 'hybrid', limit: 1 }, { model: 'hybrid', limit: 5 },
@@ -326,6 +335,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     }
   }, 30000);
+
   it('cancels at the deferred terminal boundary without publishing a valid cache', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -351,6 +361,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       decode.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it('reports failed cleanup as failure rather than a completed performance run', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -370,6 +381,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       free.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it('probes a new native context once and never reuses its temporary tokens or logits', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -420,6 +432,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       await prepareSession({ request: request({ messages: [{ role: 'user', content: 'reset fixture' }] }), signal: undefined, onProgress: () => {} });
     }
   }, 30000);
+
   it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
     const core = host.core; if (!core) throw new Error('Expected resident native runtime');
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
@@ -445,11 +458,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       sample.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it('rejects an oversized prompt without rereading the resident model', async () => {
     const before = host.close.mock.calls.length;
     await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'long prompt '.repeat(300) }] }), onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('context-full');
     expect(host.close).toHaveBeenCalledTimes(before);
   }, 30000);
+
   it('reuses weights and context but clears old KV between different prompts', async () => {
     await releaseSession({ releaseRuntime: false });
     const req = request({ messages: [{ role: 'user', content: 'first' }] });
@@ -492,6 +507,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     // actual native positions as well, so accidentally omitting the clear fails.
     expect(await sequencePosition()).toBe(reusedPosition);
   }, 30000);
+
   it('keeps the model-limited context allocation across requests', async () => {
     const reads = host.reads; const phases: string[] = [];
     await generate({
@@ -505,6 +521,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(host.reads).toBe(reads); expect(phases).not.toContain('initializing'); expect(phases).not.toContain('loading');
     expect(await host.core!.api.llama_n_ctx(sessionTesting.residentContext()!)).toBe(256);
   }, 30000);
+
   it('reloads a replaced file even when the name is unchanged', async () => {
     const reads = host.reads; host.revision++;
     const phases: string[] = [];
@@ -518,6 +535,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     });
     expect(host.reads).toBeGreaterThan(reads); expect(phases).toContain('loading');
   }, 30000);
+
   it('cancels after prefill without dropping weights and can generate again', async () => {
     const reads = host.reads; const controller = new AbortController(); const chunks = vi.fn();
     const req = request({ messages: [{ role: 'user', content: 'cancel this request' }] });
@@ -545,6 +563,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     });
     expect(generated.length).toBeGreaterThan(0); expect(host.reads).toBe(reads); expect(phases).not.toContain('loading');
   }, 30000);
+
   it('cancels during generation and never forwards a tail after cancellation', async () => {
     const controller = new AbortController(); const chunks: string[] = []; const reads = host.reads;
     await expect(generate({
@@ -559,6 +578,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     })).rejects.toThrow('aborted');
     expect(chunks).toHaveLength(1); expect(host.reads).toBe(reads);
   }, 30000);
+
   it('does not load or allocate for an already cancelled request', async () => {
     const controller = new AbortController(); controller.abort(); const reads = host.reads;
     const onProgress = vi.fn();
@@ -570,6 +590,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     })).rejects.toThrow('aborted');
     expect(host.reads).toBe(reads); expect(onProgress).not.toHaveBeenCalled();
   });
+
   it('reloads if the filesystem identity changes without a size or timestamp change', async () => {
     const reads = host.reads; host.sameFile = false;
     try {
@@ -584,6 +605,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       host.sameFile = true;
     }
   }, 30000);
+
   it.each(['private-local-name.gguf', 'private-local-name-GGUF'])('releases only the matching resident model before removing its stored file: %s', async name => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const req = request({ messages: [{ role: 'user', content: 'hello' }] });
@@ -597,6 +619,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(host.reads).toBeGreaterThan(reads);
   }, 30000);
+
   it('releases a cancelled initial load and can load the same model afterwards', async () => {
     await releaseSession({ releaseRuntime: false });
     const controller = new AbortController(); const reads = host.reads; const closes = host.close.mock.calls.length;
@@ -656,6 +679,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
     }
   }, 30000);
+
   it.each([
     { next: 'prefix-old', comparison: 'identical', common: 11, reused: 11 },
     { next: 'prefix-old-suffix', comparison: 'prompt-extension', common: 11, reused: 11 },
@@ -704,6 +728,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       debug.mockRestore();
     }
   }, 30000);
+
   it('matches cold logits after full-prefix reuse with a history-sensitive native model', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -751,6 +776,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       clear.mockRestore(); batch.mockRestore();
     }
   }, 30000);
+
   it('continues native generation after a declined probe and avoids advanced reuse', async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -786,6 +812,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       decode.mockRestore(); batch.mockRestore(); clear.mockRestore(); remove.mockRestore();
     }
   }, 30000);
+
   it.each([
     {
       name: 'an edited suffix',
@@ -870,6 +897,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       remove.mockRestore(); clear.mockRestore(); batch.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it.each(['hybrid-tail-only', 'recurrent-tail-only', 'cropped-window', 'frontier-mismatch', 'remove-refused', 'remove-no-effect', 'remove-lost-prefix', 'empty-retained-prefix'] as const)('fully reevaluates instead of trusting an unsafe partial cache: %s', async condition => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
@@ -924,6 +952,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       hybrid.mockRestore(); recurrent.mockRestore(); batch.mockRestore();
     }
   }, 30000);
+
   it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {
     await releaseSession({ releaseRuntime: false });
     // This fixture has an intentionally simple independent input contract. It
@@ -1083,6 +1112,7 @@ user:Q ;assistant: R
       batch.mockRestore(); decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it('reuses unchanged logits and never records a sampled stop token as decoded', async () => {
     await releaseSession({ releaseRuntime: false });
     const req = request({ messages: [{ role: 'user', content: 'same prefix' }] });
@@ -1103,6 +1133,7 @@ user:Q ;assistant: R
       decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
     }
   }, 30000);
+
   it.each(['cancelled', 'decode-error', 'decode-exception'] as const)('invalidates the prefix after %s and fully evaluates a retry', async failure => {
     await releaseSession({ releaseRuntime: false });
     const req = request({ messages: [{ role: 'user', content: 'retry prefix' }] });
@@ -1135,6 +1166,7 @@ user:Q ;assistant: R
       decode.mockRestore(); clear.mockRestore(); batch.mockRestore();
     }
   }, 30000);
+
   it('rejects a mismatched native cache frontier before reuse', async () => {
     await releaseSession({ releaseRuntime: false });
     const req = request({ messages: [{ role: 'user', content: 'frontier' }] }); req.stop = ['A'];
@@ -1149,6 +1181,7 @@ user:Q ;assistant: R
       decode.mockRestore();
     }
   }, 30000);
+
   it('uses remaining context for omitted or oversized completion limits and respects smaller limits', async () => {
     await releaseSession({ releaseRuntime: false });
     const core = host.core!;
@@ -1200,6 +1233,7 @@ user:Q ;assistant: R
       training.mockRestore(); await releaseSession({ releaseRuntime: false });
     }
   }, 30000);
+
   it('targets 32K and reduces only the logical batch after the first normal allocation failure', async () => {
     await releaseSession({ releaseRuntime: false });
     const core = host.core!;
@@ -1218,6 +1252,7 @@ user:Q ;assistant: R
       training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
     }
   }, 30000);
+
   it('does not retry a trapped context initialization and discards the runtime', async () => {
     await releaseSession({ releaseRuntime: false });
     const core = host.core!;
@@ -1252,7 +1287,6 @@ user:Q ;assistant: R
       training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
     }
   }, 30000);
-
 });
 
 describe('native image boundaries', () => {
@@ -1273,6 +1307,7 @@ describe('native image boundaries', () => {
       if (bitmap !== 0n) await core.api.mtmd_bitmap_free(bitmap);
     }
   });
+
   it('rejects image requests on text-only models without reusing stale text KV afterwards', async () => {
     await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -1284,6 +1319,7 @@ describe('native image boundaries', () => {
       debug.mockRestore();
     }
   });
+
   it('uses the scheduler callback signature and reads tensor shapes synchronously in actual Wasm', async () => {
     await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'fixture' }] }), onEvent: () => {}, onProgress: () => {} });
@@ -1319,7 +1355,6 @@ describe('native image boundaries', () => {
       await releaseSession({ releaseRuntime: true });
     }
   }, 30000);
-
 });
 
 describe('structured delivery from the real CPU Wasm loop', () => {
@@ -1479,6 +1514,7 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       gate.resolve();sample.mockRestore();
     }
   }, 30000);
+
   it('drains a held stop-prefix byte when native decoding fails instead of losing accepted content', async () => {
     const req = request({ messages: [{ role: 'user', content: 'held prefix' }] });req.stop = ['AB'];req.maxTokens = 3;
     await generate({ request: { ...req, maxTokens: 1 }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
@@ -1504,6 +1540,7 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       sample.mockRestore();spy.mockRestore();
     }
   }, 30000);
+
   it('distinguishes a user stop sequence from a native end-of-generation token', async () => {
     const req = request({ messages: [{ role: 'user', content: 'stop' }] });req.stop = ['A'];
     const stopped = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
@@ -1515,6 +1552,7 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       sample.mockRestore();
     }
   }, 30000);
+
   it('delivers native thought and answer channels without synthesizing display tags', async () => {
     const template = `\
 {%- for message in messages -%}
@@ -1813,6 +1851,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
 describe('bounded partial-output parsing in the native generation loop', () => {
   let pacingTime = 0;
   let referenceMode: 'per-token' | undefined;
+
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -1824,6 +1863,7 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       now: () => pacingTime,
     }));
   });
+
   afterEach(async () => {
     vi.restoreAllMocks();
     await releaseSession({ releaseRuntime: false });
@@ -2038,9 +2078,11 @@ describe('bounded partial-output parsing in the native generation loop', () => {
 
 describe('final-only prefill outputs with real native decoding', () => {
   const template = '{% for message in messages %}{{ message.content }}{% endfor %}{% if add_generation_prompt %}GG{% endif %}';
+
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: false });
   });
+
   afterEach(async () => {
     vi.restoreAllMocks(); await releaseSession({ releaseRuntime: false });
   });
@@ -2095,6 +2137,7 @@ describe('final-only prefill outputs with real native decoding', () => {
 
   const cases = (['attention', 'hybrid'] as const).flatMap(kind =>
     [511, 512, 1024].flatMap(length => [0, 0.7].map(temperature => ({ kind, length, temperature }))));
+
   it.each(cases)('matches the per-batch reference for $kind, $length bytes and temperature $temperature', async ({ kind, length, temperature }) => {
     host.bytes = Uint8Array.from(modelBytes({ kind }));
     const req = { ...request({ messages: [{ role: 'user', content: 'a'.repeat(length - 1) + 'X' }] }), maxTokens: 5, temperature, debug: 'on' as const };
@@ -2246,6 +2289,7 @@ describe('final-only prefill outputs with real native decoding', () => {
 describe('bounded task yields through the native generation loop', () => {
   let yieldTime = 0;
   let referenceMode: 'per-token' | undefined;
+
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -2259,12 +2303,15 @@ describe('bounded task yields through the native generation loop', () => {
     }));
     vi.spyOn(pacingModule, 'createOutputPacing').mockImplementation(args => createPacing({ ...args, now: () => 0 }));
   });
+
   afterEach(async () => {
     vi.restoreAllMocks(); await releaseSession({ releaseRuntime: false });
   });
+
   function workload(): WorkerGenerateInput {
     return { ...request({ messages: [{ role: 'user', content: 'private yield fixture' }] }), maxTokens: 33, debug: 'on' };
   }
+
   it('reduces 32 task yields to eight without changing first delivery, output or decoded state', async () => {
     const req = workload();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -2503,14 +2550,17 @@ describe('bounded task yields through the native generation loop', () => {
 
 describe('verified initial-memory reset elision with the supplied native runtime', () => {
   const template = '{% for message in messages %}{{ message.content }}{% endfor %}';
+
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: template }));
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
+
   afterEach(async () => {
     vi.restoreAllMocks(); await releaseSession({ releaseRuntime: false });
   });
+
   function workload(): WorkerGenerateInput {
     return { ...request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] }), debug: 'on', maxTokens: 9 };
   }
@@ -2526,6 +2576,7 @@ describe('verified initial-memory reset elision with the supplied native runtime
       position: await sequencePosition(),
     };
   }
+
   it.each((['attention', 'hybrid'] as const).flatMap(kind => [0, 0.7].map(temperature => ({ kind, temperature }))))(
     'preserves output, logits and continuation for $kind at temperature $temperature', async ({ kind, temperature }) => {
       host.bytes = Uint8Array.from(kind === 'attention' ? createInputSensitiveGguf({ chatTemplate: template }) : createTinyLfm2Gguf({ chatTemplate: template }));
@@ -2552,6 +2603,7 @@ describe('verified initial-memory reset elision with the supplied native runtime
       expect(await state({ session: optimizedSession })).toEqual(expectedNextState);
     }, 30000,
   );
+
   it.each(['minimum', 'maximum', 'tokens', 'validity', 'no-proof'] as const)('keeps the clear when %s cannot prove untouched initial memory', async reason => {
     const req = workload();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2568,6 +2620,7 @@ describe('verified initial-memory reset elision with the supplied native runtime
     expect(clear).toHaveBeenCalledExactlyOnceWith(session.memory, 1);
     expect(session.cache.initialMemoryState).toBe('unknown');
   }, 30000);
+
   it.each(['tokenize', 'cancel-before', 'decode-status', 'decode-trap', 'cancel-decode', 'delivery'] as const)(
     'never reuses a consumed proof after %s failure', async failure => {
       const req = workload(); const controller = new AbortController();
@@ -2599,6 +2652,7 @@ describe('verified initial-memory reset elision with the supplied native runtime
       expect(clear).toHaveBeenCalledExactlyOnceWith(session.memory, 1); expect(session.cache.validity).toBe('valid');
     }, 30000,
   );
+
   it('reports a skipped initial clear only once and restores ordinary reset accounting', async () => {
     const log = vi.mocked(console.log); const req = workload();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2618,6 +2672,7 @@ describe('verified initial-memory reset elision with the supplied native runtime
 describe('bounded delivery/decode overlap through the native generation loop', () => {
   let mode: 'serial' | 'overlap' = 'overlap';
   let restoreCore: (() => void) | undefined;
+
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
@@ -2628,9 +2683,11 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     vi.spyOn(pacingModule, 'createOutputPacing').mockImplementation(args => pacing({ ...args, now: () => 0 }));
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
+
   afterEach(async () => {
     vi.restoreAllMocks(); restoreCore?.(); await releaseSession({ releaseRuntime: false });
   });
+
   function workload(): WorkerGenerateInput {
     return { ...request({ messages: [{ role: 'user', content: 'private overlap fixture' }] }), maxTokens: 33, debug: 'on' };
   }
@@ -2646,6 +2703,7 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       position: await sequencePosition(),
     };
   }
+
   it.each((['attention', 'hybrid'] as const).flatMap(kind => [0, 0.7].map(temperature => ({ kind, temperature }))))(
     'preserves output and continuation for $kind at temperature $temperature', async ({ kind, temperature }) => {
       const template = '{% for message in messages %}{{ message.content }}{% endfor %}';
@@ -2669,6 +2727,7 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       expect(await state({ session })).toEqual(expectedNext);
     }, 30000,
   );
+
   it('delivers first, permits one decode, and never samples ahead of a held acknowledgement', async () => {
     const req = workload();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2780,6 +2839,7 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       expect((await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).content).toBe('AAAAA');
     }, 30000,
   );
+
   it.each(['cancel', 'failure'] as const)('never starts decoding after synchronous delivery %s', async failure => {
     const req = workload(); const controller = new AbortController();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2798,6 +2858,7 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     })).rejects.toThrow(failure === 'cancel' ? 'aborted' : 'controlled delivery failure');
     expect(sample).toHaveBeenCalledOnce(); expect(generationDecodes).toBe(0); expect(session.cache.validity).toBe('invalid');
   }, 30000);
+
   it.each(['length', 'stop-sequence', 'eog'] as const)('never pairs the terminal %s with an unused decode', async end => {
     const req = { ...workload(), maxTokens: end === 'length' ? 1 : 5, stop: end === 'stop-sequence' ? ['A'] : [] };
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2806,12 +2867,14 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     const report = diagnosticSchema.parse(readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).find(item => item.event === 'generation-performance')).performance!;
     expect(report.decodedTokens).toBe(0); expect(report.deliveryDecode!.pairedSteps).toBe(0);
   }, 30000);
+
   it('does not pair tool-enabled generation even if the helper is configured for overlap', async () => {
     const req = { ...workload(), tools: [{ type: 'function' as const, function: { name: 'lookup', description: 'Lookup', parameters: { type: 'object', properties: {} } } }] };
     await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const report = diagnosticSchema.parse(readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).find(item => item.event === 'generation-performance')).performance!;
     expect(report.deliveryDecode!.pairedSteps).toBe(0); expect(report.streaming!.mode).toBe('per-token');
   }, 30000);
+
   it('rejects a non-monotonic parser snapshot before starting its paired decode', async () => {
     const req = workload();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2836,9 +2899,7 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     expect(sample).toHaveBeenCalledTimes(9); expect(generationDecodes).toBe(8);
     expect(session.cache.validity).toBe('invalid');
   }, 30000);
-
 });
-
 
 describe('text generation without eager companion allocation', () => {
   it.each(['attention', 'recurrent'] as const)('keeps actual %s-model output, logits and the next turn while never opening the companion', async kind => {
@@ -2870,17 +2931,18 @@ describe('text generation without eager companion allocation', () => {
   }, 30000);
 });
 
-
 describe('bounded native model-loading reads', () => {
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: true });
     host.companion = false; host.sameFile = true; host.revision = 123;
     host.reads = 0; host.maxRead = 0; host.close.mockClear();
   });
+
   afterEach(async () => {
     await releaseSession({ releaseRuntime: true });
     vi.restoreAllMocks(); host.companion = false;
   });
+
   it.each(['attention', 'recurrent'] as const)('preserves %s model loading, scores and next-turn output while reducing small reads', async kind => {
     host.bytes = Uint8Array.from(kind === 'attention'
       ? createInputSensitiveGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' })
@@ -2914,6 +2976,7 @@ describe('bounded native model-loading reads', () => {
     expect(cached.reads.hits).toBeGreaterThan(0); expect(cached.reads.peakBufferBytes).toBe(65536);
     expect(direct.reads.peakBufferBytes).toBe(0);
   }, 30000);
+
   it('disposes the shared read window only after native loading and closing its source, including failure', async () => {
     host.bytes = new Uint8Array(100000).fill(1); // Invalid GGUF, still a real native load attempt.
     const caches: ReturnType<typeof modelReadModule.createModelReadCache>[] = [];
@@ -2936,6 +2999,7 @@ describe('bounded native model-loading reads', () => {
     const result = await generate({ request: request({ messages: [{ role: 'user', content: 'retry' }] }), signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(result.content).toBe('AAAAA'); expect(caches).toHaveLength(2);
   }, 30000);
+
   it('does not publish read counters or read timing without request debugging', async () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -2951,9 +3015,11 @@ describe('single-encoding prompt transfer with the supplied native runtime', () 
     await releaseSession({ releaseRuntime: true }); host.companion = false; host.revision++;
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
+
   afterEach(async () => {
     vi.restoreAllMocks(); await releaseSession({ releaseRuntime: true });
   });
+
   it.each([
     { kind: 'attention', text: 'single encode' },
     { kind: 'attention', text: '日本語😀' },
@@ -2983,6 +3049,7 @@ describe('single-encoding prompt transfer with the supplied native runtime', () 
     expect(session.cache.validity).toBe('valid');
     expect(await sequencePosition()).toBe(session.cache.tokens.length - 1);
   }, 30000);
+
   it.each(['attention', 'recurrent'])('preserves native template rejection of an unpaired surrogate: %s', async kind => {
     host.bytes = Uint8Array.from(kind === 'attention' ? createInputSensitiveGguf({ chatTemplate: 'chatml' }) : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
     const req = request({ messages: [{ role: 'user', content: '\ud800' }] });
@@ -2992,5 +3059,4 @@ describe('single-encoding prompt transfer with the supplied native runtime', () 
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('template-unsupported');
     expect(decode).not.toHaveBeenCalled();
   }, 30000);
-
 });

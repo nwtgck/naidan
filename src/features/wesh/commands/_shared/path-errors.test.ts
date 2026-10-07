@@ -45,7 +45,6 @@ describe('isPathTypeMismatchError', () => {
   });
 });
 
-
 describe('getPathErrorReason', () => {
   it('maps browser-shaped path errors to stable semantic reasons', () => {
     expect(getPathErrorReason({

@@ -9,6 +9,7 @@ import ImagePendingRuns from './ImagePendingRuns.vue';
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), download: vi.fn(), url: vi.fn(), revoke: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/utils/stream-download', () => ({ downloadBlob: mocks.download }));
+
 beforeEach(async () => {
   vi.clearAllMocks(); mocks.confirm.mockResolvedValue(true); mocks.url.mockReturnValue('blob:pending-image');
   const OriginalURL = URL;
@@ -17,10 +18,12 @@ beforeEach(async () => {
   });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   for (const entry of imagePendingRuns.list()) if (entry.phase === 'retired') imagePendingRuns.discard({ id: entry.id });
   vi.unstubAllGlobals();
 });
+
 async function pending({ terminal }: { terminal: boolean }) {
   const sessionId = toImageGenerationSessionId({ raw: 'session-aa' });
   const plan = generationRunFixture({ id: 'run-aa', sessionId, count: 1, seed: '42' });
@@ -35,6 +38,7 @@ async function pending({ terminal }: { terminal: boolean }) {
   await owner.submission.finished({ completion: { type: 'completed' } }).catch(() => {}); await owner.retire();
   return { owner, create, commit, update, output };
 }
+
 it('displays and downloads pending pixels after remount, then retries the same save', async () => {
   const value = await pending({ terminal: false }); let wrapper = mount(ImagePendingRuns); await flushPromises();
   expect(wrapper.find('img').exists()).toBe(true);
@@ -47,12 +51,14 @@ it('displays and downloads pending pixels after remount, then retries the same s
   expect(value.create).toHaveBeenCalledOnce(); expect(value.commit).toHaveBeenCalledTimes(2);
   expect(wrapper.find('[data-testid="image-pending-runs"]').exists()).toBe(false); wrapper.unmount();
 });
+
 it('shows terminal-only save failure and retries metadata without republishing pixels', async () => {
   const value = await pending({ terminal: true }); const wrapper = mount(ImagePendingRuns); await flushPromises();
   expect(wrapper.text()).toContain('Run information'); expect(wrapper.find('[data-testid="pending-download"]').exists()).toBe(false);
   await wrapper.get('[data-testid="pending-retry"]').trigger('click'); await flushPromises();
   expect(value.commit).toHaveBeenCalledOnce(); expect(value.update).toHaveBeenCalledTimes(3); wrapper.unmount();
 });
+
 it('requires confirmation to discard without deleting persisted images', async () => {
   const value = await pending({ terminal: false }); const wrapper = mount(ImagePendingRuns); await flushPromises();
   mocks.confirm.mockResolvedValueOnce(false); await wrapper.get('[data-testid="pending-discard"]').trigger('click'); await flushPromises();

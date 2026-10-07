@@ -50,9 +50,11 @@ function deferred() {
   });
   return { promise, resolve };
 }
+
 beforeEach(() => {
   vi.clearAllMocks(); calls.audio.mockReset(); calls.audio.mockResolvedValue(audioResult()); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
 });
+
 describe("generation RPC lifecycle", () => {
   it('probes browser capabilities without loading a model or generating', async () => {
     const capabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
@@ -60,6 +62,7 @@ describe("generation RPC lifecycle", () => {
     expect(await createWorkerApi().probeProfiles()).toEqual(capabilities);
     expect(calls.generate).not.toHaveBeenCalled(); expect(calls.releaseSession).not.toHaveBeenCalled();
   });
+
   it('releases idle native state and refuses cleanup while generation owns it', async () => {
     const api = createWorkerApi();
     await api.release();
@@ -77,6 +80,7 @@ describe("generation RPC lifecycle", () => {
     await api.release();
     expect(calls.releaseSession).toHaveBeenCalledOnce();
   });
+
   it("posts native callbacks immediately and drains their acknowledgements before RPC completion", async () => {
     const blocked = deferred(); const events: string[] = [];
     calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
@@ -98,6 +102,7 @@ describe("generation RPC lifecycle", () => {
     expect(settled).toBe(false); blocked.resolve(); await pending;
     expect(events).toEqual(["loading", "prefill", "first", "second"]); expect(settled).toBe(true);
   });
+
   it("targets cancellation by generation id, bypasses the held generation lane, and then accepts new work", async () => {
     const blocked = deferred(); let signal: AbortSignal | undefined;
     calls.generate.mockImplementation(async args => {
@@ -117,6 +122,7 @@ describe("generation RPC lifecycle", () => {
     await api.generate(request({ generationId: 2 }), async () => {}, () => {});
     await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(false);
   });
+
   it("drains already accepted content after cancellation and waits for proxy acknowledgements", async () => {
     const blocked = deferred(); const first = vi.fn(async () => blocked.promise); const chunk = vi.fn();
     calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
@@ -129,6 +135,7 @@ describe("generation RPC lifecycle", () => {
     await api.cancelGeneration({ generationId: 1 }); blocked.resolve(); await pending;
     expect(chunk).toHaveBeenCalledWith({ event: { type: "text", text: "accepted before cancellation" } });
   });
+
   it("sanitizes proxy failures and can accept a later generation instead of keeping a stuck active owner", async () => {
     calls.generate.mockImplementation(async ({ onEvent }) => {
       await onEvent({ event: { type: "text", text: "not logged" } });
@@ -140,6 +147,7 @@ describe("generation RPC lifecycle", () => {
     }, () => {})).rejects.toThrow("llama.cpp browser: worker-failed");
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
+
   it("invalidates resident weights before deleting their stored model", async () => {
     const api = createWorkerApi(); const order: string[] = [];
     calls.release.mockImplementation(async () => {
@@ -154,6 +162,7 @@ describe("generation RPC lifecycle", () => {
     await expect(api.removeModel({ plan: { id: "../unsafe", files: [] } })).rejects.toThrow();
     expect(calls.remove).toHaveBeenCalledOnce();
   });
+
   it("does not reuse an active id after a generation error", async () => {
     calls.generate.mockRejectedValueOnce(new Error("private native detail"));
     const api = createWorkerApi();
@@ -215,6 +224,7 @@ describe('native diagnostic checkpoints', () => {
       debug.mockRestore();
     }
   });
+
   it('waits for the host to record the native stage before the operation runs', async () => {
     const blocked = deferred(); let nativeEntered = false;
     calls.generate.mockImplementation(async () => {
@@ -230,7 +240,6 @@ describe('native diagnostic checkpoints', () => {
     expect(receive).toHaveBeenCalledOnce();
   });
 });
-
 
 describe('single-file import RPC cancellation', () => {
   it('routes the request id to the importer and waits for rollback and callback acknowledgements', async () => {
@@ -262,6 +271,7 @@ describe('single-file import RPC cancellation', () => {
     await expect(api.importModel({ file, generationId: 6 }, () => {})).resolves.toEqual(model);
     await api.cancelGeneration({ generationId: 4 }); expect(input?.signal?.aborted).toBe(false);
   });
+
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid single-file cancellation id %s before touching storage', async generationId => {
     await expect(createWorkerApi().importModel({ file: new File(['fixture'], 'same.gguf'), generationId }, () => {})).rejects.toThrow();
     expect(calls.import).not.toHaveBeenCalled();
@@ -271,11 +281,13 @@ describe('single-file import RPC cancellation', () => {
 function audioRequest({ generationId }: { generationId: number }): WorkerAudioCall {
   return { ...defaultAudioParameters(), generationId, model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
+
 describe('audio RPC ownership', () => {
   it('validates audio inputs before allocating native state', async () => {
     await expect(createWorkerApi().generateAudio({ ...audioRequest({ generationId: 1 }), text: ' ' }, () => {}, () => {})).rejects.toThrow();
     expect(calls.audio).not.toHaveBeenCalled();
   });
+
   it('drains progress acknowledgements before permitting another operation', async () => {
     const gate = deferred(); calls.audio.mockImplementationOnce(async ({ onProgress }) => {
       onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
@@ -289,6 +301,7 @@ describe('audio RPC ownership', () => {
     await expect(api.release()).rejects.toThrow('busy'); gate.resolve(); await pending; await api.release();
     expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
   });
+
   it('targets audio cancellation by its ID and prevents chat/audio overlap', async () => {
     const gate = deferred(); let signal: AbortSignal | undefined;
     calls.audio.mockImplementationOnce(async args => {
@@ -301,11 +314,13 @@ describe('audio RPC ownership', () => {
     await api.cancelGeneration({ generationId: 7 }); expect(signal?.aborted).toBe(true); gate.resolve(); await pending;
     expect(await api.generateAudio(audioRequest({ generationId: 8 }), () => {}, () => {})).toEqual(audioResult());
   });
+
   it('rejects invalid native results and releases the active operation slot', async () => {
     calls.audio.mockResolvedValueOnce({ ...audioResult(), sampleRate: 0 }); const api = createWorkerApi();
     await expect(api.generateAudio(audioRequest({ generationId: 1 }), () => {}, () => {})).rejects.toThrow();
     expect(await api.generateAudio(audioRequest({ generationId: 2 }), () => {}, () => {})).toEqual(audioResult());
   });
+
   it('propagates callback failure after cleanup rather than leaking an occupied slot', async () => {
     calls.audio.mockImplementationOnce(async ({ onProgress }) => {
       onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
@@ -315,7 +330,6 @@ describe('audio RPC ownership', () => {
     await api.release();
   });
 });
-
 
 describe('request-scoped audio finishing', () => {
   it('finishes only the matching audio request without aborting its native operation', async () => {
@@ -333,6 +347,7 @@ describe('request-scoped audio finishing', () => {
     await api.generateAudio(audioRequest({ generationId: 72 }), () => {}, () => {});
     expect(calls.audio.mock.calls[1]![0].shouldComplete?.()).toBe(false);
   });
+
   it('does not finish or cancel a chat operation, including when its ID matches', async () => {
     const gate = deferred(); calls.generate.mockImplementationOnce(async () => {
       await gate.promise; return completed();
@@ -343,12 +358,12 @@ describe('request-scoped audio finishing', () => {
     expect(calls.generate.mock.calls[0]![0].signal?.aborted).toBe(false); expect(calls.audio).not.toHaveBeenCalled();
     gate.resolve(); await pending;
   });
+
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid finish request ID %s', async generationId => {
     await expect(createWorkerApi().finishAudioGeneration({ generationId })).rejects.toThrow();
     expect(calls.audio).not.toHaveBeenCalled();
   });
 });
-
 
 describe('preview control isolation', () => {
   it('targets only the owning audio operation, coalesces requests and keeps its lane until final output', async () => {
@@ -370,15 +385,16 @@ describe('preview control isolation', () => {
     await api.requestAudioPreview({ generationId: 101, requestVersion: 4 });
     expect(operation.preview?.requestedVersion()).toBe(2);
   });
+
   it.each([0, -1, 1.5, Number.NaN])('rejects malformed request version %s before applying intent', async requestVersion => {
     await expect(createWorkerApi().requestAudioPreview({ generationId: 1, requestVersion })).rejects.toThrow();
   });
 });
 
-
 function preparation({ generationId }: { generationId: number }): WorkerPrepareCall {
   return { generationId, model: 'local.gguf', options: { profile: 'cpu-wasm32' }, debug: 'off', assetBaseURL: 'https://example.invalid/profiles/' };
 }
+
 describe('preparation RPC ownership', () => {
   it('prepares the session with no messages or generation and drains progress before releasing the lane', async () => {
     const gate = deferred();
@@ -396,6 +412,7 @@ describe('preparation RPC ownership', () => {
     await expect(api.prepareModel(preparation({ generationId: 402 }), () => {})).rejects.toThrow('busy');
     gate.resolve(); await rejected; await api.release();
   });
+
   it('targets cancellation by operation identity while keeping the lane until native cleanup completes', async () => {
     const gate = deferred(); let signal: AbortSignal | undefined;
     calls.prepare.mockImplementationOnce(async args => {
@@ -409,6 +426,7 @@ describe('preparation RPC ownership', () => {
     await expect(api.generate(request({ generationId: 502 }), async () => {}, () => {})).rejects.toThrow('busy');
     gate.resolve(); await rejected; await api.release();
   });
+
   it('rejects accidental fake-conversation data before touching the session', async () => {
     await expect(createWorkerApi().prepareModel({ ...preparation({ generationId: 601 }), ...{ messages: [] } }, () => {})).rejects.toThrow();
     expect(calls.prepare).not.toHaveBeenCalled();
@@ -442,6 +460,7 @@ describe('generation progress mailbox integration', () => {
     calls.generate.mockResolvedValueOnce(completed());
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
+
   it('starts loading and phase changes immediately without flushing stale prefill snapshots later', async () => {
     const loading = deferred(); const prefill = deferred(); const generating = deferred(); const seen: string[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
@@ -462,6 +481,7 @@ describe('generation progress mailbox integration', () => {
     generating.resolve(); prefill.resolve(); loading.resolve(); await pending;
     expect(seen).toEqual(['loading:0', 'loading:1', 'prefill:1', 'generating:1']);
   });
+
   it('cancels unsent progress but drains accepted text and already posted callbacks', async () => {
     const gate = deferred(); const progressGate = deferred(); const seen: number[] = []; const text: string[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress, onEvent }) => {
@@ -485,6 +505,7 @@ describe('generation progress mailbox integration', () => {
     await vi.waitFor(() => expect(text).toEqual(['accepted'])); expect(done).toBe(false);
     progressGate.resolve(); await pending; expect(seen).toEqual([1]);
   });
+
   it.each(['sync', 'async'] as const)('does not leak a %s progress callback failure into the next request', async failure => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
@@ -508,6 +529,7 @@ describe('generation progress mailbox integration', () => {
       log.mockRestore();
     }
   });
+
   it('drains numeric callbacks even when the original loading callback queue has failed', async () => {
     const gate = deferred(); const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
@@ -531,6 +553,7 @@ describe('generation progress mailbox integration', () => {
       gate.resolve(); await pending; log.mockRestore();
     }
   });
+
   it.each(['on', 'off'] as const)('reports only aggregate delivery counts when debug is %s', async debug => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const blocked = deferred(); const seen: number[] = [];

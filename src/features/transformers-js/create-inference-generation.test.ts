@@ -54,6 +54,7 @@ describe('native events to local nested parts', () => {
       { type: 'text', text: '' }, { type: 'text', text: '<think>literal</think>🙂  ' },
     ]);
   });
+
   it('keeps partial separate from already closed content', async () => {
     const { node, result } = await run({
       events: [
@@ -63,6 +64,7 @@ describe('native events to local nested parts', () => {
     });
     expect(result.type).toBe('interrupted'); expect(node.parts).toMatchObject([{ completeness: 'complete' }, { text: '途中', completeness: 'partial' }]);
   });
+
   it('reserves drafts without publishing them and does not lose a later completed call', async () => {
     const { node } = await run({
       events: [
@@ -72,6 +74,7 @@ describe('native events to local nested parts', () => {
     });
     expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: ' {"a": 1} ' } } });
   });
+
   it.each([
     [{ type: 'part_start', index: 1, kind: 'text' }],
     [{ type: 'text_delta', index: 0, text: 'orphan' }],
@@ -86,6 +89,7 @@ describe('native events to local nested parts', () => {
   ] satisfies InferenceGenerationEvent[][])('reports malformed native ordering without inventing a success: %j', async (...events) => {
     const { result } = await run({ events }); expect(result.type).toBe('error');
   });
+
   it('waits for the underlying generation settlement after its result event', async () => {
     const release = Promise.withResolvers<void>(); const emitted = Promise.withResolvers<void>(); const node = fresh();
     const controller = new AbortController(); let settled = false;
@@ -105,6 +109,7 @@ describe('native events to local nested parts', () => {
     });
     await emitted.promise; expect(settled).toBe(false); release.resolve(); expect((await pending).type).toBe('finished');
   });
+
   it('retains an RPC failure even after a native completion', async () => {
     const error = new Error('delivery failed'); const node = fresh();
     const result = await consumeChatGeneration({
@@ -124,6 +129,7 @@ describe('native events to local nested parts', () => {
     });
     expect(result).toEqual({ type: 'error', error }); expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'complete' });
   });
+
   it('drains accepted output when a real stop signal reaches the source', async () => {
     const controller = new AbortController(); const entered = Promise.withResolvers<void>(); const node = fresh();
     const pending = consumeChatGeneration({
@@ -147,6 +153,7 @@ describe('native events to local nested parts', () => {
     await entered.promise; controller.abort(); await pending;
     expect(node.parts[0]).toMatchObject({ text: 'AB', completeness: 'partial' });
   });
+
   it('ignores callbacks after their generation returned', async () => {
     let escaped: InferenceGenerationCallback | undefined; const node = fresh();
     await consumeChatGeneration({
@@ -163,6 +170,7 @@ describe('native events to local nested parts', () => {
     });
     await escaped!({ event: { type: 'part_start', index: 0, kind: 'text' } }); expect(node.parts).toEqual([]);
   });
+
   it('connects the native Harmony decoder through bounded delivery to common parts', async () => {
     const node = fresh(); const failure = vi.fn();
     const result = await consumeChatGeneration({

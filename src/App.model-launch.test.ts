@@ -16,9 +16,11 @@ vi.mock('@/components/OnboardingModal.vue', () => ({ default: { template: '<div 
 vi.mock('@/components/GlobalDialogHost.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/ToastContainer.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/startup/StartupErrorView.vue', () => ({ default: { template: '<div />' } }));
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); isOnboardingDismissed.value = false;
 });
+
 describe('first-use embedded model launcher', () => {
   it.each([false, true])('renders the real WelcomeScreen entry without mounting onboarding (dismissed=%s)', async dismissed => {
     isOnboardingDismissed.value = dismissed;

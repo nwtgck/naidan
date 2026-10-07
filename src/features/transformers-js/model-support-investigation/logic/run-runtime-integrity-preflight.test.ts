@@ -34,7 +34,6 @@ function createPassingRuntimeFetch(): ReturnType<typeof vi.fn<typeof fetch>> {
   });
 }
 
-
 describe("runRuntimeIntegrityPreflight", () => {
   it("records a passing same-origin runtime preflight and leaves later stages not-run", async () => {
     const events: unknown[] = [];
@@ -157,6 +156,7 @@ describe("runRuntimeIntegrityPreflight", () => {
     expect(run.steps[0]).toMatchObject({ status: "failed" });
     expect(runtimeFetch).not.toHaveBeenCalled();
   });
+
   it("fails before network access when the physical WASM asset is cross-origin", async () => {
     const runtimeFetch = vi.fn<typeof fetch>();
     const run = await runRuntimeIntegrityPreflight({
@@ -179,7 +179,6 @@ describe("runRuntimeIntegrityPreflight", () => {
     expect(run.status).toBe("failed");
     expect(runtimeFetch).not.toHaveBeenCalled();
   });
-
 
   it("keeps WebGPU control evidence when the independent Wasm control fails", async () => {
     const runWebGpuControl = vi.fn().mockResolvedValue({
@@ -270,7 +269,6 @@ describe("runRuntimeIntegrityPreflight", () => {
       error: "WebGPU adapter unavailable",
     });
   });
-
 
   it("keeps environment and independent control evidence when the runtime module import fails", async () => {
     const onRunUpdate = vi.fn();
@@ -771,5 +769,4 @@ describe("runRuntimeIntegrityPreflight", () => {
       childWorkerLifecycleReason: "WASM thread configuration could not be read before the control run",
     });
   });
-
 });

@@ -12,6 +12,7 @@ describe('bounded generation performance summaries', () => {
     expect(metrics.finish({ outcome: 'completed', profile })).toBeUndefined();
     expect(now).not.toHaveBeenCalled();
   });
+
   it('measures exclusive stages including repeats and cleanup without keeping a token history', () => {
     let at = 10;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
@@ -50,6 +51,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.decodedTokens).toBe(0);
     expect(metrics.finish({ outcome: 'failed', profile })).toBeUndefined();
   });
+
   it.each(['aborted', 'failed'] as const)('reports %s without inventing a first token time', outcome => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
@@ -58,6 +60,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.firstDeliveryMs).toBeUndefined();
     expect(report.performance!.stages).toHaveLength(1);
   });
+
   it('keeps one aggregate per stage even after a long generation', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     for (let i = 0; i < 10000; i++) {
@@ -69,6 +72,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.sampledTokens).toBe(10000);
     expect(JSON.stringify(report).length).toBeLessThan(1500);
   });
+
   it('snapshots numeric settings without retaining a mutable sampling object', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const sampling = { temperature: 0.7, topP: 0.95, presencePenalty: -1, frequencyPenalty: 2, seed: 4294967295 };
@@ -80,6 +84,7 @@ describe('bounded generation performance summaries', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sampling: { ...sampling, prompt: 'private' } } }).success).toBe(false);
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sampling: { ...sampling, seed: -1 } } }).success).toBe(false);
   });
+
   it('validates and publishes the summary without accepting nested content', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = metrics.finish({ outcome: 'completed', profile })!;
@@ -138,7 +143,6 @@ describe('streaming work counters', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, streaming: undefined } }).success).toBe(true);
   });
 });
-
 
 describe('token rendering work counters', () => {
   it('snapshots bounded counters without accepting cached bytes or token identifiers', () => {
@@ -227,7 +231,6 @@ describe('initial memory reset counters', () => {
   });
 });
 
-
 describe('paired delivery and decode accounting', () => {
   it('keeps joint time exclusive and child waits explicitly overlapping', () => {
     let now = 0;
@@ -256,7 +259,6 @@ describe('paired delivery and decode accounting', () => {
   });
 });
 
-
 describe('session preparation measurements', () => {
   it.each(['absent', 'deferred', 'retained', 'loaded', 'reused'] as const)('snapshots the %s preparation outcome without private data', projector => {
     const measurements = createGenerationPerformance({ enabled: true, now: () => 0 });
@@ -268,7 +270,6 @@ describe('session preparation measurements', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sessionPreparation: { ...preparation, model: 'private' } } }).success).toBe(false);
   });
 });
-
 
 describe('post-first-sample throughput', () => {
   it('requires 100 total samples and three seconds, then reports each three-second sample window', () => {
@@ -297,6 +298,7 @@ describe('post-first-sample throughput', () => {
       .toEqual({ unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 });
     expect(metrics.sampled()).toBeUndefined();
   });
+
   it('starts reporting on sample 100 when the time threshold is already met', () => {
     let at = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
@@ -310,6 +312,7 @@ describe('post-first-sample throughput', () => {
       interval: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
     });
   });
+
   it.each(['completed', 'aborted', 'failed'] as const)('keeps %s throughput separate from TTFT, delivery and cleanup', outcome => {
     let at = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
@@ -328,6 +331,7 @@ describe('post-first-sample throughput', () => {
       postFirstSample: { unit: 't/s', sampledTokens: 2, elapsedMs: 100, tokensPerSecond: 20 },
     });
   });
+
   it.each([0, 1, 2])('omits an undefined rate for %s samples with no measurable interval', count => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     for (let i = 0; i < count; i++) metrics.sampled();
@@ -335,6 +339,7 @@ describe('post-first-sample throughput', () => {
     expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: Math.max(0, count - 1), elapsedMs: 0 });
     expect(report.performance!.firstSampleMs).toBe(count ? 0 : undefined);
   });
+
   it('keeps interleaved requests and finished reports independent', () => {
     let at = 0;
     const first = createGenerationPerformance({ enabled: true, now: () => at });
@@ -350,6 +355,7 @@ describe('post-first-sample throughput', () => {
     expect(first.finish({ outcome: 'failed', profile })).toBeUndefined();
     expect(second.finish({ outcome: 'aborted', profile })!.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 2, elapsedMs: 300, tokensPerSecond: 2000 / 300 });
   });
+
   it('accepts older summaries but rejects invalid rates and content-bearing fields', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = metrics.finish({ outcome: 'completed', profile })!;

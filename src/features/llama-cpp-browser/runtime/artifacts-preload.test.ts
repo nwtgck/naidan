@@ -22,6 +22,7 @@ vi.mock('./chat-bindings', () => ({ bindNativeChat: host.bind }));
 const module = { fixture: 'native module' };
 const chat = { fixture: 'chat bindings' };
 const moduleOptions = { wasmBinary: new Uint8Array([0, 97, 115, 109]), print() {}, printErr() {} };
+
 beforeEach(() => {
   for (const factory of Object.values(host.factories)) factory.mockReset().mockResolvedValue(module);
   host.bind.mockReset().mockReturnValue(chat);
@@ -29,6 +30,7 @@ beforeEach(() => {
     throw new Error('Factory preload must not fetch Wasm');
   }));
 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -45,6 +47,7 @@ describe('factory-only runtime preloads', () => {
     for (const [key, factory] of Object.entries(host.factories)) if (key !== profile) expect(factory).not.toHaveBeenCalled();
     expect(host.bind).toHaveBeenCalledExactlyOnceWith({ native: module });
   });
+
   it.each(['webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)('keeps %s standalone loading lazy and local', async profile => {
     await preloadStandaloneModule({ profile, baseURL: undefined });
     for (const factory of Object.values(host.factories)) expect(factory).not.toHaveBeenCalled();
@@ -53,16 +56,19 @@ describe('factory-only runtime preloads', () => {
     expect(host.factories[profile]).toHaveBeenCalledExactlyOnceWith(moduleOptions);
     for (const [key, factory] of Object.entries(host.factories)) if (key !== profile) expect(factory).not.toHaveBeenCalled();
   });
+
   it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded standalone %s without instantiating or fetching', async profile => {
     await expect(preloadStandaloneModule({ profile, baseURL: undefined })).rejects.toThrow('unavailable');
     for (const factory of Object.values(host.factories)) expect(factory).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
+
   it.each(['webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)('does not let an external URL override standalone %s', async profile => {
     await expect(preloadStandaloneModule({ profile, baseURL: 'https://example.invalid/runtime/' })).rejects.toThrow('unavailable');
     for (const factory of Object.values(host.factories)) expect(factory).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
+
   it('rejects an absent hosted base URL before acquisition', async () => {
     await expect(preloadHostedModule({ profile: 'cpu-wasm32', baseURL: undefined })).rejects.toThrow('runtime-error');
     for (const factory of Object.values(host.factories)) expect(factory).not.toHaveBeenCalled();

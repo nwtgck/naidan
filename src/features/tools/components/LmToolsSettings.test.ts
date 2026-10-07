@@ -168,7 +168,6 @@ describe('LmToolsSettings.vue', () => {
     });
   });
 
-
   it('shows persistence failures in the Chat Tool settings UI', async () => {
     mocks.setToolStatus.mockRejectedValueOnce(new Error('storage failed'));
     const wrapper = mountSettings();

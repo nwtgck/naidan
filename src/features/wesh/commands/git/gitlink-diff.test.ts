@@ -107,6 +107,7 @@ NAME
 M\tsub
 `);
   });
+
   it("diffs a staged gitlink without requiring the referenced submodule commit object", async () => {
     const wesh = await createFixtureWesh({ stagedSecond: true });
     const stdout = createTestWriteCaptureHandle();
@@ -134,7 +135,6 @@ index 1111111..2222222 160000
 +Subproject commit 2222222222222222222222222222222222222222
 `);
   });
-
 
   it("materializes an uninitialized gitlink directory without requiring the submodule commit object", async () => {
     const wesh = await createFixtureWesh();
@@ -164,7 +164,6 @@ printf ok`,
     expect(stderr.text).toBe("");
     expect(stdout.text).toBe("ok");
   });
-
 
   it("safe-fails status for an initialized gitlink instead of reporting an approximate clean state", async () => {
     const wesh = await createFixtureWesh();
@@ -200,5 +199,4 @@ git status --short`,
     expect(stdout.text).toBe("");
     expect(stderr.text).toContain("initialized gitlink worktree is not supported yet: sub");
   });
-
 });

@@ -88,7 +88,6 @@ describe('FileExplorerZipUploadDialog', () => {
     expect(cancel.element.compareDocumentPosition(confirm.element) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-
   it('shows root handling only after extraction is selected', async () => {
     const { wrapper, context } = mountDialog();
 

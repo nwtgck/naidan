@@ -28,7 +28,6 @@ describe('wesh zip input error classification', () => {
 });
 
 describe('wesh zip and unzip', () => {
-
   it('parses Info-ZIP exclusion pattern phases without swallowing later options', () => {
     expect(ZIP_TEST_ONLY.splitZipArgs({
       args: ['out.zip', 'a', 'b', 'c', '-x', 'b', '-q', 'c'],
@@ -1230,8 +1229,6 @@ describe('wesh zip and unzip', () => {
     expect(attachedListed.stdout.text).not.toContain('docs/sub/b.txt');
   });
 
-
-
   it('omits directory entries when junking paths during recursive input', async () => {
     await writeFile({ path: 'a', data: 'x' });
     await writeFile({ path: 'd/f', data: 'y' });
@@ -1479,7 +1476,6 @@ describe('wesh zip and unzip', () => {
     expect(missing.result.exitCode).toBe(12);
   });
 
-
   it('suppresses unmatched-name warnings in quiet mode while retaining the fatal status', async () => {
     const missing = await execute({
       script: 'zip -q archive.zip missing.txt',
@@ -1538,7 +1534,6 @@ describe('wesh zip and unzip', () => {
     expect(missingArchive.result.exitCode).toBe(9);
   });
 
-
   it('extracts JSZip archives with store, deflate, UTF-8 names, and empty files', async () => {
     const archive = new JSZip();
     archive.folder('symbols-∞-∑-𝄞-🧪');
@@ -1563,7 +1558,6 @@ describe('wesh zip and unzip', () => {
     expect(await readFile({ path: 'imported/symbols-∞-∑-𝄞-🧪/deflated.txt' })).toBe('deflated payload '.repeat(128));
     expect(await readFile({ path: 'imported/symbols-∞-∑-𝄞-🧪/empty.txt' })).toBe('');
   });
-
 
   it('round-trips emoji, symbols, combining marks, and distinct normalized names', async () => {
     const directory = 'symbols-∞-∑-𝄞-🧪';
@@ -1709,7 +1703,6 @@ describe('wesh zip and unzip', () => {
     expect(tested.stderr.text).toBe('');
   });
 
-
   it('extracts Unix symbolic-link entries as symbolic links', async () => {
     const archive = new JSZip();
     archive.file('link.txt', 'target.txt', {
@@ -1838,7 +1831,6 @@ describe('wesh zip and unzip', () => {
     expect(await readFile({ path: 'restored/payload.txt' })).toBe('new payload\n');
     expect(await readFile({ path: 'outside.txt' })).toBe('outside remains\n');
   });
-
 
   it('returns unzip status 50 when an archive file entry cannot replace a directory', async () => {
     const archive = new JSZip();
@@ -2052,7 +2044,6 @@ describe('wesh zip and unzip', () => {
     await expect(readFile({ path: 'safe/evil.txt' })).rejects.toThrow();
   });
 
-
   it('matches unzip status for junked directories, missing members, and invalid archives', async () => {
     const archive = new JSZip();
     archive.folder('empty');
@@ -2104,5 +2095,4 @@ describe('wesh zip and unzip', () => {
     expect(conflictingOverwriteModes.stderr.text).toContain('both -n and -o specified');
     expect(await readFile({ path: 'dir/payload.txt' })).toBe('existing\n');
   });
-
 });

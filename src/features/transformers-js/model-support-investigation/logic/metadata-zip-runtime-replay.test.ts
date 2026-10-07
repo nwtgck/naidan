@@ -45,6 +45,7 @@ beforeEach(() => {
   // Native Blob/streams remain untouched throughout collection and ZIP export.
   vi.stubGlobal('self', { location: new URL('http://localhost/assets/replay-worker.js') });
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 async function capture({ modelId, revision, bodies }: { modelId: string, revision: string, bodies: Record<string, string> }): Promise<InvestigationReplayMetadataSnapshot> {

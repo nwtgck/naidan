@@ -242,7 +242,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(renderEvidenceReadinessMarkdown({ report })).toContain("Evidence: load-attempts/index.json");
   });
 
-
   it("ties Download Evidence readiness to the same frozen repository revision", () => {
     const value = run();
     value.downloadEvidence = {
@@ -375,7 +374,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(mismatch?.summary).toContain("same frozen repository revision");
   });
 
-
   it("treats intentional offline repository skipping as partial when an immutable local runtime target is available", () => {
     const value = run();
     value.repository = undefined;
@@ -475,7 +473,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(runtimeLoad?.questions[0]?.answer).toContain("model loaded");
     expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("not-observed");
   });
-
 
   it("keeps Production plain-text evidence when all Reference input strategies fail", () => {
     const value = run();
@@ -698,6 +695,7 @@ TypeError: fixture inspection failed
     expect(report.overall).toBe("insufficient");
     expect(report.domains.find(item => item.domainId === "runtime-assets")?.status).toBe("insufficient");
   });
+
   it("marks missing core runtime evidence insufficient rather than partial", () => {
     const value = run();
     value.runtimeAssets = undefined;
@@ -1148,5 +1146,4 @@ TypeError: fixture inspection failed
     expect(multimodal).toMatchObject({ status: "not-observed" });
     expect(multimodal?.questions[0]?.answer).toContain("unavailable");
   });
-
 });

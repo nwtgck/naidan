@@ -87,8 +87,6 @@ src
     expect(filtered.result.exitCode).toBe(0);
   });
 
-
-
   it('matches slash patterns relative to each displayed root', async () => {
     await writeFile({ path: 'src/app.ts', data: 'app\n' });
     await writeFile({ path: 'src/nested/main.ts', data: 'main\n' });

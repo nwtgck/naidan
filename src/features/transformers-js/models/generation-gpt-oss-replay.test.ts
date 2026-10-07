@@ -5,6 +5,7 @@ import type { PreTrainedModel, PreTrainedTokenizer, TextStreamer } from '@huggin
 import { archiveFor, installRawReplay, start } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
 
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers');
 });

@@ -525,7 +525,6 @@ describe('ChatSettingsPanel.vue', () => {
     });
   });
 
-
   it('preserves inherited title settings when switching the chat to override if same scope would differ', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
     mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://chat-openai' };
@@ -1431,7 +1430,6 @@ describe('ChatSettingsPanel.vue', () => {
       });
     });
 
-
     it('keeps editor text when switching through No Prompt while the panel is open', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -1875,5 +1873,4 @@ describe('ChatSettingsPanel.vue', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

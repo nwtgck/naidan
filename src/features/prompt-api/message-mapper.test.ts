@@ -52,6 +52,7 @@ Chat instruction`,
       inputMode: 'text',
     });
   });
+
   it('maps a final user image attachment to a Blob prompt', async () => {
     const result = await map({ messages: [{ id, role: 'user', parts: [text({ value: 'Describe this image.' }), image({ mimeType: 'image/png', status: 'memory' })] }] });
     expect(result.inputMode).toBe('image'); expect(result.initialPrompts).toEqual([]);
@@ -61,6 +62,7 @@ Chat instruction`,
     expect(content.value).toBeInstanceOf(Blob); expect(content.value.type).toBe('image/png');
     await expect(content.value.text()).resolves.toBe('hello');
   });
+
   it('uses image session options when an earlier user message contains an image', async () => {
     const result = await map({
       messages: [
@@ -72,28 +74,35 @@ Chat instruction`,
     expect(result.inputMode).toBe('image'); expect(result.prompt).toBe('What was in it?');
     expect(result.initialPrompts[0]).toMatchObject({ role: 'user', content: [{ type: 'text', value: 'First image' }, { type: 'image' }] });
   });
+
   it('accepts text-only parts without declaring image input', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [text({ value: 'hello' })] }] })).resolves.toEqual({ initialPrompts: [], prompt: 'hello', inputMode: 'text' });
   });
+
   it('rejects missing or unresolved images instead of fetching external URLs', async () => {
     for (const status of ['persisted', 'missing'] as const) {
       await expect(map({ messages: [{ id, role: 'user', parts: [image({ mimeType: 'image/png', status })] }] })).rejects.toThrow(/binary reader|missing/);
     }
   });
+
   it('rejects tool history without silently flattening it', async () => {
     await expect(map({ messages: [{ id, role: 'tool', parts: [] }] })).rejects.toThrow('tool history is not supported');
   });
+
   it('requires the final conversation message to be from the user', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [text({ value: 'question' })] }, { id, role: 'assistant', parts: [text({ value: 'answer' })] }] })).rejects.toThrow('final message to be from the user');
   });
+
   it('preserves literal tags, repeated chunks and whitespace as text, not reasoning', async () => {
     const raw = '<think>literal</think>  ';
     const result = await map({ messages: [{ id, role: 'assistant', parts: [text({ value: raw }), text({ value: raw })] }, { id, role: 'user', parts: [text({ value: '' })] }] });
     expect(result.initialPrompts).toEqual([{ role: 'assistant', content: raw + raw }]); expect(result.prompt).toBe('');
   });
+
   it('rejects structured reasoning instead of silently omitting it', async () => {
     await expect(map({ messages: [{ id, role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'complete' }] }, { id, role: 'user', parts: [] }] })).rejects.toThrow('structured reasoning');
   });
+
   it('resolves persisted images in part order and forwards the request signal', async () => {
     const controller = new AbortController(); const reader = vi.fn(async () => new Blob(['bytes']));
     const result = await mapChatMessagesToPromptApi({ messages: [{ id, role: 'user', parts: [text({ value: 'before' }), image({ mimeType: 'image/png', status: 'persisted' }), text({ value: 'after' })] }], readBinaryObject: reader, signal: controller.signal });
@@ -101,6 +110,7 @@ Chat instruction`,
     expect(getPromptMessages({ prompt: result.prompt })[0]!.content).toMatchObject([{ type: 'text', value: 'before' }, { type: 'image' }, { type: 'text', value: 'after' }]);
     expect(getImageContent({ content: getPromptMessages({ prompt: result.prompt })[0]!.content }).value.type).toBe('image/png');
   });
+
   it('rejects unsupported attachment types and aborts after a binary read', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [image({ mimeType: 'audio/wav', status: 'memory' })] }] })).rejects.toThrow('image attachment');
     const controller = new AbortController();
@@ -112,6 +122,7 @@ Chat instruction`,
       },
     })).rejects.toThrow();
   });
+
   it('does not allow an interleaved system message or a missing conversation', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [] }, { id, role: 'system', parts: [] }] })).rejects.toThrow('must precede');
     await expect(map({ messages: [] })).rejects.toThrow('at least one');

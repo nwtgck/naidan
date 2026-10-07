@@ -95,6 +95,7 @@ describe('inspectDownloadVerificationCachedRevisions', () => {
     });
     expect(cached.entries[name]).toBeDefined();
   });
+
   it('separates legacy main and immutable SHA namespaces without calling either one model-complete', async () => {
     const sha = 'a'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({

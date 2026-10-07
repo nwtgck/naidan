@@ -59,7 +59,6 @@ __naidan_tool_protocol_probe_result__`);
     expect(applyChatTemplate).toHaveBeenCalledOnce();
   });
 
-
   it('does not enable the protocol when the template cannot preserve the tool-result continuation', () => {
     const tokenizer = tokenizerWithRenderer({
       renderer: vi.fn(() => `\
@@ -230,6 +229,7 @@ describe('verified standard tool content history', () => {
     { role: 'assistant', content: '', tool_calls: [call] },
     { role: 'tool', content: 'clear', tool_call_id: call.id },
   ];
+
   it('preserves single-call history and result roles without a duplicate structured field', () => {
     expect(formatStandardMessagesForToolHandling({ messages, handling })).toEqual([
       { role: 'user', content: 'Weather?', tool_call_id: undefined },
@@ -297,6 +297,7 @@ describe('standard text content projection', () => {
     }]);
     expect(message.content).toBe(content);
   });
+
   it('keeps absent and explicit empty call arrays distinct', () => {
     const messages: InferenceMessage[] = [{ role: 'assistant', content: [] }, { role: 'assistant', content: [], tool_calls: [] }];
     const result = formatStandardMessagesForToolCallProtocol({ messages, protocol: 'json-tagged' });
@@ -304,9 +305,11 @@ describe('standard text content projection', () => {
     expect(Object.hasOwn(result[0]!, 'tool_call_id')).toBe(false);
     expect(result[1]!['tool_calls']).toEqual([]);
   });
+
   it('refuses an image instead of silently replacing the entire content with empty text', () => {
     expect(() => formatStandardMessagesForToolCallProtocol({ messages: [{ role: 'user', content: [{ type: 'text', text: 'caption' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }], protocol: 'json-tagged' })).toThrow(/image/);
   });
+
   it('preserves multi-text assistant content on a verified tool-history route', () => {
     const id = toToolCallId({ raw: 'c1' });
     const messages: InferenceMessage[] = [{ role: 'assistant', content: [{ type: 'text', text: 'checking' }, { type: 'text', text: ' ' }], tool_calls: [{ id, type: 'function', function: { name: 'f', arguments: '{}' } }] }, { role: 'tool', tool_call_id: id, content: 'done' }];

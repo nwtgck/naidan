@@ -199,7 +199,6 @@ describe('generateGptOss input observation', () => {
   });
 });
 
-
 describe('GPT-OSS content boundaries', () => {
   beforeEach(() => {
     vi.clearAllMocks(); streaming.callback = undefined;

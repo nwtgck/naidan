@@ -12,6 +12,7 @@ vi.mock('./download-verification/logic/run-production-download-preparation', () 
 
 const owners: Array<{ dispose(): Promise<void> }> = [];
 const acceptanceTiming: DownloadAcceptanceTiming = { kind: 'acceptance', version: 1, route: 'candidate', revision: 'a'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4f16' }, timingStatus: 'measured', hostDurationMs: 23_000, loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1 };
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -146,6 +147,7 @@ it('drops a disposed service owner timing callback without resurrecting retained
     await running;
   }
 });
+
 afterEach(async () => {
   await Promise.all(owners.splice(0).map(owner => owner.dispose()));
   expect(fetch).not.toHaveBeenCalled();

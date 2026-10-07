@@ -23,10 +23,12 @@ it('round trips a remote editor separately from the local selection without rewr
   expect(actual.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
   expect(actual.experimental?.browserImageGeneration?.remoteModelEditors?.[0]?.editor.primary).toBeUndefined();
 });
+
 it('accepts future object fields without mutating the known editor values', () => {
   const editor = ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary: undefined, components: [], loras: [], future: 'field' });
   expect(editor).toEqual({ primary: undefined, components: [], loras: [] });
 });
+
 it('rejects duplicate component slots and invalid adapter controls', () => {
   const file = { location: { kind: 'opfs', path: 'models/test.gguf' } };
   expect(ExperimentalRemoteImageModelEditorSchemaDto.safeParse({ primary: undefined, components: [{ slot: 'vae', file }, { slot: 'vae', file }], loras: [] }).success).toBe(false);

@@ -72,6 +72,7 @@ function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessage
   if (actualAssistant.role !== 'assistant') throw new Error('Invalid fixture');
   return { chat, user: actualUser, assistant: actualAssistant };
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks(); state.stored.clear(); state.fork = undefined; state.processing = false; state.persistBinary = false; state.saveFile.mockReset();
   state.save.mockImplementation(async ({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent }) => {
@@ -95,6 +96,7 @@ describe('parts history branches', () => {
     expect(assistant.parts[1]).toMatchObject({ text: '<think>literal</think>A ', completeness: 'partial' });
     expect(state.opened).toHaveBeenCalledWith({ chatId: fork.id, leafId: undefined });
   });
+
   it('manual assistant edits create a sibling without overwriting generated parts or descendants', async () => {
     const { chat, user, assistant } = fixture();
     const before = JSON.stringify(assistant);
@@ -108,6 +110,7 @@ describe('parts history branches', () => {
     if (copy.lmParameters?.stop) copy.lmParameters.stop.push('changed');
     expect(assistant.lmParameters?.stop).toEqual(['STOP']);
   });
+
   it('user resend forwards attachment parts and chosen parameters', async () => {
     const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Wrong user');
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'f', size: 1, mimeType: 'image/png', uploadedAt: 1, status: 'memory' as const, blob: new Blob(['x']) };
@@ -116,6 +119,7 @@ describe('parts history branches', () => {
     await editMessageForChat({ chatId: chat.id, messageId: user.id, newContent: 'new', lmParameters: parameters });
     expect(state.sent).toHaveBeenCalledWith({ targetChat: chat, content: 'new', parentId: null, attachments: [attachment], lmParameters: parameters });
   });
+
   it('switching versions preserves original interruption and partial parts', async () => {
     const { chat, user, assistant } = fixture(); const original = JSON.stringify(assistant);
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: 'replacement', lmParameters: undefined });
@@ -123,12 +127,14 @@ describe('parts history branches', () => {
     await switchVersionForChat({ chatId: chat.id, messageId: assistant.id });
     expect(chat.currentLeafId).toBe(assistant.id); expect(JSON.stringify(assistant)).toBe(original);
   });
+
   it('waits for generation ownership to end before creating an edited branch', async () => {
     const { chat, assistant } = fixture(); state.processing = true;
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: 'replacement', lmParameters: undefined });
     expect(state.abort).toHaveBeenCalledOnce(); expect(state.processing).toBe(false);
     expect(chat.currentLeafId).not.toBe(assistant.id);
   });
+
   it('commits an entire parts path without flattening tool results or rewriting original nodes', async () => {
     const { chat, user, assistant } = fixture();
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'success', content: { type: 'text', text: '  observed\n' } } }], replies: { items: [] } };
@@ -146,6 +152,7 @@ describe('parts history branches', () => {
     const updater = state.metadata.mock.calls.at(-1)![0].updater;
     expect(updater({ current: { ...chat, systemPrompt: undefined } }).systemPrompt).toEqual(prompt);
   });
+
   it('freezes message and prompt snapshots before persisting a memory attachment', async () => {
     const { chat, user, assistant } = fixture();
     if (user.role !== 'user') throw new Error('Expected user');
@@ -171,6 +178,7 @@ describe('parts history branches', () => {
     expect(attachment.status).toBe('memory'); expect(attachment.blob).toBeInstanceOf(Blob);
     expect(chat.systemPrompt).toEqual(prompt);
   });
+
   it('retains an unsaved attachment body if persistence fails', async () => {
     const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Expected user');
     const blob = new Blob(['original']);
@@ -186,6 +194,7 @@ describe('parts history branches', () => {
       log.mockRestore();
     }
   });
+
   it('keeps the new branch in memory without rewriting original nodes when content save fails', async () => {
     const { chat, user } = fixture();
     state.save.mockRejectedValueOnce(new Error('content storage failure'));
@@ -209,5 +218,4 @@ describe('parts history branches', () => {
     expect(chat.root.items).toHaveLength(2); expect(other.root.items).toHaveLength(0);
     expect(state.save.mock.calls[0]![0].id).toEqual(chat.id);
   });
-
 });

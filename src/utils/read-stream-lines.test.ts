@@ -13,6 +13,7 @@ async function read({ source, maxLineLength }: { source: ReadableStream<Uint8Arr
   for await (const line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength })) lines.push(line);
   return lines;
 }
+
 describe('stream line reader', () => {
   it('decodes split multibyte characters and CRLF without losing a final unterminated line', async () => {
     // Explicit framing bytes keep this test independent of source newline normalization.
@@ -20,12 +21,15 @@ describe('stream line reader', () => {
     const lines = await read({ source: stream({ chunks: [...bytes].map(byte => new Uint8Array([byte])) }), maxLineLength: 100 });
     expect(lines).toEqual(['日本🙂', '最後']);
   });
+
   it('does not silently replace corrupt UTF8', async () => {
     await expect(read({ source: stream({ chunks: [new Uint8Array([0xff])] }), maxLineLength: 100 })).rejects.toThrow();
   });
+
   it('caps a pending line without inventing a delimiter', async () => {
     await expect(read({ source: stream({ chunks: [new TextEncoder().encode('123456')] }), maxLineLength: 5 })).rejects.toThrow();
   });
+
   it('aborts a pending read through the source cancellation hook', async () => {
     let cancelled = false;
     const controller = new AbortController();
@@ -38,6 +42,7 @@ describe('stream line reader', () => {
     const next = iterator.next(); controller.abort();
     await expect(next).rejects.toThrow(); expect(cancelled).toBe(true); expect(source.locked).toBe(false);
   });
+
   it('cancels and releases an unread source when the consumer stops', async () => {
     let cancelled = false;
     const source = new ReadableStream<Uint8Array>({

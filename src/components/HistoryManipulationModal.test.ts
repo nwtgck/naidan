@@ -34,18 +34,21 @@ vi.mock('../composables/useLayout', () => ({
     setActiveFocusArea: mockSetActiveFocusArea,
   }),
 }));
+
 describe('HistoryManipulationModal', () => {
   const mockCommit = vi.fn();
   const wrappers: VueWrapper[] = [];
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
   const originalGetFile = storageService.getFile;
+
   afterEach(() => {
     for (const wrapper of wrappers.splice(0)) wrapper.unmount();
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
     storageService.getFile = originalGetFile;
   });
+
   const mockCurrentChat = ref<Chat>(chatFixture());
   const mockActiveMessages = ref<MessageNode[]>([
     messageFixture({ id: '1', role: 'user', content: 'Msg 1', attachments: undefined }),
@@ -54,6 +57,7 @@ describe('HistoryManipulationModal', () => {
   const mockInheritedSettings = ref({
     systemPromptMessages: ['Inherited Prompt'],
   });
+
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
@@ -80,6 +84,7 @@ describe('HistoryManipulationModal', () => {
     ];
     mockCurrentChat.value = chatFixture();
   });
+
   const mountModal = async () => {
     const wrapper = mount(HistoryManipulationModal, {
       props: { isOpen: false },
@@ -97,6 +102,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     return wrapper;
   };
+
   it('preserves focus on a closed mount and restores chat focus only after closing', async () => {
     const wrapper = mount(HistoryManipulationModal, {
       props: { isOpen: false },
@@ -115,6 +121,7 @@ describe('HistoryManipulationModal', () => {
       [{ area: 'chat' }],
     ]);
   });
+
   it('renders messages when open', async () => {
     const wrapper = await mountModal();
     // System prompt textarea might not be present if behavior is 'inherit' (it shows info div)
@@ -125,6 +132,7 @@ describe('HistoryManipulationModal', () => {
     expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
     expect((messageTextareas[1]!.element as HTMLTextAreaElement).value).toBe('Msg 2');
   });
+
   it('can add and remove messages', async () => {
     const wrapper = await mountModal();
     // Add message after first one
@@ -141,6 +149,7 @@ describe('HistoryManipulationModal', () => {
     expect(messageTextareas.length).toBe(2);
     expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe('');
   });
+
   it('can duplicate messages', async () => {
     const wrapper = await mountModal();
     const duplicateButton = wrapper.find('button[title="Copy Message"]');
@@ -151,6 +160,7 @@ describe('HistoryManipulationModal', () => {
     expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
     expect((messageTextareas[1]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
   });
+
   it('switches roles when clicking role button', async () => {
     const wrapper = await mountModal();
     const roleButtons = wrapper.findAll('button[title^="Switch Role"]');
@@ -163,6 +173,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     expect(wrapper.find('.bg-blue-50').exists()).toBe(true);
   });
+
   it('configures draggable correctly and updates order', async () => {
     const wrapper = await mountModal();
     const draggable = wrapper.findComponent({ name: 'draggable' });
@@ -188,6 +199,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     expect(wrapper.find('.pb-40').exists()).toBe(false);
   });
+
   it('preserves new order when committing changes after drag-and-drop reordering', async () => {
     const wrapper = await mountModal();
     const draggable = wrapper.findComponent({ name: 'draggable' });
@@ -208,6 +220,7 @@ describe('HistoryManipulationModal', () => {
       systemPrompt: undefined,
     });
   });
+
   it('calls commitFullHistoryManipulation on save', async () => {
     const wrapper = await mountModal();
     const messageTextareas = wrapper.findAll('textarea[placeholder="Type message content..."]');
@@ -225,6 +238,7 @@ describe('HistoryManipulationModal', () => {
     });
     expect(wrapper.emitted().close).toBeTruthy();
   });
+
   it('commits system prompt changes', async () => {
     const wrapper = await mountModal();
     // 1. Select 'override'
@@ -246,6 +260,7 @@ describe('HistoryManipulationModal', () => {
       systemPrompt: { behavior: 'override', content: 'New System Prompt' },
     });
   });
+
   it('commits system prompt CLEAR behavior', async () => {
     const wrapper = await mountModal();
     const clearButton = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'clear');
@@ -262,6 +277,7 @@ describe('HistoryManipulationModal', () => {
       systemPrompt: { behavior: 'override', content: null },
     });
   });
+
   it('commits system prompt INHERIT behavior', async () => {
     mockCurrentChat.value = { ...chatFixture(), systemPrompt: { behavior: 'override', content: 'Old' } };
     const wrapper = await mountModal();
@@ -279,6 +295,7 @@ describe('HistoryManipulationModal', () => {
       systemPrompt: undefined,
     });
   });
+
   it('emits close on discard', async () => {
     const wrapper = await mountModal();
     const buttons = wrapper.findAll('button');
@@ -286,6 +303,7 @@ describe('HistoryManipulationModal', () => {
     await discardButton?.trigger('click');
     expect(wrapper.emitted().close).toBeTruthy();
   });
+
   it('renders empty state when no messages and can add first message', async () => {
     mockActiveMessages.value = [];
     const wrapper = await mountModal();
@@ -298,6 +316,7 @@ describe('HistoryManipulationModal', () => {
     expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe('');
     expect(wrapper.find('[data-testid="role-label"]').text()).toBe('User');
   });
+
   it('predicts roles correctly when inserting messages (alternating role heuristic)', async () => {
     mockActiveMessages.value = [
       messageFixture({ id: '1', role: 'user', content: 'U1', attachments: undefined }),
@@ -315,6 +334,7 @@ describe('HistoryManipulationModal', () => {
     labels = wrapper.findAll('[data-testid="role-label"]');
     expect(labels[3]!.text()).toBe('User');
   });
+
   it('predicts role correctly when inserting at the beginning', async () => {
     mockActiveMessages.value = [
       messageFixture({ id: '1', role: 'user', content: 'U1', attachments: undefined }),
@@ -327,6 +347,7 @@ describe('HistoryManipulationModal', () => {
     const labels = wrapper.findAll('[data-testid="role-label"]');
     expect(labels[1]!.text()).toBe('Assistant');
   });
+
   it('loads existing attachments and shows previews', async () => {
     const mockAtt: Attachment = { id: toAttachmentId({ raw: 'att-1' }), binaryObjectId: toBinaryObjectId({ raw: 'binary-1' }), status: 'persisted', originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
     mockActiveMessages.value = [
@@ -341,6 +362,7 @@ describe('HistoryManipulationModal', () => {
     expect(wrapper.find('img').exists()).toBe(true);
     expect(wrapper.find('img').attributes('src')).toBe('blob:test-persisted');
   });
+
   it('can add attachments via file input', async () => {
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test-upload');
     global.URL.createObjectURL = mockCreateObjectURL;
@@ -355,6 +377,7 @@ describe('HistoryManipulationModal', () => {
     expect(wrapper.find('img').exists()).toBe(true);
     expect(wrapper.find('img').attributes('src')).toBe('blob:test-upload');
   });
+
   it('can remove attachments', async () => {
     const mockAtt: Attachment = { id: toAttachmentId({ raw: 'att-1' }), binaryObjectId: toBinaryObjectId({ raw: 'binary-1' }), status: 'memory', blob: new Blob(['']), originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
     mockActiveMessages.value = [
@@ -369,6 +392,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     expect(wrapper.find('img').exists()).toBe(false);
   });
+
   it('can paste images into a message', async () => {
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test');
     global.URL.createObjectURL = mockCreateObjectURL;
@@ -389,6 +413,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
     expect(wrapper.find('img').exists()).toBe(true);
   });
+
   it('keeps every selected part, tool result, timestamp and interruption on a no-op edit', async () => {
     const assistant: MessageNode = {
       ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }),
@@ -418,6 +443,7 @@ describe('HistoryManipulationModal', () => {
     expect(mockCommit.mock.calls[0]![0].messages).toEqual(original);
     expect(mockActiveMessages.value.map(message => copyMessageWithoutReplies({ message }))).toEqual(original);
   });
+
   it('edits each text part without folding reasoning, trimming text, or promoting partial', async () => {
     mockActiveMessages.value = [{
       ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }),
@@ -447,6 +473,7 @@ describe('HistoryManipulationModal', () => {
     expect(saved.interruption).toEqual({ type: 'cancelled' });
     expect(mockActiveMessages.value[0]!.parts[2]).toMatchObject({ text: 'second' });
   });
+
   it('duplicates independent parts and leaves attachments on users with role switching disabled', async () => {
     const attachment: Attachment = { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) };
     mockActiveMessages.value = [messageFixture({ id: '1', role: 'user', content: 'A', attachments: [attachment] })];
@@ -462,6 +489,7 @@ describe('HistoryManipulationModal', () => {
     expect(saved[0].parts[0].text).toBe('A'); expect(saved[1].parts[0].text).toBe('B');
     expect(mockActiveMessages.value[0]!.parts).toHaveLength(2);
   });
+
   it('removes only the selected occurrence when attachments share the same binary and identity', async () => {
     const attachment: Attachment = { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) };
     const message = messageFixture({ id: '1', role: 'user', content: 'A', attachments: [attachment, attachment] });
@@ -475,12 +503,14 @@ describe('HistoryManipulationModal', () => {
     expect(saved.parts).toEqual(message.parts.slice(0, 3));
     expect(message.parts).toHaveLength(4);
   });
+
   it('saves to the chat whose draft was opened rather than the newly selected chat', async () => {
     const wrapper = await mountModal();
     mockCurrentChat.value = { ...chatFixture(), id: toChatId({ raw: 'other-chat' }) };
     await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
     expect(mockCommit.mock.calls[0]![0].chatId).toEqual(toChatId({ raw: 'chat-1' }));
   });
+
   it('does not close a reopened dialog when an earlier save settles', async () => {
     let finish!: () => void;
     mockCommit.mockImplementationOnce(() => new Promise<void>(resolve => {
@@ -493,6 +523,7 @@ describe('HistoryManipulationModal', () => {
     finish(); await nextTick(); await nextTick();
     expect(wrapper.emitted('close')).toBeUndefined();
   });
+
   it('does not publish or leak a persisted preview after removal and unmount', async () => {
     let finish!: (blob: Blob) => void;
     storageService.getFile = vi.fn(() => new Promise<Blob>(resolve => {
@@ -506,13 +537,13 @@ describe('HistoryManipulationModal', () => {
     finish(new Blob(['x'])); await nextTick(); await nextTick();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
+
   it('keeps attachment actions visible but prevents attaching media to assistant or tool rows', async () => {
     const wrapper = await mountModal();
     expect(wrapper.findAll('[data-testid="history-attach-media"]')[1]!.attributes('disabled')).toBeDefined();
     await wrapper.findAll('textarea[placeholder="Type message content..."]')[1]!.trigger('paste', { clipboardData: { items: [{ type: 'image/png', getAsFile: () => new File(['x'], 'x.png', { type: 'image/png' }) }] } });
     expect(wrapper.findAll('img')).toHaveLength(0);
   });
-
 });
 
 function messageFixture({ id, role, content, attachments }: { id: string; role: 'user' | 'assistant'; content: string; attachments: Attachment[] | undefined }): MessageNode {

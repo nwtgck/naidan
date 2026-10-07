@@ -19,6 +19,7 @@ beforeEach(() => {
     terminate = fixture.terminate;
   });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();

@@ -162,5 +162,4 @@ describe('SettingsModal feature flags', () => {
     expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
     wrapper.unmount();
   });
-
 });

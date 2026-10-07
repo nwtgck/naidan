@@ -213,6 +213,7 @@ describe('SmolLM2 1.7B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('delivers the recorded first-turn stream exactly before Provider settlement', async () => {
     expect(evidence.identity).toEqual({
       "modelId": "hf.co/HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -287,6 +288,7 @@ Sure, here's a sample message for a template:
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn text through structured parts before settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
@@ -458,8 +460,8 @@ describe('SmolLM2 1.7B Provider / history', () => {
     } finally {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-
   }, 30_000);
+
   it("multi-turn-generation matches the original native input through public Provider", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
@@ -546,8 +548,8 @@ describe('SmolLM2 1.7B Provider / history', () => {
     } finally {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-
   }, 30_000);
+
   it('preserves the recorded end-of-turn output with explicitly supplied assistant history', async () => {
     expect(continuity.identity).toEqual(evidence.identity);
     expect(continuity.scenario.messages).toEqual([
@@ -640,6 +642,7 @@ I'm excited to help you with your project or idea.`]);
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded text through structured parts', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
@@ -821,8 +824,9 @@ A separate synthetic conversation.<|im_end|>
       await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity","independent-next-input"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity", "independent-next-input"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
     try {
@@ -962,6 +966,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
@@ -1000,6 +1005,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
@@ -1038,6 +1044,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
@@ -1242,8 +1249,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       templateSpy.mockRestore();
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-
   }, 30_000);
+
   it("tool-result-continuation rejects before inference while retaining the historical template oracle", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
@@ -1416,8 +1423,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       templateSpy.mockRestore();
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
-
   }, 30_000);
+
   it('tools: rejects the recorded minimal tool-enabled input before native generation', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -1477,6 +1484,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(lateExecutions).toEqual([]);
     }
   }, 30_000);
+
   it('tools: rejects the recorded representative tool-enabled input before native generation', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -1536,6 +1544,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(lateExecutions).toEqual([]);
     }
   }, 30_000);
+
   it('tools: rejects structured caller history without executing historical calls', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -1790,6 +1799,7 @@ Sure, here's a sample message for a template:
       expect(execute).not.toHaveBeenCalled();
     }
   }, 30_000);
+
   it('uses only the settled first part text for a second request in the same loaded runtime', async () => {
     expect(continuity.identity).toEqual(evidence.identity);
     expect(continuity.scenario.messages).toEqual([
@@ -1927,8 +1937,9 @@ Sure, here's a sample message for a template:
       await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
     try {
@@ -1999,6 +2010,7 @@ Sure, here's a sample message for a template:
       await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     expect(fullEvidenceJson.modelId).toBe('HuggingFaceTB/SmolLM2-1.7B-Instruct');

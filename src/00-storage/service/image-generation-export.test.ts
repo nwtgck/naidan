@@ -6,9 +6,11 @@ import * as service from './image-generation';
 import { collectImageGenerationSessionMetadata } from './image-generation-export';
 import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture, generationAssetFixture, generationDraftFixture } from './image-generation/test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
 });
+
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing catalog.');
@@ -35,6 +37,7 @@ async function setup() {
   await service.saveImageGenerationDraft({ store, draft: generationDraftFixture({ sessionId: session.id }), expectedRevision: undefined, writeInputs: async () => {} });
   return { store, session, run, asset };
 }
+
 it('captures canonical metadata plus all input, result and preview references without leaking unused tags', async () => {
   const h = await setup(); const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
   expect(snapshot.binaryObjectIds.map(id => idToRaw({ id })).sort()).toEqual(['input-aa', 'reference-aa', 'binary-asset-aa', 'preview-asset-aa'].sort());
@@ -44,11 +47,13 @@ it('captures canonical metadata plus all input, result and preview references wi
   const run = await snapshot.metadata.find(entry => entry.path === 'runs/aa/run-aa.json')!.blob.text();
   expect(run).toContain('running'); // Partial runs remain exportable, never fabricated as completed.
 });
+
 it('retains a snapshot even if the original file changes afterwards', async () => {
   const h = await setup(); const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
   const file = await fs.file({ path: '/naidan-storage/experimental/image-generation/sessions/aa/session-aa/session.json' }); file.text = '{broken';
   expect(await snapshot.metadata.find(entry => entry.path === 'session.json')!.blob.text()).toContain('雨の夜景');
 });
+
 it.each(['draft', 'asset', 'annotations'])('fails explicitly on unknown %s metadata instead of producing an incomplete archive', async kind => {
   const h = await setup();
   const part = kind === 'draft' ? 'draft.json' : kind === 'asset' ? 'assets/aa/asset-aa.json' : 'annotations/aa/asset-aa.json';
@@ -61,6 +66,7 @@ it.each(['draft', 'asset', 'annotations'])('fails explicitly on unknown %s metad
   await expect(collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id })).rejects.toThrow();
   expect(file.text).toContain('future');
 });
+
 it('excludes translation destinations and authentication from shareable session exports', async () => {
   const h = await setup();
   const translation = { endpoint: { type: 'openai' as const, url: 'https://private-translator.test', httpHeaders: [['Authorization', 'private-secret']] as [string, string][] }, modelId: 'private-model', lmParameters: undefined };

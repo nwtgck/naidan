@@ -40,6 +40,7 @@ vi.mock('./models/native-protocol-streamer', () => ({
     end(): void {}
   },
 }));
+
 afterEach(() => vi.restoreAllMocks());
 
 const open: Fragment = { type: 'control', token: '<|tool_call_start|>' };
@@ -178,6 +179,7 @@ describe('content history admission before public tool effects', () => {
     expect(fixture.published).toEqual([]); expect(fixture.executions).toEqual([]);
     expect(fixture.text()).toBe('The literal prefix is <|.'); expect(fixture.generate).toHaveBeenCalledOnce();
   });
+
   it('rejects a malformed frame emitted as ordinary text before publishing a later native call', async () => {
     const literal = '<|tool_call_start|>not a call<|tool_call_end|>';
     const fixture = createPublicationFixture({ outputs: [[{ type: 'text', text: literal }, ...nativeCall, eos]], historyEncoding: 'verified-content' });
@@ -185,12 +187,14 @@ describe('content history admission before public tool effects', () => {
     expect(fixture.published).toEqual([]); expect(fixture.executions).toEqual([]);
     expect(fixture.text()).toBe(literal); expect(fixture.generate).toHaveBeenCalledOnce();
   });
+
   it('keeps literal text containing a marker prefix when no call needs history encoding', async () => {
     const fixture = createPublicationFixture({ outputs: [[{ type: 'text', text: 'The literal prefix is <|.' }, eos]], historyEncoding: 'verified-content' });
     expect(await fixture.run()).toEqual({ type: 'finished', next: 'user' });
     expect(fixture.text()).toBe('The literal prefix is <|.'); expect(fixture.published).toEqual([]);
     expect(fixture.executions).toEqual([]); expect(fixture.generate).toHaveBeenCalledOnce();
   });
+
   it('retains native-template history and executes its admitted call through the common loop', async () => {
     const fixture = createPublicationFixture({ outputs: [[{ type: 'text', text: 'The literal prefix is <|.' }, ...nativeCall, eos], [{ type: 'text', text: 'Done' }, eos]], historyEncoding: 'native-template' });
     expect(await fixture.run()).toEqual({ type: 'finished', next: 'user' });
@@ -198,6 +202,7 @@ describe('content history admission before public tool effects', () => {
     expect(fixture.executions).toEqual([{ city: 'Tokyo' }]); expect(fixture.generate).toHaveBeenCalledTimes(2);
     expect(fixture.history.map(node => node.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
   });
+
   it('keeps an already complete call but does not execute it when later text cannot be re-input', async () => {
     const fixture = createPublicationFixture({ outputs: [[...nativeCall, { type: 'text', text: 'after call' }, eos]], historyEncoding: 'native-template' });
     expect(await fixture.run()).toMatchObject({ type: 'error', error: expect.objectContaining({ message: expect.stringMatching(/text after a tool call/) }) });
@@ -205,6 +210,7 @@ describe('content history admission before public tool effects', () => {
     expect(fixture.text()).toBe('after call'); expect(fixture.history.map(node => node.role)).toEqual(['user', 'assistant']);
     expect(fixture.history[1]?.parts).toEqual([expect.objectContaining({ type: 'tool_call' }), expect.objectContaining({ type: 'text', text: 'after call' })]);
   });
+
   it('does not silently omit unreviewed historical calls when no new tools are declared', async () => {
     vi.spyOn(standardToolProtocol, 'resolveStandardToolHandling').mockReturnValue({ outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [] });
     const generate = vi.fn(); const apply_chat_template = vi.fn();
@@ -226,5 +232,4 @@ describe('content history admission before public tool effects', () => {
     })).rejects.toThrow(/tool history.*adapter/);
     expect(apply_chat_template).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
   });
-
 });

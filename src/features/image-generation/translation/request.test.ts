@@ -27,9 +27,11 @@ function providerWith({ result, output }: { result: ChatGenerationResult, output
   mocks.provider.mockResolvedValue(provider);
   return { provider, chat };
 }
+
 beforeEach(() => {
   vi.resetAllMocks();
 });
+
 describe('transient read-only prompt translation', () => {
   it('uses an English system instruction and the original text verbatim in a user message', async () => {
     const value = args(), { chat } = providerWith({
@@ -50,6 +52,7 @@ describe('transient read-only prompt translation', () => {
   a cat 🐈
 (weight:1.2)  `);
   });
+
   it('uses the provider runtime operation instead of bypassing shared local-model ownership', async () => {
     const { provider, chat } = providerWith({ output: '訳', result: { type: 'finished', next: 'user' } });
     const operation = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
@@ -58,20 +61,24 @@ describe('transient read-only prompt translation', () => {
     provider.runChatOperation = operation;
     expect(await translateImagePrompt(args())).toBe('訳'); expect(operation).toHaveBeenCalledTimes(1); expect(chat).toHaveBeenCalledTimes(1);
   });
+
   it.each([
     { type: 'interrupted', reason: 'limit' }, { type: 'finished', next: 'tool_results' }, { type: 'error', error: new Error('offline') },
   ] satisfies ChatGenerationResult[])('does not claim partial or tool-requested output as a completed translation: $type', async result => {
     providerWith({ output: 'partial', result }); await expect(translateImagePrompt(args())).rejects.toThrow();
   });
+
   it('reports an empty response', async () => {
     providerWith({ output: ' ', result: { type: 'finished', next: 'user' } }); await expect(translateImagePrompt(args())).rejects.toThrow('no translation');
   });
+
   it('validates inputs before loading a provider and never creates a fallback request', async () => {
     await expect(translateImagePrompt({ ...args(), modelId: undefined })).rejects.toThrow('model');
     await expect(translateImagePrompt({ ...args(), prompt: '  ' })).rejects.toThrow('empty');
     await expect(translateImagePrompt({ ...args(), endpoint: { type: 'openai', url: '', httpHeaders: undefined } })).rejects.toThrow('endpoint');
     expect(mocks.provider).not.toHaveBeenCalled();
   });
+
   it('does not start chat after cancellation during provider loading', async () => {
     const { provider, chat } = providerWith({ output: 'late', result: { type: 'finished', next: 'user' } });
     const pending = Promise.withResolvers<LmProvider>(); mocks.provider.mockReturnValue(pending.promise);
@@ -79,6 +86,7 @@ describe('transient read-only prompt translation', () => {
     abort.abort(); pending.resolve(provider);
     await expect(operation).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
   });
+
   it('honors an operation-level abort even if its outer signal is not aborted', async () => {
     const { provider, chat } = providerWith({ output: 'unused', result: { type: 'finished', next: 'user' } });
     provider.runChatOperation = async ({ operation }) => {
@@ -86,6 +94,7 @@ describe('transient read-only prompt translation', () => {
     };
     await expect(translateImagePrompt(args())).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
   });
+
   it('rejects a provider that does not enter its runtime operation', async () => {
     const { provider } = providerWith({ output: 'unused', result: { type: 'finished', next: 'user' } });
     provider.runChatOperation = async () => {};
@@ -110,6 +119,7 @@ it.each([
   await expect(translateImagePrompt(args())).rejects.toThrow();
   expect(closed).toBe(true); expect(operationFailed).toBe(false);
 });
+
 it('keeps empty successful native output separate from a runtime failure', async () => {
   const { provider } = providerWith({ output: '', result: { type: 'finished', next: 'user' } });
   const scope = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
@@ -119,6 +129,7 @@ it('keeps empty successful native output separate from a runtime failure', async
   await expect(translateImagePrompt(args())).rejects.toThrow('no translation');
   expect(scope).toHaveBeenCalledTimes(1);
 });
+
 it('streams escaped text without reasoning and isolates a failing display observer', async () => {
   providerWith({ output: '<cat>', result: { type: 'finished', next: 'user' } });
   const text: string[] = [];
@@ -130,6 +141,7 @@ it('streams escaped text without reasoning and isolates a failing display observ
   })).toBe('<cat>');
   expect(text).toContain('<cat>'); expect(text.join('')).not.toContain('not part of the translation');
 });
+
 it('still propagates native errors inside the owned runtime operation', async () => {
   const error = new Error('native failure');
   const { provider } = providerWith({ output: '', result: { type: 'error', error } });

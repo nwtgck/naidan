@@ -29,6 +29,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
 
 let scope: ReturnType<typeof effectScope> | undefined;
 let downloads: Blob[];
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   // The archive uses standard Blob streams, which jsdom does not implement.
@@ -62,6 +63,7 @@ beforeEach(async () => {
     updatePreview() {},
   }));
 });
+
 afterEach(() => {
   scope?.stop(); scope = undefined;
   vi.restoreAllMocks(); vi.unstubAllGlobals();

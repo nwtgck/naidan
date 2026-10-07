@@ -11,7 +11,6 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
-
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });

@@ -16,6 +16,7 @@ describe('Image Generation persistence contracts', () => {
     expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
     expect(parsed.seeds).toEqual(['9007199254740993', '9007199254740994', '9007199254740995', '9007199254740996']);
   });
+
   const futureShapes: { name: string, extend: ({ dto }: { dto: ExperimentalImageGenerationRunDto }) => unknown }[] = [
     { name: 'run', extend: ({ dto }) => ({ ...dto, future: true }) },
     { name: 'request', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, future: true } }) },
@@ -33,20 +34,24 @@ describe('Image Generation persistence contracts', () => {
     { name: 'execution', extend: ({ dto }) => ({ ...dto, execution: { ...dto.execution, future: true } }) },
     { name: 'lineage', extend: ({ dto }) => ({ ...dto, sources: [{ role: 'settings', sessionId: 'session-bb', assetId: 'asset-aa', future: true }] }) },
   ];
+
   it.each(futureShapes)('rejects rather than silently strips unknown $name fields', ({ extend }) => {
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse(extend({ dto: imageGenerationRunToDto({ run: runFixture() }) })).success).toBe(false);
   });
+
   it('reads runtime records with additional fields without changing known generation settings', () => {
     const run = runFixture();
     const dto = imageGenerationRunToDto({ run });
     const parsed = ExperimentalImageGenerationRunSchemaDto.parse({ ...dto, request: { ...dto.request, runtime: { ...dto.request.runtime, future: true } } });
     expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
   });
+
   it('does not confuse immutable output plans with requested random seeds', () => {
     const dto = imageGenerationRunToDto({ run: runFixture() });
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, seeds: ['1', '2', '3', '4'] }).success).toBe(false);
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, seed: '-1' } } }).success).toBe(false);
   });
+
   it.each(['候補', 'CANDIDATE', 'ガ'])('rejects duplicate or unnormalized catalog labels: %s', name => {
     const sameKeyName = name === 'CANDIDATE' ? 'candidate' : name;
     const catalog = {
@@ -62,6 +67,7 @@ describe('Image Generation persistence contracts', () => {
     };
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse(catalog).success).toBe(false);
   });
+
   it('keeps reserved system tags structurally distinct from user identifiers', () => {
     const annotations = {
       assetId: 'asset-aa',
@@ -93,10 +99,12 @@ describe('experimental presentation preferences', () => {
     const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(JSON.parse(JSON.stringify(raw)));
     expect(dto.preferences).toEqual({ assistantLayout: 'docked', experimentalNoticeDismissedAt: 2 });
   });
+
   it('accepts an unacknowledged fresh catalog', () => {
     const raw = { version: 1, id: 'catalog-aa', revision: 0, createdAt: 1, tags: [], preferences: { assistantLayout: 'floating' } };
     expect(ExperimentalImageGenerationCatalogSchemaDto.parse(raw).preferences.experimentalNoticeDismissedAt).toBeUndefined();
   });
+
   it.each([
     { assistantLayout: 'unknown' },
     { assistantLayout: 'docked', experimentalNoticeDismissedAt: -1 },

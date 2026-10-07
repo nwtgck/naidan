@@ -5,6 +5,7 @@ import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 async function tick(): Promise<void> {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 }
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -72,12 +73,14 @@ describe('one delivery paired with one decode', () => {
     })).rejects.toBe(error);
     expect(decode).not.toHaveBeenCalled();
   });
+
   it('keeps an undefined rejection distinct from successful delivery', async () => {
     const pair = createDeliveryDecode({ mode: 'overlap', signal: undefined, now: undefined });
     const decode = vi.fn(async () => {});
     await expect(pair.run({ deliver: () => Promise.reject(undefined), decode })).rejects.toBeUndefined();
     expect(decode).not.toHaveBeenCalled();
   });
+
   it('waits for delivery after a synchronous native exception', async () => {
     const pair = createDeliveryDecode({ mode: 'overlap', signal: undefined, now: undefined });
     const delivery = Promise.withResolvers<void>(); let ended = false;
@@ -102,6 +105,7 @@ describe('one delivery paired with one decode', () => {
     expect(deliver).not.toHaveBeenCalled(); expect(decode).not.toHaveBeenCalled();
     expect(pair.counters.pairedSteps).toBe(0);
   });
+
   it('does not decode after synchronous cancellation from delivery', async () => {
     const controller = new AbortController();
     const pair = createDeliveryDecode({ mode: 'overlap', signal: controller.signal, now: undefined });
@@ -114,6 +118,7 @@ describe('one delivery paired with one decode', () => {
     })).rejects.toThrow('aborted');
     expect(decode).not.toHaveBeenCalled(); expect(pair.counters.settledPairs).toBe(1);
   });
+
   it.each(['delivery', 'decode'] as const)('does not race cancellation with the still-pending %s', async pending => {
     const controller = new AbortController();
     const pair = createDeliveryDecode({ mode: 'overlap', signal: controller.signal, now: undefined });
@@ -125,12 +130,14 @@ describe('one delivery paired with one decode', () => {
     (pending === 'delivery' ? native : delivery).resolve(); await tick(); expect(ended).toBe(false);
     (pending === 'delivery' ? delivery : native).resolve(); expect((await task).message).toContain('aborted');
   });
+
   it('blocks reentry from delivery and retains the outer ownership', async () => {
     const pair = createDeliveryDecode({ mode: 'overlap', signal: undefined, now: undefined });
     const innerDecode = vi.fn(async () => {}); const outerDecode = vi.fn(async () => {});
     await pair.run({ deliver: () => expect(pair.run({ deliver: () => {}, decode: innerDecode })).rejects.toThrow('busy'), decode: outerDecode });
     expect(innerDecode).not.toHaveBeenCalled(); expect(outerDecode).toHaveBeenCalledOnce();
   });
+
   it('retains serial backpressure without speculative native calls', async () => {
     const pair = createDeliveryDecode({ mode: 'serial', signal: undefined, now: undefined });
     const delivery = Promise.withResolvers<void>(); const decode = vi.fn(async () => {});
@@ -138,6 +145,7 @@ describe('one delivery paired with one decode', () => {
     await tick(); expect(decode).not.toHaveBeenCalled(); delivery.resolve(); await task;
     expect(decode).toHaveBeenCalledOnce(); expect(pair.counters).toMatchObject({ pairedSteps: 0, settledPairs: 0, serialSteps: 1 });
   });
+
   it.each(['cancel', 'failure'] as const)('preserves serial %s before decode', async outcome => {
     const controller = new AbortController();
     const pair = createDeliveryDecode({ mode: 'serial', signal: controller.signal, now: undefined });
@@ -151,6 +159,7 @@ describe('one delivery paired with one decode', () => {
       .rejects.toThrow(outcome === 'cancel' ? 'aborted' : 'failure');
     expect(decode).not.toHaveBeenCalled();
   });
+
   it('records overlapping child waits separately from the joint duration', async () => {
     vi.useFakeTimers();
     const pair = createDeliveryDecode({ mode: 'overlap', signal: undefined, now: () => Date.now() });
@@ -161,6 +170,7 @@ describe('one delivery paired with one decode', () => {
     await vi.advanceTimersByTimeAsync(30); await task;
     expect(pair.counters).toMatchObject({ deliveryWaitMs: 20, decodeWaitMs: 30, jointWaitMs: 30 });
   });
+
   it.each([Number.NaN, Infinity, -Infinity, 'throw'] as const)('ignores diagnostic clock failure %s without abandoning work', async value => {
     const pair = createDeliveryDecode({
       mode: 'overlap',
@@ -174,7 +184,6 @@ describe('one delivery paired with one decode', () => {
     expect(decode).toHaveBeenCalledOnce(); expect(pair.counters).toMatchObject({ settledPairs: 1, jointWaitMs: 0 });
   });
 });
-
 
 describe('delivery/decode error identity during cancellation', () => {
   it.each(['serial', 'overlap'] as const)('preserves a synchronous delivery failure in %s mode', async mode => {

@@ -10,6 +10,7 @@ describe('browser model preset presentation', () => {
     expect(TEST_ONLY.stateForRouter({ router: first })).toBe(TEST_ONLY.stateForRouter({ router: first }));
     expect(TEST_ONLY.stateForRouter({ router: first })).not.toBe(TEST_ONLY.stateForRouter({ router: second }));
   });
+
   it('waits for settings and consumes each query change once without following later dismissal', async () => {
     const input = ref<string | undefined>('hf.co/owner/repo:Q4_K_M'); const initialized = ref(false);
     const isOnboardingDismissed = ref(true); const scope = effectScope();

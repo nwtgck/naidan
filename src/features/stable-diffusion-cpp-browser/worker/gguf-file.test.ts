@@ -32,6 +32,7 @@ it('reads above 2, 4, 8 and 18 GiB without narrowing the file offset or copying 
   expect(() => source.read(new Uint8Array(1), Number.MAX_SAFE_INTEGER + 1)).toThrow('offset');
   expect(() => source.read(new Uint8Array(1), -1)).toThrow('offset');
 });
+
 it('rejects invalid headers and incomplete reads before mounting a model', () => {
   const file = ggufFile();
   expect(() => createGgufFileSource({ file, reader: { readAsArrayBuffer: () => new ArrayBuffer(24) } })).toThrow('GGUF version');

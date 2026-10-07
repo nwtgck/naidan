@@ -78,7 +78,6 @@ describe('Rational', () => {
     })).toBe('0.66667');
   });
 
-
   it('preserves decimal powers introduced by rational rounding', () => {
     for (const [value, decimalPlaces, expected] of [
       [rational(28192n, 115443n, 8), 0, '24420710'],

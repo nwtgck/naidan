@@ -130,6 +130,7 @@ describe('useConfirm', () => {
     await vi.waitFor(() => expect(confirmHook.isConfirmOpen.value).toBe(true));
     expect(confirmHook.confirmDetails.value).toBeUndefined(); confirmHook.handleConfirm(); await next;
   });
+
   it('passes icon correctly', async () => {
     const MockIcon = { template: '<div>Icon</div>' };
     const confirmPromise = confirmHook.showConfirm({ icon: MockIcon });

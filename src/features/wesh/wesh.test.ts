@@ -81,7 +81,6 @@ describe('Wesh Shell', () => {
     });
   });
 
-
   it('exposes read-only shell and directory snapshots for terminal observation', async () => {
     const home = await rootHandle.getDirectoryHandle('home', { create: true });
     await home.getDirectoryHandle('user', { create: true });

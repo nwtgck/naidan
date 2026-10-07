@@ -347,6 +347,7 @@ describe('Production native collection through actual Comlink', () => {
       }
     }
   }, 30_000);
+
   it('terminates the real session during an unresolved native call without collecting or inventing settlement at cutoff', async () => {
     let entered!: () => void;
     const nativeEntered = new Promise<void>(resolve => {

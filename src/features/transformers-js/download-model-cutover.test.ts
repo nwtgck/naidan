@@ -230,7 +230,6 @@ describe('user-facing Transformers.js download cutover', () => {
     expect(mocks.runPreparation).not.toHaveBeenCalled();
   });
 
-
   it('fails before costly model preparation when cached revision inventory cannot be inspected safely', async () => {
     mocks.inspectCachedRevisions.mockRejectedValue(new Error('OPFS inventory unavailable'));
     const { transformersJsService } = await import('./index-hosted');

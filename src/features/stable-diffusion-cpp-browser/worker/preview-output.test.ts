@@ -7,6 +7,7 @@ function capture({ step, revision = 0 }: { step: number, revision?: number }) {
   return { image, maxEdge: 256, frame: { type: 'naidan-image-preview-v1' as const, runId: 1, revision, step, steps: 100, mode: 'projection' as const } };
 }
 const encoded = () => ({ png: new Blob(['x'], { type: 'image/png' }), width: 1, height: 1 });
+
 it('bounds active encoding to one plus the newest pending frame under rapid callbacks', async () => {
   const gate = Promise.withResolvers<ReturnType<typeof encoded>>(), publish = vi.fn();
   const encode = vi.fn<typeof encodeImagePixels>().mockResolvedValue(encoded()).mockReturnValueOnce(gate.promise);
@@ -17,6 +18,7 @@ it('bounds active encoding to one plus the newest pending frame under rapid call
   expect(encode).toHaveBeenCalledTimes(2);
   expect(publish.mock.calls.map(([{ frame }]) => frame.step)).toEqual([1, 100]);
 });
+
 it('does not publish stale encodes after OFF or a new size revision and releases the pending frame on close', async () => {
   let revision = 0, enabled = true;
   const gate = Promise.withResolvers<ReturnType<typeof encoded>>(), publish = vi.fn();
@@ -27,6 +29,7 @@ it('does not publish stale encodes after OFF or a new size revision and releases
   expect(publish).not.toHaveBeenCalled(); expect(encode).toHaveBeenCalledTimes(1);
   output.push({ capture: capture({ step: 3, revision: 1 }) }); expect(encode).toHaveBeenCalledTimes(1);
 });
+
 it('recovers from an encoder rejection and never strands a frame arriving at the completion boundary', async () => {
   const onError = vi.fn(), seen: number[] = [];
   const encode = vi.fn<typeof encodeImagePixels>().mockResolvedValue(encoded()).mockRejectedValueOnce(new Error('encode failure'));
@@ -71,6 +74,7 @@ it('records native and delivered sizes plus encoding/queue wall time without inc
     }),
   });
 });
+
 it('does not let a broken measurement sink change a successfully delivered preview', async () => {
   const publish = vi.fn(), onError = vi.fn();
   const output = createPreviewOutput({

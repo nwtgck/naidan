@@ -8,9 +8,11 @@ import type { PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
 });
@@ -196,7 +198,6 @@ it.each([
   expect(image.attributes('width')).toBe(String(expectedWidth));
   expect(image.attributes('height')).toBe(String(expectedHeight));
 });
-
 
 it('shows elapsed time and the configurable first preview step', async () => {
   const { wrapper, view } = openPreview({ width: 64, height: 64, mode: 'vae' });

@@ -86,7 +86,6 @@ describe('standalone Worker session', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
-
   it('makes repeated disposal idempotent', async () => {
     const worker = createWorkerMock();
     const remote = createRemoteMock({ release: async () => undefined });

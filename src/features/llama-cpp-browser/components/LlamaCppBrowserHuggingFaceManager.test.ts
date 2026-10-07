@@ -24,16 +24,19 @@ const wrappers: VueWrapper[] = [];
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } }); wrappers.push(wrapper); return wrapper;
 }
+
 beforeEach(async () => {
   queueTest.reset(); metadataTest.reset();
   vi.resetAllMocks(); vi.mocked(installedSelection).mockResolvedValue(undefined); confirm.mockResolvedValue(true); vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 }); vi.mocked(cancelDownload).mockResolvedValue('deleted'); vi.mocked(listPendingDownloads).mockResolvedValue([]); await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
   await flushPromises();
   vi.useRealTimers();
 });
+
 describe('Hugging Face download controls', () => {
   it('marks existing selections downloaded and publishes the exact local model without downloading', async () => {
     const model = { id: 'hf-model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
@@ -53,6 +56,7 @@ describe('Hugging Face download controls', () => {
     window.dispatchEvent(new Event('focus')); await flushPromises();
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
+
   it('rechecks completed downloads and ignores an earlier selection check', async () => {
     const stale = Promise.withResolvers<Awaited<ReturnType<typeof installedSelection>>>();
     const models = ['repo-Q4_K_M.gguf', 'repo-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
@@ -74,6 +78,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.emitted('modelReady')).toEqual([[ready]]);
     expect(wrapper.get('[data-testid="llama-hf-download"]').text()).toContain('Downloaded');
   });
+
   it('keeps prepared inputs and manual choices across modal tabs without another metadata request', async () => {
     const models = ['repo-Q4_K_M.gguf', 'repo-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models, projectors: [] });
@@ -95,6 +100,7 @@ describe('Hugging Face download controls', () => {
     expect(discoverRepository).toHaveBeenCalledTimes(1);
     expect(vi.mocked(installedSelection).mock.calls.length).toBeGreaterThan(checks);
   });
+
   it('prepares a preset once after availability without starting a download or reapplying on remount', async () => {
     const claim = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
     const modelPreset: ModelPreset = { input: 'hf.co/owner/repo:QAD-Q4_0', target: 'settings', claim };
@@ -110,6 +116,7 @@ describe('Hugging Face download controls', () => {
     const reopened = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false, modelPreset } }); wrappers.push(reopened);
     await flushPromises(); expect(discoverRepository).toHaveBeenCalledTimes(1);
   });
+
   it('discards a superseded metadata response and prepares the newer preset', async () => {
     const first = Promise.withResolvers<Awaited<ReturnType<typeof discoverRepository>>>();
     vi.mocked(discoverRepository).mockReturnValueOnce(first.promise).mockResolvedValueOnce({ repository: 'owner/repo', revision: selection.revision, models: [{ label: 'repo-Q8_0.gguf', files: [{ path: 'repo-Q8_0.gguf', size: 128 }], size: 128 }], projectors: [] });
@@ -122,6 +129,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('repo-Q8_0.gguf');
     expect(downloadRepository).not.toHaveBeenCalled();
   });
+
   it('selects a complete quantization group and an independent optional projector', async () => {
     vi.mocked(discoverRepository).mockResolvedValue({ repository: selection.repository, revision: selection.revision, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [{ path: 'mmproj-F16.gguf', size: 64 }] });
     const wrapper = render(); await flushPromises();
@@ -139,6 +147,7 @@ describe('Hugging Face download controls', () => {
     expect(downloadRepository).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...selection, files: [...selection.files, { path: 'mmproj-F16.gguf', size: 64 }] } }));
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
+
   it('keeps an explicit quantization and multimodal OFF when checking the same repository again', async () => {
     const models = ['model-Q8_0.gguf', 'model-Q4_K_M.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ repository: selection.repository, revision: selection.revision, models, projectors: [{ path: 'mmproj.gguf', size: 64 }] });
@@ -152,6 +161,7 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-download"]').trigger('click'); await flushPromises();
     expect(vi.mocked(downloadRepository).mock.calls[0]?.[0].selection.files).toEqual([{ path: 'model-Q8_0.gguf', size: 128 }]);
   });
+
   it('prioritizes explicit variants over saved choices while keeping every model selectable', async () => {
     const models = ['repo-Q4_K_M.gguf', 'repo-QAD-Q4_0.gguf', 'repo-UD-Q4_K_XL.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ repository: 'owner/repo', revision: selection.revision, models, projectors: [] });
@@ -166,6 +176,7 @@ describe('Hugging Face download controls', () => {
     await input.setValue('hf.co/owner/repo'); await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click'); await flushPromises();
     expect(select.element.value).toBe('repo-UD-Q4_K_XL.gguf');
   });
+
   it.each(['unknown', 'Q4_K_M'])('requires an explicit choice for an unavailable or ambiguous variant: %s', async requestedVariant => {
     const models = ['repo-Q4_K_M.gguf', 'repo-Q4_K_M-00001-of-00002.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ repository: 'owner/repo', revision: selection.revision, models, projectors: [] });
@@ -179,6 +190,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.find('[data-testid="llama-hf-requested-variant-unresolved"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
   });
+
   it('keeps distinct variants directly selectable and hides multimodal controls when unavailable', async () => {
     const models = ['base-Q4_K_M.gguf', 'other-Q4_K_M.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ repository: selection.repository, revision: selection.revision, models, projectors: [] });
@@ -192,6 +204,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.get('[data-testid="llama-hf-files"]').text()).toContain('other-Q4_K_M.gguf');
   });
+
   it.each([
     { failure: new DownloadConflictError({ reason: 'existing-files' }), message: 'Model files already exist' },
     { failure: new DownloadConflictError({ reason: 'different-download' }), message: 'A different download already exists' },
@@ -206,6 +219,7 @@ describe('Hugging Face download controls', () => {
     expect(alert).not.toContain('private source path');
     if (failure instanceof DownloadConflictError) expect(alert).not.toContain('Retry or resume');
   });
+
   it('keeps pending files when deletion confirmation is cancelled and refreshes a changed plan', async () => {
     vi.mocked(listPendingDownloads).mockResolvedValue([{ version: 1, selection, bytes: [48], complete: [false] }]);
     const wrapper = render(); await flushPromises();
@@ -219,6 +233,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Deletion stopped because the files changed');
     expect(listPendingDownloads).toHaveBeenCalledTimes(2);
   });
+
   it.each(['complete', 'pause', 'unmount'] as const)('updates remaining time independently of events and disposes its clock on %s', async ending => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
     vi.mocked(listPendingDownloads).mockResolvedValue([{ version: 1, selection, bytes: [64], complete: [false] }]);
@@ -250,6 +265,7 @@ describe('Hugging Face download controls', () => {
     }
     await flushPromises(); expect(vi.getTimerCount()).toBe(0);
   });
+
   it('restores pending downloads on mount and supports resume, pause and cancel-delete', async () => {
     vi.mocked(listPendingDownloads).mockResolvedValue([{ version: 1, selection, bytes: [48], complete: [false] }]);
     vi.mocked(downloadRepository).mockImplementation(({ signal, onProgress }) => {

@@ -12,6 +12,7 @@ function publication() {
   });
   return finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['pixels'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false }, previews: [], elapsedMs: 1 });
 }
+
 it('keeps cloned metadata and the original immutable bytes after a view detaches', async () => {
   const store = createPendingImageHistory({ maxEntries: 2, byteLimit: 100 });
   const source = reactive(publication()), save = vi.fn().mockRejectedValueOnce(new Error('full')).mockResolvedValue(undefined);
@@ -27,6 +28,7 @@ it('keeps cloned metadata and the original immutable bytes after a view detaches
   expect(save.mock.calls[1]![0].files[0].blob).toBe(blob);
   expect(store.list()).toEqual([]);
 });
+
 it('coalesces retries, blocks discard while saving, and rejects a stale retry after discard', async () => {
   const store = createPendingImageHistory({ maxEntries: 2, byteLimit: 100 });
   const gate = Promise.withResolvers<void>(), save = vi.fn(() => gate.promise);
@@ -37,6 +39,7 @@ it('coalesces retries, blocks discard while saving, and rejects a stale retry af
   store.discard({ id }); await expect(store.retry({ id })).rejects.toThrow('discarded');
   expect(save).toHaveBeenCalledOnce();
 });
+
 it('limits admission, retains completed pixels, and never evicts an earlier failed image', () => {
   const store = createPendingImageHistory({ maxEntries: 1, byteLimit: 1 });
   store.assertCapacity(); const source = publication();
@@ -46,6 +49,7 @@ it('limits admission, retains completed pixels, and never evicts an earlier fail
   expect(store.list()[0]?.files[0]?.blob).toBe(source.files[0]!.blob);
   store.discard({ id }); store.assertCapacity();
 });
+
 it('view listener errors cannot fail retention or completion', async () => {
   const store = createPendingImageHistory({ maxEntries: 1, byteLimit: 100 });
   store.subscribe({

@@ -136,5 +136,4 @@ describe('useChatWeshPreferences', () => {
       updater: expect.any(Function),
     });
   });
-
 });

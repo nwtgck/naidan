@@ -9,9 +9,11 @@ import { promiseAllKeyed } from '@/utils/promise';
 import { VALUE_BYTES } from './primitives';
 
 const stops: (() => void)[] = [];
+
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
 });
+
 function peers({ aExports, bExports, capacity }: { aExports: NaidanRpcExposure[]; bExports: NaidanRpcExposure[]; capacity: number }) {
   const transport = transportPair({ capacity, fragmentBytes: 1021 }), stop = new AbortController();
   const a = new NaidanRpcPeer({ transport: transport.a, exports: aExports, limits: { maxCalls: capacity, maxCallTimeoutMs: 2000 }, signal: stop.signal });
@@ -478,6 +480,7 @@ it('oversized finite metadata fails without opening a lower stream or starting a
   await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
   expect(called).toBe(0); expect(transport.stats()).toEqual({ active: 0, total: 0 });
 });
+
 it('pausing admission preserves an admitted invocation but denies new calls until reopened', async () => {
   const started = Promise.withResolvers<void>(), finish = Promise.withResolvers<number>();
   const definition = contract({ name: 'test.pause', methods: { run: procedure({ input: z.object({}), result: z.number(), notifications: {} }) } });

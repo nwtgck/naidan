@@ -27,6 +27,7 @@ function handle({ name }: { name: string }): HostModelDirectoryHandle {
   };
   return result as unknown as HostModelDirectoryHandle;
 }
+
 beforeEach(() => {
   settings = ref<Settings>({
     ...DEFAULT_SETTINGS,
@@ -52,9 +53,11 @@ beforeEach(() => {
   Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: picker });
   scope = effectScope();
 });
+
 afterEach(() => {
   scope.stop(); vi.unstubAllGlobals(); Reflect.deleteProperty(window, 'showDirectoryPicker');
 });
+
 function create() {
   return scope.run(() => useHostModelDirectories({ blocked: () => false, stopDownload, changed, failed }))!;
 }
@@ -129,6 +132,7 @@ describe('linked model directory registration', () => {
     expect(state.view.entries.value[0]?.access).toBe('unsupported');
     expect(hostModelHandles.get).not.toHaveBeenCalled(); expect(picker).not.toHaveBeenCalled();
   });
+
   it('never falls back to OPFS when permission for the explicitly selected host root is denied', async () => {
     const root = handles.get('existing')!;
     vi.mocked(root.requestPermission).mockResolvedValue('denied');

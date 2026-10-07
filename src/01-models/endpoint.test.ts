@@ -53,5 +53,4 @@ describe('endpoint helpers', () => {
       right: { type: 'browser_provided_lm' },
     })).toBe(true);
   });
-
 });

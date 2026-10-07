@@ -24,6 +24,7 @@ beforeEach(() => {
     throw new Error('External internet is forbidden in replay corpus tests');
   }));
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 async function replay({ fixture, configVariant }: { fixture: ModelFixture, configVariant: 'captured' | 'invalid' }) {

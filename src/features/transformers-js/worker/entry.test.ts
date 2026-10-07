@@ -930,7 +930,6 @@ describe('transformers-js.worker', () => {
     )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
   });
 
-
   it('does not let a final missing artifact hide an earlier runtime rejection for a cached revision', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
@@ -2569,7 +2568,6 @@ describe('transformers-js.worker', () => {
     }
   });
 
-
   it('observes the LFM2.5-230M repository boundary where q4f16 is unavailable but q4 core and external data can be prefetched', async () => {
     const repository = readDownloadVerificationRepositoryFixture({ name: 'lfm2-5-230m' });
     const server = await createHuggingFaceFixtureServer({
@@ -2775,7 +2773,6 @@ describe('transformers-js.worker', () => {
     });
   });
 
-
   it('prefetchUrls rejects an HTTP 200 HTML fallback instead of committing it as a model artifact', async () => {
     const comlink = await import('comlink');
     await import('@/features/transformers-js/download-verification/download-worker/entry');
@@ -2953,7 +2950,6 @@ describe('transformers-js.worker', () => {
       ],
     });
   });
-
 
   it('prefetchUrls sanitizes signed URLs from failure error messages, stacks, and causes', async () => {
     const comlink = await import('comlink');

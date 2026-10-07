@@ -275,7 +275,6 @@ body from stdin
 `);
   });
 
-
   it('treats an explicit empty commit.gpgSign override as false', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -305,7 +304,6 @@ git status --porcelain=v1`,
     expect(stderr.text).toContain('fatal: commit signing is not supported yet\n');
     expect(stdout.text).toBe(' M a.txt\n');
   });
-
 
   it('does not stage tracked changes when -a fails commit preflight', async () => {
     const { result, stdout, stderr } = await execute({
@@ -363,5 +361,4 @@ git show --stat --no-color HEAD`,
     expect(stdout.text).toContain(' 1 file changed, 1 insertion(+), 1 deletion(-)\n');
     expect(stdout.text).not.toContain('diff --git');
   });
-
 });

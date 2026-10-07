@@ -5,6 +5,7 @@ import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 
 afterEach(() => vi.restoreAllMocks());
+
 it('advertises copy while idle and none while busy; drop is not controlled by truthy Ref objects', async () => {
   const downloading = ref(false), importing = ref(false);
   const view = { ...createDisabledImageLibrary(), downloading: computed(() => downloading.value), importing: computed(() => importing.value), dropDirectory: vi.fn(async () => undefined) };
@@ -21,6 +22,7 @@ it('advertises copy while idle and none while busy; drop is not controlled by tr
     wrapper.unmount();
   }
 });
+
 it('keeps an active import cancellable when an independent operation blocks new imports', async () => {
   const view = { ...createDisabledImageLibrary(), importing: computed(() => true), cancelImport: vi.fn(), dropDirectory: vi.fn(async () => undefined) };
   const wrapper = mount(ImageRepositoryImport, { props: { view, disabled: true } });
@@ -35,6 +37,7 @@ it('keeps an active import cancellable when an independent operation blocks new 
     wrapper.unmount();
   }
 });
+
 it('keeps standalone import actions disabled when no import can be in progress', () => {
   const wrapper = mount(ImageRepositoryImport, { props: { view: createDisabledImageLibrary(), disabled: true } });
   try {

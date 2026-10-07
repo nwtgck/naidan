@@ -79,6 +79,7 @@ echo -ne 'x\\ty'
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
+
   it('stops option parsing at the first non-option and treats unknown options as text', async () => {
     const afterWord = await execute({ script: 'echo alpha -n' });
     const unknown = await execute({ script: 'echo -z alpha' });
@@ -268,5 +269,4 @@ echo --help
       }
     }
   });
-
 });

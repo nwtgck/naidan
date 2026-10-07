@@ -17,9 +17,11 @@ import type * as Tjs from '@huggingface/transformers';
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = "HuggingFaceTB/SmolLM2-135M-Instruct";
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
+
 function assistant(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
 }

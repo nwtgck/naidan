@@ -4,6 +4,7 @@ import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { decodeImage } from '@/features/llama-cpp-browser/runtime/image-input';
 
 vi.mock('../runtime/image-input', () => ({ decodeImage: vi.fn(async () => ({ width: 1, height: 1, rgb: new Uint8Array([10, 20, 30]) })) }));
+
 afterEach(() => vi.clearAllMocks());
 
 function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
@@ -65,6 +66,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   return { core, api, allocated, tokenPointer, observedParts };
 }
 const blob = new Blob(['image'], { type: 'image/png' });
+
 describe('native multimodal orchestration', () => {
   it.each([4, 8] as const)('uses %i-byte pointer arrays, preserves part order and trusts native next position', async pointerBytes => {
     const host = fixture({ pointerBytes });
@@ -77,20 +79,24 @@ describe('native multimodal orchestration', () => {
     await prepared.dispose(); await prepared.dispose();
     expect(host.api.mtmd_input_chunks_free).toHaveBeenCalledOnce(); expect([...host.allocated]).toEqual([host.tokenPointer]);
   });
+
   it('frees native parts and bitmaps when preprocessing fails', async () => {
     const host = fixture({ pointerBytes: 8 }); host.api.mtmd_tokenize_from_parts.mockResolvedValue(2);
     await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>after', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
     expect([...host.allocated]).toEqual([host.tokenPointer]);
   });
+
   it('rejects an image-ending prompt without valid text logits', async () => {
     const host = fixture({ pointerBytes: 4 }); host.api.mtmd_input_chunk_get_type.mockResolvedValue(1);
     await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('template-unsupported');
     expect([...host.allocated]).toEqual([host.tokenPointer]);
   });
+
   it('fails before decoding when no projector is loaded', async () => {
     await expect(prepareMultimodal({ core: fixture({ pointerBytes: 4 }).core, projector: 0n, prompt: '<marker>', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
     expect(decodeImage).not.toHaveBeenCalled();
   });
+
   it('rejects templates that omit, duplicate or reorder image markers', () => {
     for (const prompt of ['none', '<a><a>', '<b><a>']) expect(() => splitImagePrompt({ prompt, images: [{ marker: '<a>', blob }, { marker: '<b>', blob }] })).toThrow('template-unsupported');
   });

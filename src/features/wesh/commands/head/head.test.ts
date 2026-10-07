@@ -414,7 +414,6 @@ alpha
     expect(result.exitCode).toBe(0);
   });
 
-
   it('preserves unread stdin bytes across repeated byte-limited operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'head -c 1 - -',
@@ -467,5 +466,4 @@ alpha
     expect(stderr.text).toContain('head: dir:');
     expect(result.exitCode).toBe(1);
   });
-
 });

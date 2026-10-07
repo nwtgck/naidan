@@ -79,7 +79,6 @@ describe('ZIP upload worker logic', () => {
     ]));
   });
 
-
   it('rejects case-conflicting directory prefixes', async () => {
     const zip = new JSZip();
     zip.file('Foo/a.txt', 'a');

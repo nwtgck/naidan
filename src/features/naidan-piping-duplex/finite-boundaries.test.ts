@@ -4,6 +4,7 @@ import { FiniteEndpoint, readBounded } from '@/features/naidan-piping-duplex/fin
 import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
+
 beforeEach(() => vi.useFakeTimers());
 
 it.each([

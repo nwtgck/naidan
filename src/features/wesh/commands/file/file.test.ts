@@ -545,7 +545,6 @@ printf 'alpha
     expect(directoryMime.result.exitCode).toBe(0);
   });
 
-
   it('separates MIME type and encoding output', async () => {
     await writeFile({ path: '/plain.txt', data: 'alpha\n' });
 
@@ -689,7 +688,6 @@ version="1.0"?><root/>`],
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('distinguishes named and standard-input empty MIME types', async () => {
     await writeFile({ path: '/empty', data: '' });
 
@@ -749,7 +747,6 @@ empty: empty
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('uses terminal display width when aligning Unicode operands', async () => {
     await writeFile({ path: '/a', data: 'alpha\n' });
     await writeFile({ path: '/é', data: 'alpha\n' });
@@ -771,5 +768,4 @@ é:   ASCII text
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
-
 });

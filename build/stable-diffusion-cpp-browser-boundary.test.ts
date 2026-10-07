@@ -95,6 +95,7 @@ export const resolveBrowserLocale = () => 'en';
 }
 
 afterEach(() => vi.unstubAllEnvs());
+
 describe('hosted-only bicore image boundary', () => {
   it('ships the common caller view and schemas without local image inference or image assets', async () => {
     vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', '/deliberately-missing-image-runtime');
@@ -196,12 +197,15 @@ describe('hosted-only bicore image boundary', () => {
   it('rejects a direct hosted import instead of relying on dead-code elimination', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: "export * from '@/features/stable-diffusion-cpp-browser/worker/client-hosted';", injectImageAsset: false })).rejects.toThrow('Hosted image implementation');
   }, 60_000);
+
   it('rejects accidentally emitted image binaries even with the correct facade', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
+
   it.each(['components/ImageEngineState.vue', 'components/ImageModelConfiguration.vue', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).not.toThrow();
   });
+
   it.each(['engine-state.ts', 'worker/engine-state.ts', 'use-image-benchmark-hosted.ts', 'benchmark/types.ts', 'benchmark/plan.ts', 'benchmark/runner.ts', 'benchmark/archive.ts', 'benchmark/measurements.ts', 'worker/gpu-performance.ts', 'worker/performance-counters.ts', 'worker/run-performance.ts', 'inventory-worker/client.ts', 'inventory-worker/entry.ts', 'inventory-worker/impl.ts', 'session-key.ts', 'worker/preview-control.ts', 'worker/preview-output.ts', 'worker/image-input.ts', 'worker/image-output.ts', 'worker/session.ts', 'worker/core-loader.ts', 'worker/entry.ts', 'capabilities.ts', 'use-image-library.ts', 'logic/repository-store.ts', 'logic/model-metadata.ts', 'logic/model-candidates.ts', 'worker/model-mounts.ts', 'worker/gpu-diagnostics.ts', 'worker/webgpu.ts', 'logic/catalog-download.ts', 'download-worker/client.ts', 'download-worker/entry.ts', 'download-worker/impl.ts'])('guards %s including module queries', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).toThrow('Hosted image implementation');
   });

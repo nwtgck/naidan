@@ -36,6 +36,7 @@ interface WebModule {
 
 const REVISION = 'a'.repeat(40);
 const cleanups: Array<() => void> = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   vi.unstubAllGlobals();

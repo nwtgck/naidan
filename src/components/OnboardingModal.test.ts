@@ -145,6 +145,7 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
     wrapper.unmount(); list.mockRestore(); vi.unstubAllGlobals();
   });
+
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
@@ -163,6 +164,7 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target }) }));
     wrapper.unmount(); list.mockRestore();
   });
+
   it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
     await vi.waitFor(() => {

@@ -234,6 +234,7 @@ for (const kind of ['openai', 'ollama'] as const) {
         expect(build({ content: loaded })).toEqual(binaryHistory);
       });
     }
+
     it('refuses corrupt UTF-8 before issuing an API request and preserves the history', async () => {
       const { provider, fetcher } = providerWithRecording({ kind });
       const { chat } = fixture({ status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'corrupt' }) } });

@@ -54,7 +54,6 @@ describe("classifyContinuityPrefix", () => {
     });
   });
 
-
   it("compares the reconstructed full conversation even when KV cache is provided", () => {
     expect(classifyContinuityPrefix({
       isEncoderDecoder: false,

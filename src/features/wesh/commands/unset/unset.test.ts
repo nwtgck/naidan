@@ -106,5 +106,4 @@ printf '<%s>\n' "\${VALUE-unset}"
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
   });
-
 });

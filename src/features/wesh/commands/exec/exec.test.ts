@@ -89,5 +89,4 @@ describe('wesh exec', () => {
     expect(stderr.text).toContain('-a requires a value for NAME');
     expect(result.exitCode).toBe(2);
   });
-
 });

@@ -42,8 +42,10 @@ if ('promising' in WebAssembly && 'Suspending' in WebAssembly) {
   profiles.push('webgpu-wasm32-jspi');
   if (Number(process.versions.node.split('.')[0]) >= 24) profiles.push('webgpu-wasm64-jspi');
 }
+
 describe.each(profiles)('native chat on %s', profile => {
   let core: Core; let model = 0n;
+
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile, baseURL, moduleOptions: { wasmBinary: await readFile(new URL(`${profile}/browser/core.wasm`, baseURL)), print() {}, printErr() {} } });
@@ -59,9 +61,11 @@ describe.each(profiles)('native chat on %s', profile => {
       core.free({ pointer: params }); core.free({ pointer: filename });
     }
   }, 30000);
+
   afterAll(async () => {
     if (model) await core.api.llama_model_free(model); if (core) await core.api.llama_backend_free();
   });
+
   describe('native Jinja and tool parser through the application runtime', () => {
     it('streams weather calls and ordinary content through native grammar and partial parsing', async () => {
       const weatherTools: NonNullable<GenerateInput['tools']> = [{
@@ -183,6 +187,7 @@ Sunny`);
         chat.dispose();
       }
     });
+
     it.each(['low', 'medium', 'high'] as const)('passes %s reasoning effort as a native template kwarg', effort => {
       const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: effort } });
       try {
@@ -191,6 +196,7 @@ Sunny`);
         chat.dispose();
       }
     });
+
     it('leaves unspecified effort to the template and does not invent a none effort string', () => {
       for (const effort of [undefined, 'none'] as const) {
         const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: effort } });
@@ -201,6 +207,7 @@ Sunny`);
         }
       }
     });
+
     it('repeatedly releases native message/vector/parser handles without invalidating the model', () => {
       for (let iteration = 0; iteration < 20; iteration++) {
         const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: 'none' } });
@@ -321,7 +328,6 @@ Sunny`);
     }
   }, 30000);
 
-
   it('preserves only native single-token markers for special-token rendering', async () => {
     const params = new core.module.common_chat_params(); const markers = new core.module.string_vector();
     const piece = core.alloc({ bytes: 32 });
@@ -337,5 +343,4 @@ Sunny`);
       core.free({ pointer: piece }); markers.delete(); params.delete();
     }
   });
-
 });

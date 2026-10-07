@@ -18,9 +18,11 @@ type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 // Synthetic output controls use the model's original tokenizer, not recorded inference.
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
+
 function assistant(): AssistantMessageNode {
   return {
     id: toMessageId({ raw: 'a1' }),

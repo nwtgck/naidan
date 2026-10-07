@@ -5,9 +5,11 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'ja' });
 });
+
 it('uses the existing llama progress component with the aggregate recipe total and removes it on completion', async () => {
   const view = createDisabledImageLibrary(); view.downloadState.value = 'downloading';
   view.downloading = computed(() => view.downloadState.value === 'downloading');

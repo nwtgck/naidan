@@ -92,7 +92,6 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
-
   it('treats operator-looking values as operands in three-argument string comparisons', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

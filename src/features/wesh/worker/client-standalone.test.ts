@@ -152,5 +152,4 @@ describe('standalone Wesh Worker client lifecycle', () => {
     expect(firstRemote[Comlink.releaseProxy]).toHaveBeenCalledOnce();
     expect(firstWorker.terminate).toHaveBeenCalledOnce();
   });
-
 });

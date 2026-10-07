@@ -7,10 +7,12 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected fetch in unit test'));
 });
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
+
 function endpoint() {
   return new FiniteEndpoint({ baseUrl: 'https://relay.invalid', policy: 'https-only', timeoutMs: 100, repairTimeoutMs: 20 });
 }
@@ -285,7 +287,6 @@ it('invalid paths and oversized request bodies never reach fetch', async () => {
   await expect(instance.send({ route: 'slot', bytes: new Uint8Array(65537), signal })).rejects.toThrow();
   expect(fetch).not.toHaveBeenCalled();
 });
-
 
 it('a large forbidden response remains fatal instead of becoming a size-limit retry', async () => {
   vi.mocked(fetch).mockResolvedValue(new Response(new Uint8Array(8193), { status: 403 }));

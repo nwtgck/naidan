@@ -270,7 +270,6 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     expect(createdWorkers[1]?.terminated).toBe(true);
   });
 
-
   it('converts reactive ZIP placements to cloneable worker requests', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted');
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });

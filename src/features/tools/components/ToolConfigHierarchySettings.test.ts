@@ -128,7 +128,6 @@ describe('ToolConfigHierarchySettings', () => {
     expect(wrapper.find('[data-testid="tool-config-builtin.calculator-inherit"]').exists()).toBe(false);
   });
 
-
   it('does not show a chat-level bulk reset action', () => {
     const wrapper = mountSettings({
       scope: 'chat',

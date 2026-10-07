@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { createImageSessionKeys } from './session-key';
 import { requestFixture } from './test-fixtures';
+
 it('ignores per-image parameters and preview settings while keeping all context choices', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   const initial = keys.key({ request });
@@ -42,12 +43,14 @@ it('ignores per-image parameters and preview settings while keeping all context 
     const before = keys.key({ request }); modify(); expect(keys.key({ request })).not.toBe(before);
   }
 });
+
 it('never treats distinct manual files as equal by name, size and modified time', () => {
   const keys = createImageSessionKeys(), request = requestFixture(), first = keys.key({ request });
   const file = request.models[0]!.file;
   request.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).not.toBe(first);
 });
+
 it('retains a session for LoRA strength changes but replaces it for changed adapter files or paths', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   const noAdapter = keys.key({ request });
@@ -67,6 +70,7 @@ it('retains a session for LoRA strength changes but replaces it for changed adap
   request.loras = [];
   expect(keys.key({ request })).toBe(noAdapter);
 });
+
 it('accepts a stable published identity across refresh and invalidates its companions and revision', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   request.models[0]!.sourceId = 'reviewed-publication-with-all-companions';
@@ -75,6 +79,7 @@ it('accepts a stable published identity across refresh and invalidates its compa
   expect(keys.key({ request })).toBe(first);
   request.models[0]!.sourceId = 'changed-companion-receipt'; expect(keys.key({ request })).not.toBe(first);
 });
+
 it('invalidates on manual companion identity or path but does not depend on model order', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   request.models[0]!.companions = [{ path: 'part.bin', file: request.models[0]!.file }];

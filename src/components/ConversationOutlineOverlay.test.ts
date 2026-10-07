@@ -245,7 +245,6 @@ describe('ConversationOutlineOverlay', () => {
   });
 });
 
-
 function structuredFlow({ parts }: { parts: AssistantMessageNode['parts'] }) {
   const node: AssistantMessageNode = {
     id: toMessageId({ raw: 'parts-assistant' }),
@@ -353,7 +352,6 @@ B `);
     wrapper.unmount();
   });
 });
-
 
 describe('outline identity during generation and history changes', () => {
   it('retains the row and its open peek when an earlier empty part starts emitting text', async () => {

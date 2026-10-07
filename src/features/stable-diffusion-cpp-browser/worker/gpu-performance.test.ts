@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { createGpuMeasurements } from './gpu-performance';
 import { imageDiagnosticSchema } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+
 it('emits schema-valid window deltas and separate run totals, including pending waits', () => {
   let time = 0; const emit = vi.fn(); const metrics = createGpuMeasurements({ emit, now: () => time });
   metrics.begin({ runId: 1 }); metrics.write({ bytes: 12, usage: 0x40 });
@@ -14,6 +15,7 @@ it('emits schema-valid window deltas and separate run totals, including pending 
   const waits = emit.mock.calls.map(([e]) => e.fields).filter(f => f.metric === 'gpu-wait' && f.kind === 'queue');
   expect(waits.map(w => [w.scope, w.wallSumMs, w.wallUnionMs, w.pending])).toEqual([['window', 50, 50, 1], ['window', 30, 30, 0], ['run-total', 80, 80, 0]]);
 });
+
 it('starts zero counters for the next image while retaining device capabilities', () => {
   const emit = vi.fn(), metrics = createGpuMeasurements({ emit, now: () => 1 });
   metrics.device({ fields: { deviceTimestampQuery: true } }); metrics.begin({ runId: 1 }); metrics.write({ bytes: 64, usage: 0 });
@@ -23,6 +25,7 @@ it('starts zero counters for the next image while retaining device capabilities'
   expect(emit.mock.calls.some(([e]) => e.fields.metric === 'gpu-counters' && e.fields.runId === 2 && e.fields.scope === 'run-total' && e.fields.writes === 0)).toBe(true);
   expect(emit.mock.calls.some(([e]) => e.fields.metric === 'gpu-device' && e.fields.runId === 2 && e.fields.reusedDevice)).toBe(true);
 });
+
 it('bounds coverage diagnostics and histogram storage regardless of the number of operations', () => {
   const emit = vi.fn(), metrics = createGpuMeasurements({ emit, now: () => 1 });
   for (let i = 0; i < 100; i++) metrics.unavailable({ method: 'name' + i });

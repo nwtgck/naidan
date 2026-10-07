@@ -5,6 +5,7 @@ import type { InferenceGenerationEvent } from '@/features/transformers-js/genera
 import { createQwen3_5Generation, qwen3_5ProtocolTokens } from './qwen3_5-generation';
 
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers');
   vi.resetModules();

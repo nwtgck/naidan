@@ -29,6 +29,7 @@ beforeEach(() => {
   // Exercise native Blob structured cloning, unavailable in jsdom's Blob.
   vi.stubGlobal('Blob', NodeBlob);
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('tab-memory investigation sessions', () => {

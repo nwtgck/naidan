@@ -18,6 +18,7 @@ vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWor
 vi.mock('./runtime/model-store', () => ({ listStoredModels: async () => [], removeStoredModel: vi.fn(), withModelMutationLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 let service: LlamaCppBrowserService;
 let provider: LmProvider;
+
 beforeEach(async () => {
   vi.resetModules();vi.clearAllMocks();await ensureAllStringsForTest({ locale: 'en' });worker.canReuse.mockReturnValue(true);
   worker.subscribeDisposed.mockReturnValue(() => {});
@@ -26,15 +27,18 @@ beforeEach(async () => {
   service = (await import('./index-hosted')).llamaCppBrowserService;
   provider = createLlamaCppProvider({ service });
 });
+
 afterEach(() => {
   service.release();
 });
+
 function firstToolCall(): void {
   worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { content: '', reasoningContent: 'Check the tool.\n', finishReason: 'stop', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, onEvent }));
 }
 function queuedRequest() {
   return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'queued' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
+
 describe('llama.cpp public generation across the real owned service lane', () => {
   it('keeps profile and Worker ownership through a common tool wait before admitting another request', async () => {
     service.setOptions({ options: { profile: 'cpu-wasm32' } });firstToolCall();
@@ -64,6 +68,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     expect(worker.generate.mock.calls[1]?.[0].request.messages[1]?.reasoning_content).toBe('Check the tool.\n');
     expect(fixture.nodes.map(n => n.role)).toEqual(['assistant', 'tool', 'assistant']);expect(factory).toHaveBeenCalledOnce();
   });
+
   it.each(['cancel', 'release'] as const)('suppresses late tool output on %s, but retains its observed success and holds the lane until it settles', async action => {
     firstToolCall();const entered = Promise.withResolvers<void>();const release = Promise.withResolvers<void>();let toolSignal: AbortSignal | undefined;
     let notify: Parameters<Tool['execute']>[0]['onEvent'];const onToolEvent = vi.fn();
@@ -94,6 +99,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     await notify?.({ event: { type: 'output', stream: 'stdout', text: 'after operation exit' } });expect(onToolEvent).not.toHaveBeenCalled();
     expect(worker.generate).toHaveBeenCalledTimes(2);expect(factory).toHaveBeenCalledTimes(action === 'release' ? 2 : 1);
   });
+
   it('reports an observed model failure once and retires the failed runtime even when the consumer records it as a result', async () => {
     worker.generate.mockImplementationOnce(async ({ onEvent }) => {
       await onEvent({ event: { type: 'text', text: 'received' } });throw new LlamaCppBrowserError({ code: 'worker-failed' });
@@ -103,6 +109,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     expect(worker.dispose).toHaveBeenCalledOnce();expect(service.getState()).toEqual({ status: 'error', code: 'worker-failed' });
     await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });expect(factory).toHaveBeenCalledTimes(2);
   });
+
   it('aborts and awaits a blocked native generation when an operation returns with an unread child', async () => {
     let ended = false;
     worker.generate.mockImplementationOnce(async ({ onEvent, signal }) => {
@@ -124,6 +131,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     expect(ended).toBe(true);expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });expect(factory).toHaveBeenCalledOnce();
   });
+
   it('rejects a stored scoped generator after its operation releases the lane', async () => {
     let escaped: LlamaCppBrowserService['generate'] | undefined;
     await service.runGenerationOperation({
@@ -134,6 +142,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     });
     expect(() => escaped!({ input: queuedRequest(), onEvent: () => {}, signal: undefined })).toThrow('closed');expect(worker.generate).not.toHaveBeenCalled();
   });
+
   it('handles an already-aborted scoped request without leaving a stale pending request at close', async () => {
     await service.runGenerationOperation({
       signal: undefined,
@@ -178,6 +187,7 @@ it.each(['length', 'stop_sequence', 'empty'] as const)('keeps the same Worker be
   await collectChatGeneration({ items: otherProvider.chat(chatRequest()), abortController: new AbortController() });
   expect(factory).toHaveBeenCalledOnce(); expect(worker.dispose).not.toHaveBeenCalled();
 });
+
 it('reports only the translation queue and its own progress, never an earlier chat progress', async () => {
   const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   let firstProgress: Parameters<LlamaCppWorkerClient['generate']>[0]['onProgress'] | undefined;

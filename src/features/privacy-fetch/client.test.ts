@@ -552,6 +552,7 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     client.dispose();
   });
+
   it('bootstraps a stream through the broker iframe and disposes its active body', async () => {
     const { client, brokerWindow, dispatchBrokerMessage } = createClientHarness();
     const url = 'https://huggingface.co/owner/model/resolve/main/model.gguf';
@@ -599,5 +600,4 @@ describe('createPrivacyFetchBrokerClient', () => {
     expect(brokerWindow.postMessage).not.toHaveBeenCalled();
     client.dispose();
   });
-
 });

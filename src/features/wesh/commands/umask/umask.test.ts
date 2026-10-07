@@ -9,7 +9,6 @@ import {
 } from '@/features/wesh/utils/test-stream';
 
 describe('wesh umask', () => {
-
   it('stops option parsing at the first mode operand like Bash', () => {
     expect(UMASK_TEST_ONLY.parseUmaskArguments({ args: ['022', '-S'] })).toEqual({
       ok: true,
@@ -34,6 +33,7 @@ describe('wesh umask', () => {
       invalidOption: '-x',
     });
   });
+
   let wesh: Wesh;
 
   beforeEach(async () => {
@@ -76,5 +76,4 @@ printf '%s:%s\n' "$?" "$(umask)"
     expect(execution.stderr.text).not.toBe('');
     expect(execution.result.exitCode).toBe(0);
   });
-
 });

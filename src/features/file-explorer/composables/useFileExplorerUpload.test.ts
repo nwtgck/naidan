@@ -213,7 +213,6 @@ describe('useFileExplorerUpload', () => {
     expect(client.disposeZipUploadAnalysis).toHaveBeenCalledOnce();
   });
 
-
   it('keeps local fallback preview tied to the directory selected when the dialog opened', async () => {
     const client = createClient();
     client.analyzeZipUpload = vi.fn().mockResolvedValue({
@@ -331,7 +330,6 @@ describe('useFileExplorerUpload', () => {
     expect(refresh).toHaveBeenCalledOnce();
     expect(controller.state.visibility).toBe('hidden');
   });
-
 
   it('returns to the affected ZIP when an earlier multi-ZIP preview becomes outdated', async () => {
     const client = createClient();

@@ -58,6 +58,7 @@ describe('static Tailwind CSS ownership planner', () => {
     expect(parseCssOwnerKey({ key })).toEqual([...owners].sort());
     expect(() => parseCssOwnerKey({ key: '[not-json' })).toThrow(/Invalid serialized CSS owner key/u);
   });
+
   it('collapses all candidates into one initial group in single CSS mode', async () => {
     const result = await plan({
       analysis: createAnalysis({

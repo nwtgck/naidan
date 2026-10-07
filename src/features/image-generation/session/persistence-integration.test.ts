@@ -14,6 +14,7 @@ async function queryImageGenerationAssets({ store, sessionId, query }: { store: 
 }
 const query: ImageGenerationAssetQuery = { visibility: 'active', text: '', tags: [], match: 'all', runId: undefined, cursor: undefined, limit: 20 };
 let h: ReturnType<typeof createImageGenerationStorageHarness>;
+
 beforeEach(() => {
   h = createImageGenerationStorageHarness();
 });
@@ -49,27 +50,32 @@ describe('catalog and session ownership', () => {
     expect(await openImageGenerationStore({ storageType: 'opfs', creation: 'forbid' })).toBeUndefined();
     expect(h.root.children.size).toBe(0); expect(h.writes).toEqual([]);
   });
+
   it.each(['local', 'memory'] as const)('does not touch OPFS for %s storage', async storageType => {
     await expect(openImageGenerationStore({ storageType, creation: 'allow' })).rejects.toThrow('requires OPFS');
     expect(h.getDirectory).not.toHaveBeenCalled();
   });
+
   it('requires locks instead of silently accepting cross-tab data loss', async () => {
     vi.stubGlobal('navigator', { storage: { getDirectory: h.getDirectory } });
     await expect(openImageGenerationStore({ storageType: 'opfs', creation: 'allow' })).rejects.toThrow('Web Locks');
     expect(h.getDirectory).not.toHaveBeenCalled();
   });
+
   it('uses the replacement lock before the feature lock, and initializes only once across clients', async () => {
     const catalogs = await Promise.all(Array.from({ length: 8 }, () => openImageGenerationStore({ storageType: 'opfs', creation: 'allow' })));
     expect(new Set(catalogs.map(catalog => catalog?.id)).size).toBe(1);
     expect(h.writes).toEqual([`${rootPath}/catalog.json`]);
     expect(h.acquired.slice(0, 2)).toEqual([SYNC_LOCK_KEY, 'naidan-experimental-image-generation']);
   });
+
   it.each(['{broken', JSON.stringify({ version: 2, id: 'future-catalog', future: true })])('does not replace unreadable catalog %s', async text => {
     const { store } = await createStore(); const catalogFile = await h.file({ path: `${rootPath}/catalog.json` }); catalogFile.text = text;
     await expect(openImageGenerationStore({ storageType: 'opfs', creation: 'allow' })).rejects.toThrow();
     await expect(listImageGenerationSessions({ store })).rejects.toThrow();
     expect(catalogFile.text).toBe(text);
   });
+
   it('does not recreate a missing catalog over existing sessions', async () => {
     const { store, session } = await start({ count: 1 });
     await (await h.directory({ path: rootPath })).removeEntry('catalog.json');
@@ -77,6 +83,7 @@ describe('catalog and session ownership', () => {
     await expect(loadImageGenerationSession({ store, sessionId: session.id })).rejects.toThrow();
     expect((await h.file({ path: `${sessionPath({ id: session.id })}/session.json` })).text).toContain('雨の夜景');
   });
+
   it('invalidates captured store access after reset instead of recreating old work', async () => {
     const { store, session, run } = await start({ count: 1 });
     await (await h.directory({ path: '/naidan-storage/experimental' })).removeEntry('image-generation', { recursive: true });
@@ -87,17 +94,20 @@ describe('catalog and session ownership', () => {
     expect(writeImages).not.toHaveBeenCalled();
     expect((await listImageGenerationSessions({ store: replacement.store })).items).toEqual([]);
   });
+
   it('rejects invalid path identities before opening storage', async () => {
     const { store } = await createStore(); h.getDirectory.mockClear();
     await expect(loadImageGenerationSession({ store, sessionId: toImageGenerationSessionId({ raw: '@/features/image-generation/catalog' }) })).rejects.toThrow();
     await expect(saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'a/b' }), expectedRevision: undefined })).rejects.toThrow();
     expect(h.getDirectory).not.toHaveBeenCalled();
   });
+
   it('round-trips unusual but safe identifiers without object prototype collisions', async () => {
     const { store } = await createStore();
     for (const id of ['constructor', '__proto__', 'prototype']) await saveImageGenerationSession({ store, session: generationSessionFixture({ id }), expectedRevision: undefined });
     expect((await listImageGenerationSessions({ store })).items).toHaveLength(3);
   });
+
   it('detects session rename conflicts and permits identical retries', async () => {
     const { store } = await createStore(); const session = generationSessionFixture({ id: 'session-aB' });
     await saveImageGenerationSession({ store, session, expectedRevision: undefined });
@@ -107,6 +117,7 @@ describe('catalog and session ownership', () => {
     await expect(saveImageGenerationSession({ store, session: { ...next, title: 'lost update' }, expectedRevision: 0 })).rejects.toThrow('conflict');
     expect((await loadImageGenerationSession({ store, sessionId: session.id }))?.title).toBe('夜景の候補');
   });
+
   it('serializes two competing catalog edits', async () => {
     const { store, catalog } = await createStore();
     const results = await Promise.allSettled(['夜景', '人物'].map((name, index) => saveImageGenerationCatalog({ store, expectedRevision: 0, catalog: { ...catalog, revision: 1, tags: [{ id: toImageGenerationTagId({ raw: `tag-${index}` }), name, state: 'active', createdAt: 1, updatedAt: 1 }] } })));
@@ -124,6 +135,7 @@ describe('immutable generation records and explicit state', () => {
     expect(list.items[0]).toMatchObject({ prompt: run.request.parameters.prompt, requestedCount: 4, modelName: 'main.gguf' });
     expect(list.warningCount).toBe(0);
   });
+
   it('does not publish metadata when input publication fails', async () => {
     const { store } = await createStore(); const session = generationSessionFixture({ id: 'session-aB' });
     await saveImageGenerationSession({ store, session, expectedRevision: undefined });
@@ -137,6 +149,7 @@ describe('immutable generation records and explicit state', () => {
     })).rejects.toThrow('input bytes failed');
     expect(await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id })).toBeUndefined();
   });
+
   it('does not publish an asset before the binary callback succeeds', async () => {
     const { store, session, run } = await start({ count: 1 }); const asset = generationAssetFixture({ id: 'asset-eF', run, index: 0 });
     await expect(commitImageGenerationAsset({
@@ -148,6 +161,7 @@ describe('immutable generation records and explicit state', () => {
     })).rejects.toThrow('disk full');
     expect(await loadImageGenerationAsset({ store, sessionId: session.id, assetId: asset.id })).toBeUndefined();
   });
+
   it('accepts identical asset retries but rejects altered bytes metadata and duplicate output slots', async () => {
     const { store, session, run, asset } = await published();
     await commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
@@ -158,6 +172,7 @@ describe('immutable generation records and explicit state', () => {
     expect((await queryImageGenerationAssets({ store, sessionId: session.id, query })).total).toBe(1);
     expect((await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id }))?.execution.type).toBe('running');
   });
+
   it.each(['seed', 'width', 'height', 'index'] as const)('rejects an output with wrong %s before writing its bytes', async field => {
     const { store, run } = await start({ count: 1 }); const asset = generationAssetFixture({ id: 'asset-eF', run, index: 0 });
     switch (field) {
@@ -170,6 +185,7 @@ describe('immutable generation records and explicit state', () => {
     const writeImages = vi.fn(); await expect(commitImageGenerationAsset({ store, asset, writeImages })).rejects.toThrow('accepted plan');
     expect(writeImages).not.toHaveBeenCalled();
   });
+
   it('completes only after every planned output has been committed', async () => {
     const { store, session, run } = await start({ count: 2 });
     const request = { store, sessionId: session.id, runId: run.id, execution: { type: 'completed' as const, finishedAt: 50 }, expectedRevision: 1 };
@@ -182,6 +198,7 @@ describe('immutable generation records and explicit state', () => {
     await commitImageGenerationAsset({ store, asset: first, writeImages: async () => {} });
     await expect(updateImageGenerationRunExecution({ ...request, expectedRevision: 2, execution: { type: 'running', startedAt: 100 } })).rejects.toThrow('transition');
   });
+
   it.each(['cancelled', 'failed', 'interrupted'] as const)('retains partial outputs after %s without adding new ones', async type => {
     const { store, session, run } = await start({ count: 2 });
     await commitImageGenerationAsset({ store, asset: generationAssetFixture({ id: 'first-eF', run, index: 0 }), writeImages: async () => {} });
@@ -190,6 +207,7 @@ describe('immutable generation records and explicit state', () => {
     await expect(commitImageGenerationAsset({ store, asset: generationAssetFixture({ id: 'late-eF', run, index: 1 }), writeImages: async () => {} })).rejects.toThrow('Only running');
     expect((await queryImageGenerationAssets({ store, sessionId: session.id, query })).total).toBe(1);
   });
+
   it('continues publishing into the captured session after another session becomes the UI selection', async () => {
     const { store, session, run } = await start({ count: 1 }); const other = generationSessionFixture({ id: 'other-aB' });
     await saveImageGenerationSession({ store, session: other, expectedRevision: undefined });
@@ -197,6 +215,7 @@ describe('immutable generation records and explicit state', () => {
     expect((await queryImageGenerationAssets({ store, sessionId: session.id, query })).total).toBe(1);
     expect((await queryImageGenerationAssets({ store, sessionId: other.id, query })).total).toBe(0);
   });
+
   it('prevents new runs in an archived session but keeps an in-flight output', async () => {
     const { store, session, run } = await start({ count: 1 });
     await saveImageGenerationSession({ store, session: { ...session, revision: 1, state: 'archived' }, expectedRevision: 0 });
@@ -204,6 +223,7 @@ describe('immutable generation records and explicit state', () => {
     await expect(createImageGenerationRun({ store, run: extra, writeInputs: async () => {} })).rejects.toThrow('archived');
     await commitImageGenerationAsset({ store, asset: generationAssetFixture({ id: 'first-eF', run, index: 0 }), writeImages: async () => {} });
   });
+
   it('records real cross-session lineage without using the source session as the owner', async () => {
     const { store, session, asset } = await published(); const other = generationSessionFixture({ id: 'other-aB' });
     await saveImageGenerationSession({ store, session: other, expectedRevision: undefined });
@@ -213,6 +233,7 @@ describe('immutable generation records and explicit state', () => {
     expect((await loadImageGenerationRun({ store, sessionId: other.id, runId: run.id }))?.sources).toEqual(run.sources);
     expect((await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id }))).toBeUndefined();
   });
+
   it('never interprets a locally absent worker as an interrupted run', async () => {
     const { store, session, run } = await start({ count: 1 });
     await listImageGenerationRuns({ store, sessionId: session.id });
@@ -229,6 +250,7 @@ describe('curation and Unicode tag rename', () => {
     await setImageGenerationAssetTags({ store, sessionId: session.id, assetId: asset.id, tags: [], assignedAt: 30, expectedRevision: 1 });
     expect((await queryImageGenerationAssets({ store, sessionId: session.id, query: { ...query, tags: [favorite] } })).total).toBe(0);
   });
+
   it('renames a Japanese tag in the catalog without rewriting runs, assets or assignments', async () => {
     const { store, catalog, session, asset } = await published();
     const tagId = toImageGenerationTagId({ raw: 'tag-ab' });
@@ -243,6 +265,7 @@ describe('curation and Unicode tag rename', () => {
     expect(await loadImageGenerationAssetAnnotations({ store, sessionId: session.id, assetId: asset.id })).toEqual(before);
     expect((await queryImageGenerationAssets({ store, sessionId: session.id, query: { ...query, tags } })).total).toBe(1);
   });
+
   it('keeps assignment times for retained tags and gives a re-added tag a new time', async () => {
     const { store, session, asset } = await published();
     const base = { store, sessionId: session.id, assetId: asset.id };
@@ -253,6 +276,7 @@ describe('curation and Unicode tag rename', () => {
     await setImageGenerationAssetTags({ ...base, tags: [favorite], assignedAt: 50, expectedRevision: 3 });
     expect((await loadImageGenerationAssetAnnotations(base))?.tags[0]?.assignedAt).toBe(50);
   });
+
   it('does not silently overwrite another tab\'s curation', async () => {
     const { store, session, asset } = await published(); const base = { store, sessionId: session.id, assetId: asset.id };
     await setImageGenerationAssetTags({ ...base, tags: [favorite], assignedAt: 20, expectedRevision: 0 });
@@ -260,11 +284,13 @@ describe('curation and Unicode tag rename', () => {
     await setImageGenerationAssetTags({ ...base, tags: [favorite], assignedAt: 20, expectedRevision: 0 });
     expect((await loadImageGenerationAssetAnnotations(base))?.revision).toBe(1);
   });
+
   it('rejects unknown and duplicate tag assignments', async () => {
     const { store, session, asset } = await published(); const base = { store, sessionId: session.id, assetId: asset.id, assignedAt: 20, expectedRevision: 0 };
     await expect(setImageGenerationAssetTags({ ...base, tags: [{ type: 'user', tagId: toImageGenerationTagId({ raw: 'missing-tag' }) }] })).rejects.toThrow('unknown');
     await expect(setImageGenerationAssetTags({ ...base, tags: [favorite, favorite] })).rejects.toThrow('Duplicate');
   });
+
   it('archives tag definitions without erasing historical assignments', async () => {
     const { store, catalog, session, asset } = await published(); const tagId = toImageGenerationTagId({ raw: 'tag-ab' });
     const tagged = { ...catalog, revision: 1, tags: [{ id: tagId, name: '候補', state: 'active' as const, createdAt: 1, updatedAt: 1 }] };
@@ -296,6 +322,7 @@ describe('failure recovery and indexed reads', () => {
     expect((await h.file({ path: indexPath })).text).toContain(next.title);
     expect((await h.directory({ path: `${rootPath}/sessions/ab` })).children.has('index.dirty')).toBe(false);
   });
+
   it('recovers favorite updates even when filenames did not change', async () => {
     const { store, session, asset } = await published();
     const base = { store, sessionId: session.id, assetId: asset.id };
@@ -308,6 +335,7 @@ describe('failure recovery and indexed reads', () => {
     await setImageGenerationAssetTags({ ...base, tags: [favorite], assignedAt: 20, expectedRevision: 1 });
     expect((await h.file({ path })).text).toContain('favorite');
   });
+
   it('keeps the original record when its replacement cannot close', async () => {
     const { store, session } = await start({ count: 1 }); const path = `${sessionPath({ id: session.id })}/session.json`;
     const before = (await h.file({ path })).text; h.faults.add(`close:${path}`);
@@ -315,6 +343,7 @@ describe('failure recovery and indexed reads', () => {
     expect((await h.file({ path })).text).toBe(before);
     expect((await listImageGenerationSessions({ store })).items[0]?.title).toBe(session.title);
   });
+
   it('retains readable records with warnings and leaves corrupt indexes untouched', async () => {
     const { store, session } = await start({ count: 1 }); const path = `${rootPath}/sessions/ab/index.json`;
     const index = await h.file({ path }); index.text = '{bad';
@@ -323,6 +352,7 @@ describe('failure recovery and indexed reads', () => {
     await expect(saveImageGenerationSession({ store, session: { ...session, revision: 1, title: 'blocked' }, expectedRevision: 0 })).rejects.toThrow();
     expect(index.text).toBe('{bad');
   });
+
   it('does not turn an unreadable annotation file into a claimed empty tag set', async () => {
     const { store, session, asset } = await published(); const base = { store, sessionId: session.id, assetId: asset.id };
     await setImageGenerationAssetTags({ ...base, tags: [favorite], assignedAt: 20, expectedRevision: 0 });
@@ -333,6 +363,7 @@ describe('failure recovery and indexed reads', () => {
     await expect(setImageGenerationAssetTags({ ...base, tags: [], assignedAt: 30, expectedRevision: 1 })).rejects.toThrow();
     expect((await directory.getFileHandle('asset-eF.json')).text).toBe('');
   });
+
   it('does not rewrite unknown request fields while changing execution state', async () => {
     const { store, session, run } = await start({ count: 1 });
     const path = `${sessionPath({ id: session.id })}/runs/cd/run-cD.json`;
@@ -345,11 +376,13 @@ describe('failure recovery and indexed reads', () => {
     await expect(updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, execution: { type: 'failed', finishedAt: 20, message: 'no' }, expectedRevision: 0 })).rejects.toThrow();
     expect(file.text).toBe(text);
   });
+
   it('reads healthy listing indexes without loading full requests or asset records', async () => {
     const { store, session } = await published(); h.reads.length = 0;
     await queryImageGenerationAssets({ store, sessionId: session.id, query });
     expect(h.reads.some(path => path.endsWith('/run-cD.json') || path.endsWith('/asset-eF.json'))).toBe(false);
   });
+
   it('uses a stable keyset cursor when a newer image is inserted between pages', async () => {
     const { store, session, run } = await start({ count: 4 });
     for (const index of [0, 1, 2]) await commitImageGenerationAsset({ store, asset: generationAssetFixture({ id: `asset-${index}-eF`, run, index }), writeImages: async () => {} });
@@ -359,6 +392,7 @@ describe('failure recovery and indexed reads', () => {
     const second = await queryImageGenerationAssets({ store, sessionId: session.id, query: { ...query, cursor: first.nextCursor, limit: 2 } });
     expect(second.items.map(item => item.index)).toEqual([0]); expect(second.nextCursor).toBeUndefined();
   });
+
   it('supports all/any tag matching without matching user tag names as identities', async () => {
     const { store, session } = await published();
     const nonexistent: ImageGenerationTagReference = { type: 'user', tagId: toImageGenerationTagId({ raw: 'favorite' }) };
@@ -379,6 +413,7 @@ describe('additional publication boundary failures', () => {
     await saveImageGenerationSession({ store, session, expectedRevision: undefined });
     expect(await loadImageGenerationSession({ store, sessionId: session.id })).toEqual({ ...session, activityOrder: expect.any(Number) });
   });
+
   it('does not lose a committed title when removing the dirty marker fails', async () => {
     const { store, session } = await start({ count: 1 });
     h.faults.add(`remove:${rootPath}/sessions/ab/index.dirty`);
@@ -388,22 +423,26 @@ describe('additional publication boundary failures', () => {
     await saveImageGenerationSession({ store, session: next, expectedRevision: 0 });
     expect((await listImageGenerationSessions({ store })).warningCount).toBe(0);
   });
+
   it('does not commit a record when writing its dirty marker fails', async () => {
     const { store, session } = await start({ count: 1 });
     h.faults.add(`close:${rootPath}/sessions/ab/index.dirty`);
     await expect(saveImageGenerationSession({ store, session: { ...session, revision: 1, title: 'uncommitted' }, expectedRevision: 0 })).rejects.toThrow('Injected');
     expect((await loadImageGenerationSession({ store, sessionId: session.id }))?.title).toBe(session.title);
   });
+
   it.each([NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('validates assignment time even when clearing tags: %s', async assignedAt => {
     const { store, session, asset } = await published(); h.writes.length = 0;
     await expect(setImageGenerationAssetTags({ store, sessionId: session.id, assetId: asset.id, tags: [], assignedAt, expectedRevision: 0 })).rejects.toThrow();
     expect(h.writes).toEqual([]);
   });
+
   it.each(['', ' ', '　'])('rejects blank session titles before storage: %j', async title => {
     const { store } = await createStore(); h.getDirectory.mockClear();
     await expect(saveImageGenerationSession({ store, session: { ...generationSessionFixture({ id: 'session-aB' }), title }, expectedRevision: undefined })).rejects.toThrow();
     expect(h.getDirectory).not.toHaveBeenCalled();
   });
+
   it('does not report an exact empty listing when directory enumeration fails', async () => {
     const { store, session } = await published();
     h.faults.add(`enumerate:${sessionPath({ id: session.id })}/assets`);
@@ -420,6 +459,7 @@ describe('image-input lineage integrity', () => {
     await expect(createImageGenerationRun({ store, run, writeInputs })).rejects.toThrow('Lineage does not match');
     expect(writeInputs).not.toHaveBeenCalled();
   });
+
   it.each(['initial-image', 'reference-image'] as const)('accepts a %s edge when it describes the actual input', async role => {
     const { store, session, asset } = await published();
     const run = generationRunFixture({ id: 'derived-cD', sessionId: session.id, count: 1, seed: '42' });
@@ -430,6 +470,7 @@ describe('image-input lineage integrity', () => {
     await createImageGenerationRun({ store, run, writeInputs: async () => {} });
     expect((await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id }))?.sources).toEqual(run.sources);
   });
+
   it('allows a stored preview as an explicitly selected input without claiming it is the final output', async () => {
     const { store, session, asset } = await published();
     const run = generationRunFixture({ id: 'derived-cD', sessionId: session.id, count: 1, seed: '42' });

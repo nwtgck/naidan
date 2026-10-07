@@ -82,7 +82,6 @@ describe('wesh sleep', () => {
     }
   });
 
-
   it('accepts leading-decimal and scientific notation', async () => {
     const recordedTimeouts: number[] = [];
     wesh.kernel.waitForSignalOrTimeout = async ({
@@ -113,7 +112,6 @@ describe('wesh sleep', () => {
       wesh.kernel.waitForSignalOrTimeout = originalWaitForSignalOrTimeout;
     }
   });
-
 
   it('accepts negative zero and hexadecimal floating intervals', async () => {
     const recordedTimeouts: number[] = [];
@@ -190,7 +188,6 @@ describe('wesh sleep', () => {
       wesh.kernel.waitForSignalOrTimeout = originalWaitForSignalOrTimeout;
     }
   });
-
 
   it('rejects negative nonzero underflow but accepts signed lexical zero', async () => {
     const recordedTimeouts: number[] = [];

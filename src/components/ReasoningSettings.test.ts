@@ -61,7 +61,6 @@ describe('ReasoningSettings Component', () => {
     expect(lowBtn.classes()).not.toContain('flex-[1.4]');
   });
 
-
   it('renders and emits leading source options without emitting an effort', async () => {
     const wrapper = mount(ReasoningSettings, {
       props: {

@@ -3,7 +3,9 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { toBinaryObjectId } from '@/01-models/ids';
 import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
 import { createImageGenerationArchive } from './export';
+
 beforeEach(() => vi.stubGlobal('Blob', NodeBlob));
+
 it('streams a readable archive containing exact source bytes and Unicode metadata', async () => {
   const png = new Blob([new Uint8Array([137, 80, 78, 71, 0, 255])], { type: 'image/png' });
   const source = new Blob(['{"title":"雨の夜景","prompt":"映画的"}'], { type: 'application/json' });
@@ -21,6 +23,7 @@ it('streams a readable archive containing exact source bytes and Unicode metadat
   expect(new TextDecoder().decode(files.get('metadata/session.json'))).toBe(await source.text());
   expect(new TextDecoder().decode(files.get('README.txt'))).toContain('Model weights are not included');
 });
+
 it('settles the writer when the consumer cancels while image bytes are blocked by backpressure', async () => {
   const archive = createImageGenerationArchive({ snapshot: { metadata: [], binaries: [{ id: toBinaryObjectId({ raw: 'image-aa' }), blob: new Blob([new Uint8Array(2 * 1024 * 1024)], { type: 'image/png' }) }] }, exportedAt: 1700000000000 });
   const result = expect(archive.completed).rejects.toBeDefined();

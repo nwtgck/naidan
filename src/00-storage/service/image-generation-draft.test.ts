@@ -5,9 +5,11 @@ import { ExperimentalImageGenerationDraftSchemaDto, ExperimentalImageGenerationR
 import * as service from './image-generation';
 import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness();
 });
+
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing catalog.');
@@ -18,6 +20,7 @@ async function setup() {
   const path = `/naidan-storage/experimental/image-generation/sessions/aa/${idToRaw({ id: session.id })}/draft.json`;
   return { store, session, draft, path };
 }
+
 describe('session draft checkpoints', () => {
   it('round-trips a blank or incomplete form without treating it as a valid generation', async () => {
     const h = await setup(); const writeInputs = vi.fn(async () => {});
@@ -26,6 +29,7 @@ describe('session draft checkpoints', () => {
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(h.draft);
     expect((await service.listImageGenerationRuns({ store: h.store, sessionId: h.session.id })).items).toEqual([]);
   });
+
   it('stores a pending inference location without relaxing the accepted run contract', async () => {
     const h = await setup(); h.draft.inferenceLocation = { kind: 'naidan_rpc', connection: undefined };
     h.draft.request.runtime = undefined; h.draft.request.models = []; h.draft.request.loras = []; h.draft.loraStates = [];
@@ -35,6 +39,7 @@ describe('session draft checkpoints', () => {
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ id: 'run-aa', sessionId: h.session.id, revision: 0, createdAt: 1, request: { ...request, parameters: { ...request.parameters, prompt: 'ready', seed: '42' } }, seeds: ['42'], sources: [], execution: { type: 'queued' } }).success).toBe(false);
     expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(false);
   });
+
   it('preserves user-selected components, explicit none and disabled adapter strength', async () => {
     const h = await setup();
     h.draft.modelSelection = {
@@ -57,6 +62,7 @@ describe('session draft checkpoints', () => {
     ];
     for (const modelSelection of bad) expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, modelSelection }).success).toBe(false);
   });
+
   it('retries the identical revision after a lost acknowledgement but rejects stale different edits', async () => {
     const h = await setup(); const writeInputs = async () => {};
     await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs });
@@ -67,6 +73,7 @@ describe('session draft checkpoints', () => {
     await expect(service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs })).rejects.toThrow();
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(updated);
   });
+
   it('does not publish a checkpoint when input bytes failed', async () => {
     const h = await setup();
     await expect(service.saveImageGenerationDraft({
@@ -79,6 +86,7 @@ describe('session draft checkpoints', () => {
     })).rejects.toThrow('quota');
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toBeUndefined();
   });
+
   it.each(['{bad', '{"version":999,"unknown":true}'])('does not overwrite unreadable checkpoints: %s', async text => {
     const h = await setup(); await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
     const file = await fs.file({ path: h.path }); file.text = text;
@@ -86,6 +94,7 @@ describe('session draft checkpoints', () => {
     await expect(service.saveImageGenerationDraft({ store: h.store, draft: { ...h.draft, revision: 1 }, expectedRevision: 0, writeInputs: async () => {} })).rejects.toThrow();
     expect(file.text).toBe(text);
   });
+
   it('rejects a mismatched session identity and a non-existent destination', async () => {
     const h = await setup(); await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
     const file = await fs.file({ path: h.path }); file.text = JSON.stringify({ ...imageGenerationDraftToDto({ draft: h.draft }), sessionId: 'other-aa' });

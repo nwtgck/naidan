@@ -270,7 +270,6 @@ describe('useChatGroups scoped settings updates', () => {
     now.mockRestore();
   });
 
-
   it('does_not_replace_a_newer_current_group_ref_after_reload', async () => {
     let persisted = createGroup();
     mockCurrentChatGroupRef.value = persisted;
@@ -293,5 +292,4 @@ describe('useChatGroups scoped settings updates', () => {
 
     expect(mockCurrentChatGroupRef.value?.modelId).toBe('newer-external-model');
   });
-
 });

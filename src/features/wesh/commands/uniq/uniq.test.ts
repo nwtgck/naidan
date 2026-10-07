@@ -569,7 +569,6 @@ a
     expect(groupedSelection.stderr.text).toContain('--group is mutually exclusive with -c/-d/-D/-u');
     expect(groupedSelection.result.exitCode).toBe(1);
   });
-
 });
 
 describe('wesh uniq ASCII case compatibility', () => {
@@ -669,7 +668,6 @@ e
     expect(result.exitCode).toBe(0);
   });
 
-
   it('accepts only leading C-locale whitespace in numeric options', async () => {
     const data = new TextEncoder().encode(`\
 alpha
@@ -695,7 +693,6 @@ atom
       expect(execution.result.exitCode).toBe(1);
     }
   });
-
 
   it('stops field skipping at the end of each record for enormous counts', async () => {
     const { result, stdout, stderr } = await executeWithFile({
@@ -725,5 +722,4 @@ atom
       expect(execution.result.exitCode).toBe(0);
     }
   });
-
 });

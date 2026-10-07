@@ -34,6 +34,7 @@ async function folderAt({ path }: { path: string }): Promise<FileSystemDirectory
   for (const part of path.split('/')) folder = await folder.getDirectoryHandle(part);
   return folder as unknown as FileSystemDirectoryHandle;
 }
+
 beforeEach(() => {
   root = memoryDirectory({ name: '' });
   vi.stubGlobal('navigator', {
@@ -44,6 +45,7 @@ beforeEach(() => {
   });
   service = createTransformersJsService({ createWorkerClient });
 });
+
 afterEach(async () => {
   await service.dispose();
   expect(createWorkerClient).not.toHaveBeenCalled();

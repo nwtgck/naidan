@@ -357,5 +357,4 @@ describe('scoped setting changes', () => {
       { field: 'lm_param_reasoning_effort', behavior: 'inherit' },
     ]);
   });
-
 });

@@ -4771,6 +4771,7 @@ three
       expect(outcome.result.exitCode).toBe(0);
     }
   });
+
   it("rejects duplicate global flags and unsafe backtracking", async () => {
     const duplicate = await execute({
       script: String.raw`sed -n 's/a/X/ggp'`,
@@ -4796,7 +4797,6 @@ aa
     expect(safe.stdout.text).toBe(`${"a".repeat(100)}\n`);
   });
 
-
   it("treats escaped alphanumeric characters literally inside POSIX bracket expressions", async () => {
     const result = await execute({
       script: String.raw`sed -E -n '/[\w]+/p'`,
@@ -4814,5 +4814,4 @@ word
 `);
     expect(result.stderr.text).toBe("");
   });
-
 });

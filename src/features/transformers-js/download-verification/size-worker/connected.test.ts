@@ -43,6 +43,7 @@ async function installSizeWorker({ network }: { network: typeof fetch }) {
     },
   }));
 }
+
 afterEach(() => {
   for (const worker of workers.splice(0)) worker.terminate();
   vi.doUnmock('@/utils/worker-transport'); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks();

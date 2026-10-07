@@ -12,9 +12,11 @@ import { createInferenceBudget } from '@/features/naidan-peer-rpc/handlers/infer
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 
 const cleanup: (() => void)[] = [];
+
 afterEach(() => {
   for (const stop of cleanup.splice(0)) stop();
 });
+
 function png({ width = 256, height = 256 } = {}): Uint8Array<ArrayBuffer> {
   // Structural fixture only; decoding/CRC is the browser's separate concern.
   const bytes = new Uint8Array(57), view = new DataView(bytes.buffer);
@@ -52,6 +54,7 @@ function start({ client, value = input() }: { client: NaidanPeerClient, value?: 
   const stop = new AbortController(); cleanup.push(() => stop.abort());
   const onPreview = vi.fn(); return { ...startPeerImage({ client, input: value, signal: stop.signal, onProgress: () => {}, onPreview }), onPreview, stop };
 }
+
 it('returns a confirmed image only after both streams and the RPC close', async () => {
   const gate = Promise.withResolvers<void>(), fixture = mockClient({ closed: gate.promise });
   const job = start({ client: fixture.client }); let ended = false; void job.result.then(() => {
@@ -61,6 +64,7 @@ it('returns a confirmed image only after both streams and the RPC close', async 
   gate.resolve(); expect(await job.result).toMatchObject({ status: 'completed', seed: '42', output: { modelVersion: 'test-v1', width: 256 } });
   expect(fixture.generateImage).toHaveBeenCalledOnce();
 });
+
 it('does not retain empty image chunks and preserves reused byte chunks', async () => {
   const expected = png(), empty = new Uint8Array(), byte = new Uint8Array(1);
   let emptyCount = 65536, at = 0;
@@ -84,11 +88,13 @@ it('does not retain empty image chunks and preserves reused byte chunks', async 
     copies.mockRestore();
   }
 });
+
 it('preserves received pixels as interrupted when only final RPC confirmation fails', async () => {
   const fixture = mockClient({ closed: Promise.reject(new Error('Disconnected')) });
   expect(await start({ client: fixture.client }).result).toMatchObject({ status: 'interrupted', recoverable: { width: 256, reported: { seed: '42' } } });
   expect(fixture.generateImage).toHaveBeenCalledOnce();
 });
+
 it('never promotes a seed mismatch to confirmed completion or retries generation', async () => {
   const fixture = mockClient({ events: stream({ values: [{ ...terminal, seed: '43' }] }) });
   const result = await start({ client: fixture.client }).result;
@@ -123,6 +129,7 @@ it('does not replace an event-stream RPC failure with sibling cancellation', asy
   expect(result.message).toContain('RPC code: RESOURCE_EXHAUSTED');
   expect(result.message).not.toContain('CANCELLED'); expect(imageCancelled).toHaveBeenCalledOnce();
 });
+
 it('assembles small previews without applying the final-image minimum dimensions', async () => {
   const bytes = png({ width: 64, height: 64 });
   const fixture = mockClient({
@@ -136,27 +143,32 @@ it('assembles small previews without applying the final-image minimum dimensions
   const job = start({ client: fixture.client }); expect((await job.result).status).toBe('completed');
   expect(job.onPreview).toHaveBeenCalledOnce(); expect(job.onPreview).toHaveBeenCalledWith({ frame: expect.objectContaining({ width: 64, revision: 1 }) });
 });
+
 it('rejects overlapping preview headers and cancels the sibling image reader', async () => {
   const imageCancelled = vi.fn(); const image = new ReadableStream<Uint8Array>({ cancel: imageCancelled });
   const event: PeerImageEvent = { type: 'preview-start', revision: 1, step: 1, steps: 4, width: 64, height: 64, mode: 'projection', byteLength: 57 };
   const fixture = mockClient({ image, events: stream({ values: [event, event] }) });
   expect((await start({ client: fixture.client }).result).status).toBe('failed'); expect(imageCancelled).toHaveBeenCalledOnce();
 });
+
 it('cancellation wakes two stalled readers without disconnecting their shared peer', async () => {
   const cancellations = vi.fn(); const fixture = mockClient({ image: new ReadableStream({ cancel: cancellations }), events: new ReadableStream({ cancel: cancellations }) });
   const job = start({ client: fixture.client }); await new Promise(resolve => setTimeout(resolve, 5)); job.cancel();
   expect((await job.result).status).toBe('cancelled'); expect(cancellations).toHaveBeenCalledTimes(2);
 });
+
 it('snapshots mutable model configuration and parameters before the caller edits them', async () => {
   const fixture = mockClient(), value = input(); const job = start({ client: fixture.client, value });
   value.modelSelection.primary.file.location.path = 'models/changed'; value.parameters.prompt = 'changed';
   expect(fixture.generateImage.mock.calls[0]![0].input.modelSelection.primary.file.location.path).toBe('models/user/checkpoint.gguf');
   expect(fixture.generateImage.mock.calls[0]![0].input.parameters.prompt).toBe('test'); await job.result;
 });
+
 it('rejects input excess before opening an RPC call', () => {
   const fixture = mockClient(), value = input(); value.imageInputs.references = Array.from({ length: 9 }, () => new File(['x'], 'x.png', { type: 'image/png' }));
   expect(() => start({ client: fixture.client, value })).toThrow('aggregate'); expect(fixture.generateImage).not.toHaveBeenCalled();
 });
+
 it('uses the real typed RPC transport and invokes provider computation exactly once', async () => {
   const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), stop = new AbortController(); cleanup.push(() => {
     stop.abort(); pair.close();
@@ -256,11 +268,13 @@ it('delivers a preview larger than one RPC item without aborting the native job'
   expect(job.onPreview).toHaveBeenCalledOnce(); expect(generateImage).toHaveBeenCalledOnce();
   expect(new Uint8Array(await job.onPreview.mock.calls[0]![0].frame.png.arrayBuffer())).toEqual(preview);
 });
+
 it('does not open a call or input streams when already cancelled', async () => {
   const fixture = mockClient();
   const job = startPeerImage({ client: fixture.client, input: input(), signal: AbortSignal.abort(), onProgress() {}, onPreview() {} });
   expect(await job.result).toEqual({ status: 'cancelled' }); expect(fixture.generateImage).not.toHaveBeenCalled();
 });
+
 it('cancellation releases a final-confirmation wait while retaining complete pixels', async () => {
   const closed = Promise.withResolvers<void>(), fixture = mockClient({ closed: closed.promise });
   const job = start({ client: fixture.client });
@@ -269,6 +283,7 @@ it('cancellation releases a final-confirmation wait while retaining complete pix
   expect(result).toMatchObject({ status: 'interrupted', recoverable: { width: 256 } });
   closed.resolve(); expect(fixture.generateImage).toHaveBeenCalledOnce();
 });
+
 it('retains unknown reported metadata when event delivery fails after complete image receipt', async () => {
   let eventsController: ReadableStreamDefaultController<PeerImageEvent> | undefined;
   const events = new ReadableStream<PeerImageEvent>({

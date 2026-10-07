@@ -142,7 +142,6 @@ const normalizedMockSettings: Settings = {
 // --- Test Suite ---
 
 describe('Storage Migration (Round-Trip)', () => {
-
   const runRoundTripTest = async (provider: LocalStorageProvider | OPFSStorageProvider) => {
     // 1. Setup Data
     await provider.init();
@@ -224,5 +223,4 @@ describe('Storage Migration (Round-Trip)', () => {
       await runRoundTripTest(provider);
     });
   });
-
 });

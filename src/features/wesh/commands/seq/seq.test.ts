@@ -362,7 +362,6 @@ describe('seq command', () => {
     expect(integer.result.exitCode).toBe(1);
   });
 
-
   it('matches GNU formatting and option-boundary behavior', async () => {
     const exponential = await execute({ script: "seq -f '%.2e' 1 2" });
     const general = await execute({ script: "seq -f '%.3G' 1000 1000 3000" });
@@ -422,7 +421,6 @@ w03
     expect(invalidBundle.result.exitCode).toBe(1);
   });
 
-
   it('accepts only leading C-locale whitespace in numeric operands', async () => {
     const accepted = [];
     for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
@@ -462,5 +460,4 @@ w03
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

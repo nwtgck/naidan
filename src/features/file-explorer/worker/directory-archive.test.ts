@@ -230,6 +230,7 @@ describe('createFileExplorerDirectoryArchive', () => {
     await expect(archivePromise).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalledOnce();
   });
+
   it('cancels a blocked input when the output stream is cancelled, without a caller signal', async () => {
     const opened = Promise.withResolvers<void>();
     const cancel = vi.fn();
@@ -258,5 +259,4 @@ describe('createFileExplorerDirectoryArchive', () => {
     await expect(archive.completed).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalledOnce();
   });
-
 });

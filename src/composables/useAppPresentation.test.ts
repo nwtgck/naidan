@@ -86,7 +86,6 @@ describe('app presentation', () => {
   });
 });
 
-
 describe('model launch presentation without onboarding dismissal', () => {
   it('never overlays onboarding on the embedded launcher and still respects startup blocking', () => {
     const bypass = ref(true);

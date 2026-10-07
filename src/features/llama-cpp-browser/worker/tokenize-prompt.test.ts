@@ -45,12 +45,14 @@ describe('bounded single-pass prompt tokenization', () => {
     core.free({ pointer: result.pointer });
     expect(allocations.size).toBe(0);
   });
+
   it('caps the speculative allocation independently of a huge context', async () => {
     const { core, onTokenize } = fixture();
     const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 1000000, contextTokens: 2147483647, onTokenize });
     expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 262144 });
     core.free({ pointer: result.pointer });
   });
+
   it('resizes once using the native required count, freeing the old buffer first', async () => {
     const { core, allocations, onTokenize, run } = fixture();
     core.api.llama_tokenize.mockResolvedValueOnce(-65537).mockResolvedValueOnce(65537);
@@ -62,6 +64,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(allocations.size).toBe(1);
     core.free({ pointer: result.pointer });
   });
+
   it('uses a length probe only when speculative allocation fails', async () => {
     const { core, run } = fixture();
     core.tryAlloc.mockReturnValueOnce(undefined);
@@ -70,6 +73,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(result.tokens).toEqual([1, 200, 999]);
     core.free({ pointer: result.pointer });
   });
+
   it.each([0, -32, -2147483648, 32])('rejects empty or oversized native count %s and releases storage', async count => {
     const { core, allocations, run } = fixture();
     core.api.llama_tokenize.mockResolvedValue(count);
@@ -78,18 +82,21 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.free).toHaveBeenCalledOnce();
     expect(allocations.size).toBe(0);
   });
+
   it.each([NaN, Infinity, 1.5, -2147483649, -3])('rejects malformed native result %s', async count => {
     const { core, allocations, run } = fixture();
     core.api.llama_tokenize.mockResolvedValue(count);
     await expect(run({ contextTokens: 32 })).rejects.toThrow('runtime-error');
     expect(allocations.size).toBe(0);
   });
+
   it('does not read past the speculative buffer on an invalid positive result', async () => {
     const { core, allocations, run } = fixture();
     core.api.llama_tokenize.mockResolvedValue(65537);
     await expect(run({ contextTokens: 100000 })).rejects.toThrow('runtime-error');
     expect(allocations.size).toBe(0);
   });
+
   it.each([1, 0, -65537, 65536])('rejects a changed retry result %s', async second => {
     const { core, allocations, run } = fixture();
     core.api.llama_tokenize.mockResolvedValueOnce(-65537).mockResolvedValueOnce(second);
@@ -97,6 +104,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.api.llama_tokenize).toHaveBeenCalledTimes(2);
     expect(allocations.size).toBe(0);
   });
+
   it('does not call native code after both allocations fail', async () => {
     const { core, run } = fixture();
     core.tryAlloc.mockReturnValue(undefined);
@@ -104,6 +112,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
     expect(core.free).not.toHaveBeenCalled();
   });
+
   it('does not double-free when a resizing allocation throws', async () => {
     const { core, allocations, run } = fixture();
     const allocate = core.tryAlloc.getMockImplementation()!;
@@ -115,6 +124,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.free).toHaveBeenCalledOnce();
     expect(allocations.size).toBe(0);
   });
+
   it('waits for native rejection before freeing its writable buffer', async () => {
     const { core, allocations, run } = fixture();
     const native = Promise.withResolvers<number>();
@@ -127,6 +137,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(allocations.size).toBe(0);
     expect(core.free).toHaveBeenCalledOnce();
   });
+
   it('reacquires the heap view after native memory growth', async () => {
     const { core, allocations, run } = fixture();
     core.api.llama_tokenize.mockImplementationOnce(async (_vocab, _text, _length, pointer) => {
@@ -139,12 +150,14 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(result.tokens).toEqual([12345]);
     core.free({ pointer: result.pointer });
   });
+
   it.each([0, 1, -1, NaN, Infinity, 2.5, 2147483648])('rejects unsafe context size %s before allocation', async contextTokens => {
     const { core, run } = fixture();
     await expect(run({ contextTokens })).rejects.toThrow('runtime-error');
     expect(core.tryAlloc).not.toHaveBeenCalled();
     expect(core.api.llama_tokenize).not.toHaveBeenCalled();
   });
+
   it('does not retry freeing the old prompt buffer when resizing cleanup throws', async () => {
     const { core, allocations, run } = fixture(); const original = core.free.getMockImplementation()!;
     core.api.llama_tokenize.mockResolvedValueOnce(-65537);
@@ -155,9 +168,7 @@ describe('bounded single-pass prompt tokenization', () => {
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
     expect(core.tryAlloc).toHaveBeenCalledOnce(); expect(core.api.llama_tokenize).toHaveBeenCalledOnce(); expect(allocations.size).toBe(0);
   });
-
 });
-
 
 describe('prompt-sized speculation and deallocation failures', () => {
   it('does not allocate a context-sized buffer for a short prompt', async () => {
@@ -167,6 +178,7 @@ describe('prompt-sized speculation and deallocation failures', () => {
     expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
     core.free({ pointer: result.pointer });
   });
+
   it('retries from the native count when special tokens exceed the hint', async () => {
     const { core, onTokenize } = fixture();
     core.api.llama_tokenize.mockResolvedValueOnce(-17).mockResolvedValueOnce(17);
@@ -175,6 +187,7 @@ describe('prompt-sized speculation and deallocation failures', () => {
     expect(result.tokens).toHaveLength(17);
     core.free({ pointer: result.pointer });
   });
+
   it('never retries a throwing deallocator during resizing', async () => {
     const { core, allocations, run } = fixture();
     const failure = new WebAssembly.RuntimeError('free trap');

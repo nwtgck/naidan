@@ -165,6 +165,7 @@ describe('AppAuxiliaryUi', () => {
     preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'settings', claim: () => true }; await flushPromises();
     expect(replace).toHaveBeenCalledTimes(2); wrapper.unmount();
   });
+
   it('preserves the pending cold-link path and query before initial navigation settles', async () => {
     const pendingRoute = { path: '/chat/chat-1', query: { leaf: 'message-2', 'llama-cpp-browser-model': 'hf.co/owner/repo' }, hash: '' };
     vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(START_LOCATION), options: { history: { location: '/chat/chat-1?leaf=message-2' } }, resolve: vi.fn().mockReturnValue(pendingRoute) } as unknown as ReturnType<typeof useRouter>);
@@ -172,11 +173,13 @@ describe('AppAuxiliaryUi', () => {
     const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
     await flushPromises(); expect(replace).toHaveBeenCalledWith({ ...pendingRoute, query: { ...pendingRoute.query, settings: 'llama-cpp-browser' } }); wrapper.unmount();
   });
+
   it('does not open settings for a preset assigned to ordinary onboarding', async () => {
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'onboarding', claim: () => true });
     const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
     await flushPromises(); expect(replace).not.toHaveBeenCalled(); wrapper.unmount();
   });
+
   it('does not mount closed auxiliary overlays', async () => {
     const wrapper = mount(AppAuxiliaryUi);
     await flushPromises();
@@ -225,7 +228,6 @@ describe('AppAuxiliaryUi', () => {
     wrapper.unmount();
     document.body.removeAttribute('tabindex');
   });
-
 
   it('preserves the complete initial non-settings location for path-based settings close', () => {
     route.path = '/chat/chat-1';

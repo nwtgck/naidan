@@ -1197,7 +1197,6 @@ notes.txt-3-two
     expect(result.exitCode).toBe(0);
   });
 
-
   it("validates max-count before a later help request", async () => {
     const invalidFirst = await execute({ script: "grep -m bogus --help" });
     expect(invalidFirst.result.exitCode).toBe(2);
@@ -2771,7 +2770,6 @@ word
     expect(result.stderr.text).toBe("");
   });
 
-
   it("accepts only leading C-locale whitespace in numeric options", async () => {
     for (const whitespace of [" ", "\t", "\n", "\v", "\f", "\r"]) {
       const execution = await execute({
@@ -2796,7 +2794,6 @@ alpha
       expect(execution.result.exitCode).toBe(2);
     }
   });
-
 
   it("deduplicates very large fixed pattern files before compiling the matcher", async () => {
     await writeFile({
@@ -2827,5 +2824,4 @@ alpha
     expect(stderr.text).toBe("grep: the -P option only supports a single pattern\n");
     expect(result.exitCode).toBe(2);
   });
-
 });

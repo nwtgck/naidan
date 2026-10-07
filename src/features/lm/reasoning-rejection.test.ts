@@ -16,6 +16,7 @@ describe('positive reasoning rejection classification', () => {
       },
     })).toThrow(UnsupportedReasoningError);
   });
+
   it('does not classify a generic template failure or a failure without an off request', () => {
     for (const offRequested of [true, false]) {
       const error = new Error('Unsupported system role');
@@ -39,6 +40,7 @@ describe('positive reasoning rejection classification', () => {
       expect(isUnsupportedReasoningError({ error: caught })).toBe(false);
     }
   });
+
   it('preserves native traps, even with misleading error text', () => {
     const trap = new WebAssembly.RuntimeError('Thinking is not supported');
     try {
@@ -53,6 +55,7 @@ describe('positive reasoning rejection classification', () => {
       expect(isUnsupportedReasoningError({ error })).toBe(false);
     }
   });
+
   it('recognizes the named Error reconstructed by a worker transport', () => {
     const original = new UnsupportedReasoningError({ message: 'Unsupported thinking' });
     const reconstructed = new Error(original.message);
@@ -60,6 +63,7 @@ describe('positive reasoning rejection classification', () => {
     expect(reconstructed).not.toBeInstanceOf(UnsupportedReasoningError);
     expect(isUnsupportedReasoningError({ error: reconstructed })).toBe(true);
   });
+
   it.each(['invalid_value', 'invalid_enum_value', 'invalid_type'])('recognizes a structured %s identifying the reasoning parameter', code => {
     expect(isReasoningErrorEnvelope({
       value: {
@@ -82,12 +86,15 @@ describe('positive reasoning rejection classification', () => {
       parameter: 'reasoning_effort',
     })).toBe(false);
   });
+
   it.each([null, 'error', {}, { choices: [{ delta: { content: 'Title' } }] }])('ignores ordinary streaming data: %j', value => {
     expect(isReasoningErrorEnvelope({ value, parameter: 'reasoning_effort' })).toBe(false);
   });
+
   it('does not reinterpret a streaming rate-limit code as a reasoning validation failure', () => {
     expect(isReasoningErrorEnvelope({ value: { error: { code: 'rate_limit_exceeded', message: 'reasoning_effort is not supported', param: 'reasoning_effort' } }, parameter: 'reasoning_effort' })).toBe(false);
   });
+
   it('rejects malformed envelopes and non-JSON error bodies', async () => {
     for (const response of [new Response('HTML error', { status: 400 }), Response.json({ error: { param: 'reasoning_effort' } }, { status: 400 })]) {
       expect(await isReasoningRejection({ response, parameter: 'reasoning_effort' })).toBe(false);

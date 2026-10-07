@@ -113,7 +113,6 @@ describe('WelcomeScreen.vue', () => {
   });
 });
 
-
 describe('WelcomeScreen primary slot', () => {
   it('replaces only the privacy and portable section while retaining suggestions', async () => {
     const wrapper = mount(WelcomeScreen, { slots: { primary: '<section data-testid="launch-slot">Linked model</section>' } });
@@ -140,7 +139,6 @@ describe('model-link discovery opt-out', () => {
     wrapper.unmount();
   });
 });
-
 
 describe('ordinary Chat recovery slot', () => {
   it('supplements rather than replaces the usual welcome and keeps discovery links', () => {

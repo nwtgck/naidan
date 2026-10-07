@@ -18,10 +18,12 @@ import { collectChatGeneration } from '@/logic/collect-chat-generation';
 
 vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ getRpcManager: vi.fn() }));
 const cleanups: (() => Promise<void>)[] = [];
+
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.clearAllMocks();
 });
+
 const connectionId = toNaidanRpcConnectionId({ raw: 'title-compatibility' });
 const messages = [{ id: toMessageId({ raw: 'title-input' }), role: 'user' as const, parts: [{ type: 'text' as const, text: 'A title', completeness: 'complete' as const }] }];
 const parameters: LmParameters = { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'none' } };

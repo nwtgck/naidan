@@ -65,7 +65,6 @@ describe('hosted Transformers runtime assets', () => {
     expect(fileNames).not.toContain('transformers/ort-wasm-simd-threaded.asyncify.wasm.gz');
   });
 
-
   it('rejects a missing emitted runtime asset', () => {
     const { expectedBundle, outputBundle } = createValidatedOutputBundle();
     delete outputBundle[expectedBundle.assets[0]!.fileName];

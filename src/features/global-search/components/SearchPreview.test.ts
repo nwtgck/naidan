@@ -330,5 +330,4 @@ describe('SearchPreview Component', () => {
     expect(wrapper.text()).toContain('New preview');
     expect(wrapper.text()).not.toContain('Old preview');
   });
-
 });

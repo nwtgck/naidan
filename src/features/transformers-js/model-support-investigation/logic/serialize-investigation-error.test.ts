@@ -53,7 +53,6 @@ describe("serializeInvestigationError", () => {
     expect(() => structuredClone(result)).not.toThrow();
   });
 
-
   it("bounds object traversal before reading later properties", () => {
     const thrown: Record<string, unknown> = {};
     let lateGetterRead = false;
@@ -95,6 +94,7 @@ describe("serializeInvestigationError", () => {
     expect(result.message.length).toBeLessThan(80);
     expect(result.stack?.length).toBeLessThan(80);
   });
+
   it("does not throw when the thrown value cannot be inspected or stringified", () => {
     const { proxy, revoke } = Proxy.revocable({}, {});
     revoke();

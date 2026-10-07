@@ -14,11 +14,13 @@ import { downloadStatusSchema, createDownloadUrl, DOWNLOAD_ROOT } from '../src/u
 let root: string;
 let a: Awaited<ReturnType<typeof buildPWAFixture>>;
 let b: Awaited<ReturnType<typeof buildPWAFixture>>;
+
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'naidan-pwa-builds-'));
   a = await buildPWAFixture({ root: path.join(root, 'a'), buildId: 'version-a' });
   b = await buildPWAFixture({ root: path.join(root, 'b'), buildId: 'version-b' });
 }, 60000);
+
 afterAll(async () => {
   if (root) await rm(root, { recursive: true, force: true });
 });

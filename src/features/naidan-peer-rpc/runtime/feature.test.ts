@@ -41,6 +41,7 @@ function automaticRegistry(): NaidanRpcRegistrySnapshot {
 let control: ReturnType<typeof createRpcStopControl> | undefined;
 const channels: { onmessage: ((event: { data: unknown }) => void) | undefined, postMessage: ReturnType<typeof vi.fn> }[] = [];
 const settings = () => ({ experimental: { naidanRpc: 'enabled' } }) as Settings;
+
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks(); channels.length = 0;
   fixture.registryListeners.clear(); fixture.list.mockResolvedValue({ access: { providerGeneration: 1, registryId: undefined, persistence: 'durable' }, connections: [] });
@@ -62,10 +63,12 @@ beforeEach(() => {
     };
   });
 });
+
 afterEach(() => {
   for (const dispose of automaticDisposers.splice(0)) dispose();
   control?.dispose(); control = undefined; vi.unstubAllGlobals(); vi.useRealTimers();
 });
+
 it('starts saved automatic policy only after app-ready and keeps an empty registry runtime-free', async () => {
   vi.useFakeTimers(); const feature = await import('./feature');
   fixture.list.mockResolvedValue(automaticRegistry());
@@ -76,6 +79,7 @@ it('starts saved automatic policy only after app-ready and keeps an empty regist
   expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
   expect(fixture.create).toHaveBeenCalledOnce();
 });
+
 it.each(['empty', 'disabled', 'session'] as const)('does not load a manager for an automatic %s registry', async variant => {
   vi.useFakeTimers(); const feature = await import('./feature'); const value = automaticRegistry();
   switch (variant) {
@@ -89,6 +93,7 @@ it.each(['empty', 'disabled', 'session'] as const)('does not load a manager for 
   await vi.advanceTimersByTimeAsync(1000); expect(fixture.list).toHaveBeenCalledOnce();
   expect(fixture.create).not.toHaveBeenCalled(); expect(channels).toHaveLength(0);
 });
+
 it('fences an automatic registry read that finishes after feature OFF', async () => {
   vi.useFakeTimers(); const feature = await import('./feature'); const gate = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
   fixture.list.mockReturnValueOnce(gate.promise);
@@ -97,6 +102,7 @@ it('fences an automatic registry read that finishes after feature OFF', async ()
   gate.resolve(automaticRegistry()); await vi.advanceTimersByTimeAsync(1000);
   expect(fixture.create).not.toHaveBeenCalled();
 });
+
 it('rechecks a saved opt-in from a registry hint without polling an empty registry', async () => {
   vi.useFakeTimers(); const feature = await import('./feature');
   await feature.configureRpcFeature({ status: 'enabled', settings }); automaticDisposers.push(feature.startRpcAutomaticConnections());
@@ -104,11 +110,13 @@ it('rechecks a saved opt-in from a registry hint without polling an empty regist
   fixture.list.mockResolvedValue(automaticRegistry()); for (const listener of fixture.registryListeners) listener();
   await vi.advanceTimersByTimeAsync(100); expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
 });
+
 it('passive hydration and enabling alone create no control channel, identity or manager', async () => {
   const feature = await import('./feature');
   await feature.configureRpcFeature({ status: 'disabled', settings }); await feature.configureRpcFeature({ status: 'enabled', settings });
   expect(fixture.create).not.toHaveBeenCalled(); expect(channels).toHaveLength(0);
 });
+
 it('focus and validated registry hints recheck a loaded manager without replaying a call', async () => {
   const feature = await import('./feature'); await feature.configureRpcFeature({ status: 'enabled', settings }); await feature.getRpcManager();
   expect(channels).toHaveLength(1); expect(channels[0]!.postMessage).not.toHaveBeenCalled();
@@ -117,6 +125,7 @@ it('focus and validated registry hints recheck a loaded manager without replayin
   channels[0]!.onmessage?.({ data: { type: 'registry-changed', settings: { allowedMethods: ['generateImage'] } } });
   await Promise.resolve(); expect(fixture.revalidate).toHaveBeenCalledTimes(2);
 });
+
 it('a stop is explicit and settings persistence alone is not a remote acknowledgement', async () => {
   vi.useFakeTimers(); const feature = await import('./feature'); await feature.configureRpcFeature({ status: 'enabled', settings });
   feature.requestRpcStop(); expect(feature.rpcStopStatus()).toBe('checking');
@@ -125,6 +134,7 @@ it('a stop is explicit and settings persistence alone is not a remote acknowledg
   await vi.advanceTimersByTimeAsync(2001); expect(feature.rpcStopStatus()).toBe('unconfirmed');
   expect(fixture.create).not.toHaveBeenCalled();
 });
+
 it('enabling after a previous stop clears only its status and never sends an enable command', async () => {
   vi.useFakeTimers(); const feature = await import('./feature'); feature.requestRpcStop();
   await vi.advanceTimersByTimeAsync(2001); expect(feature.rpcStopStatus()).toBe('unconfirmed');
@@ -132,6 +142,7 @@ it('enabling after a previous stop clears only its status and never sends an ena
   await feature.configureRpcFeature({ status: 'enabled', settings }); expect(feature.rpcStopStatus()).toBe('idle');
   expect(channels[0]!.postMessage).toHaveBeenCalledTimes(sent); expect(fixture.create).not.toHaveBeenCalled();
 });
+
 it('unavailable notification transport is reported as unconfirmed rather than silently successful', async () => {
   vi.useFakeTimers(); vi.stubGlobal('BroadcastChannel', undefined);
   const feature = await import('./feature'); feature.requestRpcStop(); await vi.advanceTimersByTimeAsync(2001);

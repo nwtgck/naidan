@@ -252,7 +252,6 @@ describe("assessSupportBoundaries", () => {
     expect(assessSupportBoundaries({ run }).some(item => item.assessmentId === "real-model-attempts-failed-after-runtime-control")).toBe(false);
   });
 
-
   it("attributes Reference input-strategy exhaustion to the probe path when Production succeeds", () => {
     const run = baseRun();
     run.loadAttempts = [{
@@ -421,6 +420,7 @@ describe("assessSupportBoundaries", () => {
   it("does not manufacture an assessment when no boundary evidence exists", () => {
     expect(assessSupportBoundaries({ run: baseRun() })).toEqual([]);
   });
+
   it("classifies an exact template-derived sequence rejected by the production parser at the Naidan adapter boundary", () => {
     const run = baseRun();
     run.loadAttempts = [{
@@ -805,5 +805,4 @@ describe("assessSupportBoundaries", () => {
       basis: "differential-observation",
     }));
   });
-
 });

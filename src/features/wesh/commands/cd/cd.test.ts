@@ -88,7 +88,6 @@ describe('wesh cd', () => {
     expect(dashed.result.exitCode).toBe(0);
   });
 
-
   it('changes to HOME when no path is provided', async () => {
     await makeDir({ path: 'home/user' });
     await makeDir({ path: 'work' });
@@ -311,5 +310,4 @@ pwd`,
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });

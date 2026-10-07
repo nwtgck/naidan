@@ -8,6 +8,7 @@ const schema = z.object({ type: z.literal('notification-test'), count: z.number(
 function endpoint({ port }: { port: MessagePort }): Endpoint {
   return port as unknown as Endpoint;
 }
+
 it('sends one-way notifications over real ports, validates both boundaries and stops on unsubscribe', async () => {
   const { port1, port2 } = new MessageChannel();
   const listen = vi.fn(); const messages = vi.fn(); port1.on('message', messages);
@@ -25,6 +26,7 @@ it('sends one-way notifications over real ports, validates both boundaries and s
     unsubscribe(); port1.close(); port2.close();
   }
 });
+
 it('does not propagate validation or delivery exceptions through a native log callback', () => {
   const endpoint = {
     postMessage: vi.fn(() => {

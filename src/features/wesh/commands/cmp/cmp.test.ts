@@ -506,7 +506,6 @@ c
     expect(result.exitCode).toBe(1);
   });
 
-
   it('stops after at most one prefetched chunk in normal mode', async () => {
     const input = new Uint8Array(128 * 1024).fill(0x00);
     const comparison = new Uint8Array(128 * 1024).fill(0x01);
@@ -621,6 +620,7 @@ c
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
   it('pads verbose byte positions from the known comparison span', async () => {
     const left = new Uint8Array(200);
     const right = new Uint8Array(200).fill(1);
@@ -671,6 +671,4 @@ cmp: EOF on short.txt after byte 2, line 1
 `);
     expect(result.exitCode).toBe(1);
   });
-
-
 });

@@ -4,12 +4,15 @@ import { createRouter, createMemoryHistory } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import SidebarHeader from './SidebarHeader.vue';
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 it('shares the logo, Naidan name, build version and collapse action between sidebars', async () => {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
   await router.push('/'); await router.isReady();

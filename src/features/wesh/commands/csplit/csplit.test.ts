@@ -204,7 +204,6 @@ e
 `);
   });
 
-
   it('accepts leading C-locale whitespace in the suffix digit count', async () => {
     await writeFile({
       path: 'input.txt',
@@ -1034,8 +1033,6 @@ tail
     expect(await fileExists({ path: 'xx00' })).toBe(false);
   });
 
-
-
   it('accepts explicit positive signs in numeric operands', async () => {
     await writeFile({
       path: 'plus-input.txt',
@@ -1065,7 +1062,6 @@ d
 e
 `);
   });
-
 
   it('validates absolute line-number order before creating output files', async () => {
     await writeFile({
@@ -1136,7 +1132,6 @@ tail
 `);
   });
 
-
   it('does not replay buffered tail when a suppressed EOF regex is followed by an out-of-range line', async () => {
     await writeFile({
       path: 'suppressed-eof-input',
@@ -1166,5 +1161,4 @@ x0
 `);
     expect(await readFile({ path: 'xx01' })).toBe('');
   });
-
 });

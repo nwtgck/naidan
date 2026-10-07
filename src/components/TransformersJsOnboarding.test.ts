@@ -358,6 +358,7 @@ describe('Transformers.js Onboarding Integration', () => {
     // Should have automatically called loadDownloadedModel (logic is inside TransformersJsManager)
     expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
+
   it('opens the standalone feature explanation without scans, model loads or enabling start', async () => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
     const wrapper = mountModal({ global: { stubs: { TransformersJsManager: false } } });
@@ -384,5 +385,4 @@ describe('Transformers.js Onboarding Integration', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

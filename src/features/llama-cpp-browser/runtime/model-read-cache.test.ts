@@ -5,6 +5,7 @@ import { createModelReadCache, TEST_ONLY } from './model-read-cache';
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
+
 function fixture({ size, mode }: { size: number, mode: 'read-ahead' | 'direct' }) {
   const bytes = Uint8Array.from({ length: size }, (_, i) => (i * 31 + Math.floor(i / 256)) % 256);
   const read = vi.fn(({ destination, offset }: { destination: Uint8Array, offset: number }) => {
@@ -39,23 +40,27 @@ describe('load-scoped small-read window', () => {
       peakBufferBytes: 65536,
     });
   });
+
   it('keeps the reference path uncached and allocation-free', () => {
     const f = fixture({ size: 10000, mode: 'direct' });
     for (let offset = 0; offset < 1000; offset++) expect(f.request({ offset, length: 1 })).toBe(1);
     expect(f.cache.counters).toMatchObject({ sourceCalls: 1000, fills: 0, hits: 0, peakBufferBytes: 0 });
   });
+
   it('does not read ahead for isolated or nonadjacent small probes', () => {
     const f = fixture({ size: 200000, mode: 'read-ahead' });
     for (const offset of [0, 100000, 10, 199990, 90000]) f.request({ offset, length: 8 });
     expect(f.read.mock.calls.map(([args]) => args.destination.length)).toEqual([8, 8, 8, 8, 8]);
     expect(f.cache.counters.peakBufferBytes).toBe(0);
   });
+
   it('starts no read or allocation for zero bytes or offsets past the file end', () => {
     const f = fixture({ size: 20, mode: 'read-ahead' });
     for (const offset of [0, 19, 20, 21, Number.MAX_SAFE_INTEGER]) f.request({ offset, length: 0 });
     for (const offset of [20, 21, Number.MAX_SAFE_INTEGER]) f.request({ offset, length: 8 });
     expect(f.read).not.toHaveBeenCalled(); expect(f.cache.counters.peakBufferBytes).toBe(0);
   });
+
   it('reads only to the advertised end and never publishes stale suffix bytes', () => {
     const f = fixture({ size: 19, mode: 'read-ahead' });
     expect(f.request({ offset: 0, length: 8 })).toBe(8);
@@ -64,6 +69,7 @@ describe('load-scoped small-read window', () => {
     expect(f.request({ offset: 19, length: 8 })).toBe(0);
     expect(f.read.mock.calls.map(([args]) => [args.offset, args.destination.length])).toEqual([[0, 8], [8, 11]]);
   });
+
   it('leaves large tensor reads in the caller buffer, even with a populated window', () => {
     const f = fixture({ size: 200000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 }); f.request({ offset: 8, length: 8 });
@@ -74,6 +80,7 @@ describe('load-scoped small-read window', () => {
     expect(args.destination.byteLength).toBe(100000);
     expect(destination.subarray(9)).toEqual(f.bytes.subarray(16, 100016));
   });
+
   it('serves a window boundary as a short read without dropping its remainder', () => {
     const f = fixture({ size: 150000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 1 }); f.request({ offset: 1, length: 1 });
@@ -81,6 +88,7 @@ describe('load-scoped small-read window', () => {
     expect(f.request({ offset: 65537, length: 9 })).toBe(9);
     expect(f.cache.counters.fills).toBe(2);
   });
+
   it('shares one fixed window across 100 shards and never confuses their contents', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     const sources = Array.from({ length: 100 }, (_, index) => cache.wrap({
@@ -101,6 +109,7 @@ describe('load-scoped small-read window', () => {
     expect(destination).toEqual(new Uint8Array(8));
     expect(cache.counters).toMatchObject({ peakBufferBytes: 65536, fills: 100, hits: 100 });
   });
+
   it('does not use a window for a newly wrapped source even with identical metadata', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     let fill = 1;
@@ -116,12 +125,14 @@ describe('load-scoped small-read window', () => {
     const replacement = cache.wrap({ source: backing }); replacement.read({ destination, offset: 16 });
     expect(destination).toEqual(new Uint8Array(8).fill(2)); expect(cache.counters.hits).toBe(0);
   });
+
   it('copies into destinations without retaining them or exposing the cache window', () => {
     const f = fixture({ size: 100000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 }); f.request({ offset: 8, length: 8 });
     const destination = new Uint8Array(10); f.source.read({ destination, offset: 32 }); destination.fill(0);
     expect(f.request({ offset: 32, length: 10 })).toBe(10);
   });
+
   it('handles a shared destination and offsets above 4 GiB without truncation', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     const size = 2 ** 40 + 100;
@@ -141,6 +152,7 @@ describe('load-scoped small-read window', () => {
     }
     expect(cache.counters.sourceCalls).toBe(2);
   });
+
   it('retains a short fill only up to the successful count and does not invent EOF data', () => {
     const f = fixture({ size: 100000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 });
@@ -152,6 +164,7 @@ describe('load-scoped small-read window', () => {
     expect(f.request({ offset: 11, length: 5 })).toBe(0);
     expect(f.request({ offset: 11, length: 5 })).toBe(5);
   });
+
   it.each([-1, 1.5, NaN, Infinity, 65537])('rejects an invalid source count %s and invalidates previous bytes', count => {
     const f = fixture({ size: 200000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 }); f.request({ offset: 8, length: 8 });
@@ -161,6 +174,7 @@ describe('load-scoped small-read window', () => {
     f.request({ offset: 16, length: 8 }); expect(f.read.mock.calls.length).toBe(calls + 1);
     expect(f.cache.counters.allocationFallbacks).toBe(0);
   });
+
   it('does not retry source exceptions or convert them to allocation fallbacks', () => {
     const f = fixture({ size: 100000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 });
@@ -172,6 +186,7 @@ describe('load-scoped small-read window', () => {
     expect(f.read).toHaveBeenCalledTimes(2); expect(f.cache.counters.allocationFallbacks).toBe(0);
     f.request({ offset: 8, length: 8 }); expect(f.cache.counters.hits).toBe(0);
   });
+
   it('falls back once on a rejected optional buffer allocation and keeps reading directly', () => {
     const f = fixture({ size: 100000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 });
@@ -188,14 +203,17 @@ describe('load-scoped small-read window', () => {
     for (const offset of [8, 16, 24, 32]) f.request({ offset, length: 8 });
     expect(rejections).toBe(1); expect(f.cache.counters).toMatchObject({ sourceCalls: 5, allocationFallbacks: 1, fills: 0, peakBufferBytes: 0 });
   });
+
   it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid positions before any source call: %s', offset => {
     const f = fixture({ size: 100, mode: 'read-ahead' });
     expect(() => f.request({ offset, length: 8 })).toThrow('Invalid model read offset'); expect(f.read).not.toHaveBeenCalled();
   });
+
   it.each([-1, 0.5, NaN, Infinity])('rejects invalid source size: %s', size => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     expect(() => cache.wrap({ source: { size, read: () => 0 } })).toThrow('Invalid model source size');
   });
+
   it('disposes once, refuses later source use, and retains only numeric counters for reporting', () => {
     const f = fixture({ size: 100000, mode: 'read-ahead' });
     f.request({ offset: 0, length: 8 }); f.request({ offset: 8, length: 8 });
@@ -204,6 +222,7 @@ describe('load-scoped small-read window', () => {
     expect(() => f.cache.wrap({ source: { size: 1, read: () => 0 } })).toThrow('disposed');
     expect(f.cache.counters).toEqual(counters);
   });
+
   it('measures source calls only, not cache hits, when timing is enabled', () => {
     let clock = 0; const now = vi.fn(() => clock++);
     const cache = createModelReadCache({ mode: 'read-ahead', now });
@@ -218,6 +237,7 @@ describe('load-scoped small-read window', () => {
     for (const offset of [0, 8, 16, 24]) source.read({ destination: new Uint8Array(8), offset });
     expect(now).toHaveBeenCalledTimes(4); expect(cache.counters.sourceReadMs).toBe(2);
   });
+
   it('never lets an observational clock failure replace storage reads or their exceptions', () => {
     const error = new Error('storage failure');
     const clockError = new Error('clock failure');
@@ -239,6 +259,7 @@ describe('load-scoped small-read window', () => {
     });
     expect(() => source.read({ destination, offset: 90000 })).toThrow(error);
   });
+
   it('rechecks byte equality for mixed short reads, large bypasses, backward seeks and partial windows', () => {
     const f = fixture({ size: 300000, mode: 'read-ahead' });
     let seed = 47; const random = (): number => {

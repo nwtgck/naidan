@@ -18,6 +18,7 @@ type GenerationStrategyContext = Parameters<GenerationStrategy['generate']>[0];
 
 const modelId = 'onnx-community/gemma-4-E2B-it-ONNX';
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });

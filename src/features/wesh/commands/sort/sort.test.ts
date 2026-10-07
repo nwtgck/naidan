@@ -321,7 +321,6 @@ sort -g`,
     expect(result.exitCode).toBe(0);
   });
 
-
   it('orders NaN before numeric values with -g', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -406,7 +405,6 @@ Dec
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-
   });
 
   it('orders invalid month names before valid months with -M', async () => {
@@ -430,7 +428,6 @@ Dec
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('treats all invalid month names as one key with -M -u', async () => {
     const { result, stdout, stderr } = await execute({
@@ -471,7 +468,6 @@ v1.10
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('orders an empty record before dot-prefixed records with -V', async () => {
     const { result, stdout, stderr } = await execute({
@@ -1313,7 +1309,6 @@ a1
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });
 
 describe('wesh sort Linux character classification compatibility', () => {
@@ -1494,7 +1489,6 @@ describe('wesh sort key character positions', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('uses byte positions and permits character offsets past a field boundary in the C locale', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });

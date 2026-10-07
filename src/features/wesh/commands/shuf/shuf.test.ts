@@ -317,7 +317,6 @@ blue
     expect(result.exitCode).toBe(1);
   });
 
-
   it('accepts only leading C-locale whitespace in head counts', async () => {
     for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
       const execution = await execute({
@@ -339,7 +338,6 @@ blue
       expect(execution.result.exitCode).toBe(1);
     }
   });
-
 
   it('accepts explicit positive signs and arbitrarily large head counts', async () => {
     for (const operand of ['+1', '18446744073709551616']) {
@@ -386,5 +384,4 @@ blue
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

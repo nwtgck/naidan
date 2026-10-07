@@ -169,7 +169,6 @@ a`,
     expect(result.exitCode).toBe(0);
   });
 
-
   it('uses set1 for deletion and set2 for squeezing when -d and -s are combined', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'tr -ds a b',
@@ -287,6 +286,7 @@ a`,
     expect(stderr.text).toContain('try:');
     expect(result.exitCode).toBe(1);
   });
+
   it('rejects ranges whose endpoints are in reverse order', async () => {
     const { result, stdout, stderr } = await execute({
       script: `tr 'z-a' 'A-Z'`,
@@ -366,7 +366,6 @@ a`,
     expect(stderr.text).toContain('tr: warning: an unescaped backslash at end of string is not portable');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('treats operands after SET1 as operands even when they start with a dash', async () => {
     const { result, stdout, stderr } = await execute({
@@ -514,5 +513,4 @@ a`,
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

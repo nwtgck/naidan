@@ -362,6 +362,7 @@ graph TD; A-->B;
       expect(copyBtn.classes()).toContain('rounded-md');
     });
   });
+
   describe('Code Block Toolbar', () => {
     it('renders the code block toolbar with language label and copy button', () => {
       const message = createMessage(`\

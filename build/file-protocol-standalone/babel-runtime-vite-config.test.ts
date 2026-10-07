@@ -134,9 +134,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(bundle['assets/probe.js'].code).toContain('_context.import("./dependency.js")');
   });
 
-
-
-
   it('uses parsed HTML semantics for an unquoted, reordered Vite application entry', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
@@ -582,7 +579,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(html).not.toContain('rel="modulepreload"');
   });
 
-
   it('preserves Vite importedCss insertion order for the initial static closure without eager dynamic CSS', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
@@ -830,6 +826,4 @@ describe('file protocol standalone Vite config Babel interop', () => {
 
     await expect(generateBundle(bundle)).rejects.toThrow('Unexpected Vite importedCss metadata entry for assets/index.js: 42');
   });
-
-
 });

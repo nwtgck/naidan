@@ -139,7 +139,6 @@ describe('bash command entrypoint', () => {
     return { result, stdout, stderr };
   }
 
-
   it('converts bash -c into a shell invocation without implementing shell semantics', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

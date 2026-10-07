@@ -40,7 +40,9 @@ function resources() {
   };
   return { value: { generateChat: generate, listChatModels: unavailable, listImageModels: unavailable, generateImage: unavailable } satisfies ReadOnlyInferenceResources, generate };
 }
+
 afterEach(() => vi.restoreAllMocks());
+
 it('counts every image use but reads each distinct payload once before rejecting amplified decoding', async () => {
   const engine = resources(), bytes = png({ width: 2048, height: 2048 });
   const reads = vi.spyOn(Blob.prototype, 'arrayBuffer');
@@ -56,6 +58,7 @@ it('counts every image use but reads each distinct payload once before rejecting
   await expect(collectBytes({ readable: output.events, limit: 8192, signal })).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
   expect(engine.generate).not.toHaveBeenCalled(); expect(reads).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
 });
+
 it('permits repeated small images without copying their encoded payload for each occurrence', async () => {
   const engine = resources(), bytes = png({ width: 32, height: 32 });
   const reads = vi.spyOn(Blob.prototype, 'arrayBuffer');
@@ -71,6 +74,7 @@ it('permits repeated small images without copying their encoded payload for each
   await collectBytes({ readable: output.events, limit: 8192, signal });
   expect(engine.generate).toHaveBeenCalledOnce(); expect(reads).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
 });
+
 it('rejects an impossible attachment reference before pulling any uploaded image', async () => {
   const pulled = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
     controller.close();

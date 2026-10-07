@@ -7,6 +7,7 @@ import type { InferenceGenerationEvent } from '@/features/transformers-js/genera
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
@@ -145,5 +146,4 @@ A  `);
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]); expect(harness.transport).not.toHaveBeenCalled();
   }, 20_000);
-
 });

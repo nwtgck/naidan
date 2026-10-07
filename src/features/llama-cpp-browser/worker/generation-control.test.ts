@@ -154,6 +154,7 @@ beforeEach(() => {
   vi.spyOn(performance, 'now').mockReturnValue(0);
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 function reports() {
@@ -189,6 +190,7 @@ describe('generation loop performance invariants', () => {
     }
     expect(f.allocations.size).toBe(0);
   });
+
   it('leaves the rate unavailable when cancellation arrives during the first sample', async () => {
     const f = fixture(); const controller = new AbortController();
     host.sampler.mockResolvedValue({
@@ -207,6 +209,7 @@ describe('generation loop performance invariants', () => {
     expect(reports()[0]!.performance!.postFirstSample!.tokensPerSecond).toBeUndefined();
     expect(f.allocations.size).toBe(0);
   });
+
   it.each(['reasoning', 'tool', 'invisible'] as const)('counts %s generation without relying on visible text', async kind => {
     const f = fixture(); f.request.maxTokens = 3;
     let at = 0;
@@ -235,6 +238,7 @@ describe('generation loop performance invariants', () => {
     });
     expect(f.allocations.size).toBe(0);
   });
+
   it.each(['aborted', 'failed'] as const)('stops %s throughput at the last successful sample', async outcome => {
     const f = fixture(); f.request.maxTokens = 3;
     const controller = new AbortController();
@@ -266,6 +270,7 @@ describe('generation loop performance invariants', () => {
     });
     expect(f.allocations.size).toBe(0);
   });
+
   it('counts native samples rather than coalesced delivery events for token throughput', async () => {
     const f = fixture();
     let at = 0;
@@ -289,6 +294,7 @@ describe('generation loop performance invariants', () => {
     expect(reports()[0]!.performance!.streaming!.deliveredEvents).toBeLessThan(65);
     expect(f.allocations.size).toBe(0);
   });
+
   it('includes a sampled EOG token even though it emits no text', async () => {
     const f = fixture();
     let at = 0;
@@ -311,6 +317,7 @@ describe('generation loop performance invariants', () => {
     });
     expect(f.allocations.size).toBe(0);
   });
+
   it('reduces parse work against a per-token control without changing content', async () => {
     const optimized = fixture(); const expected = await optimized.run({ signal: undefined });
     const optimizedReport = reports().at(-1)?.performance;
@@ -323,6 +330,7 @@ describe('generation loop performance invariants', () => {
     expect(reports().at(-1)?.performance?.streaming).toMatchObject({ parsedCodeUnits: 2210, deliveredEvents: 65 });
     expect(optimized.allocations.size).toBe(0); expect(reference.allocations.size).toBe(0);
   });
+
   it('reduces repeated-token native calls against a disabled-cache control', async () => {
     const optimized = fixture(); const expected = await optimized.run({ signal: undefined });
     const create = tokenRendering.createTokenRenderer;
@@ -332,6 +340,7 @@ describe('generation loop performance invariants', () => {
     expect(reference.api.llama_vocab_is_eog).toHaveBeenCalledTimes(65); expect(reference.api.llama_token_to_piece).toHaveBeenCalledTimes(65);
     expect(optimized.allocations.size).toBe(0); expect(reference.allocations.size).toBe(0);
   });
+
   it('retains bounded rendering/parsing and defers only the final unused decode', async () => {
     const f = fixture();
     const result = await f.run({ signal: undefined });
@@ -355,6 +364,7 @@ describe('generation loop performance invariants', () => {
       }),
     }));
   });
+
   it('evaluates the deferred token on the next request instead of claiming a decoded prefix', async () => {
     const f = fixture(); await f.run({ signal: undefined });
     const cached = f.cache.tokens.slice(); const previousCalls = f.decodedBatches.length;
@@ -364,6 +374,7 @@ describe('generation loop performance invariants', () => {
     expect(f.api.llama_memory_clear).not.toHaveBeenCalled(); expect(f.allocations.size).toBe(0);
     expect(reports().at(-1)?.performance).toMatchObject({ reusedTokens: cached.length, prefillDecodedTokens: 2, decodedTokens: 0 });
   });
+
   it('keeps performance reporting off without changing generated content', async () => {
     const f = fixture(); f.request.debug = 'off'; f.request.maxTokens = 3;
     expect((await f.run({ signal: undefined })).content).toBe('xxx');
@@ -387,6 +398,7 @@ describe('native status and cancellation do not hide each other', () => {
       expect(f.cache.validity).toBe('invalid'); expect(f.allocations.size).toBe(0);
     });
   }
+
   it('preserves a native trap until delivery has drained, even during Stop', async () => {
     const f = fixture(); const controller = new AbortController();
     const native = Promise.withResolvers<number>(); const delivery = Promise.withResolvers<void>();
@@ -404,6 +416,7 @@ describe('native status and cancellation do not hide each other', () => {
     delivery.resolve(); expect(await pending).toBe(failure);
     expect(f.allocations.size).toBe(0); expect(reports().at(-1)?.performance?.outcome).toBe('failed');
   });
+
   it('classifies a preparation trap as failure even when the signal is also aborted', async () => {
     const f = fixture(); const controller = new AbortController(); const failure = new WebAssembly.RuntimeError('prepare trap');
     host.session.mockImplementationOnce(async () => {

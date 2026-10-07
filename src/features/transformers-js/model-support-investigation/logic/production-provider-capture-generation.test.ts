@@ -66,6 +66,7 @@ function message({ parts }: { parts: AssistantMessageNode['parts'] }): Assistant
 beforeEach(() => vi.stubGlobal('fetch', vi.fn(() => {
   throw new Error('Capture tests forbid network');
 })));
+
 afterEach(() => {
   expect(globalThis.fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
 });

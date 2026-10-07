@@ -9,6 +9,7 @@ function file({ path }: { path: string }) {
 function editor(): RemoteImageModelEditor {
   return { primary: { slot: 'diffusion', file: file({ path: 'models/z-image.gguf' }), family: 'z-image' }, components: [], loras: [] };
 }
+
 it('requires the family-specific components without inserting another model', () => {
   const state = editor();
   expect(remoteImageEditorReady({ editor: state })).toBe(false);
@@ -18,6 +19,7 @@ it('requires the family-specific components without inserting another model', ()
   expect(remoteImageEditorReady({ editor: state })).toBe(true);
   expect(remoteImageSelectionFromEditor({ editor: state })?.components).toEqual(state.components);
 });
+
 it('keeps disabled adapters in the editor and omits them from the generation', () => {
   const state = editor();
   state.loras = [{ file: file({ path: 'models/off.gguf' }), strength: 0.7, enabled: 'disabled' }, { file: file({ path: 'models/on.gguf' }), strength: 0.4, enabled: 'enabled' }];
@@ -25,6 +27,7 @@ it('keeps disabled adapters in the editor and omits them from the generation', (
   expect(selection?.loras).toEqual([{ file: file({ path: 'models/on.gguf' }), strength: 0.4 }]);
   expect(state.loras).toHaveLength(2);
 });
+
 it('does not treat an embedded checkpoint decoder or a different VAE family as a compatible component', () => {
   const catalog: PeerImageCatalogItem[] = [
     { label: 'checkpoint', file: file({ path: 'models/checkpoint.gguf' }), roles: ['model', 'vae'], facts: { family: 'sd-checkpoint', classes: ['vae-sd4'] } },
@@ -34,15 +37,18 @@ it('does not treat an embedded checkpoint decoder or a different VAE family as a
   expect(remoteImageModelChoices({ catalog, slot: 'vae', family: 'z-image' }).map(item => item.label)).toEqual(['flux']);
   expect(remoteImageModelChoices({ catalog, slot: 'primary', family: undefined }).map(item => item.label)).toEqual(['checkpoint']);
 });
+
 it('keeps unclassified components usable without claiming compatibility', () => {
   const catalog: PeerImageCatalogItem[] = [{ label: 'unclassified', file: file({ path: 'models/unclassified.gguf' }), roles: ['lm'] }];
   expect(remoteImageModelChoices({ catalog, slot: 'lm', family: 'z-image' })).toMatchObject([{ status: 'unverified' }]);
 });
+
 it('distinguishes a host directory from both another directory and this device', () => {
   const path = 'models/same.gguf';
   const keys = [file({ path }), { location: { kind: 'host' as const, directoryId: 'one', path } }, { location: { kind: 'host' as const, directoryId: 'two', path } }].map(file => remoteImageFileKey({ file }));
   expect(new Set(keys).size).toBe(3);
 });
+
 it('retains an explicit empty primary without manufacturing a valid request', () => {
   const state = editor(); state.primary = undefined;
   expect(remoteImageEditorReady({ editor: state })).toBe(false);

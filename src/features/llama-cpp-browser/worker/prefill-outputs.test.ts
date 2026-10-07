@@ -43,6 +43,7 @@ describe('prefill output selection', () => {
     outputs.dispose(); outputs.dispose();
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: flags });
   });
+
   it.each(['final-only', 'per-batch'] as const)('does not allocate for a one-batch prompt: %s', mode => {
     const { core, fields, outputs } = fixture({ mode });
     outputs.configure({ batch: 1n, count: 27, final: true }); outputs.dispose();
@@ -50,6 +51,7 @@ describe('prefill output selection', () => {
     expect(core.tryAlloc).not.toHaveBeenCalled(); expect(core.free).not.toHaveBeenCalled();
     expect(outputs.counters.requestedLogits).toBe(1);
   });
+
   it('keeps every output in the reference/unsupported mode', () => {
     const { core, fields, outputs } = fixture({ mode: 'per-batch' });
     for (const final of [false, false, true]) outputs.configure({ batch: 1n, count: 128, final });
@@ -57,6 +59,7 @@ describe('prefill output selection', () => {
     expect(outputs.counters).toEqual({ requestedLogits: 3, skippedLogits: 0, allocationFallbacks: 0 });
     outputs.dispose();
   });
+
   it('falls back once when the optional allocation is declined', () => {
     const { core, fields, outputs } = fixture({ mode: 'final-only' });
     core.tryAlloc.mockReturnValue(undefined);
@@ -66,6 +69,7 @@ describe('prefill output selection', () => {
     expect(outputs.counters).toEqual({ requestedLogits: 4, skippedLogits: 0, allocationFallbacks: 1 });
     outputs.dispose(); expect(core.free).not.toHaveBeenCalled();
   });
+
   it('propagates allocation traps without selecting a fallback', () => {
     const { core, outputs } = fixture({ mode: 'final-only' });
     const error = new Error('native trap'); core.tryAlloc.mockImplementation(() => {
@@ -75,6 +79,7 @@ describe('prefill output selection', () => {
     expect(core.setField).not.toHaveBeenCalled(); expect(outputs.counters.allocationFallbacks).toBe(0);
     outputs.dispose(); expect(core.free).not.toHaveBeenCalled();
   });
+
   it.each(['bytes', 'setField'] as const)('retains ownership if %s fails after allocation', method => {
     const { core, allocations, outputs } = fixture({ mode: 'final-only' });
     core[method].mockImplementation(() => {
@@ -84,6 +89,7 @@ describe('prefill output selection', () => {
     expect(allocations.size).toBe(1); expect(core.free).not.toHaveBeenCalled();
     outputs.dispose(); expect(allocations.size).toBe(0);
   });
+
   it('holds no stale memory view across native memory growth', () => {
     const { core, allocations, fields, outputs } = fixture({ mode: 'final-only' });
     outputs.configure({ batch: 1n, count: 128, final: false });
@@ -94,6 +100,7 @@ describe('prefill output selection', () => {
     expect(Array.from(allocations.get(fields.get(1n)!)!)).toEqual(Array(512).fill(0));
     expect(core.bytes).toHaveBeenCalledOnce(); outputs.dispose();
   });
+
   it('does not share buffers or allocation fallback between requests', () => {
     const { core, outputs } = fixture({ mode: 'final-only' });
     core.tryAlloc.mockReturnValueOnce(undefined);
@@ -102,11 +109,13 @@ describe('prefill output selection', () => {
     next.configure({ batch: 2n, count: 128, final: false });
     expect(next.counters).toEqual({ requestedLogits: 0, skippedLogits: 1, allocationFallbacks: 0 }); next.dispose();
   });
+
   it.each([0, -1, 513, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER])('rejects invalid count %s before allocation', count => {
     const { core, outputs } = fixture({ mode: 'final-only' });
     expect(() => outputs.configure({ batch: 1n, count, final: false })).toThrow();
     expect(core.tryAlloc).not.toHaveBeenCalled(); expect(core.setField).not.toHaveBeenCalled(); outputs.dispose();
   });
+
   it('cannot select outputs after disposal', () => {
     const { core, outputs } = fixture({ mode: 'final-only' }); outputs.dispose();
     expect(() => outputs.configure({ batch: 1n, count: 1, final: true })).toThrow();

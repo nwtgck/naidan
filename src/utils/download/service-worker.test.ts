@@ -5,6 +5,7 @@ import { installStreamDownloadWorker, type DownloadFetchEvent, type DownloadMess
 import { createDownloadUrl, DOWNLOAD_EVENT_LEASE_MS, type DownloadVersion } from './protocol';
 
 const cleanups: Array<() => Promise<void>> = [];
+
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.restoreAllMocks();
@@ -235,7 +236,6 @@ describe('streaming download Service Worker', () => {
     expect(source.openStream).not.toHaveBeenCalled();
   });
 });
-
 
 describe('fragment downloads', () => {
   it.each(['', 'new-iframe'])('claims once with no referrer and iframe clientId=%j', async clientId => {

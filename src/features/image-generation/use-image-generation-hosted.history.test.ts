@@ -127,6 +127,7 @@ function open(): ImageGenerationView {
 function result() {
   return { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false };
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   preferencesInitialized.value = false;
@@ -143,6 +144,7 @@ beforeEach(async () => {
     static override createObjectURL = vi.fn(() => 'blob:test'); static override revokeObjectURL = vi.fn();
   });
 });
+
 afterEach(() => {
   editor?.unmount(); editor = undefined;
   resultsPanel?.unmount(); resultsPanel = undefined;
@@ -218,6 +220,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.draftDisabled.value).toBe(false); expect(view.busy.value).toBe(false);
     expect(mocks.save).not.toHaveBeenCalled();
   });
+
   it('observes only an existing idle model and drops observations after explicit release', async () => {
     const view = open(); view.retainModel.value = true;
     view.engineState.setOpened({ opened: true });
@@ -243,6 +246,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.engineState.snapshot.value).toBeUndefined();
     expect(view.modelResident.value).toBe(false);
   });
+
   it.each(['cooperative', 'forced'] as const)('keeps prior results distinct after %s cancellation during decoding', async mode => {
     const view = open();
     await view.generate({ submission: undefined });
@@ -282,6 +286,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(resultsPanel.find('[data-testid="image-cancelled-result"]').exists()).toBe(false);
     expect(resultsPanel.find('[data-testid="image-previous-results"]').exists()).toBe(false);
   });
+
   it('keeps the failed run visible above prior images across pane remounts and replaces it on the next run', async () => {
     const view = open();
     await view.generate({ submission: undefined });
@@ -347,6 +352,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(resultsPanel.find('[data-testid="image-previous-results"]').exists()).toBe(false);
     expect(view.results.value).toHaveLength(2);
   });
+
   it('distinguishes invalid inputs, cancellation and save failure from inference failure', async () => {
     const view = open();
     resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
@@ -385,6 +391,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
     expect(resultsPanel.find('[data-testid="image-generated-result"]').exists()).toBe(true);
   });
+
   it('keeps disabled LoRA choices in the editor and history while excluding them from inference', async () => {
     const view = open();
     const file = mocks.models[0]!.file;
@@ -416,6 +423,7 @@ describe('hosted image history integration with a synthetic inference client', (
     ]);
     expect(mocks.save.mock.calls[1]?.[0].record.request.loras[1].strength).toBe(-0.75);
   });
+
   it('does not reject generation or history capture for an invalid disabled adapter selection', async () => {
     const view = open();
     const file = new File([], 'empty.gguf');
@@ -432,6 +440,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.invalid.value).toBe(true);
     expect(mocks.generate).toHaveBeenCalledOnce();
   });
+
   it('does not acquire diagnostics ownership while a history image is being prepared', async () => {
     const view = open();
     await view.generate({ submission: undefined });
@@ -582,6 +591,7 @@ describe('hosted image history integration with a synthetic inference client', (
     view.removeResult({ resultId });
     expect(view.savedHistoryId({ resultId })).toBeUndefined();
   });
+
   it('downloads final and retained preview copies using the original request and chosen format', async () => {
     mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
       onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8, width: 128, height: 64, mode: 'projection', png: new Blob(['preview'], { type: 'image/png' }) } });
@@ -602,6 +612,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(await view.downloadPreview({ previewId, format: 'png', includeMetadata: false })).toMatchObject({ status: 'failed', message: 'The preview image is no longer available' });
     expect(mocks.download).toHaveBeenCalledTimes(2);
   });
+
   it('returns download errors to the local menu without changing generation success or saving originals', async () => {
     const view = open(); await view.generate({ submission: undefined });
     view.historyActions.error.value = 'An unrelated history action failed';
@@ -613,6 +624,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(await view.downloadResult({ resultId, format: 'png', includeMetadata: true })).toEqual({ status: 'downloaded' });
     expect(view.historyActions.error.value).toBe('An unrelated history action failed');
   });
+
   it('downloads a saved preview with its dimensions and closes safely when disposed during conversion', async () => {
     mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
       onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 3, steps: 9, width: 64, height: 64, mode: 'vae', png: new Blob(['preview'], { type: 'image/png' }) } });
@@ -634,6 +646,7 @@ describe('hosted image history integration with a synthetic inference client', (
     conversion.resolve(new Blob(['download'], { type: 'image/png' }));
     expect(await operation).toEqual({ status: 'cancelled' }); expect(mocks.download).toHaveBeenCalledTimes(1);
   });
+
   it('keeps a failed save retryable after presentation is cleared during saving', async () => {
     const view = open(); mocks.save.mockRejectedValueOnce(new Error('quota'));
     await view.generate({ submission: undefined });
@@ -644,6 +657,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.historySaving.pendingCount.value).toBe(1); expect(view.historySaving.status.value).toBe('failed'); expect(view.historySaving.error.value).toBe('late failure');
     expect(mocks.save).toHaveBeenCalledTimes(2);
   });
+
   it('keeps a generated result when history saving fails and retries the identical immutable snapshot', async () => {
     mocks.save.mockRejectedValueOnce(new Error('OPFS quota exceeded'));
     const view = open();
@@ -660,6 +674,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(first.record.request.parameters.seed).toBe(acceptedSeed); expect(view.parameters.value.seed).toBe('0');
     expect(view.historySaving.status.value).toBe('saved'); expect(view.failure.value).toBe('');
   });
+
   it('waits for saving but allows the next generation while history refresh is still pending', async () => {
     const saving = Promise.withResolvers<void>();
     const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
@@ -695,6 +710,7 @@ describe('hosted image history integration with a synthetic inference client', (
     await view.history.reload();
     expect(view.history.error.value).toBe('');
   });
+
   it.each(['saved', 'failed'] as const)('disables inference stop while saving and restores controls after a %s save', async outcome => {
     const saving = Promise.withResolvers<void>();
     mocks.save.mockReturnValueOnce(saving.promise);
@@ -729,6 +745,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(editor.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(false);
     expect(editor.get('[data-testid="image-cancel"]').element.matches(':disabled')).toBe(true);
   });
+
   it('allows cooperative and forced stop from inference startup before its first progress callback', async () => {
     const inference = Promise.withResolvers<{ cancelled: true, modelResident: boolean }>();
     mocks.generate.mockReturnValueOnce(inference.promise);
@@ -755,6 +772,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(editor.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(false);
     expect(mocks.save).not.toHaveBeenCalled();
   });
+
   it('keeps a newer save failure retryable when an older history refresh finishes', async () => {
     const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
     mocks.query.mockReturnValueOnce(querying.promise);
@@ -776,6 +794,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.historySaving.status.value).toBe('saved');
     expect(view.historySaving.pendingCount.value).toBe(0);
   });
+
   it('does not publish a delayed refresh failure or start a refresh after disposal during saving', async () => {
     const querying = Promise.withResolvers<{ items: [], total: number, warnings: [], warningCount: number }>();
     mocks.query.mockReturnValueOnce(querying.promise);
@@ -792,6 +811,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.history.error.value).toBe('');
     expect(view.history.loading.value).toBe(false);
   });
+
   it('saves to the originally captured writer after storage changes during generation', async () => {
     const pending = Promise.withResolvers<ReturnType<typeof result>>(); mocks.generate.mockReturnValueOnce(pending.promise);
     const view = open(); const generation = view.generate({ submission: undefined });
@@ -799,6 +819,7 @@ describe('hosted image history integration with a synthetic inference client', (
     pending.resolve(result()); await generation;
     expect(view.results.value).toHaveLength(1); expect(mocks.save).toHaveBeenCalledOnce(); expect(view.historySaving.supported.value).toBe(false);
   });
+
   it('saves only retained preview frames captured by the current generation', async () => {
     let runId = 0;
     mocks.generate.mockImplementation(async ({ onPreview }) => {
@@ -812,6 +833,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.save.mock.calls[0]?.[0].record.previews.map((frame: { step: number }) => frame.step)).toEqual([1]);
     expect(mocks.save.mock.calls[1]?.[0].record.previews.map((frame: { step: number }) => frame.step)).toEqual([2]);
   });
+
   it('retains restored adapters, companion paths, input order and every setting after Vue watchers flush', async () => {
     const file = mocks.models[0]!.file;
     const request = requestFixture(); request.artifact = artifactFixture();
@@ -833,6 +855,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.generate.mock.calls[0]?.[0].request.parameters.seed).toBe('987654321');
     expect(view.historyActions.error.value).toBe('');
   });
+
   it('does not publish a cancelled or failed generation as a successful history record', async () => {
     const view = open(); mocks.generate.mockResolvedValueOnce({ cancelled: true, modelResident: false });
     await view.generate({ submission: undefined }); expect(mocks.save).not.toHaveBeenCalled(); expect(view.results.value).toHaveLength(0);
@@ -884,6 +907,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.generate.mock.calls[2]![0].request.models[0].companions).toBeUndefined();
     expect(saved.record).toEqual(original);
   });
+
   it.each(['model', 'diffusion'] as const)('retains untouched auxiliary split files when replacing the restored %s', async mainSlot => {
     const base = ggufFile(), oldPart = new File(['old-part'], 'base-part.gguf'), replacement = new File(['replacement'], 'replacement.gguf');
     const vae = new File(['vae-data'], 'vae.gguf'), vaePart = new File(['vae-part'], 'vae-part.gguf');
@@ -916,6 +940,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(generated.loras).toEqual([]); expect(generated.imageInputs.referenceImages).toEqual([]);
     expect(saved.record).toEqual(original);
   });
+
   it('keeps the editor unchanged while local reuse preparation is pending or fails', async () => {
     const request = requestFixture(); request.models = mocks.models; request.parameters.prompt = 'Saved prompt';
     const snapshot = snapshotImageGeneration({
@@ -934,6 +959,7 @@ describe('hosted image history integration with a synthetic inference client', (
     await view.reuseHistory({ record: saved.record });
     expect(view.parameters.value.prompt).toBe('Saved prompt'); expect(view.historyActions.missingFiles.value).toEqual([]);
   });
+
   it.each(['settings', 'image'] as const)('ignores a delayed %s reuse error from before storage changed', async action => {
     const request = requestFixture(); request.models = mocks.models;
     const snapshot = snapshotImageGeneration({
@@ -964,6 +990,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.parameters.value.prompt).toBe('a small tree');
     expect(view.imageInputs.value.referenceImages).toEqual([]);
   });
+
   it.each([0, 0.7])('keeps the base model and only requires acknowledgement for an enabled missing adapter (strength %s)', async strength => {
     const request = requestFixture(); request.models = mocks.models;
     request.loras = [{ file: new File(['adapter'], 'missing-adapter.gguf'), path: 'missing-adapter.gguf', strength }];
@@ -988,12 +1015,14 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.generate.mock.calls[0]?.[0].request.models[0].file).toBe(mocks.models[0]!.file);
     expect(mocks.generate.mock.calls[0]?.[0].request.loras).toEqual([]);
   });
+
   it('does not show a previous saved status for a later generation with history disabled', async () => {
     const view = open(); await view.generate({ submission: undefined }); expect(view.historySaving.status.value).toBe('saved');
     view.historySaving.enabled.value = false; await view.generate({ submission: undefined });
     expect(view.results.value).toHaveLength(2); expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(view.historySaving.status.value).toBe('idle'); expect(view.historySaving.error.value).toBe('');
   });
+
   it('keeps an earlier failed snapshot retryable without applying its saved status to a later cancelled run', async () => {
     mocks.save.mockRejectedValueOnce(new Error('Quota exceeded'));
     const view = open(); await view.generate({ submission: undefined });
@@ -1005,6 +1034,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.save.mock.calls[1]?.[0]).toBe(failed);
     expect(view.historySaving.status.value).toBe('idle'); expect(view.historySaving.pendingCount.value).toBe(0);
   });
+
   it('clears visible saving status on storage changes but retains failed snapshots outside the gallery', async () => {
     mocks.save.mockRejectedValueOnce(new Error('Quota exceeded'));
     const view = open(); await view.generate({ submission: undefined }); expect(view.historySaving.pendingCount.value).toBe(1);
@@ -1013,6 +1043,7 @@ describe('hosted image history integration with a synthetic inference client', (
     view.clearResults(); expect(view.historySaving.pendingCount.value).toBe(1);
     expect(pendingImageHistory.list()).toHaveLength(1);
   });
+
   it('keeps the chosen dimensions for selection-time helpers and explicit recommended settings', async () => {
     const view = open(); view.parameters.value.width = 768; view.parameters.value.height = 448;
     view.parameters.value.steps = 50; view.parameters.value.guidance = 10;
@@ -1021,6 +1052,7 @@ describe('hosted image history integration with a synthetic inference client', (
     view.parameters.value.steps = 60; view.applyRecommendedSettings(); await nextTick();
     expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1 });
   });
+
   it('resolves a browser-random seed once for the accepted request and saved snapshot', async () => {
     const view = open(); expect(view.seedMode.value).toBe('random');
     view.parameters.value.seed = '-1'; await view.generate({ submission: undefined });
@@ -1029,6 +1061,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.parameters.value.seed).toBe(seed);
     expect(mocks.save.mock.calls[0]?.[0].record.request.parameters.seed).toBe(seed);
   });
+
   it('respects fixed seeds, leaves invalid requests unchanged and rerolls only the next draft while busy', async () => {
     const view = open(); view.seedMode.value = 'fixed'; view.parameters.value.seed = '9223372036854775807';
     await view.generate({ submission: undefined });
@@ -1079,6 +1112,7 @@ describe('Image Generation submission and draft integration', () => {
       finished: vi.fn<import('./generation-submission').ImageGenerationSubmission['finished']>().mockResolvedValue(),
     };
   }
+
   it('accepts one immutable plan, publishes consecutive actual seeds and releases the model only after the run', async () => {
     const view = open(), sink = submission({ count: 3 });
     view.seedMode.value = 'fixed'; view.parameters.value.seed = '9007199254740993'; view.retainModel.value = false;
@@ -1097,6 +1131,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.release).toHaveBeenCalledOnce();
     expect(view.parameters.value.prompt).toBe('next draft'); expect(view.busy.value).toBe(false);
   });
+
   it('shows each new image as running instead of retaining the previous completed preview', async () => {
     const view = open(), sink = submission({ count: 3 });
     const generate = mocks.generate.getMockImplementation(); if (!generate) throw new Error('Missing native fixture.');
@@ -1113,6 +1148,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(phases).toEqual(['running', 'running', 'running']);
     expect(view.latestRun.value?.status).toBe('succeeded');
   });
+
   it('keeps earlier images but reports failure of a later image rather than leaving it running', async () => {
     const view = open(), sink = submission({ count: 3 });
     const generate = mocks.generate.getMockImplementation(); if (!generate) throw new Error('Missing native fixture.');
@@ -1123,6 +1159,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.busy.value).toBe(false);
     expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'second image failed' } });
   });
+
   it('does not start inference when the accepted request cannot be persisted', async () => {
     const view = open(), sink = submission({ count: 4 });
     sink.accepted.mockRejectedValueOnce(new Error('storage full'));
@@ -1131,6 +1168,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'storage full' } });
     expect(view.failure.value).toBe('storage full'); expect(view.busy.value).toBe(false);
   });
+
   it('waits for each save and permits cancellation between native calls', async () => {
     const view = open(), sink = submission({ count: 4 }), saving = Promise.withResolvers<void>();
     sink.output.mockReturnValueOnce(saving.promise);
@@ -1141,6 +1179,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'cancelled' } });
     expect(view.cancelled.value).toBe(true);
   });
+
   it('does not automatically retry inference after an output-save failure', async () => {
     const view = open(), sink = submission({ count: 4 });
     sink.output.mockRejectedValueOnce(new Error('save failed'));
@@ -1150,6 +1189,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(sink.finished).toHaveBeenCalledWith({ completion: { type: 'failed', message: 'save failed' } });
     expect(mocks.save).not.toHaveBeenCalled();
   });
+
   it('rejects seed overflow before accepting a run or starting native execution', async () => {
     const view = open(), sink = submission({ count: 2 });
     view.seedMode.value = 'fixed'; view.parameters.value.seed = '9223372036854775807';
@@ -1157,6 +1197,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(mocks.generate).not.toHaveBeenCalled(); expect(sink.accepted).not.toHaveBeenCalled();
     expect(view.invalid.value).toBe(true);
   });
+
   it('rejects a second generate click while request persistence is pending', async () => {
     const view = open(), sink = submission({ count: 2 }), accepted = Promise.withResolvers<void>();
     sink.accepted.mockReturnValueOnce(accepted.promise);
@@ -1164,6 +1205,7 @@ describe('Image Generation submission and draft integration', () => {
     await view.generate({ submission: sink }); expect(sink.accepted).toHaveBeenCalledOnce();
     accepted.resolve(); await running; expect(mocks.generate).toHaveBeenCalledTimes(2);
   });
+
   it('restores an incomplete draft including an empty prompt, partial seed, layout and a disabled adapter strength', async () => {
     const view = open(); view.layout.value = 'components';
     view.parameters.value.prompt = ''; view.parameters.value.seed = '';
@@ -1180,6 +1222,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.loras.value).toMatchObject([{ enabled: false, strength: 0.75, path: 'draft-adapter.gguf' }]);
     await view.generate({ submission: undefined }); expect(mocks.generate).not.toHaveBeenCalled();
   });
+
   it('restores stored model files from the current inventory rather than an old draft snapshot', async () => {
     const view = open();
     const original = mocks.models[0]!.file;
@@ -1193,6 +1236,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.files.value.model).not.toBe(original);
     expect(mocks.generate).not.toHaveBeenCalled();
   });
+
   it('does not revive a removed stored model from a cached session draft', async () => {
     const view = open(), draft = view.captureDraft!()!;
     draft.modelSelection = undefined; mocks.models = [];
@@ -1201,6 +1245,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.historyActions.missingFiles.value).not.toEqual([]);
     expect(mocks.generate).not.toHaveBeenCalled();
   });
+
   it('keeps directly chosen files available when restoring an in-memory draft', async () => {
     const view = open(), draft = view.captureDraft!()!, file = mocks.models[0]!.file;
     draft.modelSelection = undefined;
@@ -1211,6 +1256,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.files.value.model).toBe(file);
     expect(view.historyActions.missingFiles.value).toEqual([]);
   });
+
   it('preserves draft input binary identities and the bytes without relying on the global history', async () => {
     const view = open(); view.imageInputs.value.initImage = new File(['original'], 'initial.png', { type: 'image/png' });
     const first = view.captureDraft?.(); if (!first) throw new Error('Expected draft');
@@ -1260,6 +1306,7 @@ async function remoteView() {
   view.inferenceLocation!.selectModel({ value: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/model.gguf' } } }, components: [], loras: [] } });
   return { ...binding, view, connection };
 }
+
 it('does not suggest or apply a retained local model preset to a remote model', async () => {
   const { view } = await remoteView();
   view.parameters.value.steps = 37; view.parameters.value.guidance = 7;
@@ -1272,6 +1319,7 @@ it('does not suggest or apply a retained local model preset to a remote model', 
   view.applyRecommendedSettings();
   expect(view.parameters.value.steps).toBe(8);
 });
+
 it.each(['ready', 'failed'])('keeps the previous runtime view until local draft preparation is %s', async outcome => {
   const { view } = await remoteView();
   view.inferenceLocation!.kind.value = 'local';
@@ -1292,6 +1340,7 @@ it.each(['ready', 'failed'])('keeps the previous runtime view until local draft 
     gate.resolve(); await restoring;
   }
 });
+
 it('executes a multi-image submission through the common RPC loop without local inference or model scans', async () => {
   const h = await remoteView(); const accepted = vi.fn(async () => {}), output = vi.fn(async () => {}), finished = vi.fn(async () => {});
   await h.view.generate({ submission: { count: 2, accepted, output, finished } });
@@ -1301,6 +1350,7 @@ it('executes a multi-image submission through the common RPC loop without local 
   expect(output).toHaveBeenCalledWith(expect.objectContaining({ record: expect.objectContaining({ request: expect.objectContaining({ runtime: expect.objectContaining({ profile: 'naidan-rpc', peerId: h.connection.peerId }), models: [] }) }) }));
   expect(finished).toHaveBeenCalledWith({ completion: { type: 'completed' } });
 });
+
 it('captures and restores an RPC draft without resolving its model as a local file', async () => {
   const h = await remoteView(); const draft = h.view.captureDraft!()!;
   expect(draft.request.runtime?.profile).toBe('naidan-rpc'); expect(draft.request.models).toEqual([]);
@@ -1309,6 +1359,7 @@ it('captures and restores an RPC draft without resolving its model as a local fi
   expect(h.view.inferenceLocation!.kind.value).toBe('naidan_rpc'); expect(h.view.inferenceLocation!.peerId.value).toBe(h.connection.peerId);
   expect(mocks.prepareFiles).not.toHaveBeenCalled(); expect(h.generateImage).not.toHaveBeenCalled();
 });
+
 it('restores disabled remote adapters from a session draft independently of the generation request', async () => {
   const h = await remoteView(); const target = h.view.inferenceLocation!;
   const selected = target.selection.value!;
@@ -1321,6 +1372,7 @@ it('restores disabled remote adapters from a session draft independently of the 
   expect(target.editor.value.loras).toMatchObject([{ enabled: 'disabled', strength: 0.6 }]);
   expect(target.selection.value?.loras).toEqual([]); expect(mocks.prepareFiles).not.toHaveBeenCalled();
 });
+
 it('captures and restores a pending RPC draft with prompt and input bytes before a connection is selected', async () => {
   const view = open(); const location = view.inferenceLocation!;
   location.setKind({ value: 'naidan_rpc' }); view.parameters.value.prompt = 'Unfinished remote prompt';
@@ -1334,6 +1386,7 @@ it('captures and restores a pending RPC draft with prompt and input bytes before
   expect(view.captureDraft!()!.request.imageInputs.initImage?.binaryObjectId).toBe(draft.request.imageInputs.initImage?.binaryObjectId);
   expect(mocks.prepareFiles).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
 });
+
 it('retains terminally unconfirmed pixels without publishing a successful image or rerunning inference', async () => {
   const h = await remoteView(); const original = h.generateImage.getMockImplementation()!;
   h.generateImage.mockImplementation(args => ({ ...original(args), closed: Promise.reject(new Error('lost terminal')) }));
@@ -1349,7 +1402,6 @@ it('retains terminally unconfirmed pixels without publishing a successful image 
   }
 });
 
-
 it('retains a failed direct history save after gallery eviction and unmount without regenerating', async () => {
   mocks.save.mockRejectedValueOnce(new Error('full'));
   const view = open(); await view.generate({ submission: undefined });
@@ -1362,6 +1414,7 @@ it('retains a failed direct history save after gallery eviction and unmount with
   expect(mocks.generate).toHaveBeenCalledOnce();
   expect(panel.results.value).toHaveLength(0);
 });
+
 it('retains complete pixels if gallery object URL creation throws', async () => {
   vi.spyOn(URL, 'createObjectURL').mockImplementationOnce(() => {
     throw new Error('URL unavailable');
@@ -1410,6 +1463,7 @@ it('keeps resident models while editing or restoring retention, but honors expli
   await nextTick(); expect(mocks.release).not.toHaveBeenCalled();
   view.setRetainModel?.({ retain: false }); expect(mocks.release).toHaveBeenCalledOnce();
 });
+
 it('applies recommendations only to the next draft during a multi-image submission', async () => {
   const view = open(); view.retainModel.value = true;
   view.parameters.value = { ...view.parameters.value, steps: 20, guidance: 7 };

@@ -2,6 +2,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from './production-runtime-startup-fixture';
 
 let platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
+
 beforeEach(() => {
   platform = installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 });

@@ -7,6 +7,7 @@ import { writeToOpfs } from '@/features/transformers-js/utils';
 import { createLockQueue } from '@/features/transformers-js/replay-models/support/opfs-lock-test-platform';
 
 const path = 'models/huggingface.co/fixture/model/resolve/revision/onnx/model.onnx';
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Cooperative OPFS access', () => {

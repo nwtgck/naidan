@@ -147,6 +147,7 @@ describe('createOpfsModelCache production compatibility', () => {
     expect(onMatchObservation).not.toHaveBeenCalled();
     expect(writeToOpfs).not.toHaveBeenCalled();
   });
+
   it('prefers an exact resolved-revision cache hit over an approved main alias', async () => {
     const resolvedRevision = 'a'.repeat(40);
     vi.stubGlobal('navigator', {
@@ -415,5 +416,4 @@ describe('createOpfsModelCache production compatibility', () => {
       new Response('remote bytes'),
     )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
   });
-
 });

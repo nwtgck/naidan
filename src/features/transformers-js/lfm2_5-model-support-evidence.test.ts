@@ -194,6 +194,7 @@ describe('LFM2.5 Model Support Investigation Evidence replay', () => {
       promptTokenCount: inputTokenCount,
     });
   });
+
   describe('recorded chat-template behavior', () => {
     it.each(PASSED_TEMPLATE_CASE_IDS)('reproduces the recorded %s render exactly', (caseId) => {
       const testCase = templateCase({ caseId });

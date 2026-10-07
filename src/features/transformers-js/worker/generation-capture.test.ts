@@ -10,6 +10,7 @@ let runtime: Runtime;
 const fetch = vi.fn(() => {
   throw new Error('External network forbidden in generation capture tests');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', fetch);
   const artifact = await getProductionTransformersArtifact();
@@ -27,6 +28,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   try {
     expect(fetch).not.toHaveBeenCalled();
@@ -144,6 +146,7 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(generationCaptureTakeResultSchema.safeParse({ status: 'captured', capture: source }).success).toBe(false);
     expect(getter).not.toHaveBeenCalled();
   });
+
   it('captures ordered image size metadata separately from tensors without retaining mutable input', () => {
     const { capture, call, invocation } = fixture({ overrides: {} });
     const original = [[1, 2], [3, 4]];
@@ -159,6 +162,7 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     });
     expect(result.incompleteReasons).toEqual([]);
   });
+
   it('copies a completed Load identity into each call independently of later source mutation', () => {
     const identity = productionLoadIdentitySchema.parse({
       status: 'ready',

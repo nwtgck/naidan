@@ -439,8 +439,6 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
   });
 
-
-
   it('should preserve saved tool configs during ordinary chat meta updates regardless of the UI persistence mode', async () => {
     const meta = {
       id: 'c1',

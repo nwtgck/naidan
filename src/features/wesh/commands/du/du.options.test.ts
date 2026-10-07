@@ -482,7 +482,6 @@ describe('wesh du options', () => {
     }
   });
 
-
   it('accepts an explicit positive sign in maximum depth', async () => {
     const execution = await executeDuTest({
       wesh: testContext.wesh,
@@ -494,5 +493,4 @@ describe('wesh du options', () => {
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
   });
-
 });

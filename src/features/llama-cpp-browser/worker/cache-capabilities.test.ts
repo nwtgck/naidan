@@ -49,6 +49,7 @@ describe('new-context native sequence removal probe', () => {
     expect(api.llama_synchronize).toHaveBeenCalledExactlyOnceWith(20n);
     expect(allocations.size).toBe(0);
   });
+
   it('does not probe a context without native memory', async () => {
     const { core, api, allocations } = fixture();
     api.llama_get_memory.mockResolvedValue(0n);
@@ -57,6 +58,7 @@ describe('new-context native sequence removal probe', () => {
     expect(api.llama_memory_clear).not.toHaveBeenCalled();
     expect(allocations.size).toBe(0);
   });
+
   it('disables advanced reuse after a declined probe without rejecting ordinary generation', async () => {
     const { core, api, allocations } = fixture();
     api.llama_decode.mockResolvedValue(2);
@@ -66,6 +68,7 @@ describe('new-context native sequence removal probe', () => {
     expect(api.llama_synchronize).toHaveBeenCalledOnce();
     expect(allocations.size).toBe(0);
   });
+
   it.each(['decode-trap', 'removal-exception'] as const)('fails explicitly and releases temporary state after %s', async failure => {
     const { core, api, allocations } = fixture();
     switch (failure) {

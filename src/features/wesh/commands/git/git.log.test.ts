@@ -895,6 +895,7 @@ BREGEX
 b-change
 `);
   });
+
   it('decorates default and oneline log output without changing explicit formats', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1044,7 +1045,6 @@ git log --graph --format='%s'`,
     expect(stderr.text).toContain('log --graph does not support this commit topology yet');
   });
 
-
   it('distinguishes --oneline from the oneline pretty format', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1099,5 +1099,4 @@ rename from a
 rename to b
 `);
   });
-
 });

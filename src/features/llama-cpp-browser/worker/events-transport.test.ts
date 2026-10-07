@@ -12,14 +12,17 @@ vi.mock('./session', () => ({ invalidateStoredModel: async () => {} }));
 vi.mock('../runtime/model-store', () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(), importStoredModel: vi.fn(), listStoredModels: vi.fn(), removeStoredModel: vi.fn() }));
 vi.mock('../runtime/model-directory', () => ({ importModelDirectory: vi.fn() }));
 const links: MessageChannel[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
 afterEach(() => {
   for (const link of links.splice(0)) {
     link.port1.close();link.port2.close();
   }
 });
+
 function connect() {
   const link = new MessageChannel();links.push(link);
   exposeWorkerRemote<LlamaCppWorkerApi>({ api: createWorkerApi(), endpoint: link.port1 });
@@ -28,6 +31,7 @@ function connect() {
 function request(): WorkerGenerateCall {
   return { generationId: 1, model: 'fixture.gguf', options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
+
 describe('structured generation over the actual Comlink MessageChannel transport', () => {
   it('acknowledges draft patches before delivering a completed call', async () => {
     const gate = Promise.withResolvers<void>();
@@ -82,6 +86,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
       gate.resolve();releaseWorkerRemote({ remote });
     }
   });
+
   it('delivers accepted content and confirmed calls during cancellation before closing the RPC', async () => {
     const gate = Promise.withResolvers<void>();let signal: AbortSignal | undefined;const events: GenerationEvent[] = [];
     const call = { id: 'c', type: 'function' as const, function: { name: 'f', arguments: ' {"a":1} ' } };
@@ -103,6 +108,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
       gate.resolve();releaseWorkerRemote({ remote });
     }
   });
+
   it('propagates a failed content acknowledgement without sending later output or retaining the active operation', async () => {
     let after = false;
     native.generate.mockImplementationOnce(async ({ onEvent }) => {
@@ -123,6 +129,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
       releaseWorkerRemote({ remote });
     }
   });
+
   it.each(['complete', 'cancel', 'delivery-failure'] as const)('retains request ownership across paired delivery/decode on %s', async outcome => {
     const started = Promise.withResolvers<void>(); const nativeGate = Promise.withResolvers<void>(); const deliveryGate = Promise.withResolvers<void>();
     let advanced = false; let returned = false;
@@ -168,5 +175,4 @@ describe('structured generation over the actual Comlink MessageChannel transport
       nativeGate.resolve(); deliveryGate.resolve(); await observed; releaseWorkerRemote({ remote });
     }
   });
-
 });

@@ -325,6 +325,7 @@ Template probe user message.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it("system-user-generation reaches actual inference with the independently specified current prompt", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases[1];
@@ -428,6 +429,7 @@ Template probe user message.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it("multi-turn-generation reaches actual inference with the independently specified current prompt", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases[2];
@@ -533,11 +535,12 @@ Template probe second user message.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -599,7 +602,7 @@ describe('LFM2.5 230M Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -781,11 +784,12 @@ Original assistant body.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -846,8 +850,8 @@ describe('LFM2.5 230M Provider / independent', () => {
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity","independent-next-input"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      caseIds: ["first-turn", "continuity", "independent-next-input"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1009,7 +1013,7 @@ describe('LFM2.5 230M Provider / reasoning', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1064,11 +1068,12 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1123,11 +1128,12 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1182,11 +1188,12 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1358,6 +1365,7 @@ describe('LFM2.5 230M Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('assistant-tool-call-history separates original false, necessary argument mapping and public true continuation', async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases[4];
@@ -1495,6 +1503,7 @@ describe('LFM2.5 230M Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('tool-result-continuation retains the mapped call and result through public input without claiming natural tool execution', async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases[5];
@@ -1627,11 +1636,12 @@ describe('LFM2.5 230M Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1714,11 +1724,12 @@ describe('LFM2.5 230M Provider / tools', () => {
     }
     expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
+
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1801,11 +1812,12 @@ describe('LFM2.5 230M Provider / tools', () => {
     }
     expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
+
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1882,7 +1894,7 @@ describe('LFM2.5 230M Provider / images', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2096,8 +2108,8 @@ describe('LFM2.5 230M Provider / sequences', () => {
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      caseIds: ["first-turn", "continuity"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2207,6 +2219,7 @@ describe('LFM2.5 230M Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     expect(fullEvidenceJson.modelId).toBe('LiquidAI/LFM2.5-230M-ONNX');
@@ -2225,7 +2238,7 @@ describe('LFM2.5 230M Provider / sequences', () => {
       expectedLoadReceipt: undefined,
       evidence: fullEvidenceJson,
       imagePlatform: undefined,
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      artifactPaths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
     });
   }, 30_000);
 });

@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { ref, reactive, nextTick, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });

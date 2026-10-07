@@ -89,6 +89,7 @@ function dispatchDrop({ wrapper, transfer }: { wrapper: VueWrapper, transfer: Da
   wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').element.dispatchEvent(event);
   return event;
 }
+
 beforeEach(async () => {
   vi.clearAllMocks(); notifications.capabilities.clear(); notifications.state.clear(); notifications.models.clear();
   vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'idle' });
@@ -113,6 +114,7 @@ beforeEach(async () => {
   vi.mocked(prepareModelRemoval).mockResolvedValue({ plan: { id: storedModel.id, files: [{ path: 'local.gguf', size: 16384, lastModified: 1 }] }, sharedPlan: undefined, affectedVariants: 0 });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount(); vi.restoreAllMocks();
 });
@@ -136,6 +138,7 @@ describe('local GGUF manager', () => {
     await wrapper.get('[data-testid="llama-imported-model-clear-search"]').trigger('click');
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').findAll('li')).toHaveLength(2);
   });
+
   it('shows the resolved automatic profile and disables unavailable choices without disabling model storage', async () => {
     vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
       const capabilities: ProfileCapabilities = {
@@ -161,6 +164,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-probe-profiles"]').exists()).toBe(true);
     expect(llamaCppBrowserService.probeProfiles).toHaveBeenCalledOnce();
   });
+
   it('shows pending detection and cancels only its observer when closed', async () => {
     vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'checking' });
     vi.mocked(llamaCppBrowserService.probeProfiles).mockReturnValue(new Promise(() => {}));
@@ -173,6 +177,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.release).not.toHaveBeenCalled();
     expect(llamaCppBrowserService.cancel).not.toHaveBeenCalled();
   });
+
   it('shows terminal errors without automatically retrying and allows manual retry', async () => {
     vi.mocked(llamaCppBrowserService.probeProfiles).mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
     const wrapper = render(); await flushPromises();
@@ -182,6 +187,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.probeProfiles).toHaveBeenCalledTimes(2);
     expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([true]);
   });
+
   it('allows either standalone JSPI profile while model operations remain available', async () => {
     notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi');
     vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'webgpu-wasm64-jspi' });
@@ -196,6 +202,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
     expect(llamaCppBrowserService.setOptions).toHaveBeenCalledOnce();
   });
+
   it('refreshes model choices and forwards the prepared model instead of choosing the first entry', async () => {
     const wrapper = render(); await flushPromises();
     const target = { ...storedModel, id: 'hf-target', name: 'hf.co/owner/repo:Q8_0' };
@@ -205,6 +212,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[storedModel, target]]);
     expect(wrapper.emitted('modelSelected')).toEqual([[target.name]]);
   });
+
   it('does not select an earlier prepared model after the HF selection changes during list refresh', async () => {
     const wrapper = render(); await flushPromises();
     const refreshed = Promise.withResolvers<LocalModel[]>();
@@ -216,6 +224,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[storedModel]]);
     expect(wrapper.emitted('modelSelected')).toBeUndefined();
   });
+
   it('imports a selected folder with its original root and relative paths', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'weights.gguf'); Object.defineProperty(file, 'webkitRelativePath', { value: 'my-Qwen-VL-GGUF/nested/weights.gguf' });
@@ -225,6 +234,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.importDirectory).toHaveBeenCalledWith({ directory: { name: 'my-Qwen-VL-GGUF', files: [{ path: 'nested/weights.gguf', file }] }, signal: expect.any(AbortSignal) });
     expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
   });
+
   it('keeps controls visible but disables them when the service is unavailable', async () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'unavailable' });
     const wrapper = render(); await flushPromises();
@@ -237,6 +247,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.listModels).not.toHaveBeenCalled();
     expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
   });
+
   it('shows an explicit file picker, drop target and automatic profile without an idle status', async () => {
     const wrapper = render(); await flushPromises();
     expect(wrapper.get('[data-testid="llama-cpp-browser-file"]').attributes('accept')).toBe('.gguf');
@@ -246,6 +257,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-status"]').exists()).toBe(false);
     expect(wrapper.find('progress').exists()).toBe(false);
   });
+
   it('reads the persisted model list again on every mount', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     const first = render(); await flushPromises();
@@ -257,6 +269,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
     expect(notifications.models.size).toBe(1);
   });
+
   it('imports file input selections and resets the native input', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'input.GGUF');
@@ -269,6 +282,7 @@ describe('local GGUF manager', () => {
     expect(input.element.value).toBe('');
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('accepts a drop while returning window focus is still refreshing the model list', async () => {
     const wrapper = render(); await flushPromises();
     const listing = Promise.withResolvers<LocalModel[]>();
@@ -291,6 +305,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
+
   it('accepts a drop before the initial local listing has finished', async () => {
     const listing = Promise.withResolvers<LocalModel[]>();
     vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(listing.promise).mockResolvedValue([storedModel]);
@@ -303,6 +318,7 @@ describe('local GGUF manager', () => {
     listing.resolve([]); await flushPromises();
     expect(wrapper.emitted('modelsChanged')).toEqual([[ [storedModel] ]]);
   });
+
   it.each(['file', 'directory'] as const)('keeps a %s picker result when focus refresh overlaps change', async source => {
     const wrapper = render(); await flushPromises();
     const listing = Promise.withResolvers<LocalModel[]>();
@@ -325,6 +341,7 @@ describe('local GGUF manager', () => {
     listing.resolve([]); await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
+
   it('captures drag entries during dispatch and retains them across a later focus refresh', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'local.gguf');
@@ -341,6 +358,7 @@ describe('local GGUF manager', () => {
     listing.resolve([]); await flushPromises();
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('retains a dropped directory and its relative paths across focus refresh during traversal', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'weights.gguf');
@@ -383,6 +401,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
+
   it('reserves the import before asynchronous drop enumeration and rejects a second drop', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['first'], 'first.gguf');
@@ -407,6 +426,7 @@ describe('local GGUF manager', () => {
     await flushPromises();
     expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls.map(([input]) => input.file)).toEqual([file, second]);
   });
+
   it.each(['cancel', 'unmount'] as const)('does not import a late entry after %s during drop enumeration', async action => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'late.gguf');
@@ -425,6 +445,7 @@ describe('local GGUF manager', () => {
       expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(false);
     } else expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
   });
+
   it('reports entry read failures without raw paths and releases the import controls for retry', async () => {
     const wrapper = render(); await flushPromises();
     const file = new File(['fixture'], 'local.gguf');
@@ -442,6 +463,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.importModel).toHaveBeenCalledOnce();
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
+
   it('still refuses a local drop while the runtime is working', async () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'working', progress: { phase: 'generating', completed: 1, total: 0 } });
     const wrapper = render(); await flushPromises();
@@ -453,6 +475,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
     expect(llamaCppBrowserService.importDirectory).not.toHaveBeenCalled();
   });
+
   it('imports dropped files sequentially and refreshes the list', async () => {
     const wrapper = render(); await flushPromises();
     const files = [new File(['a'], 'first.gguf'), new File(['b'], 'second.gguf')];
@@ -471,6 +494,7 @@ describe('local GGUF manager', () => {
     expect(vi.mocked(llamaCppBrowserService.importModel).mock.calls.map(([input]) => input.file)).toEqual(files);
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
   });
+
   it('stops a multi-file import after cancellation without starting the next file', async () => {
     const wrapper = render(); await flushPromises();
     let importSignal: AbortSignal | undefined;
@@ -488,6 +512,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(false);
   });
+
   it('rejects a mixed non-GGUF drop without importing or logging file contents', async () => {
     const wrapper = render(); await flushPromises();
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -500,6 +525,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.get('[role="alert"]').text()).not.toContain('secret');
     expect(log).not.toHaveBeenCalled();
   });
+
   it('keeps earlier completed imports visible when a later file fails', async () => {
     const wrapper = render(); await flushPromises();
     vi.mocked(llamaCppBrowserService.importModel).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'storage-error' }));
@@ -511,6 +537,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.get('[role="alert"]').text()).not.toBe('');
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('refreshes OPFS listing when the model service reports a change', async () => {
     const wrapper = render(); await flushPromises();
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
@@ -520,6 +547,7 @@ describe('local GGUF manager', () => {
     wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
     expect(notifications.models.size).toBe(0);
   });
+
   it('aborts its in-flight refresh when the manager is unmounted', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockImplementation(async () => new Promise(() => {}));
     const wrapper = render(); await flushPromises();
@@ -528,6 +556,7 @@ describe('local GGUF manager', () => {
     wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
     expect(signal?.aborted).toBe(true);
   });
+
   it('repeats an in-flight OPFS refresh when the model list changes before it completes', async () => {
     let finishRead: ((models: LocalModel[]) => void) | undefined;
     vi.mocked(llamaCppBrowserService.listModels).mockImplementationOnce(() => new Promise(resolve => {
@@ -540,6 +569,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('does not lose a list change queued as the previous refresh settles', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockImplementationOnce(() => Promise.resolve([]).then(found => {
       queueMicrotask(() => queueMicrotask(() => {
@@ -551,6 +581,7 @@ describe('local GGUF manager', () => {
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('clears an old listing error after a successful manual refresh', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'storage-error' })).mockResolvedValue([storedModel]);
     const wrapper = render(); await flushPromises();
@@ -559,6 +590,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain('local.gguf');
   });
+
   it('allows deletion while inference is active and previews the confirmed files and explains stale plans without raw errors', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValueOnce('changed');
@@ -571,6 +603,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.get('[data-testid="llama-removal-changed"]').text()).toContain('Deletion stopped because the files changed');
     expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
   });
+
   it('does not delete after confirmation if the manager has been unmounted', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     const wrapper = render(); await flushPromises();
@@ -579,6 +612,7 @@ describe('local GGUF manager', () => {
     await flushPromises();
     expect(llamaCppBrowserService.removeModel).not.toHaveBeenCalled();
   });
+
   it('allows an explicit profile override without changing the default on its own', async () => {
     const wrapper = render(); await flushPromises();
     await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('cpu-wasm32');
@@ -590,7 +624,6 @@ describe('local GGUF manager', () => {
     expect(wrapper.find('[data-testid="llama-cpp-browser-context"]').exists()).toBe(false);
   });
 });
-
 
 describe('cancelled dropped-file retry', () => {
   it('keeps input disabled through rollback and accepts the same drop after cancellation settles', async () => {

@@ -20,6 +20,7 @@ describe('text-only generation consumers', () => {
     });
     expect(text).toBe('T'.repeat(25)); expect(result.type).toBe('finished');
   });
+
   it('retains received text on a generation failure for the caller to inspect', async () => {
     const controller = new AbortController();
     const { text, result } = await collectChatGeneration({
@@ -33,6 +34,7 @@ describe('text-only generation consumers', () => {
     });
     expect(text).toBe('<think>literal'); expect(result.type).toBe('error');
   });
+
   it('preserves an interrupted result instead of declaring a partial title successful', async () => {
     const controller = new AbortController();
     const { text, result } = await collectChatGeneration({
@@ -46,6 +48,7 @@ describe('text-only generation consumers', () => {
     });
     expect(text).toBe('partial'); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
+
   it.each(['throws', 'rejects', 'stalls'] as const)('does not let a display observer that %s own stream consumption', async failure => {
     const controller = new AbortController();
     const observer = vi.fn(() => {
@@ -68,5 +71,4 @@ describe('text-only generation consumers', () => {
     expect(text).toBe('hello world'); expect(result).toEqual({ type: 'finished', next: 'user' });
     expect(controller.signal.aborted).toBe(false); expect(observer).toHaveBeenCalledWith({ text: 'hello world' });
   });
-
 });

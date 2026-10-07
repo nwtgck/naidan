@@ -6,12 +6,15 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageDownloadMenu from './ImageDownloadMenu.vue';
 import type { ImageDownloadPreferences } from '@/features/image-generation/use-image-generation-types';
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloadMenu>['$props']['onDownload'] }): VueWrapper {
   const preferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
   wrapper = mount(ImageDownloadMenu, {
@@ -28,6 +31,7 @@ function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloa
   });
   return wrapper;
 }
+
 it('defaults to plain PNG and explicitly selects a format and metadata per image', async () => {
   const onDownload = vi.fn(async () => ({ status: 'downloaded' as const }));
   const ui = openMenu({ onDownload });
@@ -45,6 +49,7 @@ it('defaults to plain PNG and explicitly selects a format and metadata per image
   await ui.get('[data-testid="image-download-confirm"]').trigger('click'); await flushPromises();
   expect(onDownload).toHaveBeenLastCalledWith({ format: 'jpeg', includeMetadata: true });
 });
+
 it('uses restored preferences without writing them back and saves only explicit changes', async () => {
   const preferences = ref<ImageDownloadPreferences>({ format: 'jpeg', metadata: 'include' });
   const onPreferencesChange = vi.fn(({ preferences: next }: { preferences: ImageDownloadPreferences }) => {
@@ -63,6 +68,7 @@ it('uses restored preferences without writing them back and saves only explicit 
   await wrapper.get('[data-testid="image-download-metadata"]').setValue(false);
   expect(onPreferencesChange).toHaveBeenLastCalledWith({ preferences: { format: 'webp', metadata: 'omit' } });
 });
+
 it('shows busy and failure beside the action without losing the requested metadata', async () => {
   const pending = Promise.withResolvers<{ status: 'failed', message: string }>();
   const onDownload = vi.fn(() => pending.promise);
@@ -77,6 +83,7 @@ it('shows busy and failure beside the action without losing the requested metada
   expect((ui.get('[data-testid="image-download-metadata"]').element as HTMLInputElement).checked).toBe(true);
   expect(ui.get('[data-testid="image-download-confirm"]').element.matches(':disabled')).toBe(false);
 });
+
 it('closes on Escape, pane changes, and outside pointer events without downloading', async () => {
   const onDownload = vi.fn(async () => ({ status: 'downloaded' as const }));
   const ui = openMenu({ onDownload });
@@ -97,6 +104,7 @@ it('closes on Escape, pane changes, and outside pointer events without downloadi
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(false);
   expect(onDownload).not.toHaveBeenCalled();
 });
+
 it('handles rejected and cancelled operations without a false success or unhandled rejection', async () => {
   const ui = openMenu({
     onDownload: async () => {

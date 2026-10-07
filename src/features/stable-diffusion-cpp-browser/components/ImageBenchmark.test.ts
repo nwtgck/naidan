@@ -7,9 +7,11 @@ import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-i
 import ImageBenchmark from './ImageBenchmark.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });

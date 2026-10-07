@@ -20,12 +20,15 @@ const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model-GGUF:Model-Q4_K_
 const launch: ChatModelLaunch = { version: 1, input: 'owner/Model-GGUF:Q4_K_M', requestedVariant: 'Q4_K_M', target, chatGroupId, phase: 'active' };
 const current = shallowRef<Chat | null>(null);
 const hosts: ReturnType<typeof mount>[] = [];
+
 beforeEach(() => {
   vi.resetAllMocks(); storageCurrent = true; settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } };
   current.value = { id: chatId, groupId: chatGroupId, title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
   calls.get.mockReturnValue(undefined); calls.target.mockResolvedValue(target); calls.restore.mockResolvedValue(launch);
 });
+
 afterEach(() => hosts.splice(0).forEach(host => host.unmount()));
+
 async function start({ context, path }: { context: 'present' | 'absent', path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }] });
   await router.push({ path, state: context === 'present' ? { [modelLaunchViewHistoryKey]: modelLaunchViewState({ chatId, input: launch.input, modelId: target.modelId, revision: target.selection.revision }) } : {} });
@@ -41,6 +44,7 @@ async function start({ context, path }: { context: 'present' | 'absent', path: s
   if (state === undefined) throw new Error('Missing setup');
   return { state, router, host };
 }
+
 describe('restored embedded launch card', () => {
   it('rebuilds transient card state in the existing chat after reload without adding fields to that chat', async () => {
     const before = structuredClone(current.value);
@@ -51,10 +55,12 @@ describe('restored embedded launch card', () => {
     expect(current.value).toEqual(before); expect(current.value).not.toHaveProperty('modelLaunch');
     expect(router.currentRoute.value.fullPath).toBe('/chat/saved-chat'); expect(calls.restore).toHaveBeenCalledOnce();
   });
+
   it('does not discover external metadata for an ordinary bookmark with no model-link context', async () => {
     const { state } = await start({ context: 'absent', path: '/chat/saved-chat' }); await flushPromises();
     expect(state.launch.value).toBeUndefined(); expect(calls.target).not.toHaveBeenCalled();
   });
+
   it('does not let a different split pane consume or rewrite this route context', async () => {
     const { state, router } = await start({ context: 'present', path: '/chat/another-chat' });
     calls.get.mockReturnValue(launch); const original = structuredClone(router.options.history.state);
@@ -62,18 +68,21 @@ describe('restored embedded launch card', () => {
     expect(state.isCurrentRoute.value).toBe(false); expect(calls.target).not.toHaveBeenCalled();
     expect(router.options.history.state).toEqual(original);
   });
+
   it('cancels an old restore after navigation away without resurrecting the launch', async () => {
     const gate = Promise.withResolvers<ModelLaunchTarget>(); calls.target.mockReturnValueOnce(gate.promise);
     const { router, state } = await start({ context: 'present', path: '/chat/saved-chat' });
     await router.push('/'); gate.resolve(target); await flushPromises();
     expect(calls.restore).not.toHaveBeenCalled(); expect(state.launch.value).toBeUndefined();
   });
+
   it('rejects restoration when saved endpoint/model or membership no longer permits it', async () => {
     calls.restore.mockResolvedValueOnce(undefined);
     const { state } = await start({ context: 'present', path: '/chat/saved-chat' }); await flushPromises();
     expect(state.restoration.value).toBe('failed'); expect(state.launch.value).toBeUndefined();
     state.retryRestoration(); await flushPromises(); expect(state.launch.value).toEqual(launch);
   });
+
   it('does not hydrate a different storage provider after an asynchronous lookup', async () => {
     const gate = Promise.withResolvers<ModelLaunchTarget>(); calls.target.mockReturnValueOnce(gate.promise);
     const { state } = await start({ context: 'present', path: '/chat/saved-chat' });

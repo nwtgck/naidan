@@ -11,9 +11,11 @@ function request({ model }: { model: string }): Parameters<LmProvider['chat']>[0
 }
 const fetchMock = vi.fn<LmFetch>();
 const { events, errorCount, clearEvents } = useGlobalEvents();
+
 beforeEach(() => {
   fetchMock.mockReset(); clearEvents();
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); expect(errorCount.value).toBe(0);
 });

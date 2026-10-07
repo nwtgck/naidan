@@ -83,6 +83,7 @@ beforeEach(async () => {
   settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: 'https://example.test' }, defaultModelId: 'model' };
   chatRequest.mockReset().mockImplementation(() => titleItems({ text: 'Generated Title', ready: Promise.resolve() }));
 });
+
 afterEach(async () => {
   autoTitleScheduler.reset();
   await vi.advanceTimersByTimeAsync(0);

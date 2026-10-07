@@ -5,6 +5,7 @@ import { usePWAUpdate } from './usePWAUpdate';
 const { status, setUpdateState, update } = usePWAUpdate();
 
 beforeEach(() => setUpdateState({ next: { kind: 'idle' } }));
+
 afterEach(() => setUpdateState({ next: { kind: 'idle' } }));
 
 describe('usePWAUpdate', () => {
@@ -102,7 +103,7 @@ describe('usePWAUpdate', () => {
     await update(); expect(second).toHaveBeenCalledOnce();
   });
 
-  it('clears the action together with availability' , async () => {
+  it('clears the action together with availability', async () => {
     const handler = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     setUpdateState({ next: { kind: 'ready', handler } });
     setUpdateState({ next: { kind: 'idle' } });

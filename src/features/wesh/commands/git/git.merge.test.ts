@@ -684,5 +684,4 @@ git show HEAD:binary.dat | wc -c`,
     expect(stdout.text).toMatch(/100644 [0-9a-f]{40} 1\tbinary\.dat\n100644 [0-9a-f]{40} 2\tbinary\.dat\n100644 [0-9a-f]{40} 3\tbinary\.dat\n/u);
     expect(stdout.text).toMatch(/\n8\n8\n$/u);
   });
-
 });

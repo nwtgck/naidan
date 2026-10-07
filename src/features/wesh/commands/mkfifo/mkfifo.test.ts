@@ -50,7 +50,6 @@ describe('wesh mkfifo', () => {
     expect(check.result.exitCode).toBe(0);
   });
 
-
   it('supports numeric and symbolic permission modes', async () => {
     const numeric = await execute({ script: 'mkfifo -m 600 numeric' });
     const symbolic = await execute({ script: 'mkfifo --mode=u=rw,g=r,o= symbolic' });
@@ -164,6 +163,7 @@ describe('wesh mkfifo', () => {
     expect(stdout.text).toContain('--help');
     expect(result.exitCode).toBe(0);
   });
+
   it('stops argv processing when --help is reached before a later invalid option', async () => {
     const helpFirst = await execute({ script: 'mkfifo --help --definitely-invalid-option' });
     const invalidFirst = await execute({ script: 'mkfifo --definitely-invalid-option --help' });
@@ -175,5 +175,4 @@ describe('wesh mkfifo', () => {
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

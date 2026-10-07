@@ -12,7 +12,6 @@ import { setupScrollToMock } from '@/utils/test-utils';
 import type { FocusArea } from '@/composables/useLayout';
 import { toChatId } from '@/01-models/ids';
 
-
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });

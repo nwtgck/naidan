@@ -10,12 +10,14 @@ describe('prefill yield pacing', () => {
     pacing.yielded();
     expect(pacing.shouldYield({ decodedTokens: 128 })).toBe(false);
   });
+
   it('yields after a slow batch regardless of token count', () => {
     let time = 10;
     const pacing = createPrefillYieldPacing({ now: () => time });
     time = 27;
     expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(true);
   });
+
   it('restarts the elapsed and token budgets after yielding', () => {
     let time = 0;
     const pacing = createPrefillYieldPacing({ now: () => time, maximumElapsedMs: 10, maximumTokens: 4 });
@@ -24,6 +26,7 @@ describe('prefill yield pacing', () => {
     time = 14; expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(false);
     time = 15; expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(true);
   });
+
   it.each([NaN, Infinity, -1])('fails open for an unusable elapsed clock %s', value => {
     let call = 0;
     const pacing = createPrefillYieldPacing({ now: () => call++ === 0 ? 1 : value });

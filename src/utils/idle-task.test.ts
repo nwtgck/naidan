@@ -26,7 +26,6 @@ describe('scheduleIdleTask', () => {
     expect(cancelIdleCallback).toHaveBeenCalledWith(17);
   });
 
-
   it('prevents execution when only requestIdleCallback is available', () => {
     const task = vi.fn().mockResolvedValue(undefined);
     const requestIdleCallback = vi.fn().mockReturnValue(29);

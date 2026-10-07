@@ -99,7 +99,6 @@ describe('tw-class compiler transform', () => {
       .toThrow(/vue-tsc treats them as duplicate attributes/u);
   });
 
-
   it('restores Vue Transition Tailwind class attributes at compile time', () => {
     const transformed = compileTemplate(`
       <Transition
@@ -176,7 +175,6 @@ describe('Vue candidate collection', () => {
     }));
   });
 
-
   it('reports macro failures at absolute same-line Vue script positions', () => {
     const source = `<script setup lang="ts">import { tw } from 'virtual:naidan-tailwind'; const value = tw(dynamicValue);</script><template><div /></template>
 `;
@@ -207,7 +205,6 @@ const value = tw('opacity-50');
     expect(result.code).toContain('const value = "opacity-50";');
     expect(result.occurrences.map(({ candidate }) => candidate)).toEqual(['opacity-50']);
   });
-
 
   it('transforms only imported macro bindings and ignores shadowed local names', () => {
     const result = transformTwCallsInModule({

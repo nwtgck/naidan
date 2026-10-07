@@ -23,12 +23,15 @@ function panel() {
 function updateStatus({ status }: { status: RpcStopStatus }) {
   fixture.status = status; for (const listener of fixture.listeners) listener();
 }
+
 beforeEach(() => {
   vi.clearAllMocks(); settings.value.experimental.naidanRpc = 'enabled'; fixture.status = 'idle'; fixture.update.mockResolvedValue(undefined);
 });
+
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount(); fixture.listeners.clear();
 });
+
 it('starts the explicit stop independently of a pending settings write', async () => {
   const gate = Promise.withResolvers<void>(); fixture.update.mockReturnValueOnce(gate.promise);
   const wrapper = panel(); await wrapper.get('[data-testid="toggle"]').trigger('click');
@@ -37,6 +40,7 @@ it('starts the explicit stop independently of a pending settings write', async (
   expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('stop_not_confirmed');
   gate.resolve(); await flushPromises(); expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('stop_not_confirmed');
 });
+
 it('shows applied and retired as different statuses and offers a retry only when unconfirmed', async () => {
   const wrapper = panel(); updateStatus({ status: 'applied' }); await flushPromises();
   expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('waiting_for_completion');
@@ -45,6 +49,7 @@ it('shows applied and retired as different statuses and offers a retry only when
   expect(fixture.request).toHaveBeenCalledOnce();
   updateStatus({ status: 'retired' }); await flushPromises(); expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('rpc_connections_stopped');
 });
+
 it('does not send a stop while mounting, enabling, or closing the settings row', async () => {
   settings.value.experimental.naidanRpc = 'disabled'; const wrapper = panel();
   expect(fixture.request).not.toHaveBeenCalled(); await wrapper.get('[data-testid="toggle"]').trigger('click'); await flushPromises();

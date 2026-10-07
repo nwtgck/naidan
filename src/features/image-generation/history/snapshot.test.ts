@@ -46,6 +46,7 @@ describe('image history request snapshots', () => {
     expect(snapshot.request.preview.mode).toBe('vae');
     expect(snapshot.inputFiles.map(file => file.name)).toEqual(['init.png', 'first.png', 'second.png']);
   });
+
   it('links final, captured preview and input bytes without copying model weights', () => {
     const { record, files, snapshot } = completed();
     expect(record.request).toEqual(snapshot.request);
@@ -54,6 +55,7 @@ describe('image history request snapshots', () => {
     expect(new Set(files.map(file => file.binaryObjectId)).size).toBe(5);
     expect(files.find(file => file.binaryObjectId === record.result.binaryObjectId)?.blob.size).toBe(5);
   });
+
   it('resolves a whole restore locally and keeps image/LoRA order', async () => {
     const { record, files, request } = completed();
     const getImage = vi.fn(async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob);
@@ -64,6 +66,7 @@ describe('image history request snapshots', () => {
     expect(restored.imageInputs.strength).toBe(0.5);
     expect(restored.parameters.seed).toBe('-1');
   });
+
   it('restores editable settings but leaves all weight choices empty when a source is unavailable', async () => {
     const { record, files } = completed();
     const restored = await prepareImageHistoryReuse({ record, findFile: () => undefined, getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
@@ -71,6 +74,7 @@ describe('image history request snapshots', () => {
     expect(restored.models).toEqual([]); expect(restored.loras).toEqual([]);
     expect(restored.missing).toHaveLength(2); expect(restored.missingInactive).toHaveLength(1);
   });
+
   it('keeps a complete base model when only its enabled adapter is missing', async () => {
     const { record, files, request } = completed();
     const missingAdapter = record.request.loras[1]!.file;
@@ -83,6 +87,7 @@ describe('image history request snapshots', () => {
     expect(restored.loras.map(lora => [lora.path, lora.strength, lora.enabled])).toEqual([['disabled.gguf', 0, false]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
   });
+
   it('preserves available adapters in their original order when another is missing', async () => {
     const { record, files, request } = completed();
     record.request.loras = [
@@ -100,6 +105,7 @@ describe('image history request snapshots', () => {
     expect(restored.loras.map(lora => [lora.path, lora.strength])).toEqual([['first.gguf', 0.6], ['last.gguf', 0.9]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
   });
+
   it('reports a missing disabled adapter without making it a generation requirement', async () => {
     const { record, files, request } = completed();
     const disabledAdapter = record.request.loras[0]!.file;
@@ -113,6 +119,7 @@ describe('image history request snapshots', () => {
     expect(restored.missing).toEqual([]);
     expect(restored.missingInactive).toEqual([disabledAdapter.name]);
   });
+
   it('restores an invalid disabled adapter as an editable selection without requiring it for generation', async () => {
     const { record, files, request } = completed();
     const file = new File([], 'empty.gguf');
@@ -126,6 +133,7 @@ describe('image history request snapshots', () => {
     expect(restored.loras).toEqual([{ file, path: file.name, strength: 0, enabled: false, sourceLabel: file.name }]);
     expect(restored.missing).toEqual([]);
   });
+
   it('rejects a missing input instead of silently changing the generation request', async () => {
     const { record } = completed();
     await expect(prepareImageHistoryReuse({ record, findFile: () => ggufFile(), getImage: async () => undefined })).rejects.toThrow('input is missing');
@@ -147,7 +155,6 @@ it('embeds Unicode request settings and actual preview dimensions only into the 
   expect(text).toContain('"image":{"kind":"preview","width":128,"height":128,"step":4');
   expect(new Uint8Array(await png.arrayBuffer())).toEqual(bytes);
 });
-
 
 it('keeps recovered output facts unknown without inventing a successful model report', () => {
   const { snapshot } = completed();

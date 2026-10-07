@@ -34,7 +34,6 @@ describe('DeveloperDataDeletionPanel', () => {
     });
   });
 
-
   function mountPanel() {
     return mount(DeveloperDataDeletionPanel, {
       props: {
@@ -95,7 +94,6 @@ describe('DeveloperDataDeletionPanel', () => {
       'shadow-red-500/20',
     ]));
   });
-
 
   it('keeps the destructive delete button above the preview panel', () => {
     const wrapper = mountPanel();

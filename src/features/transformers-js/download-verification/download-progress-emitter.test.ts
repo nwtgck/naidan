@@ -9,6 +9,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(0);
 });
+
 afterEach(() => {
   vi.useRealTimers();
 });

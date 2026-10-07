@@ -29,6 +29,7 @@ function fixture() {
 }
 
 let platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
+
 beforeEach(() => {
   platform = installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 });

@@ -53,6 +53,7 @@ function render(): VueWrapper {
   });
   return wrapper;
 }
+
 beforeEach(async () => {
   vi.clearAllMocks(); queueTest.reset(); metadataTest.reset(); await ensureAllStringsForTest({ locale: 'en' });
   vi.mocked(discoverRepository).mockImplementation(async ({ input }) => {
@@ -64,11 +65,13 @@ beforeEach(async () => {
   });
   vi.mocked(downloadRepository).mockResolvedValue();
 });
+
 afterEach(async () => {
   wrapper?.unmount(); wrapper = undefined;
   for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
   await flushPromises(); vi.restoreAllMocks();
 });
+
 describe('reusable repository catalog and shared model manager', () => {
   it('renders the two user-selected sources without contacting Hugging Face', async () => {
     const view = render(); await flushPromises();
@@ -79,6 +82,7 @@ describe('reusable repository catalog and shared model manager', () => {
     expect(view.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
     expect(view.find('[data-testid="llama-cpp-browser-profile"]').exists()).toBe(true);
   });
+
   it.each([0, 1])('prepares source %i through the shared inspector and includes its companion only on explicit download', async index => {
     const view = render(); await flushPromises();
     await view.findAll('[data-testid="llama-repository-catalog-inspect"]')[index]!.trigger('click'); await flushPromises();
@@ -95,6 +99,7 @@ describe('reusable repository catalog and shared model manager', () => {
       files: [{ path: `${families[index]!.name}.Q4_K_M.gguf`, size: 128 }, { path: families[index]!.projector, size: 128 }],
     });
   });
+
   it('does not replace an in-flight inspection when another catalog button is pressed', async () => {
     const gate = Promise.withResolvers<Awaited<ReturnType<typeof discoverRepository>>>();
     vi.mocked(discoverRepository).mockReturnValueOnce(gate.promise);

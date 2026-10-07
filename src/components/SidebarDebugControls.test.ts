@@ -9,12 +9,15 @@ vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ erro
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: vi.fn() }) }));
 vi.mock('@/composables/useRecentChats', () => ({ useRecentChats: () => ({ openRecent: vi.fn() }) }));
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 it('opens the independent audio workspace from Quick Access and closes the menu', async () => {
   const router = createRouter({
     history: createMemoryHistory(),

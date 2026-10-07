@@ -18,6 +18,7 @@ describe("createModelLoadProgressTracker", () => {
       publishedSampleCount: 2,
     });
   });
+
   it("collapses the Transformers.js progress_total/progress pair into one time-bounded diagnostic sample", () => {
     const tracker = createModelLoadProgressTracker({ candidateId: "webgpu-q4f16" });
 

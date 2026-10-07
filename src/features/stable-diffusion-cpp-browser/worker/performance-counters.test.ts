@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { createWaitAccounting, uploadByteLength, uploadBucket } from './performance-counters';
+
 it.each([
   { data: new Uint8Array(24), dataOffset: 4, size: 8, bytes: 8 },
   { data: new Float32Array(8), dataOffset: 2, size: 3, bytes: 12 },
@@ -13,12 +14,14 @@ it.each([
 ])('counts writeBuffer bytes, not element count, for $data', ({ bytes, ...input }) => {
   expect(uploadByteLength(input)).toBe(bytes);
 });
+
 it('does not read payloads or mutate native data', () => {
   const data = new Uint8Array([1, 2, 3, 4]);
   expect(uploadByteLength({ data })).toBe(4); expect([...data]).toEqual([1, 2, 3, 4]);
   expect(uploadBucket({ bytes: 256 })).toBe(0); expect(uploadBucket({ bytes: 257 })).toBe(1);
   expect(uploadBucket({ bytes: 1e9 })).toBe(7);
 });
+
 it('distinguishes overlapping wall sum from union, including still-pending waits', () => {
   let time = 0;
   const meter = createWaitAccounting({ now: () => time });
@@ -29,6 +32,7 @@ it('distinguishes overlapping wall sum from union, including still-pending waits
   second({ failed: true }); second({ failed: false }); time = 100;
   expect(meter.snapshot()).toEqual({ started: 2, settled: 2, rejected: 1, pending: 0, peakPending: 2, wallSumMs: 70, wallUnionMs: 50, maxCompletedMs: 40 });
 });
+
 it('adds disjoint unions without counting idle gaps as wait time', () => {
   let time = 5; const meter = createWaitAccounting({ now: () => time });
   const first = meter.start(); time = 15; first({ failed: false });

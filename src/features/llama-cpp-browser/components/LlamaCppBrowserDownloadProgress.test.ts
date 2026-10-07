@@ -7,8 +7,10 @@ import type { DownloadProgress } from '@/features/llama-cpp-browser/hugging-face
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 describe('download progress appearance', () => {
   const progress: DownloadProgress = { phase: 'transferring', completed: 25, total: 100, processed: 25 };
+
   it('uses blue only when the welcome appearance is explicitly requested', () => {
     const welcome = mount(LlamaCppBrowserDownloadProgress, { props: { progress, appearance: 'welcome' } });
     const manager = mount(LlamaCppBrowserDownloadProgress, { props: { progress, appearance: 'manager' } });
@@ -18,6 +20,7 @@ describe('download progress appearance', () => {
     expect(welcome.get('[role="progressbar"] > div').classes()).toContain('motion-reduce:transition-none');
     welcome.unmount(); manager.unmount();
   });
+
   it('does not render NaN or an invalid aria value for an unknown total', () => {
     const wrapper = mount(LlamaCppBrowserDownloadProgress, { props: { progress: { ...progress, completed: 0, total: 0 }, appearance: 'welcome' } });
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);

@@ -82,6 +82,7 @@ describe("observed Qwen3.5 normal-Chat cache reuse", () => {
     );
     expect(urlToPath({ url: resolvedUrl })).not.toBe(urlToPath({ url: mainUrl }));
   });
+
   it("replays the observed OPFS cache identity: main hits while the resolved SHA misses", async () => {
     vi.stubGlobal("navigator", {
       storage: { getDirectory: vi.fn(async () => observedMainCacheRoot()) },
@@ -95,5 +96,4 @@ describe("observed Qwen3.5 normal-Chat cache reuse", () => {
     expect(mainResponse?.headers.get("Content-Length")).toBe(String(EMBED_TOKENS_BYTES));
     await expect(cache.match(resolvedUrl)).resolves.toBeUndefined();
   });
-
 });

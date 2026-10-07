@@ -5,6 +5,7 @@ import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/t
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 const mocks = vi.hoisted(() => ({ inspect: vi.fn(), generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate, inspectEngine: mocks.inspect }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
+
 beforeEach(() => {
   vi.clearAllMocks(); mocks.workers.length = 0; mocks.messages.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
@@ -17,7 +18,9 @@ beforeEach(() => {
     }
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 it('does not start a Worker for inspection and rejects observations during an active generation', async () => {
   const client = createImageClient();
   expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
@@ -28,6 +31,7 @@ it('does not start a Worker for inspection and rejects observations during an ac
   expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'busy' }); expect(mocks.inspect).not.toHaveBeenCalled();
   controller.abort(); await stopped; client.dispose();
 });
+
 it('discards an old Worker snapshot after model release and terminates a poisoned observer', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
   const onReleased = vi.fn(), client = createImageClient({ onReleased });
@@ -41,12 +45,14 @@ it('discards an old Worker snapshot after model release and terminates a poisone
   expect(mocks.terminate).toHaveBeenCalledTimes(2); expect(onReleased).toHaveBeenCalledTimes(2);
   expect(await client.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' }); client.dispose();
 });
+
 it('does not create a worker before explicit generation and ignores pre-aborted requests', async () => {
   const client = createImageClient(); expect(mocks.constructed).not.toHaveBeenCalled();
   const controller = new AbortController(); controller.abort();
   await expect(client.generate({ request: request(), signal: controller.signal, onProgress: vi.fn() })).rejects.toMatchObject({ name: 'AbortError' });
   expect(mocks.constructed).not.toHaveBeenCalled(); client.dispose();
 });
+
 it('cancels a permanently suspended native call and terminates its worker', async () => {
   mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const controller = new AbortController(); const client = createImageClient();
@@ -55,6 +61,7 @@ it('cancels a permanently suspended native call and terminates its worker', asyn
   controller.abort(); await settled;
   expect(mocks.terminate).toHaveBeenCalled(); expect(mocks.release).toHaveBeenCalled();
 });
+
 it('disposal rejects a pending request even when the proxy never acknowledges release', async () => {
   mocks.generate.mockImplementation(() => new Promise(() => undefined));
   mocks.release.mockImplementation(() => new Promise(() => undefined));
@@ -62,6 +69,7 @@ it('disposal rejects a pending request even when the proxy never acknowledges re
   const settled = expect(task).rejects.toMatchObject({ name: 'AbortError' }); client.dispose(); await settled;
   expect(mocks.terminate).toHaveBeenCalled();
 });
+
 it('retains worker after success and retires malformed responses', async () => {
   const client = createImageClient();
   mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked result' });
@@ -71,6 +79,7 @@ it('retains worker after success and retires malformed responses', async () => {
   await expect(client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() })).rejects.toThrow();
   client.dispose();
 });
+
 it('reports silence from the window when the Worker/native call cannot send anything', async () => {
   vi.useFakeTimers(); const onDiagnostic = vi.fn(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const client = createImageClient(), controller = new AbortController();
@@ -86,6 +95,7 @@ it('reports silence from the window when the Worker/native call cannot send anyt
     client.dispose(); vi.useRealTimers();
   }
 });
+
 it('delivers validated diagnostics before the inference promise settles and retains the last real stage', async () => {
   vi.useFakeTimers(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -153,6 +163,7 @@ it('keeps the VAE GPU error when an asynchronous Worker crash bypasses the remot
   expect(onDiagnostic).toHaveBeenLastCalledWith({ diagnostic: expect.objectContaining({ event: 'failed', stage: 'decoding', message: expect.stringContaining('65536') }) });
   expect(mocks.terminate).toHaveBeenCalledOnce(); expect(mocks.generate).toHaveBeenCalledOnce(); client.dispose();
 });
+
 it('reports message deserialization failure distinctly and still releases a permanently waiting runtime', async () => {
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
   const client = createImageClient();
@@ -161,6 +172,7 @@ it('reports message deserialization failure distinctly and still releases a perm
   mocks.workers[0]!.dispatchEvent(new MessageEvent('messageerror'));
   await failed; expect(mocks.terminate).toHaveBeenCalledOnce(); client.dispose();
 });
+
 it('bounds native error context even after repeated GPU errors', async () => {
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
   const client = createImageClient();
@@ -205,6 +217,7 @@ it.each(['flash-attention', 'bf16-conversion'] as const)('reuses one Worker and 
   expect(mocks.terminate.mock.invocationCallOrder[0]).toBeLessThan(mocks.constructed.mock.invocationCallOrder[1]!);
   client.release(); client.release(); client.dispose(); expect(mocks.terminate).toHaveBeenCalledTimes(2);
 });
+
 it('invalidates identical-looking manual files and recovers from cancellation in a fresh physical Worker', async () => {
   const client = createImageClient(), input = request(), cancelled = new AbortController();
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
@@ -216,6 +229,7 @@ it('invalidates identical-looking manual files and recovers from cancellation in
   await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
   expect(mocks.constructed).toHaveBeenCalledTimes(3); expect(mocks.terminate).toHaveBeenCalledTimes(2); client.dispose();
 });
+
 it('sends live control messages with monotonically scoped revisions and rejects old/foreign preview frames', async () => {
   const client = createImageClient(), input = request(), controller = new AbortController(), onPreview = vi.fn();
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
@@ -236,6 +250,7 @@ it('sends live control messages with monotonically scoped revisions and rejects 
   controller.abort(); await stopped;
   mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: frame })); expect(onPreview).toHaveBeenCalledTimes(1); client.dispose();
 });
+
 it('retires an idle crashed worker and notifies the resident-state owner without stale subscriptions', async () => {
   const onReleased = vi.fn(), client = createImageClient({ onReleased }), input = request();
   mocks.generate.mockResolvedValue({ png: new Blob(['x'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mock' });
@@ -246,6 +261,7 @@ it('retires an idle crashed worker and notifies the resident-state owner without
   mocks.workers[0]!.dispatchEvent(new ErrorEvent('error'));
   expect(onReleased).toHaveBeenCalledTimes(1); expect(mocks.constructed).toHaveBeenCalledTimes(2); client.dispose();
 });
+
 it('terminates a permanently pending native operation if the live scalar control setter fails', async () => {
   const client = createImageClient(); mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
   const task = client.generate({ request: request(), signal: new AbortController().signal, onProgress: vi.fn() });
@@ -253,6 +269,7 @@ it('terminates a permanently pending native operation if the live scalar control
   mocks.workers[0]!.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic: { event: 'failed', stage: 'worker', elapsedMs: 1, message: 'Live preview control failed', fields: { kind: 'preview-control', runId: 1 } } } }));
   await failed; expect(mocks.terminate).toHaveBeenCalledTimes(1); client.dispose();
 });
+
 it('queues generation before a start listener can send live preview control', async () => {
   const client = createImageClient(), input = request(), stop = new AbortController();
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));
@@ -284,6 +301,7 @@ it('keeps a physical Worker after cooperative cancellation but rejects late fram
   await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
   expect(mocks.constructed).toHaveBeenCalledTimes(1); client.dispose();
 });
+
 it('still allows immediate forced abort while waiting for cooperative cancellation', async () => {
   const client = createImageClient(), stop = new AbortController();
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));

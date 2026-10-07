@@ -4,6 +4,7 @@ import { createImageGenerationQueryClient } from './client';
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), workers: [] as EventTarget[], terminate: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => ({ query: mocks.query }), releaseWorkerRemote: () => mocks.release() }));
+
 beforeEach(() => {
   vi.resetAllMocks(); mocks.workers.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
@@ -15,7 +16,9 @@ beforeEach(() => {
     }
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 const query = { visibility: 'active' as const, text: '', tags: [], match: 'all' as const, runId: undefined, cursor: undefined, limit: 40 };
 const request = { store: { storageType: 'opfs' as const, storeId: toImageGenerationStoreId({ raw: 'store-aa' }) }, sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), query };
 const page = { runsWithAssets: [], deletedAssetIds: [], pendingDeletions: [], page: { items: [], total: 0, nextCursor: undefined, warnings: [], warningCount: 0 }, runs: { items: [], warnings: [], warningCount: 0 } };

@@ -53,6 +53,7 @@ vi.mock('@/features/image-generation/use-image-generation', async () => {
 });
 const a = generationSessionFixture({ id: 'session-aa' }), b = { ...generationSessionFixture({ id: 'session-bb' }), title: 'Second purpose', updatedAt: 10 };
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   vi.resetAllMocks(); mocks.owners = 0; mocks.disposed = 0; mocks.confirm.mockResolvedValue(true); mocks.restore.mockResolvedValue(undefined);
   createImageGenerationStorageHarness(); await ensureAllStringsForTest({ locale: 'en' });
@@ -69,10 +70,12 @@ beforeEach(async () => {
     await persistence.saveImageGenerationDraft({ store, draft: publication.draft, expectedRevision: publication.expectedRevision, writeInputs: async () => {} });
   });
 });
+
 afterEach(async () => {
   await useImageGenerationWorkspaceNavigation().active.value?.view?.flushDraft();
   wrapper?.unmount(); wrapper = undefined; await flushPromises(); vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 async function open({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [...routes.filter(route => route.path === '/image-generation'), { path: '/', component: { template: '<div />' } }] });
   await router.push(path); await router.isReady();
@@ -87,6 +90,7 @@ async function open({ path }: { path: string }) {
   if (!view) throw new Error('Missing workspace owner.');
   return { router, view, page: wrapper.getComponent(ImageGenerationPage).vm, workspace: wrapper.getComponent(ImageGenerationWorkspace).vm };
 }
+
 it('opens an exact session URL, preserves one owner through models and gives new sessions their own URL', async () => {
   const { router, view, page, workspace } = await open({ path: '/image-generation/session/session-aa' });
   await vi.waitFor(() => expect(view.currentSession.value?.id).toBe(a.id));
@@ -102,6 +106,7 @@ it('opens an exact session URL, preserves one owner through models and gives new
   expect(wrapper!.getComponent(ImageGenerationWorkspace).vm.$.uid).toBe(workspace.$.uid);
   expect(mocks.owners).toBe(1); expect(mocks.disposed).toBe(0);
 });
+
 it('loads the explicit session on reload and never redirects a missing session to unrelated work', async () => {
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });
   expect(view.currentSession.value?.id).toBe(a.id);
@@ -110,6 +115,7 @@ it('loads the explicit session on reload and never redirects a missing session t
   expect(router.currentRoute.value.path).toBe('/image-generation/session/missing-aa');
   expect(view.editor.draftDisabled.value).toBe(true); expect(mocks.owners).toBe(1);
 });
+
 it('keeps only the latest route while an earlier draft restore is pending', async () => {
   const gate = Promise.withResolvers<void>(); mocks.restore.mockImplementationOnce(() => gate.promise);
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });
@@ -119,6 +125,7 @@ it('keeps only the latest route while an earlier draft restore is pending', asyn
   expect(view.editor.parameters.value.prompt).toBe('second draft'); expect(router.currentRoute.value.path).toBe('/image-generation/session/session-bb');
   expect(mocks.owners).toBe(1);
 });
+
 it('replaces only the entry URL with the selected session and returns to the entry after deletion', async () => {
   const { router, view } = await open({ path: '/image-generation' });
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/image-generation/session/session-bb'));
@@ -128,7 +135,6 @@ it('replaces only the entry URL with the selected session and returns to the ent
   expect(view.sessions.value.map(session => session.id)).toEqual([a.id]);
   expect(mocks.confirm.mock.calls[0]![0].message).toContain('Image files');
 });
-
 
 it('restores each draft through browser back and forward without replacing the runtime owner', async () => {
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });

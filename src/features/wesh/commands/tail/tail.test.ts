@@ -512,7 +512,6 @@ beta
     expect(bytes.result.exitCode).toBe(0);
   });
 
-
   it('does not inspect missing files or directories when a zero count suppresses all output', async () => {
     await rootHandle.getDirectoryHandle('dir', { create: true });
 
@@ -576,5 +575,4 @@ alpha
     expect(stderr.text).toContain('tail: dir:');
     expect(result.exitCode).toBe(1);
   });
-
 });

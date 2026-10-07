@@ -304,6 +304,7 @@ describe('ChatPane - Attachment UI', () => {
     const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
     clearAllDrafts();
   });
+
   it('should show preview when files are selected', async () => {
     // Reset refs for this test
     mockCurrentChat.value = {
