@@ -77,9 +77,15 @@ export async function applyImageGenerationPromptEdit({ target, edit, signal, rea
   case 'unavailable': case 'stale': case 'cancelled': return { status: beforeApproval };
   default: { const exhaustive: never = beforeApproval; throw new Error(String(exhaustive)); }
   }
-  const approval = await ensureApproval({ chatId: accepted.chatId, change: {
-    field: acceptedEdit.field, before: accepted[acceptedEdit.field], after: acceptedEdit.value,
-  }, signal });
+  const approval = await ensureApproval({
+    chatId: accepted.chatId,
+    change: {
+      field: acceptedEdit.field,
+      before: accepted[acceptedEdit.field],
+      after: acceptedEdit.value,
+    },
+    signal,
+  });
   // This check also runs for a previously stored allow-for-chat/global grant.
   // Approval gives a capability, not permission to overwrite a newer draft.
   const afterApproval = available();

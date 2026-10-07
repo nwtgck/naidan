@@ -80,10 +80,9 @@ describe("wesh sed", () => {
 
     const result = await wesh.execute({
       source: createTextShellSource({ text: script }),
-      stdin:
-        stdinBytes === undefined
-          ? createTestReadHandleFromText({ text: stdinText ?? "" })
-          : createTestReadHandleFromBytes({ bytes: stdinBytes }),
+      stdin: stdinBytes === undefined
+        ? createTestReadHandleFromText({ text: stdinText ?? "" })
+        : createTestReadHandleFromBytes({ bytes: stdinBytes }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -1073,10 +1072,13 @@ beta
   });
 
   it("keeps an attached in-place suffix attached after bundled flags", async () => {
-    await writeFile({ path: "input.txt", data: `\
+    await writeFile({
+      path: "input.txt",
+      data: `\
 alpha
 beta
-` });
+`,
+    });
 
     const execution = await execute({
       script: "sed -ni.bak 's/alpha/ALPHA/p' input.txt",
@@ -1831,10 +1833,13 @@ cd
   });
 
   it("preserves input errors across q and does not pre-open files after q", async () => {
-    await writeFile({ path: "input.txt", data: `\
+    await writeFile({
+      path: "input.txt",
+      data: `\
 alpha
 beta
-` });
+`,
+    });
 
     const priorError = await execute({
       script: "sed 'q 7' missing.txt input.txt",
@@ -1850,10 +1855,13 @@ beta
     expect(laterFile.stderr.text).toBe("");
     expect(laterFile.result.exitCode).toBe(7);
 
-    await writeFile({ path: "in-place.txt", data: `\
+    await writeFile({
+      path: "in-place.txt",
+      data: `\
 alpha
 beta
-` });
+`,
+    });
     const inPlacePriorError = await execute({
       script: "sed -i 'q 7' missing.txt in-place.txt",
     });
@@ -1934,10 +1942,13 @@ z
       expect(reachedLastAddress.result.exitCode).toBe(2);
     }
 
-    await writeFile({ path: "good.txt", data: `\
+    await writeFile({
+      path: "good.txt",
+      data: `\
 one
 two
-` });
+`,
+    });
     const activeRangeBeforeQuit = await execute({
       script: "sed -n -e '2q;1,$p' good.txt missing.txt",
     });
@@ -2202,9 +2213,12 @@ x
   });
 
   it("orders deferred reads across N, D, and Q cycle boundaries", async () => {
-    await writeFile({ path: "deferred-read.txt", data: `\
+    await writeFile({
+      path: "deferred-read.txt",
+      data: `\
 A
-B` });
+B`,
+    });
 
     const wholeBeforeN = await execute({
       script: "sed -e 'r deferred-read.txt' -e N",
@@ -2383,12 +2397,10 @@ b
     await writeFile({ path: "third.input", data: "c\n" });
 
     const independentPaths = await execute({
-      script:
-        "sed -n -e '/a/w left.txt' -e '/b/w right.txt' -e '/c/w left.txt' first.input second.input third.input",
+      script: "sed -n -e '/a/w left.txt' -e '/b/w right.txt' -e '/c/w left.txt' first.input second.input third.input",
     });
     const sharedPath = await execute({
-      script:
-        "sed -n -e '/a/w shared.txt' -e 's/b/B/w shared.txt' first.input second.input",
+      script: "sed -n -e '/a/w shared.txt' -e 's/b/B/w shared.txt' first.input second.input",
     });
 
     expect(await readFile({ path: "left.txt" })).toBe(`\
@@ -2414,8 +2426,7 @@ B
       script: "sed -n -e 'w opened.txt' missing-input.txt",
     });
     const invalidBeforeValid = await execute({
-      script:
-        "sed -n -e 'w missing-parent/out.txt' -e 'w unopened.txt'",
+      script: "sed -n -e 'w missing-parent/out.txt' -e 'w unopened.txt'",
       stdinText: "input\n",
     });
 
@@ -2494,14 +2505,12 @@ sed -n -e 'w missing-parent/out.txt
     await writeFile({ path: "source-order-out.txt", data: "OLD\n" });
 
     const writeBeforeMissingScript = await execute({
-      script:
-        "sed -n -e 'w source-order-out.txt' -f missing-script.sed",
+      script: "sed -n -e 'w source-order-out.txt' -f missing-script.sed",
       stdinText: "input\n",
     });
     await writeFile({ path: "source-order-untouched.txt", data: "OLD\n" });
     const syntaxBeforeMissingScript = await execute({
-      script:
-        "sed -n -e '@' -f missing-script.sed -e 'w source-order-untouched.txt'",
+      script: "sed -n -e '@' -f missing-script.sed -e 'w source-order-untouched.txt'",
       stdinText: "input\n",
     });
 
@@ -3819,10 +3828,13 @@ b
       String.raw`sed 's/a/X/d'`,
       String.raw`sed 'y/a/A/p'`,
     ]) {
-      const outcome = await execute({ script, stdinText: `\
+      const outcome = await execute({
+        script,
+        stdinText: `\
 a
 b
-` });
+`,
+      });
       expect(outcome.stdout.text).toBe("");
       expect(outcome.stderr.text).not.toBe("");
       expect(outcome.result.exitCode).toBe(1);

@@ -78,7 +78,9 @@ describe('createDownloadedModelReadOnlyCache', () => {
     vi.stubGlobal('navigator', { storage: { getDirectory } });
     const onMatchObservation = vi.fn();
     const cache = createDownloadedModelReadOnlyCache({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'exact', onMatchObservation,
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'exact',
+      onMatchObservation,
     });
     const deniedUrls = [
       '/models/LiquidAI/LFM2.5-230M-ONNX/tokenizer_config.json',
@@ -95,10 +97,18 @@ describe('createDownloadedModelReadOnlyCache', () => {
   });
 
   it('preserves an explicitly selected user model while excluding another local model', async () => {
-    const root = opfsDirectory({ node: { models: { user: { uploaded: {
-      'config.json': file({ bytes: '{"source":"uploaded-user"}' }),
-      '.config.json.complete': file({ bytes: '' }),
-    } } } } });
+    const root = opfsDirectory({
+      node: {
+        models: {
+          user: {
+            uploaded: {
+              'config.json': file({ bytes: '{"source":"uploaded-user"}' }),
+              '.config.json.complete': file({ bytes: '' }),
+            },
+          },
+        },
+      },
+    });
     vi.stubGlobal('self', { location: new URL('https://app.example.test/assets/worker.js') });
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(root) } });
     const cache = createDownloadedModelReadOnlyCache({ modelId: 'user/uploaded', revision: undefined });
@@ -111,10 +121,18 @@ describe('createDownloadedModelReadOnlyCache', () => {
   });
 
   it('preserves an explicitly selected local model through its existing OPFS user mapping', async () => {
-    const root = opfsDirectory({ node: { models: { user: { uploaded: {
-      'config.json': file({ bytes: '{"source":"uploaded-local"}' }),
-      '.config.json.complete': file({ bytes: '' }),
-    } } } } });
+    const root = opfsDirectory({
+      node: {
+        models: {
+          user: {
+            uploaded: {
+              'config.json': file({ bytes: '{"source":"uploaded-local"}' }),
+              '.config.json.complete': file({ bytes: '' }),
+            },
+          },
+        },
+      },
+    });
     vi.stubGlobal('self', { location: new URL('https://app.example.test/assets/worker.js') });
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(root) } });
     const cache = createDownloadedModelReadOnlyCache({ modelId: 'local/uploaded', revision: undefined });

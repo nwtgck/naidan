@@ -10,7 +10,9 @@ describe('investigation execution versus evidence coverage', () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'fixture/execution', runId: 'execution', now: () => '2026-09-08T00:00:00.000Z' });
     checkpoint.run.status = 'passed';
     const recovery = state === 'unknown' ? undefined : {
-      ...checkpoint.recovery, status: state, checkpointedAt: '2026-09-08T00:00:01.000Z',
+      ...checkpoint.recovery,
+      status: state,
+      checkpointedAt: '2026-09-08T00:00:01.000Z',
     };
     const execution = investigationExecutionSummary({ run: checkpoint.run, recovery });
     expect(execution).toEqual(state === 'completed'
@@ -33,7 +35,8 @@ describe('investigation execution versus evidence coverage', () => {
   it('can complete execution with a failed investigation result', () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'fixture/execution', runId: 'failed', now: () => '2026-09-08T00:00:00.000Z' });
     expect(investigationExecutionSummary({ run: checkpoint.run, recovery: { ...checkpoint.recovery, status: 'completed' } })).toMatchObject({
-      state: 'completed', result: 'failed',
+      state: 'completed',
+      result: 'failed',
     });
   });
 });

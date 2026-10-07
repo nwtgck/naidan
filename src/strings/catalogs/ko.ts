@@ -3160,7 +3160,6 @@ export const catalog = {
   audioGeneration__delete_all_audio,
   audioGeneration__history_memory_usage,
 
-
   LlamaCppBrowserModelRecovery__manage_models,
   LlamaCppBrowserModelRecovery__check_again,
   LlamaCppBrowserModelRecovery__could_not_prepare_download,

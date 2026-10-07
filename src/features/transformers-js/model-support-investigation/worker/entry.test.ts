@@ -253,7 +253,9 @@ describe("model-support-investigation worker", () => {
     const onRunCheckpoint = vi.fn();
     const configuration = configurationForPreset({ preset: 'offline' });
     const run = await exposedWorker().runPartialInvestigation({
-      runId: 'host-created-run', modelId: 'org/model', externalNetworkPolicy: configuration.externalNetworkPolicy,
+      runId: 'host-created-run',
+      modelId: 'org/model',
+      externalNetworkPolicy: configuration.externalNetworkPolicy,
       executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
     }, vi.fn(), onRunCheckpoint, vi.fn(async () => {
       throw new Error('Offline planning cannot request fresh metadata');

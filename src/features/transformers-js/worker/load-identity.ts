@@ -96,7 +96,9 @@ export function createProductionLoadIdentityTracker() {
           try {
             const candidate = ownValue({ value: route, key: 'candidate' });
             const parsed = productionLoadIdentitySchema.safeParse({
-              status: 'ready', workerLoadOrdinal: ownOrdinal, requestedModelId: modelId,
+              status: 'ready',
+              workerLoadOrdinal: ownOrdinal,
+              requestedModelId: modelId,
               requestedRevision: revision === undefined ? { status: 'omitted' } : { status: 'provided', value: revision },
               cleanModelId: ownValue({ value: route, key: 'cleanModelId' }),
               autoClass: ownValue({ value: route, key: 'autoClass' }),
@@ -104,7 +106,8 @@ export function createProductionLoadIdentityTracker() {
               selectedCandidate: { device: ownValue({ value: candidate, key: 'device' }), dtype: ownValue({ value: candidate, key: 'dtype' }) },
               // These are successful loader options, not an ORT session query
               // or a hash of the model files actually consumed.
-              resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+              resolvedRevision: { status: 'not-observed' },
+              sessionExecutionProvider: { status: 'not-observed' },
             });
             identity = parsed.success ? freezeProductionLoadIdentity({ identity: parsed.data }) : missing({ reason: 'recording-failed' });
           } catch {

@@ -46,8 +46,19 @@ export async function translateImagePrompt({ prompt, language, endpoint, modelId
     });
     try {
       controller.signal.throwIfAborted();
-      const { text, result } = await collectChatGeneration({ abortController: controller, onText, items: chat({ messages, model: acceptedModel, parameters: acceptedParameters,
-        tools: undefined, readBinaryObject: undefined, debug: 'off', signal: controller.signal }) });
+      const { text, result } = await collectChatGeneration({
+        abortController: controller,
+        onText,
+        items: chat({
+          messages,
+          model: acceptedModel,
+          parameters: acceptedParameters,
+          tools: undefined,
+          readBinaryObject: undefined,
+          debug: 'off',
+          signal: controller.signal,
+        }),
+      });
       controller.signal.throwIfAborted();
       // Native/protocol failures still invalidate the owned operation. A normally
       // drained result that is unsuitable for translation does not break a model.
@@ -63,10 +74,14 @@ export async function translateImagePrompt({ prompt, language, endpoint, modelId
   }
   let output: Collected | undefined, entered = false;
   if (provider.runChatOperation) {
-    await provider.runChatOperation({ signal, onProgress, operation: async ({ chat, signal: operationSignal }) => {
-      if (entered) throw new Error('The translation operation must run exactly once.');
-      entered = true; output = await run({ chat, operationSignal });
-    } });
+    await provider.runChatOperation({
+      signal,
+      onProgress,
+      operation: async ({ chat, signal: operationSignal }) => {
+        if (entered) throw new Error('The translation operation must run exactly once.');
+        entered = true; output = await run({ chat, operationSignal });
+      },
+    });
   } else {
     output = await run({ chat: provider.chat.bind(provider), operationSignal: signal });
   }

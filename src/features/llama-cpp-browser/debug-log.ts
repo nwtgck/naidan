@@ -415,8 +415,14 @@ function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | 
   if (!batch) return undefined;
   const batchIndex = Number(batch[2]); const batchCount = Number(batch[3]); const number = Number(batch[4]);
   if (![batchIndex, batchCount, number].every(Number.isSafeInteger) || batchIndex < 1 || batchCount < batchIndex || batchCount > 2147483647 || (decoding && (number < 1 || number > 2147483647))) return undefined;
-  return { event: decoding ? 'operation-start' : 'operation-complete', stage: 'media-decode', mediaType: z.enum(['image', 'audio']).parse(batch[1]), batchIndex, batchCount,
-    ...(decoding ? { batchTokens: number } : { elapsedMs: number }) };
+  return {
+    event: decoding ? 'operation-start' : 'operation-complete',
+    stage: 'media-decode',
+    mediaType: z.enum(['image', 'audio']).parse(batch[1]),
+    batchIndex,
+    batchCount,
+    ...(decoding ? { batchTokens: number } : { elapsedMs: number }),
+  };
 }
 /** Fixed numeric context, graph and buffer formats from upstream llama.cpp. */
 function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
@@ -479,8 +485,15 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeDestinationBytes = Number(conversion[3]);
     if (![nativeEntries, nativeSourceBytes, nativeDestinationBytes].every(Number.isSafeInteger)
         || nativeDestinationBytes !== nativeSourceBytes * 2) return undefined;
-    return { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32',
-      nativeEntries, nativeSourceBytes, nativeDestinationBytes, nativeBackend: 'WebGPU' };
+    return {
+      event: 'native-info',
+      stage: 'projector-load',
+      nativeOperation: 'bf16-f32',
+      nativeEntries,
+      nativeSourceBytes,
+      nativeDestinationBytes,
+      nativeBackend: 'WebGPU',
+    };
   }
   const placement = /^lcb_clip: matmul placement cpu=(\d+) webgpu=(\d+) other=(\d+) cpu_bf16=(\d+)$/.exec(line);
   if (placement) {
@@ -492,8 +505,15 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeCpuBf16Nodes = Number(placement[4]);
     if (![nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes].every(Number.isSafeInteger)
         || nativeCpuBf16Nodes > nativeCpuNodes) return undefined;
-    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'matmul-placement',
-      nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes };
+    return {
+      event: 'native-info',
+      stage: 'media-encode',
+      nativeOperation: 'matmul-placement',
+      nativeCpuNodes,
+      nativeWebGpuNodes,
+      nativeOtherNodes,
+      nativeCpuBf16Nodes,
+    };
   }
   if (line === 'warmup: WARNING: the CLIP graph uses unsupported operators by the backend') {
     // Eligibility warning only: it does not identify the selected execution backend.
@@ -512,8 +532,13 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
   if (!buffer) return undefined;
   const nativeValue = Number(buffer[2]);
   if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
-  return { event: 'native-info', stage: 'media-encode', nativeMetric: 'compute_buffer_mib', nativeValue,
-    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]) };
+  return {
+    event: 'native-info',
+    stage: 'media-encode',
+    nativeMetric: 'compute_buffer_mib',
+    nativeValue,
+    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]),
+  };
 }
 /** Keep structured progress/metrics and known failures; never forward raw stderr. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {

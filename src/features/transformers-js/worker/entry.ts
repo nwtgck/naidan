@@ -109,23 +109,25 @@ let postLoadDiagnostic: (({ message }: { message: LoadDiagnosticMessage }) => un
 function beginGenerationCapture({ request }: { request: GenerationCaptureRequest | undefined }): GenerationCaptureCall | undefined {
   if (request === undefined) return undefined;
   let call: GenerationCaptureCall | undefined;
-  recordGenerationCapture({ record: () => {
-    const parsed = generationCaptureRequestSchema.safeParse(request);
-    if (!parsed.success) {
-      generationCapture?.noteIncomplete({ reason: 'invalid-context' });
-      return;
-    }
-    const { context, limits } = parsed.data;
-    if (generationCapture === undefined) {
-      generationCapture = createGenerationCapture({ run: { runId: context.runId, workerEpoch: context.workerEpoch }, limits, tensorClass: Tensor });
-      generationCaptureLimits = JSON.stringify(limits);
-    }
-    if (generationCaptureLimits !== JSON.stringify(limits)) {
-      generationCapture.noteIncomplete({ reason: 'limits-mismatch' });
-      return;
-    }
-    call = generationCapture.beginCall({ context, loadIdentity: productionLoadIdentity.snapshot() });
-  } });
+  recordGenerationCapture({
+    record: () => {
+      const parsed = generationCaptureRequestSchema.safeParse(request);
+      if (!parsed.success) {
+        generationCapture?.noteIncomplete({ reason: 'invalid-context' });
+        return;
+      }
+      const { context, limits } = parsed.data;
+      if (generationCapture === undefined) {
+        generationCapture = createGenerationCapture({ run: { runId: context.runId, workerEpoch: context.workerEpoch }, limits, tensorClass: Tensor });
+        generationCaptureLimits = JSON.stringify(limits);
+      }
+      if (generationCaptureLimits !== JSON.stringify(limits)) {
+        generationCapture.noteIncomplete({ reason: 'limits-mismatch' });
+        return;
+      }
+      call = generationCapture.beginCall({ context, loadIdentity: productionLoadIdentity.snapshot() });
+    },
+  });
   return call;
 }
 
@@ -311,10 +313,12 @@ function clearLoadedRuntimeState({ loadIdentityOperation }: {
   loadIdentityOperation: ReturnType<typeof productionLoadIdentity.beginLoad> | undefined,
 }): void {
   // Diagnostic invalidation never decides whether the actual runtime clears.
-  recordGenerationCapture({ record: () => {
-    if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
-    else loadIdentityOperation.clear();
-  } });
+  recordGenerationCapture({
+    record: () => {
+      if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
+      else loadIdentityOperation.clear();
+    },
+  });
   model = null;
   gemma4Processor = null;
   generationRuntimeState.gemma4Processor = null;
@@ -445,7 +449,10 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
     phase: 'config',
     run: async () => {
       await requireDownloadedModelConfig({
-        modelId: cleanModelId, revision, modelCache, workerLocationUrl: self.location.href,
+        modelId: cleanModelId,
+        revision,
+        modelCache,
+        workerLocationUrl: self.location.href,
       });
       return AutoConfig.from_pretrained(cleanModelId, {
         local_files_only: true,
@@ -461,7 +468,10 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
   let autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
   const entryMetadataPresent = async ({ path }: { path: string }) => {
     const response = await modelCache.match(downloadedModelResourceUrl({
-      modelId: cleanModelId, revision, repositoryPath: path, workerLocationUrl: self.location.href,
+      modelId: cleanModelId,
+      revision,
+      repositoryPath: path,
+      workerLocationUrl: self.location.href,
     }));
     if (response === undefined) return false;
     await response.body?.cancel();
@@ -494,7 +504,10 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
         case 'gemma4-processor':
         case 'qwen3_5-processor': {
           const preprocessor = await modelCache.match(downloadedModelResourceUrl({
-            modelId: cleanModelId, revision, repositoryPath: 'preprocessor_config.json', workerLocationUrl: self.location.href,
+            modelId: cleanModelId,
+            revision,
+            repositoryPath: 'preprocessor_config.json',
+            workerLocationUrl: self.location.href,
           }));
           const processorPaths = ['preprocessor_config.json'];
           if (preprocessor !== undefined) {
@@ -557,13 +570,25 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
     // Absence proves incompleteness. A body/JSON/I/O failure is different and
     // propagates; no catch may turn failed inspection into namespace fallback.
     const config = await modelCache.match(downloadedModelResourceUrl({
-      modelId: cleanModelId, revision, repositoryPath: 'config.json', workerLocationUrl: self.location.href,
+      modelId: cleanModelId,
+      revision,
+      repositoryPath: 'config.json',
+      workerLocationUrl: self.location.href,
     }));
     if (config === undefined) continue;
     await config.body?.cancel();
-    const { candidatePlan } = await withDownloadedModelAccessMode({ modelCache, run: ({ assertNotBusy }) => planProductionRuntimeCandidates({
-      cleanModelId, revision, candidates, modelCache, progressCallback: undefined, onRuntimePhase: undefined, assertNotBusy,
-    }) });
+    const { candidatePlan } = await withDownloadedModelAccessMode({
+      modelCache,
+      run: ({ assertNotBusy }) => planProductionRuntimeCandidates({
+        cleanModelId,
+        revision,
+        candidates,
+        modelCache,
+        progressCallback: undefined,
+        onRuntimePhase: undefined,
+        assertNotBusy,
+      }),
+    });
     if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) return revision;
     if (!candidatePlan.some(entry => entry.status === 'checked')) {
       throw downloadedModelCandidatePlanError({ modelId: cleanModelId, revision, entries: candidatePlan });
@@ -615,9 +640,11 @@ async function loadProductionRuntime({
   try {
     const revision = await selectDownloadedModelRevision({ modelId, selection: revisionSelection, candidates });
     const receiptRecorder = createProductionLoadReceiptRecorder({ modelId, revision });
-    recordGenerationCapture({ record: () => {
-      loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
-    } });
+    recordGenerationCapture({
+      record: () => {
+        loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
+      },
+    });
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
     assertGemma4RuntimeSupport({ modelId: cleanModelId });
     const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
@@ -632,8 +659,13 @@ async function loadProductionRuntime({
       cacheOnlyFetch,
       run: async ({ assertNotBusy }) => {
         const { candidatePlan, autoClass, modelType } = await planProductionRuntimeCandidates({
-          cleanModelId, revision, candidates, modelCache: runtimeModelCache,
-          progressCallback: runtimePreparationProgressCallback, onRuntimePhase, assertNotBusy,
+          cleanModelId,
+          revision,
+          candidates,
+          modelCache: runtimeModelCache,
+          progressCallback: runtimePreparationProgressCallback,
+          onRuntimePhase,
+          assertNotBusy,
         });
         const completeCandidates = candidatePlan
           .filter(entry => entry.status === 'checked')
@@ -666,9 +698,11 @@ async function loadProductionRuntime({
           onCandidateStart({ candidate });
           if (loadDiagnostics !== undefined) {
             const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
-            recordGenerationCapture({ record: () => {
-              diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.beginCandidate({ device: candidate.device, dtype: candidate.dtype, revision });
-            } });
+            recordGenerationCapture({
+              record: () => {
+                diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.beginCandidate({ device: candidate.device, dtype: candidate.dtype, revision });
+              },
+            });
           }
           // This boundary includes cache reads and session creation. File progress
           // alone cannot distinguish those operations or prove that either ended.
@@ -1092,20 +1126,25 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
     let previousObserver: typeof diagnosticEnv.naidanModelLoadObserver;
     // Recording is optional and never grants a different Load/OPFS/fetch path.
-    recordGenerationCapture({ record: () => {
-      diagnosticLoadOrdinal++;
-      const owner = productionLoadReceiptOwnerSchema.safeParse(loadReceiptOwner);
-      const diagnosticSender = postLoadDiagnostic;
-      if (owner.success && diagnosticSender !== undefined && diagnosticLoadOrdinal <= 32) {
-        const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-        loadDiagnostics = createLoadDiagnosticOperation({ owner: owner.data, loadOrdinal: diagnosticLoadOrdinal,
-          sink: ({ packet }) => diagnosticSender({ message: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } }),
-          resourceNames: cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/') ? 'omit' : 'public-repository' });
-        previousObserver = diagnosticEnv.naidanModelLoadObserver;
-        diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.observeUpstream;
-        loadDiagnostics.emit({ kind: 'load-start', details: { priorRuntime: model === null ? 'absent' : 'present' } });
-      }
-    } });
+    recordGenerationCapture({
+      record: () => {
+        diagnosticLoadOrdinal++;
+        const owner = productionLoadReceiptOwnerSchema.safeParse(loadReceiptOwner);
+        const diagnosticSender = postLoadDiagnostic;
+        if (owner.success && diagnosticSender !== undefined && diagnosticLoadOrdinal <= 32) {
+          const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+          loadDiagnostics = createLoadDiagnosticOperation({
+            owner: owner.data,
+            loadOrdinal: diagnosticLoadOrdinal,
+            sink: ({ packet }) => diagnosticSender({ message: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } }),
+            resourceNames: cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/') ? 'omit' : 'public-repository',
+          });
+          previousObserver = diagnosticEnv.naidanModelLoadObserver;
+          diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.observeUpstream;
+          loadDiagnostics.emit({ kind: 'load-start', details: { priorRuntime: model === null ? 'absent' : 'present' } });
+        }
+      },
+    });
     try {
       loadDiagnostics?.emit({ kind: 'previous-unload-start', details: {} });
       try {
@@ -1150,12 +1189,14 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         throw new Error(errorMessage);
       }
     } finally {
-      recordGenerationCapture({ record: () => {
-        if (loadDiagnostics !== undefined) {
-          if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
-          else diagnosticEnv.naidanModelLoadObserver = previousObserver;
-        }
-      } });
+      recordGenerationCapture({
+        record: () => {
+          if (loadDiagnostics !== undefined) {
+            if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
+            else diagnosticEnv.naidanModelLoadObserver = previousObserver;
+          }
+        },
+      });
     }
   },
 
@@ -2035,10 +2076,12 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
                 throw new Error(`Unhandled generation strategy: ${String(_ex)}`);
               }
               }
-              delivery.enqueue({ deliver: () => {
-                if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
-                return onChunk(chunk);
-              } });
+              delivery.enqueue({
+                deliver: () => {
+                  if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
+                  return onChunk(chunk);
+                },
+              });
             },
             onRawChunk: ({ chunk }) => {
               if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-raw', chunk }) });

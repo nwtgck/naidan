@@ -17,9 +17,17 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
   vi.stubGlobal('navigator', { storage: missing === 'directory API' ? {} : { getDirectory: vi.fn() }, locks: missing === 'mutation lock' ? undefined : { request: vi.fn() } });
   const network = vi.fn(), download = vi.fn((args: ImageRecipeDownloadRequest) => downloadImageRecipe({ ...args, fetch: network }));
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list: vi.fn(async () => []), scan: vi.fn(async () => ({ candidates: [], issues: [] })), import: vi.fn(), download,
-  } }))!;
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      list: vi.fn(async () => []),
+      scan: vi.fn(async () => ({ candidates: [], issues: [] })),
+      import: vi.fn(),
+      download,
+    },
+  }))!;
   try {
     wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
     const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
@@ -125,11 +133,15 @@ it('keeps the optional LoRA visible but disabled in an unavailable build', async
 it('keeps option changes offline and sends a frozen choice only on the explicit download action', async () => {
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
   const available = ref(0);
-  const view = { ...createDisabledImageLibrary(), downloadRecipe: vi.fn(async () => {
-    available.value = 3;
-  }), chooseRecipe: vi.fn(),
-  ready: computed(() => available.value === 3),
-  recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }) };
+  const view = {
+    ...createDisabledImageLibrary(),
+    downloadRecipe: vi.fn(async () => {
+      available.value = 3;
+    }),
+    chooseRecipe: vi.fn(),
+    ready: computed(() => available.value === 3),
+    recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }),
+  };
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');
   expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
@@ -147,7 +159,9 @@ it('allows permission requests on explicit downloads but blocks unavailable regi
   const entry = ref<HostModelDirectoryChoice>({ id: 'root-a', name: 'models', access: 'prompt', error: undefined });
   const view = createDisabledImageLibrary();
   view.hostDirectories = {
-    ...view.hostDirectories, supported: computed(() => true), entries: computed(() => [entry.value]),
+    ...view.hostDirectories,
+    supported: computed(() => true),
+    entries: computed(() => [entry.value]),
     destination: ref('root-a'),
   };
   view.downloadRecipe = vi.fn(async () => {});
@@ -241,9 +255,15 @@ it('removes non-active queue entries during import without enabling retry or sta
 
 it('keeps host mutation buttons aligned with the editor guard without blocking destination changes', async () => {
   const view = createDisabledImageLibrary();
-  view.hostDirectories = { ...view.hostDirectories, supported: computed(() => true),
+  view.hostDirectories = {
+    ...view.hostDirectories,
+    supported: computed(() => true),
     entries: computed(() => [{ id: 'root-a', name: 'models', access: 'readwrite' as const, error: undefined }]),
-    add: vi.fn(), reconnect: vi.fn(), remove: vi.fn(), selectDestination: vi.fn() };
+    add: vi.fn(),
+    reconnect: vi.fn(),
+    remove: vi.fn(),
+    selectDestination: vi.fn(),
+  };
   wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: false, view } });
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);

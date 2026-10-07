@@ -12,9 +12,13 @@ const api = createImageWorker({
   },
 });
 subscribeWorkerNotifications({ endpoint: undefined, schema: previewControlSchema, listener: ({ value }) => api.updatePreview({ control: value }) });
-subscribeWorkerNotifications({ endpoint: undefined, schema: cancelControlSchema, listener({ value }) {
-  api.cancel({ control: value });
-} });
+subscribeWorkerNotifications({
+  endpoint: undefined,
+  schema: cancelControlSchema,
+  listener({ value }) {
+    api.cancel({ control: value });
+  },
+});
 exposeWorkerRemote<ImageWorker>({ api, endpoint: undefined });
 export const TEST_ONLY = {
 };

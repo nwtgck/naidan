@@ -48,62 +48,64 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
   const issuedCalls: GenerationCaptureRequest['context'][] = [];
   const loadRequests: GenerationCaptureClientLifetime['loadRequests'] = [];
   const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
-  const core = createWorkerClientCore({ capture: {
-    loadReceiptOwner: identity,
-    observeLoad({ packet }) {
-      loadDiagnostics.observe({ packet });
-    },
-    createRequest() {
+  const core = createWorkerClientCore({
+    capture: {
+      loadReceiptOwner: identity,
+      observeLoad({ packet }) {
+        loadDiagnostics.observe({ packet });
+      },
+      createRequest() {
       // Read the owner once, before startup/session awaits. A tool loop may
       // issue several calls for one Provider request, each with its own ID.
-      if (issuedCalls.length >= limits.maxCalls) {
-        incompleteReasons.add('call-limit');
-        return undefined;
-      }
-      try {
-        const active = getActiveRequest();
-        if (active === undefined) {
-          incompleteReasons.add('request-unavailable');
+        if (issuedCalls.length >= limits.maxCalls) {
+          incompleteReasons.add('call-limit');
           return undefined;
         }
-        const parsed = generationCaptureRequestSchema.safeParse({
-          context: { ...identity, runId: active.runId, requestId: active.requestId, generationCallId: issuedCalls.length + 1 },
-          limits,
-        });
-        if (!parsed.success || parsed.data.context.runId !== identity.runId) {
+        try {
+          const active = getActiveRequest();
+          if (active === undefined) {
+            incompleteReasons.add('request-unavailable');
+            return undefined;
+          }
+          const parsed = generationCaptureRequestSchema.safeParse({
+            context: { ...identity, runId: active.runId, requestId: active.requestId, generationCallId: issuedCalls.length + 1 },
+            limits,
+          });
+          if (!parsed.success || parsed.data.context.runId !== identity.runId) {
+            incompleteReasons.add('request-invalid');
+            return undefined;
+          }
+          issuedCalls.push({ ...parsed.data.context });
+          return parsed.data;
+        } catch {
+        // No diagnostic getter/schema failure may reject actual generation.
           incompleteReasons.add('request-invalid');
           return undefined;
         }
-        issuedCalls.push({ ...parsed.data.context });
-        return parsed.data;
-      } catch {
-        // No diagnostic getter/schema failure may reject actual generation.
-        incompleteReasons.add('request-invalid');
-        return undefined;
-      }
-    },
-    recordLoad({ modelId, revisionSelection }) {
-      const revision = (() => {
-        switch (revisionSelection.kind) {
-        case 'pinned': return revisionSelection.revision;
-        case 'discover-cached': return undefined;
-        default: {
-          const _ex: never = revisionSelection;
-          throw new Error(`Unhandled revision selection: ${_ex}`);
-        }
-        }
-      })();
-      if (loadRequests.length >= limits.maxCalls) {
-        incompleteReasons.add('load-limit');
-      } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
-        incompleteReasons.add('load-identity-limit');
-      } else {
+      },
+      recordLoad({ modelId, revisionSelection }) {
+        const revision = (() => {
+          switch (revisionSelection.kind) {
+          case 'pinned': return revisionSelection.revision;
+          case 'discover-cached': return undefined;
+          default: {
+            const _ex: never = revisionSelection;
+            throw new Error(`Unhandled revision selection: ${_ex}`);
+          }
+          }
+        })();
+        if (loadRequests.length >= limits.maxCalls) {
+          incompleteReasons.add('load-limit');
+        } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
+          incompleteReasons.add('load-identity-limit');
+        } else {
         // These are requested identities, not proof of resolved revision or
         // successful Load. Do not wrap Load settlement just to record them.
-        loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
-      }
+          loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
+        }
+      },
     },
-  } });
+  });
   return {
     client: core.client,
     async takeGenerationCapture(): Promise<GenerationCaptureReadResult> {
@@ -190,7 +192,9 @@ function createWorkerClientCore({ capture }: {
     { type: 'module' },
   );
 
-  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined,
+  const session = createProductionWorkerSession({
+    worker,
+    startupTimeoutMs: undefined,
     observeLoadDiagnostic: capture === undefined ? undefined : ({ packet }) => capture.observeLoad({ packet }),
   });
   const client: TransformersJsWorkerClient = {
@@ -201,14 +205,18 @@ function createWorkerClientCore({ capture }: {
     }): Promise<ModelLoadResult> {
       const revisionSelection = downloadedModelRevisionSelectionSchema.parse(rawSelection);
       capture?.recordLoad({ modelId, revisionSelection });
-      return session.run({ operation: ({ remote }) => remote.loadDownloadedModel(
-        modelId, revisionSelection,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => {
-          if (session.isActive()) return progressCallback({ info });
-        } }),
-        ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
-      ) });
+      return session.run({
+        operation: ({ remote }) => remote.loadDownloadedModel(
+          modelId, revisionSelection,
+          workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+            value: (info: ProgressInfo) => {
+              if (session.isActive()) return progressCallback({ info });
+            },
+          }),
+          ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
+        ),
+      });
     },
     async unloadModel(): Promise<void> {
       return session.run({ operation: ({ remote }) => remote.unloadModel() });
@@ -237,21 +245,27 @@ function createWorkerClientCore({ capture }: {
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
       try {
-        return await session.run({ operation: ({ remote }) => remote.generateText(
-          accepted.messages,
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-          workerProxy({ value: (chunk: string) => {
-            if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
-          } }),
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-          workerProxy({ value: (toolCalls: ToolCall[]) => {
-            if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
-          } }),
-          accepted.params,
-          accepted.tools,
-          request,
-          continuationOwner,
-        ) });
+        return await session.run({
+          operation: ({ remote }) => remote.generateText(
+            accepted.messages,
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+              value: (chunk: string) => {
+                if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
+              },
+            }),
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+              value: (toolCalls: ToolCall[]) => {
+                if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
+              },
+            }),
+            accepted.params,
+            accepted.tools,
+            request,
+            continuationOwner,
+          ),
+        });
       } finally {
         // A failed or disposed RPC cannot deliver into a later request, even
         // when its callback MessagePort still has queued messages.
@@ -273,21 +287,29 @@ function createWorkerClientCore({ capture }: {
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
       try {
-        await session.run({ operation: ({ remote }) => remote.generateText(
-          accepted.messages,
-          workerProxy({ value: () => {
-            throw new Error('Structured generation received a legacy text callback.');
-          } }),
-          workerProxy({ value: () => {
-            throw new Error('Structured generation received a legacy tool callback.');
-          } }),
-          accepted.params, accepted.tools, request, continuationOwner,
-          workerProxy({ value: ({ event }: { event: unknown }) => {
-            if (acceptingCallbacks && session.isActive()) {
-              return onEvent({ event: inferenceGenerationEventSchema.parse(event) });
-            }
-          } }),
-        ) });
+        await session.run({
+          operation: ({ remote }) => remote.generateText(
+            accepted.messages,
+            workerProxy({
+              value: () => {
+                throw new Error('Structured generation received a legacy text callback.');
+              },
+            }),
+            workerProxy({
+              value: () => {
+                throw new Error('Structured generation received a legacy tool callback.');
+              },
+            }),
+            accepted.params, accepted.tools, request, continuationOwner,
+            workerProxy({
+              value: ({ event }: { event: unknown }) => {
+                if (acceptingCallbacks && session.isActive()) {
+                  return onEvent({ event: inferenceGenerationEventSchema.parse(event) });
+                }
+              },
+            }),
+          ),
+        });
       } finally {
         acceptingCallbacks = false;
       }

@@ -23,9 +23,12 @@ afterEach(() => {
 function options({ remoteFetch }: { remoteFetch: typeof fetch | undefined }): Parameters<typeof collectReplayMetadata>[0] {
   vi.stubGlobal('fetch', forbiddenFetch);
   return {
-    modelId, revision,
+    modelId,
+    revision,
     files: [{ path: 'config.json', size: bytes.byteLength }],
-    budgetBytes: REPLAY_METADATA_TARGET_BYTES, fileTimeoutMs: 1000, modelAccess: 'public-request',
+    budgetBytes: REPLAY_METADATA_TARGET_BYTES,
+    fileTimeoutMs: 1000,
+    modelAccess: 'public-request',
     localRead: async () => undefined,
     remoteFetch,
     onSnapshot: () => undefined,
@@ -70,9 +73,12 @@ describe('bounded replay metadata collection', () => {
   it('records offline local misses, I/O failure, and unverified revision without fallback', async () => {
     const missing = await collectReplayMetadata(options({ remoteFetch: undefined }));
     expect(missing.summary.files[0]!.status).toBe('local-missing');
-    const broken = await collectReplayMetadata({ ...options({ remoteFetch: undefined }), localRead: async () => {
-      throw new DOMException('secret path', 'NotReadableError');
-    } });
+    const broken = await collectReplayMetadata({
+      ...options({ remoteFetch: undefined }),
+      localRead: async () => {
+        throw new DOMException('secret path', 'NotReadableError');
+      },
+    });
     expect(broken.summary.files[0]!.status).toBe('read-failure');
     const localRead = vi.fn();
     const unverified = await collectReplayMetadata({ ...options({ remoteFetch: undefined }), revision: undefined, localRead });
@@ -144,9 +150,12 @@ describe('bounded replay metadata collection', () => {
 
   it('bounds unknown-length streaming and accounts rejected chunks before stopping the next file', async () => {
     const cancel = vi.fn();
-    const remoteFetch = vi.fn<typeof fetch>(async () => new Response(new ReadableStream({ start(controller) {
-      controller.enqueue(new Uint8Array(11));
-    }, cancel })));
+    const remoteFetch = vi.fn<typeof fetch>(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(11));
+      },
+      cancel,
+    })));
     const result = await collectReplayMetadata({ ...options({ remoteFetch }), budgetBytes: 10, files: [{ path: 'config.json', size: undefined }, { path: 'tokenizer.json', size: undefined }] });
     expect(result.summary.receivedBytes).toBe(11);
     expect(result.summary.retainedBytes).toBe(0);
@@ -160,9 +169,14 @@ describe('bounded replay metadata collection', () => {
     const cancel = vi.fn(() => new Promise<void>(() => undefined));
     const remoteFetch = vi.fn<typeof fetch>(async input => String(input).endsWith('/config.json') ? new Response(bytes) : new Response(new ReadableStream({ cancel })));
     const collected = Promise.withResolvers<void>();
-    const pending = collectReplayMetadata({ ...options({ remoteFetch }), fileTimeoutMs: 10, files: [{ path: 'config.json', size: bytes.length }, { path: 'tokenizer.json', size: undefined }], onSnapshot: ({ snapshot }) => {
-      if (snapshot.sidecars.length === 1) collected.resolve();
-    } });
+    const pending = collectReplayMetadata({
+      ...options({ remoteFetch }),
+      fileTimeoutMs: 10,
+      files: [{ path: 'config.json', size: bytes.length }, { path: 'tokenizer.json', size: undefined }],
+      onSnapshot: ({ snapshot }) => {
+        if (snapshot.sidecars.length === 1) collected.resolve();
+      },
+    });
     await collected.promise;
     await vi.advanceTimersByTimeAsync(30);
     const result = await pending;

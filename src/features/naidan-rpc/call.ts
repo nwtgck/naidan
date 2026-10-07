@@ -156,9 +156,13 @@ export class RpcConversation {
       return async (input: unknown): Promise<unknown> => {
         check({ condition: this.active() && state.phase === 'accepted', code: 'CANCELLED' });
         check({ condition: this.invocations.size < CALLBACK_LIMIT && this.nextInvocation <= 1024, code: 'RESOURCE_EXHAUSTED' });
-        const packed = pack({ plan: inputPlan, value: input, allocate: () => {
-          throw new Error('Finite callback input required');
-        } });
+        const packed = pack({
+          plan: inputPlan,
+          value: input,
+          allocate: () => {
+            throw new Error('Finite callback input required');
+          },
+        });
         const invocation = this.nextInvocation++, result = deferred<unknown>();
         this.invocations.set(invocation, { result, plan: resultPlan });
         try {
@@ -213,22 +217,24 @@ export class RpcConversation {
     }
     state.phase = 'stopping'; state.pendingBytes = undefined;
     const sending = state.sending;
-    this.task({ run: async () => {
-      try {
-        if (isStream(state.capability)) {
-          if (state.reader) await state.reader.cancel();
-          else await (state.value as ReadableStream<unknown>).cancel();
-        }
-      } finally {
-        // A STOP acknowledgement cannot overtake a fragment already queued.
-        await sending?.catch(() => {});
-        state.phase = 'terminal';
+    this.task({
+      run: async () => {
         try {
-          state.reader?.releaseLock();
-        } catch { /* A cancelled pull may still be settling. */ }
-        if (acknowledge && this.active()) await this.send({ frame: { type: 'stopped', id } });
-      }
-    } });
+          if (isStream(state.capability)) {
+            if (state.reader) await state.reader.cancel();
+            else await (state.value as ReadableStream<unknown>).cancel();
+          }
+        } finally {
+        // A STOP acknowledgement cannot overtake a fragment already queued.
+          await sending?.catch(() => {});
+          state.phase = 'terminal';
+          try {
+            state.reader?.releaseLock();
+          } catch { /* A cancelled pull may still be settling. */ }
+          if (acknowledge && this.active()) await this.send({ frame: { type: 'stopped', id } });
+        }
+      },
+    });
   }
   private stopImport({ id }: { id: number }): Promise<void> {
     const state = this.imports.get(id); if (!state || phaseIs({ phase: state.phase, expected: 'terminal' })) return Promise.resolve();
@@ -248,54 +254,56 @@ export class RpcConversation {
     if (!state || state.capability.kind !== 'stream') throw new Error('Unknown stream');
     const capability = state.capability, previousSend = state.sending;
     state.phase = 'pulling'; state.sequence = sequence;
-    this.task({ run: async () => {
-      if (previousSend) await previousSend;
-      if (!this.active() || state.phase !== 'pulling') return;
-      state.reader ??= (state.value as ReadableStream<unknown>).getReader();
-      let item: unknown, ended = false;
-      if (capability.mode === 'bytes' && state.pendingBytes && state.offset < state.pendingBytes.length) {
-        item = state.pendingBytes.subarray(state.offset, state.offset + BYTE_SEGMENT); state.offset += (item as Uint8Array).length;
-      } else {
-        state.pendingBytes = undefined; state.offset = 0;
-        let next = await state.reader.read();
-        let skipped = 0;
-        while (!next.done && capability.mode === 'bytes' && next.value instanceof Uint8Array && next.value.length === 0) {
+    this.task({
+      run: async () => {
+        if (previousSend) await previousSend;
+        if (!this.active() || state.phase !== 'pulling') return;
+        state.reader ??= (state.value as ReadableStream<unknown>).getReader();
+        let item: unknown, ended = false;
+        if (capability.mode === 'bytes' && state.pendingBytes && state.offset < state.pendingBytes.length) {
+          item = state.pendingBytes.subarray(state.offset, state.offset + BYTE_SEGMENT); state.offset += (item as Uint8Array).length;
+        } else {
+          state.pendingBytes = undefined; state.offset = 0;
+          let next = await state.reader.read();
+          let skipped = 0;
+          while (!next.done && capability.mode === 'bytes' && next.value instanceof Uint8Array && next.value.length === 0) {
           // A zero-length byte chunk carries no data. Yield periodically without granting more wire credit.
+            if (!this.active() || state.phase !== 'pulling') return;
+            if (++skipped % 64 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
+            next = await state.reader.read();
+          }
           if (!this.active() || state.phase !== 'pulling') return;
-          if (++skipped % 64 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
-          next = await state.reader.read();
+          ended = next.done === true; item = next.value;
+          if (!ended && capability.mode === 'bytes') {
+            check({ condition: item instanceof Uint8Array && item.buffer instanceof ArrayBuffer && item.length > 0, code: 'INVALID_ARGUMENT' });
+            const bytes = item as Uint8Array;
+            // Retain one source-owned chunk, never concatenate an unbounded stream.
+            state.pendingBytes = bytes; item = bytes.subarray(0, BYTE_SEGMENT); state.offset = (item as Uint8Array).length;
+          }
         }
         if (!this.active() || state.phase !== 'pulling') return;
-        ended = next.done === true; item = next.value;
-        if (!ended && capability.mode === 'bytes') {
-          check({ condition: item instanceof Uint8Array && item.buffer instanceof ArrayBuffer && item.length > 0, code: 'INVALID_ARGUMENT' });
-          const bytes = item as Uint8Array;
-          // Retain one source-owned chunk, never concatenate an unbounded stream.
-          state.pendingBytes = bytes; item = bytes.subarray(0, BYTE_SEGMENT); state.offset = (item as Uint8Array).length;
+        if (ended) {
+          state.phase = 'terminal'; state.reader.releaseLock();
+          await this.send({ frame: { type: 'end', id, sequence } }); return;
         }
-      }
-      if (!this.active() || state.phase !== 'pulling') return;
-      if (ended) {
-        state.phase = 'terminal'; state.reader.releaseLock();
-        await this.send({ frame: { type: 'end', id, sequence } }); return;
-      }
-      const parsed = capability.item.parse(item);
-      if (!this.active() || state.phase !== 'pulling') return;
-      const value = decode({ bytes: encode({ value: parsed, limit: VALUE_BYTES }) });
-      check({ condition: references({ value }).size === 0, code: 'INVALID_ARGUMENT' });
-      state.phase = 'accepted';
-      const bytes = encode({ value, limit: VALUE_BYTES });
-      const sent = Promise.resolve().then(async () => {
-        if (capability.mode === 'bytes' || bytes.length <= TRANSFER_BYTES) {
-          await this.send({ frame: { type: 'item', id, sequence, value } }); return;
-        }
-        for (let offset = 0; offset < bytes.length; offset += TRANSFER_BYTES) {
-          if (!this.active() || phaseIs({ phase: state.phase, expected: 'stopping' }) || phaseIs({ phase: state.phase, expected: 'terminal' })) return;
-          await this.send({ frame: { type: 'item-fragment', id, sequence, total: bytes.length, offset, data: bytes.subarray(offset, offset + TRANSFER_BYTES) } });
-        }
-      }); state.sending = sent;
-      await sent; if (state.sending === sent) state.sending = undefined;
-    } });
+        const parsed = capability.item.parse(item);
+        if (!this.active() || state.phase !== 'pulling') return;
+        const value = decode({ bytes: encode({ value: parsed, limit: VALUE_BYTES }) });
+        check({ condition: references({ value }).size === 0, code: 'INVALID_ARGUMENT' });
+        state.phase = 'accepted';
+        const bytes = encode({ value, limit: VALUE_BYTES });
+        const sent = Promise.resolve().then(async () => {
+          if (capability.mode === 'bytes' || bytes.length <= TRANSFER_BYTES) {
+            await this.send({ frame: { type: 'item', id, sequence, value } }); return;
+          }
+          for (let offset = 0; offset < bytes.length; offset += TRANSFER_BYTES) {
+            if (!this.active() || phaseIs({ phase: state.phase, expected: 'stopping' }) || phaseIs({ phase: state.phase, expected: 'terminal' })) return;
+            await this.send({ frame: { type: 'item-fragment', id, sequence, total: bytes.length, offset, data: bytes.subarray(offset, offset + TRANSFER_BYTES) } });
+          }
+        }); state.sending = sent;
+        await sent; if (state.sending === sent) state.sending = undefined;
+      },
+    });
   }
   private receiveItem({ id, sequence, value, ended }: { id: number; sequence: number; value: WireValue; ended: boolean }): void {
     const state = this.imports.get(id);
@@ -318,8 +326,11 @@ export class RpcConversation {
   }
   private receiveFragment({ id, sequence, total, offset, data }: { id: number; sequence: number; total: number; offset: number; data: Uint8Array }): void {
     const state = this.imports.get(id);
-    check({ condition: state?.capability.kind === 'stream' && state.capability.mode === 'items' && state.granted && sequence === state.sequence &&
-      (state.phase === 'pulling' || state.phase === 'stopping'), code: 'PROTOCOL_ERROR' });
+    check({
+      condition: state?.capability.kind === 'stream' && state.capability.mode === 'items' && state.granted && sequence === state.sequence &&
+      (state.phase === 'pulling' || state.phase === 'stopping'),
+      code: 'PROTOCOL_ERROR',
+    });
     if (!state) throw new Error('Missing item stream');
     if (!state.fragment) {
       check({ condition: offset === 0 && total > TRANSFER_BYTES, code: 'PROTOCOL_ERROR' });
@@ -342,8 +353,11 @@ export class RpcConversation {
   }
   private invoke({ id, invocation, value }: { id: number; invocation: number; value: WireValue }): void {
     const target = this.exports.get(id);
-    check({ condition: target?.capability.kind === 'callback' && target.phase === 'accepted' &&
-      invocation > this.lastInvocation && invocation <= 1024, code: 'PROTOCOL_ERROR' });
+    check({
+      condition: target?.capability.kind === 'callback' && target.phase === 'accepted' &&
+      invocation > this.lastInvocation && invocation <= 1024,
+      code: 'PROTOCOL_ERROR',
+    });
     this.lastInvocation = invocation;
     if (!target || target.capability.kind !== 'callback') throw new Error('Callback missing');
     if (this.callbacksRunning >= CALLBACK_LIMIT) {
@@ -353,64 +367,86 @@ export class RpcConversation {
     const resultPlan = compile({ schema: target.capability.result, capabilitiesAllowed: false, callbacksAllowed: false });
     check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     this.callbacksRunning++;
-    this.task({ run: async () => {
-      try {
-        const input = project({ plan: inputPlan, value, proxy: () => {
-          throw new Error('No nested capabilities');
-        } }).value;
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Invoke the locally registered callback with the one argument defined by its schema, not an extra wrapper object.
-        const result: unknown = await (target.value as (input: unknown) => unknown)(input);
-        if (!this.active()) return;
-        const packed = pack({ plan: resultPlan, value: result, allocate: () => {
-          throw new Error('No nested capabilities');
-        } });
-        await this.send({ frame: { type: 'returned', invocation, value: packed.value } });
-      } catch {
-        if (this.active()) await this.send({ frame: { type: 'raised', invocation } });
-      } finally {
-        this.callbacksRunning--;
-      }
-    } });
+    this.task({
+      run: async () => {
+        try {
+          const input = project({
+            plan: inputPlan,
+            value,
+            proxy: () => {
+              throw new Error('No nested capabilities');
+            },
+          }).value;
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Invoke the locally registered callback with the one argument defined by its schema, not an extra wrapper object.
+          const result: unknown = await (target.value as (input: unknown) => unknown)(input);
+          if (!this.active()) return;
+          const packed = pack({
+            plan: resultPlan,
+            value: result,
+            allocate: () => {
+              throw new Error('No nested capabilities');
+            },
+          });
+          await this.send({ frame: { type: 'returned', invocation, value: packed.value } });
+        } catch {
+          if (this.active()) await this.send({ frame: { type: 'raised', invocation } });
+        } finally {
+          this.callbacksRunning--;
+        }
+      },
+    });
   }
   private notify({ name, value }: { name: string; value: unknown }): void {
     if (!this.active()) return;
     const plan = this.method?.notifications.get(name); if (!plan) throw new Error('Undeclared notification');
-    const packed = pack({ plan, value, allocate: () => {
-      throw new Error('Finite notification required');
-    } });
+    const packed = pack({
+      plan,
+      value,
+      allocate: () => {
+        throw new Error('Finite notification required');
+      },
+    });
     encode({ value: packed.value, limit: VALUE_BYTES }); this.notices.set(name, packed.value);
     if (this.noticeSending) return; this.noticeSending = true;
-    this.task({ run: async () => {
-      try {
-        while (this.active() && this.notices.size) {
-          const [key, item] = this.notices.entries().next().value!; this.notices.delete(key);
-          await this.send({ frame: { type: 'notice', name: key, value: item } });
+    this.task({
+      run: async () => {
+        try {
+          while (this.active() && this.notices.size) {
+            const [key, item] = this.notices.entries().next().value!; this.notices.delete(key);
+            await this.send({ frame: { type: 'notice', name: key, value: item } });
+          }
+        } finally {
+          this.noticeSending = false; this.notices.clear();
         }
-      } finally {
-        this.noticeSending = false; this.notices.clear();
-      }
-    } });
+      },
+    });
   }
   private notice({ name, value }: { name: string; value: WireValue }): void {
     check({ condition: isCaller({ role: this.role }), code: 'PROTOCOL_ERROR' });
     encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     const plan = this.method?.notifications.get(name); if (!plan) return;
-    const output = project({ plan, value, proxy: () => {
-      throw new Error('No capabilities in notifications');
-    } }).value;
+    const output = project({
+      plan,
+      value,
+      proxy: () => {
+        throw new Error('No capabilities in notifications');
+      },
+    }).value;
     const observer = this.observers[name]; if (!observer) return;
     const slot = this.observed.get(name) ?? { running: false, latest: undefined, present: false };
     slot.latest = output as WireValue; slot.present = true; this.observed.set(name, slot);
     if (slot.running) return; slot.running = true;
-    this.task({ run: async () => {
-      try {
-        while (slot.present && this.active()) {
-          const value = slot.latest; slot.latest = undefined; slot.present = false; await observer({ value });
+    this.task({
+      run: async () => {
+        try {
+          while (slot.present && this.active()) {
+            const value = slot.latest; slot.latest = undefined; slot.present = false; await observer({ value });
+          }
+        } finally {
+          slot.running = false; slot.latest = undefined; slot.present = false;
         }
-      } finally {
-        slot.running = false; slot.latest = undefined; slot.present = false;
-      }
-    } });
+      },
+    });
   }
   private streamsTerminal({ scope, direction }: { scope: Scope; direction: 'export' | 'import' }): boolean {
     const values = (() => {
@@ -469,9 +505,11 @@ export class RpcConversation {
       // a failed lower abort for successful resource retirement.
       this.retirementFailure ??= { error };
     }
-    this.task({ run: async () => {
-      await this.channel.stop({ error: this.failure }); this.channel.release();
-    } });
+    this.task({
+      run: async () => {
+        await this.channel.stop({ error: this.failure }); this.channel.release();
+      },
+    });
     this.closed.reject(this.failure); this.maybeRetire();
   }
   private async handle({ frame }: { frame: Frame }): Promise<void> {
@@ -482,8 +520,11 @@ export class RpcConversation {
         this.failure ??= frame.details === undefined ? new NaidanRpcError({ code: frame.code }) : new NaidanRpcPublicError({ code: frame.code, details: frame.details }); this.result.reject(this.failure);
         this.cancelCapabilities({ error: this.failure }); this.finishReceived = 'error';
       } else {
-        check({ condition: isCaller({ role: this.role }) && this.resultReceived && this.callbacksRunning === 0 && this.invocations.size === 0 &&
-          this.streamsTerminal({ scope: 'result', direction: 'import' }) && this.streamsTerminal({ scope: 'input', direction: 'export' }), code: 'PROTOCOL_ERROR' });
+        check({
+          condition: isCaller({ role: this.role }) && this.resultReceived && this.callbacksRunning === 0 && this.invocations.size === 0 &&
+          this.streamsTerminal({ scope: 'result', direction: 'import' }) && this.streamsTerminal({ scope: 'input', direction: 'export' }),
+          code: 'PROTOCOL_ERROR',
+        });
         this.finishReceived = 'success';
       }
       void this.send({ frame: { type: 'ack' } }).then(() => this.channel.finish()).catch(() => this.abort({ code: 'TRANSPORT_ERROR' })); return;
@@ -518,25 +559,27 @@ export class RpcConversation {
       } catch {
         this.reject({ error: new NaidanRpcError({ code: 'INVALID_ARGUMENT' }) }); return;
       }
-      this.task({ run: async () => {
-        if (!this.active()) return;
-        this.controller.signal.throwIfAborted();
-        this.resolveMethod({ contract: frame.contract, method: frame.method });
-        if (!method.handler) throw new Error('Missing handler');
-        const notify = Object.fromEntries([...method.notifications.keys()].map(name => [name, ({ value }: { value: unknown }) => this.notify({ name, value })]));
-        const result = await method.handler({ input, notify, signal: this.controller.signal });
-        const packed = pack({ plan: method.result, value: result, allocate: () => this.allocate() });
-        this.register({ packed, scope: 'result' });
-        if (!this.active()) {
+      this.task({
+        run: async () => {
+          if (!this.active()) return;
+          this.controller.signal.throwIfAborted();
+          this.resolveMethod({ contract: frame.contract, method: frame.method });
+          if (!method.handler) throw new Error('Missing handler');
+          const notify = Object.fromEntries([...method.notifications.keys()].map(name => [name, ({ value }: { value: unknown }) => this.notify({ name, value })]));
+          const result = await method.handler({ input, notify, signal: this.controller.signal });
+          const packed = pack({ plan: method.result, value: result, allocate: () => this.allocate() });
+          this.register({ packed, scope: 'result' });
+          if (!this.active()) {
           // A handler may settle after cancellation/revocation. Its returned
           // streams still transfer ownership to this call, even though no result
           // will be offered. Cancel without pulling and join every source task.
-          for (const [id, state] of this.exports) if (state.scope === 'result' && isStream(state.capability)) this.stopExport({ id, acknowledge: false });
-          return;
-        }
-        this.resultOffered = true;
-        await this.send({ frame: { type: 'result', value: packed.value } }); this.handlerReturned = true;
-      } }); return;
+            for (const [id, state] of this.exports) if (state.scope === 'result' && isStream(state.capability)) this.stopExport({ id, acknowledge: false });
+            return;
+          }
+          this.resultOffered = true;
+          await this.send({ frame: { type: 'result', value: packed.value } }); this.handlerReturned = true;
+        },
+      }); return;
     }
     case 'result': {
       check({ condition: isCaller({ role: this.role }) && this.inputAccepted && !this.resultReceived && this.method, code: 'PROTOCOL_ERROR' });
@@ -570,9 +613,13 @@ export class RpcConversation {
         pending.result.reject(new NaidanRpcError({ code: 'HANDLER_FAILED' })); break;
       case 'returned': {
         const value = wireValue({ value: frame.value }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
-        const projected = project({ plan: pending.plan, value, proxy: () => {
-          throw new Error('Finite callback result');
-        } }).value;
+        const projected = project({
+          plan: pending.plan,
+          value,
+          proxy: () => {
+            throw new Error('Finite callback result');
+          },
+        }).value;
         // Keep ownership until validation succeeds so abort rejects a callback
         // awaiting a malformed return and can join its handler.
         this.invocations.delete(frame.invocation);

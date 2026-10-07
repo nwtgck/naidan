@@ -44,8 +44,10 @@ function imageSizeFieldBytes({ name, values }: { name: string; values: Array<[nu
   return JSON.stringify({ name, snapshot: { status: 'image-sizes', values } }).length;
 }
 export const generationCaptureContextSchema = z.object({
-  runId: boundedId, workerEpoch: z.number().int().positive(),
-  requestId: boundedId, generationCallId: z.number().int().positive(),
+  runId: boundedId,
+  workerEpoch: z.number().int().positive(),
+  requestId: boundedId,
+  generationCallId: z.number().int().positive(),
 }).strict();
 export const generationCaptureLimitsSchema = z.object({
   maxCalls: z.number().int().min(1).max(32),
@@ -97,7 +99,8 @@ const missingReasonSchema = z.enum([
   'unsupported-dtype', 'invalid-shape', 'invalid-data', 'shared-buffer', 'tensor-limit', 'total-tensor-limit', 'metadata-limit',
 ]);
 const capturedTensorSchema = z.object({
-  status: z.literal('captured'), dtype: z.enum(['float32', 'float64', 'float16', 'int64', 'uint64', 'int32', 'uint32', 'int16', 'uint16', 'int8', 'uint8', 'bool']),
+  status: z.literal('captured'),
+  dtype: z.enum(['float32', 'float64', 'float16', 'int64', 'uint64', 'int32', 'uint32', 'int16', 'uint16', 'int8', 'uint8', 'bool']),
   dims: z.array(z.number().int().nonnegative()).max(8),
   byteLength: z.number().int().nonnegative().max(16 * 1024 * 1024),
   bytes: z.instanceof(Uint8Array),
@@ -134,23 +137,36 @@ const propertySchema = z.discriminatedUnion('status', [
 const settingsSchema = z.object({
   requested: z.object({ maxCompletionTokens: propertySchema, temperature: propertySchema, topP: propertySchema }).strict(),
   budget: z.object({
-    maxNewTokens: z.number().finite().optional(), source: z.enum(['explicit', 'model-context', 'transformers-default']),
-    contextLimit: z.number().finite().optional(), promptTokenCount: z.number().finite().optional(),
-    pastTokenCount: z.number().finite(), usedContextTokenCount: z.number().finite().optional(),
+    maxNewTokens: z.number().finite().optional(),
+    source: z.enum(['explicit', 'model-context', 'transformers-default']),
+    contextLimit: z.number().finite().optional(),
+    promptTokenCount: z.number().finite().optional(),
+    pastTokenCount: z.number().finite(),
+    usedContextTokenCount: z.number().finite().optional(),
   }).strict(),
   kwargs: z.object({
     keys: z.object({
-      status: z.enum(['complete', 'incomplete']), totalCount: z.number().int().nonnegative(),
+      status: z.enum(['complete', 'incomplete']),
+      totalCount: z.number().int().nonnegative(),
       values: z.array(z.string().max(128)).max(64),
       incompleteReasons: z.array(z.enum(['key-count-limit', 'key-length-limit', 'symbol-key'])).max(3),
     }).strict(),
-    maxNewTokens: propertySchema, temperature: propertySchema, topP: propertySchema,
-    doSample: propertySchema, returnDictInGenerate: propertySchema,
+    maxNewTokens: propertySchema,
+    temperature: propertySchema,
+    topP: propertySchema,
+    doSample: propertySchema,
+    returnDictInGenerate: propertySchema,
   }).strict(),
 }).strict();
 const eventSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('native-stream'), identity: invocationIdentitySchema, operation: z.enum(['put', 'end', 'on_finalized_text']),
-    phase: z.enum(['entering', 'returned', 'threw']), streamCallOrdinal: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), detail: streamDetailSchema }).strict(),
+  z.object({
+    kind: z.literal('native-stream'),
+    identity: invocationIdentitySchema,
+    operation: z.enum(['put', 'end', 'on_finalized_text']),
+    phase: z.enum(['entering', 'returned', 'threw']),
+    streamCallOrdinal: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    detail: streamDetailSchema,
+  }).strict(),
   // An ordinal identifies a boundary attempt. Only entering confirms that the
   // actual native call was reached; a budget failure can have inputs alone.
   z.object({ kind: z.literal('native-call'), identity: invocationIdentitySchema, phase: z.enum(['entering', 'fulfilled', 'rejected']) }).strict(),
@@ -161,7 +177,9 @@ const eventSchema = z.discriminatedUnion('kind', [
 ]);
 type Event = z.infer<typeof eventSchema>;
 const captureSchema = runIdentitySchema.extend({
-  schemaVersion: z.literal(1), byteOrder: z.enum(['little-endian', 'big-endian']), limits: generationCaptureLimitsSchema,
+  schemaVersion: z.literal(1),
+  byteOrder: z.enum(['little-endian', 'big-endian']),
+  limits: generationCaptureLimitsSchema,
   calls: z.array(callSchema).max(32),
   events: z.array(eventSchema).max(4096),
   incompleteReasons: z.array(incompleteReasonSchema).max(incompleteReasonSchema.options.length),
@@ -311,9 +329,18 @@ const arrayTagGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symb
 const ordinaryBufferLengthGetter = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength')!.get!;
 const nativeByteOrder = new Uint8Array(Uint16Array.of(0x0102).buffer)[0] === 2 ? 'little-endian' : 'big-endian';
 const dtypeLayouts = {
-  float32: ['Float32Array', 4], float64: ['Float64Array', 8], float16: ['Uint16Array', 2],
-  int64: ['BigInt64Array', 8], uint64: ['BigUint64Array', 8], int32: ['Int32Array', 4], uint32: ['Uint32Array', 4],
-  int16: ['Int16Array', 2], uint16: ['Uint16Array', 2], int8: ['Int8Array', 1], uint8: ['Uint8Array', 1], bool: ['Uint8Array', 1],
+  float32: ['Float32Array', 4],
+  float64: ['Float64Array', 8],
+  float16: ['Uint16Array', 2],
+  int64: ['BigInt64Array', 8],
+  uint64: ['BigUint64Array', 8],
+  int32: ['Int32Array', 4],
+  uint32: ['Uint32Array', 4],
+  int16: ['Int16Array', 2],
+  uint16: ['Uint16Array', 2],
+  int8: ['Int8Array', 1],
+  uint8: ['Uint8Array', 1],
+  bool: ['Uint8Array', 1],
 } as const;
 
 /**
@@ -533,67 +560,77 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
           const invocation = {
             setNativeStreamAvailability({ availability }: { availability: NativeStreamAvailability }) {
               if (taken || call.outcome !== 'active') return;
-              recordGenerationCapture({ record: () => {
-                invocationState.stream = streamAvailabilitySchema.parse(availability);
-                if (availability.status === 'unavailable' || (availability.status === 'available' && availability.restoration !== 'pending' && availability.restoration !== 'restored')) {
-                  incompleteReasons.add('stream-hook-failed');
-                }
-              } });
+              recordGenerationCapture({
+                record: () => {
+                  invocationState.stream = streamAvailabilitySchema.parse(availability);
+                  if (availability.status === 'unavailable' || (availability.status === 'available' && availability.restoration !== 'pending' && availability.restoration !== 'restored')) {
+                    incompleteReasons.add('stream-hook-failed');
+                  }
+                },
+              });
             },
             recordNativeStream({ operation, phase, streamCallOrdinal, args }: Parameters<NativeStreamRecorder['recordNativeStream']>[0]) {
-              append({ create: () => {
-                if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');
-                return { kind: 'native-stream', identity, operation, phase, streamCallOrdinal, detail: snapshotStream({ operation, phase, streamCallOrdinal, args }) };
-              } });
+              append({
+                create: () => {
+                  if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');
+                  return { kind: 'native-stream', identity, operation, phase, streamCallOrdinal, detail: snapshotStream({ operation, phase, streamCallOrdinal, args }) };
+                },
+              });
             },
             recordNativeCall({ phase }: { phase: 'entering' | 'fulfilled' | 'rejected' }) {
               append({ create: () => ({ kind: 'native-call', identity, phase }) });
             },
             recordInputs({ phase, inputs }: { phase: 'full-conversation' | 'pre-budget' | 'native-kwargs'; inputs: Record<string, unknown> }) {
-              append({ create: () => {
-                const values: Extract<Event, { kind: 'inputs' }>['values'] = [];
-                for (const name of Reflect.ownKeys(inputs)) {
-                  if (typeof name !== 'string' || name.length > 128 || values.length >= 64) {
-                    incompleteReasons.add('input-key-limit'); continue;
+              append({
+                create: () => {
+                  const values: Extract<Event, { kind: 'inputs' }>['values'] = [];
+                  for (const name of Reflect.ownKeys(inputs)) {
+                    if (typeof name !== 'string' || name.length > 128 || values.length >= 64) {
+                      incompleteReasons.add('input-key-limit'); continue;
+                    }
+                    values.push({ name, snapshot: snapshotInput({ inputs, name }) });
                   }
-                  values.push({ name, snapshot: snapshotInput({ inputs, name }) });
-                }
-                return { kind: 'inputs', identity, phase, values };
-              } });
+                  return { kind: 'inputs', identity, phase, values };
+                },
+              });
             },
             recordSettings({ observation }: { observation: GenerationInvocationObservation }) {
               append({ create: () => ({ kind: 'settings', identity, value: settingsSchema.parse(observation) }) });
             },
             recordSequence({ result }: { result: unknown }) {
-              append({ create: () => {
-                let resultShape: Extract<Event, { kind: 'sequence' }>['resultShape'];
-                let value: unknown;
-                if (result instanceof tensorClass) {
-                  resultShape = 'tensor';
-                  value = result;
-                } else if (result !== null && typeof result === 'object') {
-                  resultShape = 'dictionary';
-                  value = ownValue({ object: result, key: 'sequences' });
-                } else {
-                  resultShape = 'unknown';
-                  value = undefined;
-                }
-                return { kind: 'sequence', identity, resultShape, snapshot: snapshotTensor({ value }) };
-              } });
+              append({
+                create: () => {
+                  let resultShape: Extract<Event, { kind: 'sequence' }>['resultShape'];
+                  let value: unknown;
+                  if (result instanceof tensorClass) {
+                    resultShape = 'tensor';
+                    value = result;
+                  } else if (result !== null && typeof result === 'object') {
+                    resultShape = 'dictionary';
+                    value = ownValue({ object: result, key: 'sequences' });
+                  } else {
+                    resultShape = 'unknown';
+                    value = undefined;
+                  }
+                  return { kind: 'sequence', identity, resultShape, snapshot: snapshotTensor({ value }) };
+                },
+              });
             },
             recordChunk({ phase, chunk }: { phase: 'strategy-output' | 'worker-send' | 'strategy-raw'; chunk: string }) {
-              append({ create: () => {
-                const remaining = limits.maxTextBytes - retainedTextBytes;
-                if (chunk.length > remaining) {
-                  incompleteReasons.add('text-limit'); return undefined;
-                }
-                const byteLength = new TextEncoder().encode(chunk).byteLength;
-                if (byteLength > remaining) {
-                  incompleteReasons.add('text-limit'); return undefined;
-                }
-                retainedTextBytes += byteLength;
-                return { kind: 'chunk', identity, phase, text: chunk };
-              } });
+              append({
+                create: () => {
+                  const remaining = limits.maxTextBytes - retainedTextBytes;
+                  if (chunk.length > remaining) {
+                    incompleteReasons.add('text-limit'); return undefined;
+                  }
+                  const byteLength = new TextEncoder().encode(chunk).byteLength;
+                  if (byteLength > remaining) {
+                    incompleteReasons.add('text-limit'); return undefined;
+                  }
+                  retainedTextBytes += byteLength;
+                  return { kind: 'chunk', identity, phase, text: chunk };
+                },
+              });
             },
           };
           currentChunkRecorder = invocation.recordChunk;
@@ -614,8 +651,14 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
       if (taken) return { status: 'already-taken' };
       if ([...calls.values()].some(call => call.outcome === 'active')) return { status: 'busy' };
       const result = generationCaptureTakeResultSchema.parse({
-        status: 'captured', capture: {
-          ...runIdentity, schemaVersion: 1, byteOrder: nativeByteOrder, limits, calls: [...calls.values()], events,
+        status: 'captured',
+        capture: {
+          ...runIdentity,
+          schemaVersion: 1,
+          byteOrder: nativeByteOrder,
+          limits,
+          calls: [...calls.values()],
+          events,
           incompleteReasons: [...incompleteReasons],
           unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
         },

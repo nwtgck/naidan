@@ -457,9 +457,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
         async reloadModule(module: unknown) {
           reloads.push(module);
         },
-        hot: { send(message: unknown) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: unknown) {
+            customMessages.push(message);
+          },
+        },
       },
     };
     const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
@@ -533,9 +535,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
           },
         },
         async reloadModule() {},
-        hot: { send(message: unknown) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: unknown) {
+            customMessages.push(message);
+          },
+        },
       },
     };
     const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
@@ -619,9 +623,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
           },
         },
         async reloadModule() {},
-        hot: { send(message: { data?: { moduleIds?: string[] } }) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: { data?: { moduleIds?: string[] } }) {
+            customMessages.push(message);
+          },
+        },
       },
     };
 

@@ -29,19 +29,28 @@ function map({ messages }: { messages: ChatMessage[] }) {
 
 describe('mapChatMessagesToPromptApi', () => {
   it('combines leading system messages and separates the final user prompt', async () => {
-    await expect(map({ messages: [
-      { id, role: 'system', parts: [text({ value: 'Global instruction' })] },
-      { id, role: 'system', parts: [text({ value: 'Chat instruction' })] },
-      { id, role: 'user', parts: [text({ value: 'First question' })] },
-      { id, role: 'assistant', parts: [text({ value: 'First answer' })] },
-      { id, role: 'user', parts: [text({ value: 'Next question' })] },
-    ] })).resolves.toEqual({ initialPrompts: [
-      { role: 'system', content: `\
+    await expect(map({
+      messages: [
+        { id, role: 'system', parts: [text({ value: 'Global instruction' })] },
+        { id, role: 'system', parts: [text({ value: 'Chat instruction' })] },
+        { id, role: 'user', parts: [text({ value: 'First question' })] },
+        { id, role: 'assistant', parts: [text({ value: 'First answer' })] },
+        { id, role: 'user', parts: [text({ value: 'Next question' })] },
+      ],
+    })).resolves.toEqual({
+      initialPrompts: [
+        {
+          role: 'system',
+          content: `\
 Global instruction
 
-Chat instruction` },
-      { role: 'user', content: 'First question' }, { role: 'assistant', content: 'First answer' },
-    ], prompt: 'Next question', inputMode: 'text' });
+Chat instruction`,
+        },
+        { role: 'user', content: 'First question' }, { role: 'assistant', content: 'First answer' },
+      ],
+      prompt: 'Next question',
+      inputMode: 'text',
+    });
   });
   it('maps a final user image attachment to a Blob prompt', async () => {
     const result = await map({ messages: [{ id, role: 'user', parts: [text({ value: 'Describe this image.' }), image({ mimeType: 'image/png', status: 'memory' })] }] });
@@ -53,11 +62,13 @@ Chat instruction` },
     await expect(content.value.text()).resolves.toBe('hello');
   });
   it('uses image session options when an earlier user message contains an image', async () => {
-    const result = await map({ messages: [
-      { id, role: 'user', parts: [text({ value: 'First image' }), image({ mimeType: 'image/jpeg', status: 'memory' })] },
-      { id, role: 'assistant', parts: [text({ value: 'I can see it.' })] },
-      { id, role: 'user', parts: [text({ value: 'What was in it?' })] },
-    ] });
+    const result = await map({
+      messages: [
+        { id, role: 'user', parts: [text({ value: 'First image' }), image({ mimeType: 'image/jpeg', status: 'memory' })] },
+        { id, role: 'assistant', parts: [text({ value: 'I can see it.' })] },
+        { id, role: 'user', parts: [text({ value: 'What was in it?' })] },
+      ],
+    });
     expect(result.inputMode).toBe('image'); expect(result.prompt).toBe('What was in it?');
     expect(result.initialPrompts[0]).toMatchObject({ role: 'user', content: [{ type: 'text', value: 'First image' }, { type: 'image' }] });
   });
@@ -93,9 +104,13 @@ Chat instruction` },
   it('rejects unsupported attachment types and aborts after a binary read', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [image({ mimeType: 'audio/wav', status: 'memory' })] }] })).rejects.toThrow('image attachment');
     const controller = new AbortController();
-    await expect(mapChatMessagesToPromptApi({ messages: [{ id, role: 'user', parts: [image({ mimeType: 'image/png', status: 'persisted' })] }], signal: controller.signal, readBinaryObject: async () => {
-      controller.abort(); return new Blob();
-    } })).rejects.toThrow();
+    await expect(mapChatMessagesToPromptApi({
+      messages: [{ id, role: 'user', parts: [image({ mimeType: 'image/png', status: 'persisted' })] }],
+      signal: controller.signal,
+      readBinaryObject: async () => {
+        controller.abort(); return new Blob();
+      },
+    })).rejects.toThrow();
   });
   it('does not allow an interleaved system message or a missing conversation', async () => {
     await expect(map({ messages: [{ id, role: 'user', parts: [] }, { id, role: 'system', parts: [] }] })).rejects.toThrow('must precede');

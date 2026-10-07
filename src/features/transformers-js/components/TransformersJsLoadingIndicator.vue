@@ -17,13 +17,15 @@ const loadingModelId = ref(transformersJsService.getState().loadingModelId);
 let unsubscribe: (() => void) | null = null;
 
 onMounted(() => {
-  unsubscribe = transformersJsService.subscribe({ listener: ({ status: s, progress: p, error: e, isLoadingFromCache: l, loadingModelId: lm }) => {
-    status.value = s;
-    progress.value = p;
-    error.value = e;
-    isLoadingFromCache.value = l;
-    loadingModelId.value = lm;
-  } });
+  unsubscribe = transformersJsService.subscribe({
+    listener: ({ status: s, progress: p, error: e, isLoadingFromCache: l, loadingModelId: lm }) => {
+      status.value = s;
+      progress.value = p;
+      error.value = e;
+      isLoadingFromCache.value = l;
+      loadingModelId.value = lm;
+    },
+  });
 });
 
 onUnmounted(() => {

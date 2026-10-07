@@ -324,16 +324,21 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
     setEvidenceFile({ files, path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, content: createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-run', runId: run.runId } }) });
   }
   const providerCapture = run.productionProviderCapture === undefined ? undefined : createProductionProviderCaptureEvidence({
-    capture: run.productionProviderCapture, runId: run.runId, modelId: run.modelId,
+    capture: run.productionProviderCapture,
+    runId: run.runId,
+    modelId: run.modelId,
   });
   if (providerCapture !== undefined) setEvidenceFile({ files, path: PRODUCTION_PROVIDER_CAPTURE_EVIDENCE_PATH, content: providerCapture.json });
   // Keep the bounded collection summary even when the Provider encoder refused
   // its larger snapshot. Its dedicated codec preserves known own-undefined fields.
   const providerSummary = run.productionProviderInvestigation === undefined ? undefined : createProductionProviderInvestigationSummaryEvidence({
-    summary: run.productionProviderInvestigation, runId: run.runId, modelId: run.modelId,
+    summary: run.productionProviderInvestigation,
+    runId: run.runId,
+    modelId: run.modelId,
   });
   const providerSummaryReference = providerSummary === undefined ? undefined : productionProviderInvestigationSummaryReferenceSchema.parse({
-    format: 'production-provider-investigation-summary-reference-v1', path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH,
+    format: 'production-provider-investigation-summary-reference-v1',
+    path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH,
   });
   if (providerSummary !== undefined) setEvidenceFile({ files, path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH, content: providerSummary.json });
   const native = nativeEvidence === undefined ? undefined : await (async () => {
@@ -353,8 +358,10 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
   case 'ordinary-provider-load': {
     const actual = ordinaryProviderRuntimeCompletionSchema.parse(run.downloadEvidence.runtimeCompletion);
     const expected = ordinaryProviderRuntimeCompletionSchema.parse(providerLoadRuntimeCompletion({
-      repositoryResolvedRevision: run.downloadEvidence.run.resolvedRevision, provider: run.productionProviderCapture,
-      summary: run.productionProviderInvestigation, nativeJson: native?.json,
+      repositoryResolvedRevision: run.downloadEvidence.run.resolvedRevision,
+      provider: run.productionProviderCapture,
+      summary: run.productionProviderInvestigation,
+      nativeJson: native?.json,
     }));
     if (run.downloadEvidence.mode !== 'runtime-complete' || JSON.stringify(actual) !== JSON.stringify(expected)) {
       throw new Error('Provider Load receipt does not match its investigation Evidence owner');
@@ -507,53 +514,65 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
   setEvidenceFile({ files, path: 'execution.json', content: `${JSON.stringify(execution, undefined, 2)}\n` });
   setEvidenceFile({ files, path: "READINESS.md", content: renderEvidenceReadinessMarkdown({ report: readiness }) });
   setEvidenceFile({ files, path: "readiness.json", content: `${JSON.stringify(readiness, undefined, 2)}\n` });
-  setEvidenceFile({ files, path: "questions.json", content: `${JSON.stringify(readiness.domains.flatMap(domainReadiness => (
-    domainReadiness.questions.map(question => ({ domainId: domainReadiness.domainId, ...question }))
-  )), undefined, 2)}\n` });
+  setEvidenceFile({
+    files,
+    path: "questions.json",
+    content: `${JSON.stringify(readiness.domains.flatMap(domainReadiness => (
+      domainReadiness.questions.map(question => ({ domainId: domainReadiness.domainId, ...question }))
+    )), undefined, 2)}\n`,
+  });
   setEvidenceFile({ files, path: "support-boundaries.json", content: `${JSON.stringify(supportBoundaries, undefined, 2)}\n` });
   setEvidenceFile({ files, path: "run.json", content: `${JSON.stringify({ ...run, productionProviderCapture: providerCapture?.reference, productionProviderNativeCapture: native?.reference, productionProviderInvestigation: providerSummaryReference }, undefined, 2)}\n` });
   if (run.requestedConfiguration !== undefined || run.executionPlan !== undefined) {
-    setEvidenceFile({ files, path: "execution-policy/policy.json", content: `${JSON.stringify({
-      requestedConfiguration: run.requestedConfiguration,
-      effectiveExecutionPlan: run.executionPlan,
-    }, undefined, 2)}\n` });
+    setEvidenceFile({
+      files,
+      path: "execution-policy/policy.json",
+      content: `${JSON.stringify({
+        requestedConfiguration: run.requestedConfiguration,
+        effectiveExecutionPlan: run.executionPlan,
+      }, undefined, 2)}\n`,
+    });
   }
   if (recovery !== undefined) {
     setEvidenceFile({ files, path: "recovery/checkpoint.json", content: `${JSON.stringify(recovery, undefined, 2)}\n` });
   }
-  setEvidenceFile({ files, path: "errors.json", content: `${JSON.stringify({
-    runError: run.error,
-    stepErrors: run.stepErrors,
-    loadAttemptErrors: run.loadAttempts
-      .filter(attempt => attempt.error !== undefined)
-      .map(attempt => ({
-        attemptId: attempt.attemptId,
-        candidateId: attempt.candidateId,
-        failureStage: attempt.failureStage,
-        error: attempt.error,
-      })),
-    activeLoadAttemptError: run.activeLoadAttempt?.error === undefined
-      ? undefined
-      : {
-        attemptId: run.activeLoadAttempt.attemptId,
-        candidateId: run.activeLoadAttempt.candidateId,
-        currentStage: run.activeLoadAttempt.currentStage,
-        error: run.activeLoadAttempt.error,
-      },
-    inputStrategyErrors: inputStrategyErrorRecords({ run }),
-    postAttemptCacheErrors: postAttemptCacheErrorRecords({ run }),
-    naturalGenerationErrors: naturalGenerationErrorRecords({ run }),
-    toolProtocolProbeErrors: toolProtocolProbeErrorRecords({ run }),
-    productionLaneError: run.productionLane.error,
-    productionFirstTurnError: firstTurnError({ run }),
-    productionContinuityError: continuityError({ run }),
-    persistenceRoundTripError: persistenceRoundTripError({ run }),
-    productionToolResultContinuationError: toolResultContinuationError({ run }),
-    productionReasoningError: reasoningError({ run }),
-    productionReasoningEffortErrors: reasoningEffortErrorRecords({ run }),
-    productionMultimodalError: multimodalError({ run }),
-    interruptionError: recovery?.interruption?.error,
-  }, undefined, 2)}\n` });
+  setEvidenceFile({
+    files,
+    path: "errors.json",
+    content: `${JSON.stringify({
+      runError: run.error,
+      stepErrors: run.stepErrors,
+      loadAttemptErrors: run.loadAttempts
+        .filter(attempt => attempt.error !== undefined)
+        .map(attempt => ({
+          attemptId: attempt.attemptId,
+          candidateId: attempt.candidateId,
+          failureStage: attempt.failureStage,
+          error: attempt.error,
+        })),
+      activeLoadAttemptError: run.activeLoadAttempt?.error === undefined
+        ? undefined
+        : {
+          attemptId: run.activeLoadAttempt.attemptId,
+          candidateId: run.activeLoadAttempt.candidateId,
+          currentStage: run.activeLoadAttempt.currentStage,
+          error: run.activeLoadAttempt.error,
+        },
+      inputStrategyErrors: inputStrategyErrorRecords({ run }),
+      postAttemptCacheErrors: postAttemptCacheErrorRecords({ run }),
+      naturalGenerationErrors: naturalGenerationErrorRecords({ run }),
+      toolProtocolProbeErrors: toolProtocolProbeErrorRecords({ run }),
+      productionLaneError: run.productionLane.error,
+      productionFirstTurnError: firstTurnError({ run }),
+      productionContinuityError: continuityError({ run }),
+      persistenceRoundTripError: persistenceRoundTripError({ run }),
+      productionToolResultContinuationError: toolResultContinuationError({ run }),
+      productionReasoningError: reasoningError({ run }),
+      productionReasoningEffortErrors: reasoningEffortErrorRecords({ run }),
+      productionMultimodalError: multimodalError({ run }),
+      interruptionError: recovery?.interruption?.error,
+    }, undefined, 2)}\n`,
+  });
   const investigationEvents = recovery?.events.map(event => ({
     eventKind: "investigation-event" as const,
     ...event,
@@ -583,10 +602,14 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
       setEvidenceFile({ files, path: "runtime-assets/asset-identity.json", content: `${JSON.stringify(run.runtimeAssets.assetIdentity, undefined, 2)}\n` });
     }
     setEvidenceFile({ files, path: "runtime-assets/environment.json", content: `${JSON.stringify(run.runtimeAssets.environment, undefined, 2)}\n` });
-    setEvidenceFile({ files, path: "runtime-assets/backend-controls.json", content: `${JSON.stringify({
-      wasm: run.runtimeAssets.control,
-      webgpu: run.runtimeAssets.webGpuControl,
-    }, undefined, 2)}\n` });
+    setEvidenceFile({
+      files,
+      path: "runtime-assets/backend-controls.json",
+      content: `${JSON.stringify({
+        wasm: run.runtimeAssets.control,
+        webgpu: run.runtimeAssets.webGpuControl,
+      }, undefined, 2)}\n`,
+    });
   } else if (run.runtimeAssetsPartial !== undefined) {
     setEvidenceFile({ files, path: "runtime-assets/preflight-partial.json", content: `${JSON.stringify(run.runtimeAssetsPartial, undefined, 2)}\n` });
     if (run.runtimeAssetsPartial.assetIdentity !== undefined) {
@@ -596,10 +619,14 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
       setEvidenceFile({ files, path: "runtime-assets/environment.json", content: `${JSON.stringify(run.runtimeAssetsPartial.environment, undefined, 2)}\n` });
     }
     if (run.runtimeAssetsPartial.control !== undefined || run.runtimeAssetsPartial.webGpuControl !== undefined) {
-      setEvidenceFile({ files, path: "runtime-assets/backend-controls.json", content: `${JSON.stringify({
-        wasm: run.runtimeAssetsPartial.control,
-        webgpu: run.runtimeAssetsPartial.webGpuControl,
-      }, undefined, 2)}\n` });
+      setEvidenceFile({
+        files,
+        path: "runtime-assets/backend-controls.json",
+        content: `${JSON.stringify({
+          wasm: run.runtimeAssetsPartial.control,
+          webgpu: run.runtimeAssetsPartial.webGpuControl,
+        }, undefined, 2)}\n`,
+      });
     }
   }
   if (run.repository !== undefined) {
@@ -625,12 +652,20 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     setEvidenceFile({ files, path: "runtime-assets/class-capabilities.json", content: `${JSON.stringify(run.declarations.classCapabilities, undefined, 2)}\n` });
   }
   if (run.templateBehavior !== undefined) {
-    setEvidenceFile({ files, path: "template-behavior/matrix.json", content: `${JSON.stringify(run.templateBehavior, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "template-behavior/matrix.json",
+      content: `${JSON.stringify(run.templateBehavior, undefined, 2)}
+`,
+    });
   }
   if (run.modelFilePlan !== undefined) {
-    setEvidenceFile({ files, path: "model-files/plans.json", content: `${JSON.stringify(run.modelFilePlan, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "model-files/plans.json",
+      content: `${JSON.stringify(run.modelFilePlan, undefined, 2)}
+`,
+    });
   }
   {
     const observation = productionObservation({ run });
@@ -665,12 +700,20 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     }
   }
   if (run.persistenceRoundTrip !== undefined) {
-    setEvidenceFile({ files, path: "continuity/persistence-roundtrip.json", content: `${JSON.stringify(run.persistenceRoundTrip, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "continuity/persistence-roundtrip.json",
+      content: `${JSON.stringify(run.persistenceRoundTrip, undefined, 2)}
+`,
+    });
   }
   if (run.laneComparison !== undefined) {
-    setEvidenceFile({ files, path: "lane-comparison/comparison.json", content: `${JSON.stringify(run.laneComparison, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "lane-comparison/comparison.json",
+      content: `${JSON.stringify(run.laneComparison, undefined, 2)}
+`,
+    });
   }
   const toolProtocolProbes = run.loadAttempts
     .filter(attempt => attempt.toolProtocolProbe !== undefined)
@@ -680,19 +723,35 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
       probe: attempt.toolProtocolProbe,
     }));
   if (toolProtocolProbes.length > 0) {
-    setEvidenceFile({ files, path: "protocol-probes/tool.json", content: `${JSON.stringify(toolProtocolProbes, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "protocol-probes/tool.json",
+      content: `${JSON.stringify(toolProtocolProbes, undefined, 2)}
+`,
+    });
   }
   if (run.activeLoadAttempt !== undefined) {
-    setEvidenceFile({ files, path: "load-attempts/active.json", content: `${JSON.stringify(run.activeLoadAttempt, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "load-attempts/active.json",
+      content: `${JSON.stringify(run.activeLoadAttempt, undefined, 2)}
+`,
+    });
   }
   if (run.loadAttempts.length > 0) {
-    setEvidenceFile({ files, path: "load-attempts/index.json", content: `${JSON.stringify(run.loadAttempts, undefined, 2)}
-` });
+    setEvidenceFile({
+      files,
+      path: "load-attempts/index.json",
+      content: `${JSON.stringify(run.loadAttempts, undefined, 2)}
+`,
+    });
     for (const attempt of run.loadAttempts) {
-      setEvidenceFile({ files, path: `load-attempts/${safeFilePart({ value: attempt.attemptId })}.json`, content: `${JSON.stringify(attempt, undefined, 2)}
-` });
+      setEvidenceFile({
+        files,
+        path: `load-attempts/${safeFilePart({ value: attempt.attemptId })}.json`,
+        content: `${JSON.stringify(attempt, undefined, 2)}
+`,
+      });
     }
   }
 
@@ -709,21 +768,33 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     supportBoundaries,
     filePaths: packageFilePaths,
   });
-  setEvidenceFile({ files, path: "SUMMARY.md", content: `${summary}
+  setEvidenceFile({
+    files,
+    path: "SUMMARY.md",
+    content: `${summary}
 - Package self-assessment: ${packageAssessment.status}
-` });
+`,
+  });
   setEvidenceFile({ files, path: "PACKAGE.md", content: renderEvidencePackageAssessmentMarkdown({ assessment: packageAssessment }) });
-  setEvidenceFile({ files, path: "package-assessment.json", content: `${JSON.stringify(packageAssessment, undefined, 2)}
-` });
+  setEvidenceFile({
+    files,
+    path: "package-assessment.json",
+    content: `${JSON.stringify(packageAssessment, undefined, 2)}
+`,
+  });
 
   const manifestFiles = await createManifestFiles({ files });
-  setEvidenceFile({ files, path: "manifest.json", content: `${JSON.stringify({
-    schemaVersion: 1,
-    runId: run.runId,
-    generatedAt: run.completedAt ?? run.startedAt,
-    files: manifestFiles,
-  }, undefined, 2)}
-` });
+  setEvidenceFile({
+    files,
+    path: "manifest.json",
+    content: `${JSON.stringify({
+      schemaVersion: 1,
+      runId: run.runId,
+      generatedAt: run.completedAt ?? run.startedAt,
+      files: manifestFiles,
+    }, undefined, 2)}
+`,
+  });
 
   return {
     files,
@@ -891,22 +962,30 @@ export async function prepareBatchModelSupportEvidence({
   }
 
   setEvidenceFile({ files, path: "SUMMARY.md", content: `# Model Support Investigation batch Evidence\n\n- Batch ID: ${batchId}\n- Generated at: ${generatedAt}\n- Requested targets: ${items.length}\n- Packaged model dossiers: ${targets.filter(target => target.evidencePath !== undefined).length}\n\nEach requested target is indexed in batch.json. Targets with a captured run have a complete single-model Evidence package under models/.\n` });
-  setEvidenceFile({ files, path: "batch.json", content: `${JSON.stringify({
-    schemaVersion: 1,
-    batchId,
-    generatedAt,
-    targetCount: items.length,
-    packagedModelCount: targets.filter(target => target.evidencePath !== undefined).length,
-    targets,
-  }, undefined, 2)}\n` });
+  setEvidenceFile({
+    files,
+    path: "batch.json",
+    content: `${JSON.stringify({
+      schemaVersion: 1,
+      batchId,
+      generatedAt,
+      targetCount: items.length,
+      packagedModelCount: targets.filter(target => target.evidencePath !== undefined).length,
+      targets,
+    }, undefined, 2)}\n`,
+  });
 
   const manifestFiles = await createManifestFiles({ files });
-  setEvidenceFile({ files, path: "manifest.json", content: `${JSON.stringify({
-    schemaVersion: 1,
-    batchId,
-    generatedAt,
-    files: manifestFiles,
-  }, undefined, 2)}\n` });
+  setEvidenceFile({
+    files,
+    path: "manifest.json",
+    content: `${JSON.stringify({
+      schemaVersion: 1,
+      batchId,
+      generatedAt,
+      files: manifestFiles,
+    }, undefined, 2)}\n`,
+  });
 
   await verifyBatchEvidenceContents({ archive: createEvidenceFilesReader({ files }), batchId, items });
   return { files, fileName: `model-support-investigation-batch-${safeFilePart({ value: batchId })}.zip` };

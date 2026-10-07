@@ -1410,51 +1410,69 @@ null
 
   it("treats malformed primitive delimiters as one catchable input and resumes at later values", async () => {
     const cases = [
-      { stdinText: `\
+      {
+        stdinText: `\
 01
 2
 3
-`, stdout: `\
+`,
+        stdout: `\
 1
 2
 3
-` },
-      { stdinText: `\
+`,
+      },
+      {
+        stdinText: `\
 1.
 2
 3
-`, stdout: `\
+`,
+        stdout: `\
 1
 2
 3
-` },
-      { stdinText: `\
+`,
+      },
+      {
+        stdinText: `\
 ]
 1
 2
-`, stdout: `\
+`,
+        stdout: `\
 1
 2
-` },
-      { stdinText: `\
+`,
+      },
+      {
+        stdinText: `\
 }
 1
 2
-`, stdout: `\
+`,
+        stdout: `\
 1
 2
-` },
-      { stdinText: `\
+`,
+      },
+      {
+        stdinText: `\
 1,2
 3
 4
-`, stdout: `\
+`,
+        stdout: `\
 3
 4
-` },
-      { stdinText: `\
+`,
+      },
+      {
+        stdinText: `\
 1,"a"
-`, stdout: "" },
+`,
+        stdout: "",
+      },
     ] as const;
 
     for (const testCase of cases) {
@@ -1851,8 +1869,7 @@ null
   it("supports the recurse condition argument", async () => {
     const execution = await execute({
       filter: "[recurse(.children[]?; . != null) | .name]",
-      stdinText:
-        '{"name":"root","children":[{"name":"a","children":[]},{"name":"b"}]}\n',
+      stdinText: '{"name":"root","children":[{"name":"a","children":[]},{"name":"b"}]}\n',
     });
 
     expect(execution.stdout.text).toBe('["root","a","b"]\n');
@@ -1886,8 +1903,7 @@ null
 
   it("captures named groups and preserves unmatched groups as null", async () => {
     const execution = await execute({
-      filter:
-        '[capture("(?<key>[a-z]+)=(?<value>[0-9]+)"), ("b" | capture("(?<a>a)?b"))]',
+      filter: '[capture("(?<key>[a-z]+)=(?<value>[0-9]+)"), ("b" | capture("(?<a>a)?b"))]',
       stdinText: '"x=12"\n',
     });
 
@@ -1911,8 +1927,7 @@ null
 
   it("supports sub and gsub replacement interpolation", async () => {
     const execution = await execute({
-      filter:
-        '[sub("(?<n>[0-9]+)"; "<\\(.n)>"), gsub("a(?<n>[0-9]+)"; "<\\(.n)>")]',
+      filter: '[sub("(?<n>[0-9]+)"; "<\\(.n)>"), gsub("a(?<n>[0-9]+)"; "<\\(.n)>")]',
       stdinText: '"a12 a34"\n',
     });
 
@@ -1936,8 +1951,7 @@ null
 
   it("supports regular-expression split with jq flags", async () => {
     const execution = await execute({
-      filter:
-        '[split("[0-9]+"; ""), ("aXbxc" | split("x"; "i")), ("ab" | split(""; "n"))]',
+      filter: '[split("[0-9]+"; ""), ("aXbxc" | split("x"; "i")), ("ab" | split(""; "n"))]',
       stdinText: '"a1b22c"\n',
     });
 
@@ -1950,8 +1964,7 @@ null
 
   it("matches jq byte-oriented regex splitting edge cases", async () => {
     const execution = await execute({
-      filter:
-        '[("a1b22c333d44" | split("[0-9]+"; "l")), ("aa1日日" | split("\\\\p{L}+"; "l")), ("é日" | split(""; "")), ("abc\\n" | split("$"; ""))]',
+      filter: '[("a1b22c333d44" | split("[0-9]+"; "l")), ("aa1日日" | split("\\\\p{L}+"; "l")), ("é日" | split(""; "")), ("abc\\n" | split("$"; ""))]',
       stdinText: "null\n",
     });
 
@@ -1964,8 +1977,7 @@ null
 
   it("keeps jq end-anchor matches outside astral characters", async () => {
     const execution = await execute({
-      filter:
-        '[("🙂" | [match("$"; "g")]), ("🙂" | [scan("$")]), ("🙂" | [splits("$")]), ("🙂" | sub("$"; "Z"; "l")), ("🙂" | gsub("$"; "Z"; "l"))]',
+      filter: '[("🙂" | [match("$"; "g")]), ("🙂" | [scan("$")]), ("🙂" | [splits("$")]), ("🙂" | sub("$"; "Z"; "l")), ("🙂" | gsub("$"; "Z"; "l"))]',
       stdinText: "null\n",
     });
 
@@ -1978,8 +1990,7 @@ null
 
   it("uses jq Unicode word operators and byte-oriented boundaries", async () => {
     const execution = await execute({
-      filter:
-        '[("日" | test("\\\\w")), ("🙂" | test("\\\\W")), ("日" | [match("\\\\b"; "g")]), ("🙂" | [match("\\\\B"; "g")])]',
+      filter: '[("日" | test("\\\\w")), ("🙂" | test("\\\\W")), ("日" | [match("\\\\b"; "g")]), ("🙂" | [match("\\\\B"; "g")])]',
       stdinText: "null\n",
     });
 
@@ -1992,8 +2003,7 @@ null
 
   it("uses jq Unicode word sets inside character classes", async () => {
     const execution = await execute({
-      filter:
-        '[("é日_0" | [scan("[\\\\w]+")]), ("é日🙂" | [scan("[^\\\\W]+")]), ("é日🙂" | [scan("[\\\\W]+")]), ("é日🙂" | [scan("[^\\\\w]+")])]',
+      filter: '[("é日_0" | [scan("[\\\\w]+")]), ("é日🙂" | [scan("[^\\\\W]+")]), ("é日🙂" | [scan("[\\\\W]+")]), ("é日🙂" | [scan("[^\\\\w]+")])]',
       stdinText: "null\n",
     });
 
@@ -2006,8 +2016,7 @@ null
 
   it("uses jq Unicode decimal digit operators", async () => {
     const execution = await execute({
-      filter:
-        '[("١१１0" | [scan("\\\\d+")]), ("١a" | [scan("[\\\\d]+")]), ("١a" | [scan("[^\\\\D]+")]), ("١a" | [scan("\\\\D+")])]',
+      filter: '[("١१１0" | [scan("\\\\d+")]), ("١a" | [scan("[\\\\d]+")]), ("١a" | [scan("[^\\\\D]+")]), ("١a" | [scan("\\\\D+")])]',
       stdinText: "null\n",
     });
 
@@ -2020,8 +2029,7 @@ null
 
   it("uses jq literal h and v escape operators", async () => {
     const execution = await execute({
-      filter:
-        '[("hHVv\\u000b" | [scan("\\\\h")]), ("hHVv\\u000b" | [scan("\\\\H")]), ("hHVv\\u000b" | [scan("\\\\v")]), ("hHVv\\u000b" | [scan("\\\\V")]), ("hHVv" | [scan("[\\\\h\\\\H\\\\v\\\\V]+")])]',
+      filter: '[("hHVv\\u000b" | [scan("\\\\h")]), ("hHVv\\u000b" | [scan("\\\\H")]), ("hHVv\\u000b" | [scan("\\\\v")]), ("hHVv\\u000b" | [scan("\\\\V")]), ("hHVv" | [scan("[\\\\h\\\\H\\\\v\\\\V]+")])]',
       stdinText: "null\n",
     });
 
@@ -2034,8 +2042,7 @@ null
 
   it("uses jq control-character escape operators", async () => {
     const execution = await execute({
-      filter:
-        '[("\\u0007\\u001b ae" | [scan("\\\\a")]), ("\\u0007\\u001b ae" | [scan("\\\\e")]), ("\\u0007\\u001b ae" | [scan("[\\\\a\\\\e]+")]), ("\\u0007\\u001bX" | [scan("[^\\\\a]+")]), ("\\u0007\\u001bX" | [scan("[^\\\\e]+")])]',
+      filter: '[("\\u0007\\u001b ae" | [scan("\\\\a")]), ("\\u0007\\u001b ae" | [scan("\\\\e")]), ("\\u0007\\u001b ae" | [scan("[\\\\a\\\\e]+")]), ("\\u0007\\u001bX" | [scan("[^\\\\a]+")]), ("\\u0007\\u001bX" | [scan("[^\\\\e]+")])]',
       stdinText: "null\n",
     });
 
@@ -2048,8 +2055,7 @@ null
 
   it("uses jq any-character operators", async () => {
     const execution = await execute({
-      filter:
-        '[("a\\n\\r\\u2028🙂" | [scan("\\\\N")]), ("a\\n\\r\\u2028🙂" | [scan("\\\\O")]), ("NOn\\n🙂" | [scan("[\\\\N]")]), ("NOn\\n🙂" | [scan("[\\\\O]")])]',
+      filter: '[("a\\n\\r\\u2028🙂" | [scan("\\\\N")]), ("a\\n\\r\\u2028🙂" | [scan("\\\\O")]), ("NOn\\n🙂" | [scan("[\\\\N]")]), ("NOn\\n🙂" | [scan("[\\\\O]")])]',
       stdinText: "null\n",
     });
 
@@ -2062,8 +2068,7 @@ null
 
   it("uses jq Unicode whitespace and newline operators", async () => {
     const execution = await execute({
-      filter:
-        '[("\\u0085\\ufeff " | [scan("\\\\s")]), ("\\u0085\\ufeff " | [scan("\\\\S")]), ("\\r\\n\\u0085\\u2028\\u2029x" | [scan("\\\\R")]), ("\\u0085x" | [scan("[\\\\s]+")])]',
+      filter: '[("\\u0085\\ufeff " | [scan("\\\\s")]), ("\\u0085\\ufeff " | [scan("\\\\S")]), ("\\r\\n\\u0085\\u2028\\u2029x" | [scan("\\\\R")]), ("\\u0085x" | [scan("[\\\\s]+")])]',
       stdinText: "null\n",
     });
 
@@ -2076,8 +2081,7 @@ null
 
   it("decodes jq non-braced hexadecimal escapes as raw UTF-8 bytes", async () => {
     const execution = await execute({
-      filter:
-        '[("é日🙂AB\\ufeff" | [scan("\\\\xc3\\\\xa9"), scan("\\\\xe6\\\\x97\\\\xa5"), scan("\\\\xf0\\\\x9f\\\\x99\\\\x82"), scan("[\\\\x41\\\\x42]+"), scan("\\\\xef\\\\xbb\\\\xbf")]), ("AéB" | test("^A\\\\xc3\\\\xa9B$")), ("é" | test("^[\\\\xc3\\\\xa9]$")), ("/" | test("^\\\\xc0\\\\xaf$")), ("x" | test("^\\\\xed\\\\xa0\\\\x80$")), ("x" | test("^\\\\xf4\\\\x90\\\\x80\\\\x80$")), ("x" | test("^\\\\xf5$")), ("x" | test("^[^\\\\xc0\\\\xaf]$"))]',
+      filter: '[("é日🙂AB\\ufeff" | [scan("\\\\xc3\\\\xa9"), scan("\\\\xe6\\\\x97\\\\xa5"), scan("\\\\xf0\\\\x9f\\\\x99\\\\x82"), scan("[\\\\x41\\\\x42]+"), scan("\\\\xef\\\\xbb\\\\xbf")]), ("AéB" | test("^A\\\\xc3\\\\xa9B$")), ("é" | test("^[\\\\xc3\\\\xa9]$")), ("/" | test("^\\\\xc0\\\\xaf$")), ("x" | test("^\\\\xed\\\\xa0\\\\x80$")), ("x" | test("^\\\\xf4\\\\x90\\\\x80\\\\x80$")), ("x" | test("^\\\\xf5$")), ("x" | test("^[^\\\\xc0\\\\xaf]$"))]',
       stdinText: "null\n",
     });
 
@@ -2109,8 +2113,7 @@ null
 
   it("supports jq literal, position, and grapheme regex operators", async () => {
     const execution = await execute({
-      filter:
-        '[("CPgpqu" | [scan("\\\\C|\\\\P|\\\\g|\\\\p|\\\\q|\\\\u")]), ("x\\u0000\\u0004A" | [scan("\\\\x"), scan("(?:\\\\x)"), scan("\\\\x4"), scan("\\\\x41"), scan("\\\\x{41}"), scan("\\\\o{101}")]), (".^$*+?()[]{}|/" | test("\\\\Q.^$*+?()[]{}|/\\\\E")), ("a b#c" | test("\\\\Qa b#c\\\\E"; "x")), ("ab" | [match("\\\\G"; "g")]), ("abca" | [match("\\\\Ga"; "g")]), ("á👩‍💻क्ष" | [scan("\\\\X")]), ("á👩‍💻क्ष" | [scan("\\\\X+")])]',
+      filter: '[("CPgpqu" | [scan("\\\\C|\\\\P|\\\\g|\\\\p|\\\\q|\\\\u")]), ("x\\u0000\\u0004A" | [scan("\\\\x"), scan("(?:\\\\x)"), scan("\\\\x4"), scan("\\\\x41"), scan("\\\\x{41}"), scan("\\\\o{101}")]), (".^$*+?()[]{}|/" | test("\\\\Q.^$*+?()[]{}|/\\\\E")), ("a b#c" | test("\\\\Qa b#c\\\\E"; "x")), ("ab" | [match("\\\\G"; "g")]), ("abca" | [match("\\\\Ga"; "g")]), ("á👩‍💻क्ष" | [scan("\\\\X")]), ("á👩‍💻क्ष" | [scan("\\\\X+")])]',
       stdinText: "null\n",
     });
 
@@ -2123,8 +2126,7 @@ null
 
   it("uses jq full Unicode case folding in local modifier scopes", async () => {
     const execution = await execute({
-      filter:
-        '[("ss" | test("(?i:ß)")), ("ß" | test("(?i:ss)")), ("ssss" | [scan("(?i:[ß]+)")]), ("ﬁ" | test("(?i:fi)")), ("fi" | test("(?i:ﬁ)")), ("ssß" | test("(?i:ß)(?-i:ß)")), ("ss" | test("(?-i:ß)"; "i")), ("ß" | test("(?ix:s # ignored\\n s)")), ("ı" | test("(?i:i)")), ("ssss" | test("(?i:(ß))\\\\g<1>")), ("ßß" | test("(ß)(?i:\\\\g<1>)")), ("ssss" | test("(?i:(ß))(?-i:\\\\g<1>)")), ("fifi" | test("(?i:(ﬁ))\\\\g<1>")), ("aA" | test("(?i:(a)\\\\1)")), ("ßss" | test("(?i:(ß)\\\\1)")), ("ssss" | test("(?i:(ss)\\\\1)")), ("ßss" | test("(?i:(?<x>ß)\\\\k<x>)"))]',
+      filter: '[("ss" | test("(?i:ß)")), ("ß" | test("(?i:ss)")), ("ssss" | [scan("(?i:[ß]+)")]), ("ﬁ" | test("(?i:fi)")), ("fi" | test("(?i:ﬁ)")), ("ssß" | test("(?i:ß)(?-i:ß)")), ("ss" | test("(?-i:ß)"; "i")), ("ß" | test("(?ix:s # ignored\\n s)")), ("ı" | test("(?i:i)")), ("ssss" | test("(?i:(ß))\\\\g<1>")), ("ßß" | test("(ß)(?i:\\\\g<1>)")), ("ssss" | test("(?i:(ß))(?-i:\\\\g<1>)")), ("fifi" | test("(?i:(ﬁ))\\\\g<1>")), ("aA" | test("(?i:(a)\\\\1)")), ("ßss" | test("(?i:(ß)\\\\1)")), ("ssss" | test("(?i:(ss)\\\\1)")), ("ßss" | test("(?i:(?<x>ß)\\\\k<x>)"))]',
       stdinText: "null\n",
     });
 
@@ -2283,8 +2285,7 @@ null
 
   it("supports nonrecursive jq regular expression subexpression calls", async () => {
     const execution = await execute({
-      filter:
-        '[("aa" | match("(a)\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ba" | match("(?<x>a|b)\\\\g<x>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abab" | match("(a(b))\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abb" | match("(a(b))\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ba" | match("(a|b)\\\\g<-1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aa" | match("\\\\g<1>(a)") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ababa" | match("(a|b)\\\\g<1>+") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aa" | match("(?=(a)\\\\g<1>)aa") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aababb" | match("(a)(\\\\g<1>b)\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]])]',
+      filter: '[("aa" | match("(a)\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ba" | match("(?<x>a|b)\\\\g<x>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abab" | match("(a(b))\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abb" | match("(a(b))\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ba" | match("(a|b)\\\\g<-1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aa" | match("\\\\g<1>(a)") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ababa" | match("(a|b)\\\\g<1>+") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aa" | match("(?=(a)\\\\g<1>)aa") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aababb" | match("(a)(\\\\g<1>b)\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]])]',
       stdinText: "null\n",
     });
 
@@ -2447,8 +2448,7 @@ null
 
   it("preserves jq backreference state across subexpression calls", async () => {
     const execution = await execute({
-      filter:
-        '[("aaa" | match("(a)\\\\1\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aaa" | match("(a)\\\\g<1>\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("a" | [match("(a)?\\\\1\\\\g<1>")]), ("aaba" | match("(a)(?:\\\\g<1>b|\\\\g<1>c)\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aaca" | match("(a)(?:\\\\g<1>b|\\\\g<1>c)\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ababa" | match("(a)(b\\\\1)\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abcdefghijjj" | match("(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\\\\10\\\\g<10>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("a\\ba" | match("(a)\\\\10\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]])]',
+      filter: '[("aaa" | match("(a)\\\\1\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aaa" | match("(a)\\\\g<1>\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("a" | [match("(a)?\\\\1\\\\g<1>")]), ("aaba" | match("(a)(?:\\\\g<1>b|\\\\g<1>c)\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("aaca" | match("(a)(?:\\\\g<1>b|\\\\g<1>c)\\\\1") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("ababa" | match("(a)(b\\\\1)\\\\g<2>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("abcdefghijjj" | match("(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\\\\10\\\\g<10>") | [.string, [.captures[] | [.string,.offset,.length,.name]]]), ("a\\ba" | match("(a)\\\\10\\\\g<1>") | [.string, [.captures[] | [.string,.offset,.length,.name]]])]',
       stdinText: "null\n",
     });
 
@@ -2461,8 +2461,7 @@ null
 
   it("keeps overlapping empty backreference matches in global longest mode", async () => {
     const execution = await execute({
-      filter:
-        '[("aaa" | [match("(a?)\\\\1\\\\g<1>\\\\1"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[0].length])), ("aaaa" | [match("((a?)\\\\2)\\\\g<1>\\\\2"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[1].offset])), ("aa" | [match("(?i:((?:a)?)\\\\1)"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[0].length])), ("aa" | [scan("(?i:((?:a)?)\\\\1)"; "l")]), ("aa" | gsub("(?i:((?:a)?)\\\\1)"; "X"; "l"))]',
+      filter: '[("aaa" | [match("(a?)\\\\1\\\\g<1>\\\\1"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[0].length])), ("aaaa" | [match("((a?)\\\\2)\\\\g<1>\\\\2"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[1].offset])), ("aa" | [match("(?i:((?:a)?)\\\\1)"; "gl")] | map([.offset,.length,.captures[0].offset,.captures[0].length])), ("aa" | [scan("(?i:((?:a)?)\\\\1)"; "l")]), ("aa" | gsub("(?i:((?:a)?)\\\\1)"; "X"; "l"))]',
       stdinText: "null\n",
     });
 
@@ -3375,8 +3374,7 @@ null
 
   it("preserves whole-match operations across repeated capture history", async () => {
     const execution = await execute({
-      filter:
-        '[test("(?:(a)\\\\1|b){1,3}"), [splits("(?:(a)\\\\1|b){1,3}")], sub("(?:(a)\\\\1|b){1,3}"; "X"), gsub("(?:(a)\\\\1|b){1,3}"; "X"), split("(?:(a)\\\\1|b){1,3}"; "")]',
+      filter: '[test("(?:(a)\\\\1|b){1,3}"), [splits("(?:(a)\\\\1|b){1,3}")], sub("(?:(a)\\\\1|b){1,3}"; "X"), gsub("(?:(a)\\\\1|b){1,3}"; "X"), split("(?:(a)\\\\1|b){1,3}"; "")]',
       stdinText: '"aab"\n',
     });
 
@@ -3389,8 +3387,7 @@ null
 
   it("matches jq optional and duplicate named backreferences", async () => {
     const execution = await execute({
-      filter:
-        '[("a" | [match("(a)?\\\\1")]), ("a" | match("(a?)\\\\1") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aba" | match("(?<x>a)(?<x>b)\\\\k<x>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("bb" | match("(?:(?<x>a)|(?<x>b))\\\\k<x>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("abba" | match("(a)(b)\\\\k<-1>\\\\k<-2>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("a" | [match("\\\\1(a)")])]',
+      filter: '[("a" | [match("(a)?\\\\1")]), ("a" | match("(a?)\\\\1") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aba" | match("(?<x>a)(?<x>b)\\\\k<x>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("bb" | match("(?:(?<x>a)|(?<x>b))\\\\k<x>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("abba" | match("(a)(b)\\\\k<-1>\\\\k<-2>") | [.string,[.captures[]|[.string,.offset,.length,.name]]]), ("a" | [match("\\\\1(a)")])]',
       stdinText: "null\n",
     });
 
@@ -3403,8 +3400,7 @@ null
 
   it("preserves subexpression definition modifiers and longest overlap ranking", async () => {
     const execution = await execute({
-      filter:
-        '[("aA" | match("(?i:(a))\\\\g<1>") | [.offset,.length,.captures[0].string]), ("aA" | [match("(a)(?i:\\\\g<1>)")]), ("babab" | match("((a)?b)\\\\g<1>"; "l") | [.offset,.length,.string])]',
+      filter: '[("aA" | match("(?i:(a))\\\\g<1>") | [.offset,.length,.captures[0].string]), ("aA" | [match("(a)(?i:\\\\g<1>)")]), ("babab" | match("((a)?b)\\\\g<1>"; "l") | [.offset,.length,.string])]',
       stdinText: "null\n",
     });
 
@@ -3417,8 +3413,7 @@ null
 
   it("supports recursive jq regular expression subexpression calls", async () => {
     const execution = await execute({
-      filter:
-        '[("aaabbb" | match("(?<p>a(?:\\\\g<p>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("((x))" | match("(?<node>\\\\((?:x|\\\\g<node>)*\\\\))") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aaabbb" | match("(?<node>a(?<inner>\\\\g<node>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), (("a"*21 + "b"*21) | match("(?<p>a(?:\\\\g<p>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aaxxbb" | match("(?<node>a(?:(?<letter>x)\\\\k<letter>|\\\\g<node>)*b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]])]',
+      filter: '[("aaabbb" | match("(?<p>a(?:\\\\g<p>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("((x))" | match("(?<node>\\\\((?:x|\\\\g<node>)*\\\\))") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aaabbb" | match("(?<node>a(?<inner>\\\\g<node>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), (("a"*21 + "b"*21) | match("(?<p>a(?:\\\\g<p>)?b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]]), ("aaxxbb" | match("(?<node>a(?:(?<letter>x)\\\\k<letter>|\\\\g<node>)*b)") | [.offset,.length,.string,[.captures[]|[.string,.offset,.length,.name]]])]',
       stdinText: "null\n",
     });
 
@@ -3431,8 +3426,7 @@ null
 
   it("supports jq text-segment boundary operators", async () => {
     const execution = await execute({
-      filter:
-        '[("👩‍💻!" | [match("\\\\y"; "g")]), ("áb" | [match("\\\\Y"; "g")]), ("" | [match("\\\\y"; "g")]), ("áb" | [match("\\\\y"; "gn")])]',
+      filter: '[("👩‍💻!" | [match("\\\\y"; "g")]), ("áb" | [match("\\\\Y"; "g")]), ("" | [match("\\\\y"; "g")]), ("áb" | [match("\\\\y"; "gn")])]',
       stdinText: "null\n",
     });
 
@@ -3445,8 +3439,7 @@ null
 
   it("supports embedded jq text-segment boundary assertions", async () => {
     const execution = await execute({
-      filter:
-        '[("aba" | [match("\\\\ya";"g")] | map([.offset,.length,.string])), ("aba" | [match("a\\\\y";"g")] | map([.offset,.length,.string])), ("á" | [match("\\\\Ya";"g")] | map([.offset,.length,.string])), ("á" | [match("a\\\\Y";"g")] | map([.offset,.length,.string])), ("cba" | [match("\\\\ya|b";"g")] | map([.offset,.length,.string]))]',
+      filter: '[("aba" | [match("\\\\ya";"g")] | map([.offset,.length,.string])), ("aba" | [match("a\\\\y";"g")] | map([.offset,.length,.string])), ("á" | [match("\\\\Ya";"g")] | map([.offset,.length,.string])), ("á" | [match("a\\\\Y";"g")] | map([.offset,.length,.string])), ("cba" | [match("\\\\ya|b";"g")] | map([.offset,.length,.string]))]',
       stdinText: "null\n",
     });
 
@@ -3459,8 +3452,7 @@ null
 
   it("supports embedded jq search-start assertions", async () => {
     const execution = await execute({
-      filter:
-        '[("a" | [match("a\\\\G";"g")]), ("cba" | [match("\\\\Ga|b";"g")] | map([.offset,.length,.string])), ("cba" | [match("b|\\\\Ga";"g")] | map([.offset,.length,.string])), ("aba" | [match("\\\\Ga\\\\K";"g")] | map([.offset,.length,.string]))]',
+      filter: '[("a" | [match("a\\\\G";"g")]), ("cba" | [match("\\\\Ga|b";"g")] | map([.offset,.length,.string])), ("cba" | [match("b|\\\\Ga";"g")] | map([.offset,.length,.string])), ("aba" | [match("\\\\Ga\\\\K";"g")] | map([.offset,.length,.string]))]',
       stdinText: "null\n",
     });
 
@@ -3473,8 +3465,7 @@ null
 
   it("supports longest and reset-empty embedded jq search-start matches", async () => {
     const execution = await execute({
-      filter:
-        '[("baa" | [match("b|\\\\Gaa";"gl")] | map([.offset,.length,.string])), ("cbbba" | [match("(\\\\G)a|bb";"gl")] | map([.offset,.length,.string])), ("ax" | [match("\\\\Ga\\\\Kx|bbb";"gln")] | map([.offset,.length,.string])), ("a" | [match("\\\\Ga\\\\K";"gn")] | map([.offset,.length,.string])), ("aba" | [match("\\\\Ga\\\\K";"gn")] | map([.offset,.length,.string]))]',
+      filter: '[("baa" | [match("b|\\\\Gaa";"gl")] | map([.offset,.length,.string])), ("cbbba" | [match("(\\\\G)a|bb";"gl")] | map([.offset,.length,.string])), ("ax" | [match("\\\\Ga\\\\Kx|bbb";"gln")] | map([.offset,.length,.string])), ("a" | [match("\\\\Ga\\\\K";"gn")] | map([.offset,.length,.string])), ("aba" | [match("\\\\Ga\\\\K";"gn")] | map([.offset,.length,.string]))]',
       stdinText: "null\n",
     });
 
@@ -3487,8 +3478,7 @@ null
 
   it("supports embedded jq search-start assertions after nullable quantifiers", async () => {
     const execution = await execute({
-      filter:
-        '[("" | [match("a?\\\\G";"g")] | map([.offset,.length,.string])), ("a" | [match("a?\\\\G";"g")] | map([.offset,.length,.string])), ("aa" | [match("a*\\\\G";"g")] | map([.offset,.length,.string])), ("🙂" | match("🙂?\\\\G") | [.offset,.length,.string])]',
+      filter: '[("" | [match("a?\\\\G";"g")] | map([.offset,.length,.string])), ("a" | [match("a?\\\\G";"g")] | map([.offset,.length,.string])), ("aa" | [match("a*\\\\G";"g")] | map([.offset,.length,.string])), ("🙂" | match("🙂?\\\\G") | [.offset,.length,.string])]',
       stdinText: "null\n",
     });
 
@@ -3501,8 +3491,7 @@ null
 
   it("ignores empty regex alternatives when the n flag is present", async () => {
     const execution = await execute({
-      filter:
-        '[("aba" | [match("(?:|a)"; "gn")]), ("ab bb" | [match("(?:a*|b*)"; "gn")]), ("aba" | gsub("(?:|a)"; "Z"; "n"))]',
+      filter: '[("aba" | [match("(?:|a)"; "gn")]), ("ab bb" | [match("(?:a*|b*)"; "gn")]), ("aba" | gsub("(?:|a)"; "Z"; "n"))]',
       stdinText: "null\n",
     });
 
@@ -3563,8 +3552,7 @@ null
 
   it("keeps jq absolute anchors byte-stable and supports final-newline Z", async () => {
     const execution = await execute({
-      filter:
-        '[("🙂" | [match("\\\\A"; "g")]), ("🙂" | [match("\\\\z"; "g")]), ("a\\n" | [match("\\\\Z"; "g")]), ("A Zz" | [scan("[\\\\A\\\\Z\\\\z]+")])]',
+      filter: '[("🙂" | [match("\\\\A"; "g")]), ("🙂" | [match("\\\\z"; "g")]), ("a\\n" | [match("\\\\Z"; "g")]), ("A Zz" | [scan("[\\\\A\\\\Z\\\\z]+")])]',
       stdinText: "null\n",
     });
 
@@ -5095,8 +5083,7 @@ x
 
   it("reports Linux-compatible static index type errors to catch", async () => {
     const execution = await execute({
-      filter:
-        '[try ([1] | .["x"]) catch ., try ({a:1} | .[0]) catch ., try (true | .["x"]) catch .]',
+      filter: '[try ([1] | .["x"]) catch ., try ({a:1} | .[0]) catch ., try (true | .["x"]) catch .]',
       options: "-nc",
     });
 
@@ -5813,9 +5800,11 @@ b
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: String.raw`printf '1\n\n2\n' > first.json
+      source: createTextShellSource({
+        text: String.raw`printf '1\n\n2\n' > first.json
 printf '{\n  "value": 3\n}\n4\n' > second.json
-jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json` }),
+jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5835,7 +5824,8 @@ jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json`
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '1' > number-first.json
 printf '2\n' > number-second.json
 jq -c '[., input_filename, input_line_number]' number-first.json number-second.json
@@ -5845,7 +5835,8 @@ jq -c '[., input_filename, input_line_number]' structured-first.json structured-
 printf 'a' > raw-first.txt
 printf 'b\n' > raw-second.txt
 jq -Rc '[., input_filename, input_line_number]' raw-first.txt raw-second.txt
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5865,10 +5856,12 @@ jq -Rc '[., input_filename, input_line_number]' raw-first.txt raw-second.txt
     const structuredStdout = createTestWriteCaptureHandle();
     const structuredStderr = createTestWriteCaptureHandle();
     const structured = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '{}' > first.json
 jq -nc 'first(inputs)' first.json missing.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: structuredStdout.handle,
       stderr: structuredStderr.handle,
@@ -5876,10 +5869,12 @@ jq -nc 'first(inputs)' first.json missing.json
     const primitiveStdout = createTestWriteCaptureHandle();
     const primitiveStderr = createTestWriteCaptureHandle();
     const primitive = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '1' > first.json
 jq -nc 'first(inputs)' first.json missing.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: primitiveStdout.handle,
       stderr: primitiveStderr.handle,
@@ -5887,11 +5882,13 @@ jq -nc 'first(inputs)' first.json missing.json
     const continuedStdout = createTestWriteCaptureHandle();
     const continuedStderr = createTestWriteCaptureHandle();
     const continued = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '1' > first.json
 printf '2\n' > second.json
 jq -nc 'first(inputs)' first.json second.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: continuedStdout.handle,
       stderr: continuedStderr.handle,
@@ -5899,10 +5896,12 @@ jq -nc 'first(inputs)' first.json second.json
     const rawStdout = createTestWriteCaptureHandle();
     const rawStderr = createTestWriteCaptureHandle();
     const raw = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf 'a' > first.txt
 jq -Rnc 'first(inputs)' first.txt missing.txt
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: rawStdout.handle,
       stderr: rawStderr.handle,
@@ -5930,7 +5929,8 @@ jq -Rnc 'first(inputs)' first.txt missing.txt
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '1,' > first.json
 printf '2\n3\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
@@ -5943,7 +5943,8 @@ jq -nc 'try input catch "caught", inputs' first.json second.json
 printf '{' > first.json
 printf ']\n2\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5968,7 +5969,8 @@ true
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '[1,,' > first.json
 jq -nc 'try input catch "caught"' first.json missing.json
 printf '[1,,' > first.json
@@ -5976,7 +5978,8 @@ printf '2]\n0\n1\n' > second.json
 jq -nc 'try input catch "caught", try input catch "caught2", inputs' first.json second.json
 printf '[1,,2] 0\n1\n' > same-line.json
 jq -nc 'try input catch "caught", inputs' same-line.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5999,7 +6002,8 @@ jq -nc 'try input catch "caught", inputs' same-line.json
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '[[1,2],[3,4[' > first.json
 printf ']] 6\n1' > second.json
 printf '139\n' > third.json
@@ -6013,7 +6017,8 @@ jq -nc 'try input catch "caught1", try input catch "caught2", inputs' first.json
 printf '[1{ ' > first.json
 printf '2\n1254\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6043,9 +6048,11 @@ jq -nc 'try input catch "caught", inputs' first.json second.json
     const splitOffset = 4094;
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é\n1\n`;
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 jq -nc 'try input catch empty, inputs'
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6065,9 +6072,11 @@ jq -nc 'try input catch empty, inputs'
     const splitOffset = 4094;
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é\n1\n`;
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 jq -nc 'try input catch "first", try input catch ., inputs'
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6090,9 +6099,11 @@ jq -nc 'try input catch "first", try input catch ., inputs'
     const tokenTail = "x".repeat(4095);
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é${tokenTail} 1\n2\n`;
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 jq -nc 'try input catch "first", try input catch ., inputs'
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6118,9 +6129,11 @@ jq -nc 'try input catch "first", try input catch ., inputs'
     );
     const input = `${beforeSecond}${secondPadding}é\n1\n`;
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 jq -nc 'try input catch "first", try input catch ("second:" + .), try input catch ("third:" + .), inputs'
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6140,12 +6153,14 @@ jq -nc 'try input catch "first", try input catch ("second:" + .), try input catc
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 printf '%s\n' '"bad\\q" 0' '1' > invalid-string.json
 jq -nc 'try input catch "caught", inputs' invalid-string.json
 printf '%s\n' 'bad 0' '1' > bare-word.json
 jq -nc 'try input catch "caught", inputs' bare-word.json
-` }),
+`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6165,10 +6180,12 @@ jq -nc 'try input catch "caught", inputs' bare-word.json
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: String.raw`printf '1\n' > first.json
+      source: createTextShellSource({
+        text: String.raw`printf '1\n' > first.json
 printf '2\n' > second.json
 jq -nc 'inputs as $x | [$x, input_filename, input_line_number]' first.json second.json
-jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json second.json` }),
+jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json second.json`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6188,12 +6205,14 @@ jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json s
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: String.raw`printf '\n1\n' > first.json
+      source: createTextShellSource({
+        text: String.raw`printf '\n1\n' > first.json
 printf '\n\n2\n' > second.json
 jq -nc '(inputs + 1) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'if inputs then [., input_filename, input_line_number] else empty end' first.json second.json
 jq -nc 'foreach inputs as $x (0; . + $x; [., input_filename, input_line_number])' first.json second.json
-jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.json second.json` }),
+jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.json second.json`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6218,14 +6237,16 @@ jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: String.raw`printf '\n2\n' > first.json
+      source: createTextShellSource({
+        text: String.raw`printf '\n2\n' > first.json
 printf '\n\n3\n' > second.json
 jq -nc 'select(inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'range(0; inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'setpath(["x"]; inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc '.x = inputs | [., input_filename, input_line_number]' first.json second.json
 jq -nc '.x |= inputs | [., input_filename, input_line_number]' first.json second.json
-jq -nc 'try error(inputs) catch [., input_filename, input_line_number]' first.json second.json` }),
+jq -nc 'try error(inputs) catch [., input_filename, input_line_number]' first.json second.json`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,

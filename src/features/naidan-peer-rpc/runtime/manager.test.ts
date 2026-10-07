@@ -22,26 +22,44 @@ afterEach(async () => {
 });
 const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
 const transport = { type: 'naidan_piping_duplex' as const, serverUrl: 'https://relay.invalid', headers: [] };
-const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-  autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer', transport, allowedMethods: [], revision: 0 };
-const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1,
-  registryId: toNaidanRpcRegistryId({ raw: 'registry-example' }), persistence: 'durable' };
+const record: NaidanRpcConnection = {
+  id: toNaidanRpcConnectionId({ raw: 'connection-1' }),
+  peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
+  autoConnect: 'disabled',
+  localPublicKey: encodePeerKey({ bytes: local }),
+  label: 'Peer',
+  transport,
+  allowedMethods: [],
+  revision: 0,
+};
+const registryAccess: NaidanRpcRegistryAccess = {
+  providerGeneration: 1,
+  registryId: toNaidanRpcRegistryId({ raw: 'registry-example' }),
+  persistence: 'durable',
+};
 function snapshot({ connections }: { connections: NaidanRpcConnection[] }): NaidanRpcRegistrySnapshot {
   return { access: registryAccess, connections };
 }
 function fixture() {
   const links: ReturnType<typeof transportPair>[] = [];
   const resources: ReadOnlyInferenceResources = {
-    listChatModels: vi.fn(async () => [{ ref: 'models/local.gguf', label: 'Local' }]), listImageModels: vi.fn(async () => []),
+    listChatModels: vi.fn(async () => [{ ref: 'models/local.gguf', label: 'Local' }]),
+    listImageModels: vi.fn(async () => []),
     generateChat: vi.fn(async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' as const })),
     generateImage: vi.fn(async () => {
       throw new Error('not used');
     }),
   };
-  const storage: NaidanRpcStorage = { readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => snapshot({ connections: [{ ...record }] })),
-    remember: vi.fn(async () => registryAccess), update: vi.fn(async ({ connection }) => connection.revision), remove: vi.fn(async () => {}) };
+  const storage: NaidanRpcStorage = {
+    readIdentity: vi.fn(async () => undefined),
+    list: vi.fn(async () => snapshot({ connections: [{ ...record }] })),
+    remember: vi.fn(async () => registryAccess),
+    update: vi.fn(async ({ connection }) => connection.revision),
+    remove: vi.fn(async () => {}),
+  };
   const release = vi.fn();
-  const dependencies: RpcManagerDependencies = { storage,
+  const dependencies: RpcManagerDependencies = {
+    storage,
     identity: vi.fn(async () => ({ privateKey: {} as CryptoKey, publicKey: local })),
     acquireOwner: vi.fn(async () => ({ release })),
     open: vi.fn(async ({ signal }) => {
@@ -54,7 +72,8 @@ function fixture() {
       return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort } satisfies RpcLink;
     }),
     inference: { resources, inputBudget: createInferenceBudget({ capacity: 256 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 128 * 1024 * 1024 }) },
-    changed: vi.fn(), retireResources: vi.fn(async () => {}),
+    changed: vi.fn(),
+    retireResources: vi.fn(async () => {}),
   };
   const manager = new NaidanPeerManager({ dependencies });
   cleanups.push(async () => {
@@ -79,7 +98,9 @@ it('joins an unresponsive idle session before automatically reconnecting without
   const retired = Promise.withResolvers<void>(); let aborted = false;
   vi.mocked(dependencies.open).mockImplementationOnce(async args => {
     const link = await original(args);
-    return { ...link, closed: retired.promise,
+    return {
+      ...link,
+      closed: retired.promise,
       confirmResponse: ({ signal, onRequestStarted }) => new Promise<void>((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), { once: true }); onRequestStarted();
       }),
@@ -103,7 +124,9 @@ it('keeps the manual page pause when disconnect wins a health retirement race', 
   const { manager, dependencies } = automaticFixture();
   const original = vi.mocked(dependencies.open).getMockImplementation(); if (!original) throw new Error('Missing opener');
   const retired = Promise.withResolvers<void>();
-  vi.mocked(dependencies.open).mockImplementationOnce(async args => ({ ...await original(args), closed: retired.promise,
+  vi.mocked(dependencies.open).mockImplementationOnce(async args => ({
+    ...await original(args),
+    closed: retired.promise,
     confirmResponse: ({ signal, onRequestStarted }) => new Promise<void>((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(signal.reason), { once: true }); onRequestStarted();
     }),
@@ -177,8 +200,12 @@ it('keeps automatic work stopped in this page when persisting OFF fails', async 
 });
 it('bounds concurrent automatic attempts independently of the maximum saved record count', async () => {
   const { manager, dependencies, storage } = automaticFixture();
-  const records = Array.from({ length: 6 }, (_, index) => ({ ...record, autoConnect: 'enabled' as const,
-    id: toNaidanRpcConnectionId({ raw: `automatic-record-${index}` }), transport: { ...transport, serverUrl: `https://piping-${index}.example` } }));
+  const records = Array.from({ length: 6 }, (_, index) => ({
+    ...record,
+    autoConnect: 'enabled' as const,
+    id: toNaidanRpcConnectionId({ raw: `automatic-record-${index}` }),
+    transport: { ...transport, serverUrl: `https://piping-${index}.example` },
+  }));
   vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: records }));
   vi.mocked(dependencies.open).mockImplementation(({ signal }) => new Promise((_resolve, reject) => {
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
@@ -271,10 +298,19 @@ it('provides discovery with no inference grants and reports effective restrictio
   const { manager, storage, resources, links, dependencies } = fixture();
   vi.mocked(storage.list).mockResolvedValue(snapshot({ connections: [{ ...record, allowedMethods: ['listChatModels'] }] }));
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-  const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [expose({ contract: naidanPeerContract,
-    allowedMethods: ['getProvidedMethods'], implementation: createNaidanPeerImplementation({ inference: dependencies.inference,
-      providedMethods: () => ({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }) }) })],
-  limits: { maxCalls: 4, maxCallTimeoutMs: 1000 }, signal: new AbortController().signal });
+  const other = new NaidanRpcPeer({
+    transport: links[0]!.b,
+    exports: [expose({
+      contract: naidanPeerContract,
+      allowedMethods: ['getProvidedMethods'],
+      implementation: createNaidanPeerImplementation({
+        inference: dependencies.inference,
+        providedMethods: () => ({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }),
+      }),
+    })],
+    limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
+    signal: new AbortController().signal,
+  });
   try {
     expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
     vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
@@ -586,8 +622,13 @@ it('a second invalidation during a slow read is checked before reopening admissi
 it('a cross-tab stop closes actual manager admission before acknowledging native retirement', async () => {
   const { manager, dependencies, release } = fixture();
   const queue: { side: number, message: RpcControlMessage }[] = [];
-  const make = ({ side }: { side: number }) => createRpcStopControl({ nextId: () => `request-${side}`,
-    send: ({ message }) => queue.push({ side, message }), changed: () => {}, registryChanged: () => {}, timeoutMs: 100 });
+  const make = ({ side }: { side: number }) => createRpcStopControl({
+    nextId: () => `request-${side}`,
+    send: ({ message }) => queue.push({ side, message }),
+    changed: () => {},
+    registryChanged: () => {},
+    timeoutMs: 100,
+  });
   const localControl = make({ side: 0 }), otherControl = make({ side: 1 });
   const drain = () => {
     while (queue.length) {
@@ -597,9 +638,11 @@ it('a cross-tab stop closes actual manager admission before acknowledging native
   const retire = Promise.withResolvers<void>();
   vi.mocked(dependencies.acquireOwner).mockImplementation(async () => {
     const unregister = localControl.registerOwner({ ownerId: 'actual-owner', stop: () => manager.setEnabled({ enabled: false }) });
-    return { release: () => {
-      unregister(); release();
-    } };
+    return {
+      release: () => {
+        unregister(); release();
+      },
+    };
   });
   try {
     await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });

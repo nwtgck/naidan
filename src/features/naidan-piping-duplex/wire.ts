@@ -72,8 +72,10 @@ export function encodeSnapshot({ snapshot }: {
         rest satisfies Record<PropertyKey, never>;
         unsigned({ value: id, max: 65535 });
         unsigned({ value: flags, max: 3 });
-        requireValue({ condition: rxNext >= 0n && rxNext <= rxLimit && rxLimit <= MAX_OFFSET && final >= 0n && final <= MAX_OFFSET,
-          message: 'Unsigned offset range' });
+        requireValue({
+          condition: rxNext >= 0n && rxNext <= rxLimit && rxLimit <= MAX_OFFSET && final >= 0n && final <= MAX_OFFSET,
+          message: 'Unsigned offset range',
+        });
         view.setUint16(at, id, false);
         bytes[at + 2] = flags;
         view.setBigUint64(at + 3, rxNext, false);
@@ -100,11 +102,15 @@ export function decodeSnapshot({ bytes }: {
   const owned = ownBytes({ bytes, maxBytes: CAPSULE_BYTES - 25 });
   requireValue({ condition: owned.length >= HEADER_BYTES, message: 'Snapshot header' });
   const view = new DataView(owned.buffer), size = view.getUint16(1, false), stateCount = owned[3]!, dataCount = owned[4]!;
-  requireValue({ condition: (owned[0] === 0 || owned[0] === 1) && size <= 8192 && stateCount <= 32 && dataCount <= 2,
-    message: 'Snapshot flags/count' });
+  requireValue({
+    condition: (owned[0] === 0 || owned[0] === 1) && size <= 8192 && stateCount <= 32 && dataCount <= 2,
+    message: 'Snapshot flags/count',
+  });
   let at = HEADER_BYTES + size * 2;
-  requireValue({ condition: at + stateCount * STATE_BYTES + dataCount * (DATA_HEADER_BYTES + 1) <= owned.length,
-    message: 'Truncated snapshot' });
+  requireValue({
+    condition: at + stateCount * STATE_BYTES + dataCount * (DATA_HEADER_BYTES + 1) <= owned.length,
+    message: 'Truncated snapshot',
+  });
   const finished = owned.slice(HEADER_BYTES, HEADER_BYTES + size), reset = owned.slice(HEADER_BYTES + size, at);
   requireValue({ condition: size === 0 || !!(finished[size - 1] || reset[size - 1]), message: 'Noncanonical bitmap' });
   const states: StreamState[] = [], data: Segment[] = [];
@@ -113,8 +119,10 @@ export function decodeSnapshot({ bytes }: {
     const id = view.getUint16(at, false), flags = owned[at + 2]!;
     const rxNext = view.getBigUint64(at + 3, false), rxLimit = view.getBigUint64(at + 11, false), final = view.getBigUint64(at + 19, false);
     requireValue({ condition: id > lastId && flags <= 3, message: 'State order/flags' });
-    requireValue({ condition: rxNext <= rxLimit && rxLimit <= MAX_OFFSET && final <= MAX_OFFSET && ((flags & 1) !== 0 || final === 0n),
-      message: 'State offset/unused final' });
+    requireValue({
+      condition: rxNext <= rxLimit && rxLimit <= MAX_OFFSET && final <= MAX_OFFSET && ((flags & 1) !== 0 || final === 0n),
+      message: 'State offset/unused final',
+    });
     states.push({ id, flags, rxNext, rxLimit, final });
     lastId = id;
     at += STATE_BYTES;
@@ -124,8 +132,11 @@ export function decodeSnapshot({ bytes }: {
     requireValue({ condition: at + DATA_HEADER_BYTES <= owned.length, message: 'Truncated DATA header' });
     const id = view.getUint16(at, false), offset = view.getBigUint64(at + 2, false), length = view.getUint16(at + 10, false);
     at += DATA_HEADER_BYTES;
-    requireValue({ condition: id > lastId && length >= 1 && length <= SEGMENT_BYTES && at + length <= owned.length &&
-                offset + BigInt(length) <= MAX_OFFSET, message: 'DATA size/order/offset' });
+    requireValue({
+      condition: id > lastId && length >= 1 && length <= SEGMENT_BYTES && at + length <= owned.length &&
+                offset + BigInt(length) <= MAX_OFFSET,
+      message: 'DATA size/order/offset',
+    });
     data.push({ id, offset, bytes: owned.slice(at, at + length) });
     lastId = id;
     at += length;
@@ -157,7 +168,8 @@ export function decodeRecordPayload({ bytes }: { bytes: Uint8Array }): RecordPay
   const receivedRecord = headerBytes === 1 ? undefined : new DataView(owned.buffer).getBigUint64(1, false);
   requireValue({ condition: receivedRecord === undefined || receivedRecord <= MAX_OFFSET, message: 'Receipt number range' });
   return {
-    receiptRequest: (owned[0]! & 1) === 0 ? 'not-requested' : 'requested', receivedRecord,
+    receiptRequest: (owned[0]! & 1) === 0 ? 'not-requested' : 'requested',
+    receivedRecord,
     snapshot: decodeSnapshot({ bytes: owned.subarray(headerBytes) }),
   };
 }

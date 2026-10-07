@@ -59,18 +59,20 @@ export function createFreshMetadataWorkerClient() {
         // An already-aborted request must not start remote work.
         operationSignal.throwIfAborted();
         const result = await Promise.race([
-          remote.run(input, workerProxy({ value: ({ summary: value }: { summary: FreshMetadataSummary }) => {
-            if (!accepting || operationSignal.aborted) return;
-            try {
-              const next = freshMetadataSummarySchema.parse(value);
-              if (next.modelId !== modelId || next.revision !== revision || next.maximumBytes !== maximumBytes) throw new Error('Fresh metadata observation identity mismatch');
-              summary = next;
-              onObservation({ summary });
-            } catch (error) {
-              accepting = false;
-              interruption.reject(error);
-            }
-          } })),
+          remote.run(input, workerProxy({
+            value: ({ summary: value }: { summary: FreshMetadataSummary }) => {
+              if (!accepting || operationSignal.aborted) return;
+              try {
+                const next = freshMetadataSummarySchema.parse(value);
+                if (next.modelId !== modelId || next.revision !== revision || next.maximumBytes !== maximumBytes) throw new Error('Fresh metadata observation identity mismatch');
+                summary = next;
+                onObservation({ summary });
+              } catch (error) {
+                accepting = false;
+                interruption.reject(error);
+              }
+            },
+          })),
           interruption.promise,
         ]);
         const parsed = freshMetadataResultSchema.parse(result);

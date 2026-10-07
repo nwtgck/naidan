@@ -8,9 +8,11 @@ export function copyRemoteImageSelection({ selection }: { selection: RemoteImage
   };
   const { primary, components, loras, ...rest } = selection;
   rest satisfies Record<PropertyKey, never>;
-  return { primary: { slot: primary.slot, file: copyFile({ file: primary.file }) },
+  return {
+    primary: { slot: primary.slot, file: copyFile({ file: primary.file }) },
     components: components.map(({ slot, file }) => ({ slot, file: copyFile({ file }) })),
-    loras: loras.map(({ file, strength }) => ({ file: copyFile({ file }), strength })) };
+    loras: loras.map(({ file, strength }) => ({ file: copyFile({ file }), strength })),
+  };
 }
 export function isRemoteImageRuntime({ runtime }: { runtime: ImageGenerationRuntime }): boolean {
   switch (runtime.profile) {

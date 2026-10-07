@@ -22,13 +22,17 @@ function fixture() {
     },
   };
   const device = Object.assign(new EventTarget(), {
-    limits: { maxComputeWorkgroupsPerDimension: 65535 }, features: new Set(), lost: new Promise(() => {}),
+    limits: { maxComputeWorkgroupsPerDimension: 65535 },
+    features: new Set(),
+    lost: new Promise(() => {}),
     createShaderModule: vi.fn(() => ({})),
     createComputePipeline: vi.fn((descriptor: GPUComputePipelineDescriptor) => {
       const pipeline = {} as GPUComputePipeline; descriptors.set(pipeline, descriptor); return pipeline;
     }),
     createCommandEncoder: vi.fn(() => ({ beginComputePass: () => pass })),
-    createBuffer: vi.fn(), createComputePipelineAsync: vi.fn(), popErrorScope: vi.fn(),
+    createBuffer: vi.fn(),
+    createComputePipelineAsync: vi.fn(),
+    popErrorScope: vi.fn(),
     queue: { writeBuffer: vi.fn(), submit: vi.fn(), onSubmittedWorkDone: vi.fn() },
   });
   const adapter = { requestDevice: vi.fn(async () => device) };

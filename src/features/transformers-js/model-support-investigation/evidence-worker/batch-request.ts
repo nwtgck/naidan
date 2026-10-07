@@ -36,7 +36,8 @@ export function createModelSupportInvestigationBatchEvidenceWorkerRequest({
     schemaVersion: 2 as const,
     batchId,
     items: items.map(({ replayMetadata: _replayMetadata, nativeEvidence: _nativeEvidence, run, ...item }) => ({
-      ...item, ...(run === undefined ? { run: undefined } : encodeEvidenceRun({ run })),
+      ...item,
+      ...(run === undefined ? { run: undefined } : encodeEvidenceRun({ run })),
     })),
   } satisfies ModelSupportInvestigationBatchEvidenceWorkerRequestPayload);
   return new Blob([JSON.stringify(cloned)], { type: "application/json" });

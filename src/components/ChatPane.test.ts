@@ -13,7 +13,8 @@ import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-
 
 const mockStreamDownload = vi.hoisted(() => vi.fn());
 vi.mock('@/utils/stream-download', async importOriginal => ({
-  ...await importOriginal<typeof import('@/utils/stream-download')>(), downloadStream: mockStreamDownload,
+  ...await importOriginal<typeof import('@/utils/stream-download')>(),
+  downloadStream: mockStreamDownload,
 }));
 
 // Mock router
@@ -52,10 +53,13 @@ const {
 const launchComposerOverride = ref<'visible' | 'hidden'>();
 vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useModelLaunchChat')>();
-  return { ...original, useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
-    const state = original.useModelLaunchChat(args);
-    return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
-  } };
+  return {
+    ...original,
+    useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
+      const state = original.useModelLaunchChat(args);
+      return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
+    },
+  };
 });
 // Disk inspection/cancellation is exercised in useMissingLlamaCppBrowserModel.
 // This suite keeps that boundary controlled while testing the real pane/input
@@ -63,14 +67,18 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async imp
 const recoveryAvailability = ref<'checking' | 'available' | 'missing' | 'unreadable'>('available');
 vi.mock('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel')>();
-  return { ...original, useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
-    const state = original.useMissingLlamaCppBrowserModel(args);
-    return { ...state,
-      availability: recoveryAvailability,
-      visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
-      maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
-    };
-  } };
+  return {
+    ...original,
+    useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
+      const state = original.useMissingLlamaCppBrowserModel(args);
+      return {
+        ...state,
+        availability: recoveryAvailability,
+        visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
+        maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
+      };
+    },
+  };
 });
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
@@ -116,7 +124,12 @@ function createTextNode({ id, role, text, createdAt }: {
   text: string,
   createdAt: number,
 }) {
-  const common = { id, createdAt, modelId: undefined, lmParameters: undefined, replies: { items: [] },
+  const common = {
+    id,
+    createdAt,
+    modelId: undefined,
+    lmParameters: undefined,
+    replies: { items: [] },
     parts: [{ type: 'text' as const, text, completeness: 'complete' as const }],
   };
   switch (role) {
@@ -282,7 +295,8 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
       }
     }),
     chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
-      type: 'message', key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
+      type: 'message',
+      key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
       node: m,
       partContent: getMessageText({ message: m }),
       mode: 'content',
@@ -371,7 +385,8 @@ function mountChatPane({
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
     chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
-      type: 'message', key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
+      type: 'message',
+      key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
       node: m,
       partContent: getMessageText({ message: m }),
       mode: 'content',
@@ -1339,7 +1354,7 @@ Question`,
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
+      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
       modelRefresh: 'await',
     });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
@@ -1450,12 +1465,12 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1482,7 +1497,7 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat_group' },
     };
     mockCurrentChat.value = {
@@ -1492,7 +1507,7 @@ Question`,
     mockCurrentChatGroup.value = {
       id: 'group-1',
       name: 'Group 1',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1696,9 +1711,14 @@ Question`,
   });
 
   it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
-    wrapper = mountChatPane({ global: { plugins: [router], stubs: {
-      ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
-    } } });
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+        stubs: {
+          ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
+        },
+      },
+    });
     await flushPromises();
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
@@ -1774,10 +1794,16 @@ Question`,
   describe('Custom Overrides Indicator', () => {
     it('shows indicator when endpoint is overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1785,10 +1811,16 @@ Question`,
 
     it('shows indicator when systemPrompt is overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         systemPrompt: { content: 'test', behavior: 'override' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1796,10 +1828,16 @@ Question`,
 
     it('shows indicator when lmParameters are overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         lmParameters: { temperature: 0.5 },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1807,9 +1845,15 @@ Question`,
 
     it('does not show indicator when no overrides are present', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
@@ -2198,7 +2242,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2207,7 +2252,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
         node: mockActiveMessages.value[1]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2249,7 +2295,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [userMessage, assistantMessage];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2258,7 +2305,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
         node: assistantMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2281,7 +2329,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockChatFlowOverride.value = [
       mockChatFlowOverride.value[0]!,
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
         node: assistantMessage,
         mode: 'content',
         partContent: assistantMessage.parts[0]!.text,
@@ -2319,7 +2368,8 @@ describe('ChatPane Scrolling Logic', () => {
       mockChatFlowOverride.value[0]!,
       mockChatFlowOverride.value[1]!,
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondUserMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondUserMessage.id }), 'content']),
         node: secondUserMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2328,7 +2378,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondAssistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondAssistantMessage.id }), 'content']),
         node: secondAssistantMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2396,7 +2447,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2405,7 +2457,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
         node: mockActiveMessages.value[1]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2414,7 +2467,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[2]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[2]!.id }), 'content']),
         node: mockActiveMessages.value[2]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2423,7 +2477,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[3]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[3]!.id }), 'content']),
         node: mockActiveMessages.value[3]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2467,7 +2522,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [firstUser, abortedAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
         node: firstUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2476,7 +2532,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
         node: abortedAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2497,7 +2554,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [firstUser, abortedAssistant, retryUser, retryAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
         node: firstUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2506,7 +2564,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
         node: abortedAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2515,7 +2574,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: retryUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: retryUser.id }), 'content']),
         node: retryUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2524,7 +2584,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: retryAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: retryAssistant.id }), 'content']),
         node: retryAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2563,7 +2624,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [userMessage, firstAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2572,7 +2634,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2593,7 +2656,8 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2602,7 +2666,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2611,7 +2676,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
         node: toolMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2629,7 +2695,8 @@ describe('ChatPane Scrolling Logic', () => {
 
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2638,7 +2705,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2647,7 +2715,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
         node: toolMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2656,7 +2725,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: false,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondAssistant.id }), 'content']),
         node: secondAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2724,7 +2794,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },

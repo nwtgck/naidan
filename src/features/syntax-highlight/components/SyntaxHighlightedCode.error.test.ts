@@ -4,9 +4,11 @@ import SyntaxHighlightedCode from './SyntaxHighlightedCode.vue';
 
 vi.mock('@/features/syntax-highlight/stream', () => ({
   highlightSyntaxStream: () => ({
-    [Symbol.asyncIterator]: () => ({ next: async () => {
-      throw new Error('Failed lexer');
-    } }),
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        throw new Error('Failed lexer');
+      },
+    }),
   }),
 }));
 

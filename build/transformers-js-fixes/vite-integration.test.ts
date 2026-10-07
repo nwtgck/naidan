@@ -69,10 +69,17 @@ it('builds the replay library through only the production fix integration plugin
 it('applies the same transformation to a real Vite production Worker bundle', async () => {
   const fixes = createTransformersJsFixesViteConfig({ projectRoot, mode: 'browser' });
   const result = await build({
-    root: projectRoot, configFile: false, publicDir: false, logLevel: 'silent', ...fixes,
+    root: projectRoot,
+    configFile: false,
+    publicDir: false,
+    logLevel: 'silent',
+    ...fixes,
     worker: { ...fixes.worker, format: 'es', rolldownOptions: { external: ortExternals } },
     build: {
-      write: false, minify: false, sourcemap: true, target: 'esnext',
+      write: false,
+      minify: false,
+      sourcemap: true,
+      target: 'esnext',
       lib: { entry: path.join(projectRoot, 'build/transformers-js-fixes/fixtures/browser-entry.ts'), formats: ['es'] },
     },
   });
@@ -86,7 +93,11 @@ it('applies the same transformation to a real Vite production Worker bundle', as
 it('serves the module Worker and unoptimized dependency with the production transform', async () => {
   const fixes = createTransformersJsFixesViteConfig({ projectRoot, mode: 'browser' });
   const server = await createServer({
-    root: projectRoot, configFile: false, publicDir: false, logLevel: 'silent', ...fixes,
+    root: projectRoot,
+    configFile: false,
+    publicDir: false,
+    logLevel: 'silent',
+    ...fixes,
     cacheDir: await temporaryRoot(),
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { ...fixes.optimizeDeps, noDiscovery: true, exclude: ['@huggingface/transformers', ...ortExternals] },
@@ -115,10 +126,16 @@ async function optimizerFixture() {
   function config(): InlineConfig {
     const fixes = createTransformersJsFixesViteConfig({ projectRoot: root, mode: 'browser' });
     return {
-      root, configFile: false, publicDir: false, logLevel: 'silent', ...fixes,
+      root,
+      configFile: false,
+      publicDir: false,
+      logLevel: 'silent',
+      ...fixes,
       cacheDir: path.join(root, '.vite'),
       optimizeDeps: {
-        ...fixes.optimizeDeps, noDiscovery: true, include: ['@huggingface/transformers'],
+        ...fixes.optimizeDeps,
+        noDiscovery: true,
+        include: ['@huggingface/transformers'],
         exclude: ortExternals,
       },
     };

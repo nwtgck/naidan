@@ -252,28 +252,30 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
 
   thumbnailLoading.value.add(obj.id);
   try {
-    await thumbnailSemaphore.run({ task: async () => {
-      const blob = await storageService.getFile({ binaryObjectId: obj.id });
-      if (blob) {
+    await thumbnailSemaphore.run({
+      task: async () => {
+        const blob = await storageService.getFile({ binaryObjectId: obj.id });
+        if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
-        const scheduleWork: typeof window.requestIdleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+          const scheduleWork: typeof window.requestIdleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
 
-        const thumbUrl = await new Promise<string>((resolve, reject) => {
-          scheduleWork(async () => {
-            try {
-              resolve(await createThumbnailUrl({ blob }));
-            } catch (e) {
-              reject(e);
-            }
+          const thumbUrl = await new Promise<string>((resolve, reject) => {
+            scheduleWork(async () => {
+              try {
+                resolve(await createThumbnailUrl({ blob }));
+              } catch (e) {
+                reject(e);
+              }
+            });
           });
-        });
 
-        if (!thumbnails.value.has(obj.id)) {
-          thumbnails.value.set(obj.id, thumbUrl);
-          thumbnailCount.value++;
+          if (!thumbnails.value.has(obj.id)) {
+            thumbnails.value.set(obj.id, thumbUrl);
+            thumbnailCount.value++;
+          }
         }
-      }
-    } });
+      },
+    });
   } catch (e) {
     console.error('Failed to load thumbnail:', e);
   } finally {

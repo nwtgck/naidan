@@ -23,9 +23,20 @@ describe('bounded generation performance summaries', () => {
     at = 30;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.elapsedMs).toBe(20);
-    expect(report.performance).toEqual({ version: 1, outcome: 'completed', input: 'unknown',
-      sampledTokens: 2, decodedTokens: 0, prefillDecodedTokens: 0, prefillDecodeCalls: 0, maximumPrefillBatchTokens: 0, tokenizeCalls: 1, checkpointTokenizeCalls: 0,
-      terminalDecodeDeferred: false, firstSampleMs: 11, firstDeliveryMs: 15,
+    expect(report.performance).toEqual({
+      version: 1,
+      outcome: 'completed',
+      input: 'unknown',
+      sampledTokens: 2,
+      decodedTokens: 0,
+      prefillDecodedTokens: 0,
+      prefillDecodeCalls: 0,
+      maximumPrefillBatchTokens: 0,
+      tokenizeCalls: 1,
+      checkpointTokenizeCalls: 0,
+      terminalDecodeDeferred: false,
+      firstSampleMs: 11,
+      firstDeliveryMs: 15,
       postFirstSample: { unit: 't/s', sampledTokens: 1, elapsedMs: 7, tokensPerSecond: 1000 / 7 },
       stages: [
         { stage: 'session', visits: 1, elapsedMs: 5 }, { stage: 'tokenize', visits: 1, elapsedMs: 4 },
@@ -81,8 +92,13 @@ describe('bounded generation performance summaries', () => {
       logDiagnostic({ diagnostic: untrusted });
       expect(log).toHaveBeenCalledOnce();
       expect(JSON.stringify(log.mock.calls)).not.toContain('private');
-      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-        stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }] } }).success).toBe(false);
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
+        },
+      }).success).toBe(false);
     } finally {
       log.mockRestore();
     }
@@ -92,16 +108,32 @@ describe('bounded generation performance summaries', () => {
 describe('streaming work counters', () => {
   it('snapshots the bounded counters and rejects extra content-bearing fields', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const streaming = { mode: 'coalesced' as const, partialParseCalls: 3, finalParseCalls: 1,
-      parsedCodeUnits: 30, skippedPartialParses: 14, deliveredEvents: 2 };
+    const streaming = {
+      mode: 'coalesced' as const,
+      partialParseCalls: 3,
+      finalParseCalls: 1,
+      parsedCodeUnits: 30,
+      skippedPartialParses: 14,
+      deliveredEvents: 2,
+    };
     metrics.counters.streaming = streaming;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     streaming.partialParseCalls = 999;
     expect(report.performance!.streaming!.partialParseCalls).toBe(3);
-    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-      streaming: { ...streaming, output: 'private' } } }).success).toBe(false);
-    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-      streaming: { ...streaming, parsedCodeUnits: -1 } } }).success).toBe(false);
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: {
+        ...report.performance!,
+        streaming: { ...streaming, output: 'private' },
+      },
+    }).success).toBe(false);
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: {
+        ...report.performance!,
+        streaming: { ...streaming, parsedCodeUnits: -1 },
+      },
+    }).success).toBe(false);
     // Additive version-1 compatibility: 012 summaries have no streaming field.
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, streaming: undefined } }).success).toBe(true);
   });
@@ -111,8 +143,16 @@ describe('streaming work counters', () => {
 describe('token rendering work counters', () => {
   it('snapshots bounded counters without accepting cached bytes or token identifiers', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const tokenRendering = { cacheHits: 32, cacheMisses: 1, eogCalls: 1, pieceCalls: 1,
-      evictions: 0, oversizedPieces: 0, peakEntries: 1, peakCachedBytes: 1 };
+    const tokenRendering = {
+      cacheHits: 32,
+      cacheMisses: 1,
+      eogCalls: 1,
+      pieceCalls: 1,
+      evictions: 0,
+      oversizedPieces: 0,
+      peakEntries: 1,
+      peakCachedBytes: 1,
+    };
     metrics.counters.tokenRendering = tokenRendering;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     tokenRendering.cacheHits = 100;
@@ -146,16 +186,27 @@ describe('prefill output work counters', () => {
 describe('generation task yield counters', () => {
   it('snapshots additive scheduling counts without accepting content or token histories', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const generationYield = { mode: 'coalesced' as const, checks: 32, requestedYields: 8,
-      completedYields: 8, coalescedYields: 24, maximumDecodesBetweenYields: 4 };
+    const generationYield = {
+      mode: 'coalesced' as const,
+      checks: 32,
+      requestedYields: 8,
+      completedYields: 8,
+      coalescedYields: 24,
+      maximumDecodesBetweenYields: 4,
+    };
     metrics.counters.generationYield = generationYield;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     generationYield.completedYields = 99;
     expect(report.performance!.generationYield!.completedYields).toBe(8);
     for (const extra of [{ content: 'private' }, { tokens: [1] }, { checks: -1 },
       { completedYields: 0.5 }, { mode: 'unknown' }, { maximumDecodesBetweenYields: 5 }]) {
-      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-        generationYield: { ...generationYield, ...extra } } }).success).toBe(false);
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          generationYield: { ...generationYield, ...extra },
+        },
+      }).success).toBe(false);
     }
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, generationYield: undefined } }).success).toBe(true);
   });
@@ -181,8 +232,15 @@ describe('paired delivery and decode accounting', () => {
   it('keeps joint time exclusive and child waits explicitly overlapping', () => {
     let now = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => now });
-    const pair = { mode: 'overlap' as const, pairedSteps: 1, settledPairs: 1, serialSteps: 0,
-      deliveryWaitMs: 20, decodeWaitMs: 30, jointWaitMs: 30 };
+    const pair = {
+      mode: 'overlap' as const,
+      pairedSteps: 1,
+      settledPairs: 1,
+      serialSteps: 0,
+      deliveryWaitMs: 20,
+      decodeWaitMs: 30,
+      jointWaitMs: 30,
+    };
     metrics.counters.deliveryDecode = pair;
     metrics.enter({ next: 'generation-overlap' });
     now = 30; metrics.enter({ next: 'cleanup' }); now = 35;
@@ -220,14 +278,20 @@ describe('post-first-sample throughput', () => {
     at = 3999;
     for (let i = 1; i < 100; i++) expect(metrics.sampled()).toBeUndefined();
     at = 4000;
-    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 101, firstSampleMs: 1000,
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 101,
+      firstSampleMs: 1000,
       postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
-      interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 } });
+      interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+    });
     at = 6999; expect(metrics.sampled()).toBeUndefined();
     at = 7000;
-    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 103, firstSampleMs: 1000,
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 103,
+      firstSampleMs: 1000,
       postFirstSample: { unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 },
-      interval: { unit: 't/s', sampledTokens: 2, elapsedMs: 3000, tokensPerSecond: 2000 / 3000 } });
+      interval: { unit: 't/s', sampledTokens: 2, elapsedMs: 3000, tokensPerSecond: 2000 / 3000 },
+    });
     at = 9000;
     expect(metrics.finish({ outcome: 'completed', profile })!.performance!.postFirstSample)
       .toEqual({ unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 });
@@ -239,9 +303,12 @@ describe('post-first-sample throughput', () => {
     expect(metrics.sampled()).toBeUndefined();
     at = 4000;
     for (let i = 1; i < 99; i++) expect(metrics.sampled()).toBeUndefined();
-    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({ sampledTokens: 100, firstSampleMs: 0,
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 100,
+      firstSampleMs: 0,
       postFirstSample: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
-      interval: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 } });
+      interval: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
+    });
   });
   it.each(['completed', 'aborted', 'failed'] as const)('keeps %s throughput separate from TTFT, delivery and cleanup', outcome => {
     let at = 0;
@@ -253,8 +320,13 @@ describe('post-first-sample throughput', () => {
     at = 3000;
     const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
     expect(report.elapsedMs).toBe(3000);
-    expect(report.performance).toMatchObject({ outcome, sampledTokens: 3, firstSampleMs: 1000, firstDeliveryMs: 2000,
-      postFirstSample: { unit: 't/s', sampledTokens: 2, elapsedMs: 100, tokensPerSecond: 20 } });
+    expect(report.performance).toMatchObject({
+      outcome,
+      sampledTokens: 3,
+      firstSampleMs: 1000,
+      firstDeliveryMs: 2000,
+      postFirstSample: { unit: 't/s', sampledTokens: 2, elapsedMs: 100, tokensPerSecond: 20 },
+    });
   });
   it.each([0, 1, 2])('omits an undefined rate for %s samples with no measurable interval', count => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
@@ -284,8 +356,13 @@ describe('post-first-sample throughput', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, postFirstSample: undefined } }).success).toBe(true);
     for (const extra of [{ tokensPerSecond: Infinity }, { tokensPerSecond: NaN }, { tokensPerSecond: -1 },
       { elapsedMs: -1 }, { sampledTokens: 0.5 }, { text: 'private' }, { tokenIds: [123] }]) {
-      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-        postFirstSample: { ...report.performance!.postFirstSample!, ...extra } } }).success).toBe(false);
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          postFirstSample: { ...report.performance!.postFirstSample!, ...extra },
+        },
+      }).success).toBe(false);
     }
   });
 });

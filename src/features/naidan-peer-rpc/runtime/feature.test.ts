@@ -4,20 +4,39 @@ import type { createRpcStopControl } from './stop-control';
 import type { NaidanRpcRegistrySnapshot } from '@/00-storage/service/naidan-rpc';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 
-const fixture = vi.hoisted(() => ({ create: vi.fn(), setEnabled: vi.fn(async () => {}), revalidate: vi.fn(async () => {}),
-  startAutomaticConnections: vi.fn(async () => {}), stopAutomaticConnections: vi.fn(),
-  list: vi.fn<() => Promise<NaidanRpcRegistrySnapshot>>(), registryListeners: new Set<() => void>() }));
+const fixture = vi.hoisted(() => ({
+  create: vi.fn(),
+  setEnabled: vi.fn(async () => {}),
+  revalidate: vi.fn(async () => {}),
+  startAutomaticConnections: vi.fn(async () => {}),
+  stopAutomaticConnections: vi.fn(),
+  list: vi.fn<() => Promise<NaidanRpcRegistrySnapshot>>(),
+  registryListeners: new Set<() => void>(),
+}));
 vi.mock('./state', () => ({ createRpcManager: fixture.create }));
 vi.mock('@/00-storage/service/naidan-rpc', () => ({ naidanRpcStorage: { list: fixture.list } }));
-vi.mock('@/00-storage/service', () => ({ storageService: { subscribeNaidanRpcRegistryChanges: ({ listener }: { listener(): void }) => {
-  fixture.registryListeners.add(listener); return () => fixture.registryListeners.delete(listener);
-} } }));
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    subscribeNaidanRpcRegistryChanges: ({ listener }: { listener(): void }) => {
+      fixture.registryListeners.add(listener); return () => fixture.registryListeners.delete(listener);
+    },
+  },
+}));
 const automaticDisposers: (() => void)[] = [];
 function automaticRegistry(): NaidanRpcRegistrySnapshot {
-  return { access: { providerGeneration: 1, registryId: undefined, persistence: 'durable' }, connections: [{
-    id: toNaidanRpcConnectionId({ raw: 'automatic-connection' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), localPublicKey: 'A'.repeat(43),
-    label: 'Peer', transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] }, allowedMethods: [], autoConnect: 'enabled', revision: 0,
-  }] };
+  return {
+    access: { providerGeneration: 1, registryId: undefined, persistence: 'durable' },
+    connections: [{
+      id: toNaidanRpcConnectionId({ raw: 'automatic-connection' }),
+      peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+      localPublicKey: 'A'.repeat(43),
+      label: 'Peer',
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] },
+      allowedMethods: [],
+      autoConnect: 'enabled',
+      revision: 0,
+    }],
+  };
 }
 let control: ReturnType<typeof createRpcStopControl> | undefined;
 const channels: { onmessage: ((event: { data: unknown }) => void) | undefined, postMessage: ReturnType<typeof vi.fn> }[] = [];
@@ -35,8 +54,12 @@ beforeEach(() => {
   vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible' }));
   fixture.create.mockImplementation(({ control: created }: { control: ReturnType<typeof createRpcStopControl> }) => {
-    control = created; return { setEnabled: fixture.setEnabled, revalidate: fixture.revalidate,
-      startAutomaticConnections: fixture.startAutomaticConnections, stopAutomaticConnections: fixture.stopAutomaticConnections };
+    control = created; return {
+      setEnabled: fixture.setEnabled,
+      revalidate: fixture.revalidate,
+      startAutomaticConnections: fixture.startAutomaticConnections,
+      stopAutomaticConnections: fixture.stopAutomaticConnections,
+    };
   });
 });
 afterEach(() => {

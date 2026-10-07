@@ -11,9 +11,13 @@ export function metadataSizeProbeTransport({ originalFetch }: { originalFetch: t
     if (request.headers.has('Range')) {
       if (request.headers.get('Range') !== 'bytes=0-0') throw new Error('Unexpected fixture metadata range');
       const bytes = new Uint8Array(await response.arrayBuffer());
-      return new Response(bytes.slice(0, 1), { status: 206, headers: {
-        'Content-Length': '1', 'Content-Range': `bytes 0-0/${bytes.byteLength}`,
-      } });
+      return new Response(bytes.slice(0, 1), {
+        status: 206,
+        headers: {
+          'Content-Length': '1',
+          'Content-Range': `bytes 0-0/${bytes.byteLength}`,
+        },
+      });
     }
     response.headers.delete('Content-Length');
     return response;

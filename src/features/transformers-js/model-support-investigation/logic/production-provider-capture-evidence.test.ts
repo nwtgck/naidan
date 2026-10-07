@@ -33,7 +33,10 @@ function ownerFixture({ plan }: { plan: ProductionProviderCapturePlan }) {
     dispose: vi.fn<TransformersJsWorkerClient['dispose']>().mockResolvedValue(undefined),
   } satisfies TransformersJsWorkerClient;
   const owner = createProductionProviderCaptureOwner({
-    runId: 'capture-run', modelId: 'fixture/model', plan, createWorkerClient: () => client,
+    runId: 'capture-run',
+    modelId: 'fixture/model',
+    plan,
+    createWorkerClient: () => client,
     traceLimits: { maximumEvents: 4096, maximumCharacters: 262144 },
   });
   owners.push(owner);
@@ -51,11 +54,18 @@ function recordSyntheticAppliedPartBoundary() {
     const trace = createTrace(args);
     // Deliberately inject at the observation boundary, not through a revoked
     // Worker callback. This is a late-event integrity fixture, not inference.
-    callbacks.push(({ chunk }) => trace.observeAssistant({ message: {
-      id: toMessageId({ raw: 'capture_assistant_0' }), role: 'assistant', createdAt: 0,
-      parts: [{ type: 'text', text: chunk, completeness: 'partial' }],
-      replies: { items: [] }, modelId: undefined, lmParameters: undefined, interruption: undefined,
-    } }));
+    callbacks.push(({ chunk }) => trace.observeAssistant({
+      message: {
+        id: toMessageId({ raw: 'capture_assistant_0' }),
+        role: 'assistant',
+        createdAt: 0,
+        parts: [{ type: 'text', text: chunk, completeness: 'partial' }],
+        replies: { items: [] },
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
+      },
+    }));
     return trace;
   });
   return callbacks;
@@ -306,8 +316,11 @@ describe('Production Provider capture evidence', () => {
     expect(document.snapshot.requests[0].trace.lateEvents[0]).toMatchObject({ kind: 'part_text', text: '-late', phase: 'after-settlement' });
     expect(document.snapshot.requests[1].input.messages[1]).toEqual({ role: 'assistant', parts: [{ id: 'part_0', type: 'text', text: 'first', completeness: 'complete' }] });
     expect(document.snapshot.requests[0].input.parameters).toMatchObject({
-      maxCompletionTokens: 16, presencePenalty: { captureValue: 'undefined' }, frequencyPenalty: { captureValue: 'undefined' },
-      stop: { captureValue: 'undefined' }, reasoning: { effort: { captureValue: 'undefined' } },
+      maxCompletionTokens: 16,
+      presencePenalty: { captureValue: 'undefined' },
+      frequencyPenalty: { captureValue: 'undefined' },
+      stop: { captureValue: 'undefined' },
+      reasoning: { effort: { captureValue: 'undefined' } },
     });
     expect(document.snapshot.run.status).toBe('completed');
     expect(document.limitations.nativeInvocations).toBe('not-collected-by-this-owner');
@@ -499,11 +512,14 @@ describe('versioned parts observation evidence', () => {
     const captured = await owner.run();
     expect(captured.format).toBe('production-provider-capture-v3');
     expect(captured.capabilities.providerCallbacks).toBe('parts_and_tools_projection');
-    expect(captured.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', parts: [
-      { id: 'part_0', type: 'reasoning', text: '  R\r\n', completeness: 'complete' },
-      { id: 'part_1', type: 'text', text: '', completeness: 'complete' },
-      { id: 'part_2', type: 'text', text: '<think>literal</think>🙂', completeness: 'partial' },
-    ] });
+    expect(captured.requests[1]?.input?.messages[1]).toEqual({
+      role: 'assistant',
+      parts: [
+        { id: 'part_0', type: 'reasoning', text: '  R\r\n', completeness: 'complete' },
+        { id: 'part_1', type: 'text', text: '', completeness: 'complete' },
+        { id: 'part_2', type: 'text', text: '<think>literal</think>🙂', completeness: 'partial' },
+      ],
+    });
     const artifact = exportCapture({ capture: captured });
     const parsed = readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' });
     expect(parsed).toEqual(captured); expect(exportCapture({ capture: parsed }).json).toBe(artifact.json);

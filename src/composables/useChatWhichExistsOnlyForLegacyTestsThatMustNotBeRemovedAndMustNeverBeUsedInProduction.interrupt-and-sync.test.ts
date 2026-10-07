@@ -122,9 +122,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('should allow editMessage while generating by waiting for abort to finish', async () => {
     const chat = reactive({
-      id: 'interrupt-test', title: 'Interrupt Test', root: { items: [] },
+      id: 'interrupt-test',
+      title: 'Interrupt Test',
+      root: { items: [] },
       modelId: 'gpt-4',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
     }) as any;
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
@@ -164,11 +168,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatId = toChatId({ raw: 'sync-test' });
     const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
-      id: chatId, title: 'Sync Test',
+      id: chatId,
+      title: 'Sync Test',
       root: {
         items: [
           {
-            id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'two cats', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+            id: 'user-1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'two cats', completeness: 'complete' }],
+            modelId: undefined,
+            lmParameters: undefined,
+            createdAt: 0,
             replies: {
               items: [
                 { id: assistantId, role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } },
@@ -179,7 +189,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
       currentLeafId: assistantId,
       modelId: 'x/z-image-turbo:v1',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
     }) as any;
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
@@ -215,11 +227,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatId = toChatId({ raw: 'abort-test' });
     const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
-      id: chatId, title: 'Abort Test',
+      id: chatId,
+      title: 'Abort Test',
       root: {
         items: [
           {
-            id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Will be aborted', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
+            id: 'user-1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Will be aborted', completeness: 'complete' }],
+            modelId: undefined,
+            lmParameters: undefined,
+            createdAt: 0,
             replies: {
               items: [
                 { id: assistantId, role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } },
@@ -230,7 +248,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
       currentLeafId: assistantId,
       modelId: 'gpt-4',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
     }) as any;
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
@@ -292,14 +312,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: 'user-1',
             role: 'user',
-            parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }],
+            modelId: undefined,
+            lmParameters: undefined,
             createdAt: 0,
             replies: {
               items: [
                 {
                   id: assistantId,
                   role: 'assistant',
-                  parts: [{ type: 'text', text: 'First answer', completeness: 'complete' }], interruption: undefined,
+                  parts: [{ type: 'text', text: 'First answer', completeness: 'complete' }],
+                  interruption: undefined,
                   createdAt: 0,
                   replies: { items: [] },
                   modelId: 'gpt-4',
@@ -357,14 +380,18 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: 'user-1',
             role: 'user',
-            parts: [{ type: 'text', text: 'Original', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            parts: [{ type: 'text', text: 'Original', completeness: 'complete' }],
+            modelId: undefined,
+            lmParameters: undefined,
             createdAt: 0,
             replies: {
               items: [
                 {
                   id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
-                  parts: [{ type: 'text', text: 'Old response', completeness: 'complete' }], lmParameters: undefined, interruption: undefined,
+                  parts: [{ type: 'text', text: 'Old response', completeness: 'complete' }],
+                  lmParameters: undefined,
+                  interruption: undefined,
                   createdAt: 0,
                   replies: { items: [] },
                   modelId: 'gpt-4',

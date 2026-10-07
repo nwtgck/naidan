@@ -68,8 +68,16 @@ function imageInput(): ReceiveValue<typeof naidanPeerContract.methods.generateIm
       loras: [],
     },
     parameters: {
-      prompt: 'tree', negativePrompt: '', width: 256, height: 256, steps: 4,
-      guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5,
+      prompt: 'tree',
+      negativePrompt: '',
+      width: 256,
+      height: 256,
+      steps: 4,
+      guidance: 7,
+      seed: '42',
+      sampler: 'auto',
+      scheduler: 'auto',
+      distilledGuidance: 3.5,
     },
     preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
@@ -222,7 +230,10 @@ it.each([undefined, 42])('rejects a missing or wrongly typed required catalog la
     }),
   });
   const call = caller.client({ contract: naidanPeerContract }).listChatModels({
-    input: {}, on: {}, signal: undefined, timeoutMs: undefined,
+    input: {},
+    on: {},
+    signal: undefined,
+    timeoutMs: undefined,
   });
   await expect(collect({ stream: await call.result })).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });
   await expect(call.closed).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });

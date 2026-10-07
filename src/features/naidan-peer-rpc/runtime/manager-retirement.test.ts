@@ -15,51 +15,74 @@ function fixture({ cleanupFailure, count }: { cleanupFailure: Error | undefined,
   const records: NaidanRpcConnection[] = Array.from({ length: count }, (_, index) => ({
     id: toNaidanRpcConnectionId({ raw: `connection-${index}` }),
     peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: new Uint8Array(32).fill(index + 2) }) }),
-    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: `Peer ${index}`,
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0,
+    autoConnect: 'disabled',
+    localPublicKey: encodePeerKey({ bytes: local }),
+    label: `Peer ${index}`,
+    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] },
+    allowedMethods: [],
+    revision: 0,
   }));
   const links: { pair: ReturnType<typeof transportPair>, closed: ReturnType<typeof Promise.withResolvers<void>>, abort: ReturnType<typeof vi.fn<() => void>> }[] = [];
   const release = vi.fn(), retireResources = vi.fn(async () => {});
-  const manager = new NaidanPeerManager({ dependencies: {
-    storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: records }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
-    identity: async () => ({ privateKey: {} as CryptoKey, publicKey: local }), acquireOwner: async () => ({ release }),
-    open: async () => {
-      const index = links.length, pair = transportPair({ capacity: 2, fragmentBytes: 79 }), closed = Promise.withResolvers<void>();
-      const abort = vi.fn(() => pair.close());
-      links.push({ pair, closed, abort });
-      const input = pair.a.incomingStreams[Symbol.asyncIterator]();
-      return {
-        ...pair.a, closed: closed.promise, peerIdentity: new Uint8Array(32).fill(index + 2), confirmResponse: async () => {},
-        abort,
-        incomingStreams: { [Symbol.asyncIterator]() {
-          return {
-            next: () => input.next(),
-            async return() {
-              const result = await input.return?.();
-              if (index === 0 && cleanupFailure) throw cleanupFailure;
-              return result ?? { done: true as const, value: undefined };
+  const manager = new NaidanPeerManager({
+    dependencies: {
+      storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: records }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
+      identity: async () => ({ privateKey: {} as CryptoKey, publicKey: local }),
+      acquireOwner: async () => ({ release }),
+      open: async () => {
+        const index = links.length, pair = transportPair({ capacity: 2, fragmentBytes: 79 }), closed = Promise.withResolvers<void>();
+        const abort = vi.fn(() => pair.close());
+        links.push({ pair, closed, abort });
+        const input = pair.a.incomingStreams[Symbol.asyncIterator]();
+        return {
+          ...pair.a,
+          closed: closed.promise,
+          peerIdentity: new Uint8Array(32).fill(index + 2),
+          confirmResponse: async () => {},
+          abort,
+          incomingStreams: {
+            [Symbol.asyncIterator]() {
+              return {
+                next: () => input.next(),
+                async return() {
+                  const result = await input.return?.();
+                  if (index === 0 && cleanupFailure) throw cleanupFailure;
+                  return result ?? { done: true as const, value: undefined };
+                },
+              };
             },
-          };
-        } },
-      } satisfies RpcLink;
-    },
-    inference: {
-      inputBudget: createInferenceBudget({ capacity: 1024 }), deliveryBudget: createInferenceBudget({ capacity: 1024 }),
-      resources: { listChatModels: async () => [], listImageModels: async () => [],
-        generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
-        generateImage: async () => {
-          throw new Error('Not executed');
+          },
+        } satisfies RpcLink;
+      },
+      inference: {
+        inputBudget: createInferenceBudget({ capacity: 1024 }),
+        deliveryBudget: createInferenceBudget({ capacity: 1024 }),
+        resources: {
+          listChatModels: async () => [],
+          listImageModels: async () => [],
+          generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
+          generateImage: async () => {
+            throw new Error('Not executed');
+          },
         },
       },
+      changed: () => {},
+      retireResources,
     },
-    changed: () => {}, retireResources,
-  } });
-  return { manager, records, links, release, retireResources, async cleanup() {
-    for (const { pair, closed } of links) {
-      pair.close(); closed.resolve();
-    }
-    await manager.setEnabled({ enabled: false }).catch(() => {});
-  } };
+  });
+  return {
+    manager,
+    records,
+    links,
+    release,
+    retireResources,
+    async cleanup() {
+      for (const { pair, closed } of links) {
+        pair.close(); closed.resolve();
+      }
+      await manager.setEnabled({ enabled: false }).catch(() => {});
+    },
+  };
 }
 
 it('finishes management teardown after the lower connection ends itself', async () => {

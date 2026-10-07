@@ -19,21 +19,26 @@ export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Reado
     },
     generateBundle(_options, bundle) {
       if (allowExternalWasmAssets) return;
-      rejectAssets({ assets: Object.values(bundle)
-        .filter(output => output.type === 'asset' && isWasmAsset({ fileName: output.fileName }))
-        .map(output => output.fileName) });
+      rejectAssets({
+        assets: Object.values(bundle)
+          .filter(output => output.type === 'asset' && isWasmAsset({ fileName: output.fileName }))
+          .map(output => output.fileName),
+      });
     },
     // publicDir copies are not Rollup assets. Check disk before the release
     // validator/packager hooks, without weakening the generateBundle guard.
     writeBundle: {
-      order: 'pre', sequential: true,
+      order: 'pre',
+      sequential: true,
       async handler(options) {
         if (allowExternalWasmAssets) return;
         const directory = options.dir ?? outputDirectory;
         if (directory === undefined) throw new Error('Missing standalone output directory');
         const entries = await readdir(directory, { recursive: true, withFileTypes: true });
-        rejectAssets({ assets: entries.filter(entry => entry.isFile() && isWasmAsset({ fileName: entry.name }))
-          .map(entry => path.relative(directory, path.join(entry.parentPath, entry.name))) });
+        rejectAssets({
+          assets: entries.filter(entry => entry.isFile() && isWasmAsset({ fileName: entry.name }))
+            .map(entry => path.relative(directory, path.join(entry.parentPath, entry.name))),
+        });
       },
     },
   };

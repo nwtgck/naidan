@@ -41,8 +41,15 @@ it('POST snapshots a finite body and uses constrained fetch options', async () =
   await task;
   const call = vi.mocked(fetch).mock.calls[0];
   expect(call?.[0]).toBe('https://relay.invalid/route_1');
-  expect(call?.[1]).toMatchObject({ method: 'POST', body: new Uint8Array([1, 2]), credentials: 'omit',
-    redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', mode: 'cors' });
+  expect(call?.[1]).toMatchObject({
+    method: 'POST',
+    body: new Uint8Array([1, 2]),
+    credentials: 'omit',
+    redirect: 'error',
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
+    mode: 'cors',
+  });
   expect(call?.[1]).not.toHaveProperty('duplex');
   expect(call?.[1]).not.toHaveProperty('headers');
   expect(call?.[1]?.signal?.aborted).toBe(true);
@@ -88,9 +95,12 @@ for (const [status, kind] of [[200, 'transient'], [403, 'fatal'], [503, 'transie
   for (const cleanupOutcome of ['resolved', 'rejected'] as const) {
     it(`HTTP ${status} retains POST ownership until ${cleanupOutcome} response cancellation finishes`, async () => {
       const cleanup = Promise.withResolvers<void>(), cancel = vi.fn(() => cleanup.promise);
-      const response = new Response(new ReadableStream<Uint8Array>({ start(controller) {
-        if (status === 200) controller.enqueue(new Uint8Array(8193));
-      }, cancel }), { status });
+      const response = new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (status === 200) controller.enqueue(new Uint8Array(8193));
+        },
+        cancel,
+      }), { status });
       vi.mocked(fetch).mockResolvedValueOnce(response);
       const instance = endpoint(), signal = new AbortController().signal;
       let settled = false;

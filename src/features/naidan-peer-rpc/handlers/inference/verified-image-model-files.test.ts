@@ -64,8 +64,11 @@ it('retains only the last committed configuration and keeps roots and members di
 it('checks every index, shard and adapter against its own expected content hash', async () => {
   const cache = createVerifiedImageModelFiles(), signal = new AbortController().signal;
   const index = file({ text: 'index' }), shard = file({ text: 'shard' }), lora = file({ text: 'adapter' });
-  const files = [index, shard, lora].map((file, index) => ({ key: String(index), file,
-    expectedSha256: createHash('sha256').update(['index', 'shard', 'adapter'][index]!).digest('hex') }));
+  const files = [index, shard, lora].map((file, index) => ({
+    key: String(index),
+    file,
+    expectedSha256: createHash('sha256').update(['index', 'shard', 'adapter'][index]!).digest('hex'),
+  }));
   (await cache.prepare({ files, signal })).commit();
   await expect(cache.prepare({ files: files.map((entry, index) => index === 1 ? { ...entry, file: file({ text: 'other' }) } : entry), signal })).rejects.toThrow('receipt');
 });

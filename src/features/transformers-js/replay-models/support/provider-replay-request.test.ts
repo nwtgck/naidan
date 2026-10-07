@@ -8,8 +8,10 @@ import { toMessageId } from '@/01-models/ids';
 // A small real Provider/Worker fixture for native-plan ownership, not a public
 // scenario dispatcher. Every chat and its structured observations remain below.
 const nativePlan = {
-  catalog: providerReplayCatalog, caseIds: ['first-turn'] as const,
-  artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined,
+  catalog: providerReplayCatalog,
+  caseIds: ['first-turn'] as const,
+  artifactPaths: ['onnx/model_q4f16.onnx'],
+  imagePlatform: undefined,
 };
 
 describe('explicit Provider native request ownership', () => {
@@ -18,8 +20,12 @@ describe('explicit Provider native request ownership', () => {
     const put = vi.spyOn(replay.runtime.TextStreamer.prototype, 'put');
     const end = vi.spyOn(replay.runtime.TextStreamer.prototype, 'end');
     const parameters = {
-      temperature: 0, topP: 1, maxCompletionTokens: 17,
-      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 17,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
       reasoning: { effort: undefined },
     };
     try {
@@ -27,14 +33,24 @@ describe('explicit Provider native request ownership', () => {
       // The captured native request used 16. Mutating the same object to match
       // it must not retroactively change the independently begun 17-token plan.
       parameters.maxCompletionTokens = 16;
-      const capture = captureProviderChat({ provider: replay.provider, request: {
-        model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-          { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
-        ] }],
-        parameters, tools: [], signal: new AbortController().signal,
-        debug: undefined, readBinaryObject: undefined,
-      } });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          messages: [{
+            id: toMessageId({ raw: 'user' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+            ],
+          }],
+          parameters,
+          tools: [],
+          signal: new AbortController().signal,
+          debug: undefined,
+          readBinaryObject: undefined,
+        },
+      });
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
@@ -57,11 +73,18 @@ describe('explicit Provider native request ownership', () => {
     const replay = await createProviderRequestReplay(nativePlan);
     try {
       expect(() => replay.assertComplete({ requests: 0, nativeCalls: 0 })).toThrow();
-      replay.beginNativeRequest({ caseId: 'first-turn', parameters: {
-        temperature: 0, topP: 1, maxCompletionTokens: 16,
-        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
-        reasoning: { effort: undefined },
-      } });
+      replay.beginNativeRequest({
+        caseId: 'first-turn',
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
+        },
+      });
       expect(() => replay.endNativeRequest()).toThrow('attempted native inventory');
       expect(() => replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: undefined } })).toThrow('explicit current rejection');
       expect(() => replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: { type: 'finished', next: 'user' } } })).toThrow('explicit current rejection');

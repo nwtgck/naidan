@@ -14,10 +14,14 @@ function message({ role, content }: { role: 'user' | 'assistant' | 'system', con
   return { id: toMessageId({ raw: `${role}-history` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
 }
 function userImage({ withText }: { withText: boolean }): ChatMessage {
-  return { id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-    ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
-    { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
-  ] };
+  return {
+    id: toMessageId({ raw: 'image-user' }),
+    role: 'user',
+    parts: [
+      ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
+      { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
+    ],
+  };
 }
 async function generate({ provider, messages, model, parameters, tools }: {
   provider: PromptApiProvider,
@@ -58,7 +62,10 @@ describe('PromptApiProvider', () => {
 
     const provider = new PromptApiProvider();
 
-    const generated = await generate({ provider, parameters: undefined, tools: undefined,
+    const generated = await generate({
+      provider,
+      parameters: undefined,
+      tools: undefined,
       messages: [
         message({ role: 'system', content: 'Be helpful.' }),
         message({ role: 'user', content: 'Previous question' }),
@@ -95,7 +102,10 @@ describe('PromptApiProvider', () => {
     vi.stubGlobal('LanguageModel', { availability, create });
 
     const provider = new PromptApiProvider();
-    await generate({ provider, parameters: undefined, tools: undefined,
+    await generate({
+      provider,
+      parameters: undefined,
+      tools: undefined,
       messages: [userImage({ withText: true })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
     });
@@ -139,7 +149,10 @@ describe('PromptApiProvider', () => {
     vi.stubGlobal('LanguageModel', { availability, create });
 
     const provider = new PromptApiProvider();
-    await expect(generate({ provider, parameters: undefined, tools: undefined,
+    await expect(generate({
+      provider,
+      parameters: undefined,
+      tools: undefined,
       messages: [userImage({ withText: false })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
     })).rejects.toMatchObject({ code: 'unsupported_input' });
@@ -161,7 +174,10 @@ describe('PromptApiProvider', () => {
     });
 
     const provider = new PromptApiProvider();
-    await expect(generate({ provider, parameters: undefined, tools: undefined,
+    await expect(generate({
+      provider,
+      parameters: undefined,
+      tools: undefined,
       messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
     })).rejects.toThrow('stream failed');
@@ -177,7 +193,10 @@ describe('PromptApiProvider', () => {
     });
 
     const provider = new PromptApiProvider();
-    await expect(generate({ provider, parameters: undefined, tools: undefined,
+    await expect(generate({
+      provider,
+      parameters: undefined,
+      tools: undefined,
       messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
     })).rejects.toMatchObject({ code: 'preparation_required' });
@@ -188,7 +207,9 @@ describe('PromptApiProvider', () => {
   it('rejects tools and configured LM parameters', async () => {
     const provider = new PromptApiProvider();
 
-    await expect(generate({ provider, parameters: undefined,
+    await expect(generate({
+      provider,
+      parameters: undefined,
       messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
       tools: [{
@@ -198,7 +219,9 @@ describe('PromptApiProvider', () => {
       }],
     })).rejects.toThrow('tools are not supported');
 
-    await expect(generate({ provider, tools: undefined,
+    await expect(generate({
+      provider,
+      tools: undefined,
       messages: [message({ role: 'user', content: 'hello' })],
       model: BROWSER_PROVIDED_LM_MODEL_ID,
       parameters: {

@@ -1355,7 +1355,8 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         // File is structured-cloned by the existing worker transport, not read
         // into an ArrayBuffer. This includes OPFS and native-backed Wesh mounts.
         return fileExplorerPrepareFileDownloadResponseSchema.parse({
-          kind: 'file', blob: await resolvedFile.handle.getFile(),
+          kind: 'file',
+          blob: await resolvedFile.handle.getFile(),
         });
       case 'virtual-file':
         // No eager read or Blob materialization for computed/mutable VFS files.

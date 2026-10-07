@@ -11,9 +11,11 @@ vi.mock('../download-verification/logic/reuse-downloaded-production-revision', (
 vi.mock('../download-verification/logic/run-production-download-preparation', () => ({ runProductionDownloadPreparation: preparation.run }));
 vi.mock('..', async () => {
   const { createTransformersJsService } = await import('@/features/transformers-js/index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('This UI control must not create an inference Worker');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('This UI control must not create an inference Worker');
+    },
+  });
   preparation.dispose.mockImplementation(owner.dispose);
   return { transformersJsService: owner.service };
 });
@@ -296,11 +298,17 @@ it.each<{
   // claim to measure acquisition speed or validate the estimator's arithmetic.
   const snapshot: DownloadProgressSnapshot = {
     ...createDownloadProgressTracker().snapshot(),
-    phase: 'transferring', overallProgress: 32, downloadEta: eta,
-    attemptNumber: 1, attemptCount: 1, candidate: { device: 'wasm', dtype: 'q4' },
+    phase: 'transferring',
+    overallProgress: 32,
+    downloadEta: eta,
+    attemptNumber: 1,
+    attemptCount: 1,
+    candidate: { device: 'wasm', dtype: 'q4' },
   };
   vi.spyOn(transformersJsService, 'getState').mockReturnValue({
-    ...transformersJsService.getState(), status: 'loading', downloadProgress: snapshot,
+    ...transformersJsService.getState(),
+    status: 'loading',
+    downloadProgress: snapshot,
   });
   wrapper = mount(TransformersJsManager);
   await flushPromises();
@@ -319,7 +327,9 @@ it.each(['resolving-revision', 'checking-cache', 'preparing-metadata', 'observin
   const snapshot = tracker.snapshot();
   expect(snapshot.phase).toBe(phase);
   vi.spyOn(transformersJsService, 'getState').mockReturnValue({
-    ...transformersJsService.getState(), status: 'loading', downloadProgress: snapshot,
+    ...transformersJsService.getState(),
+    status: 'loading',
+    downloadProgress: snapshot,
   });
   wrapper = mount(TransformersJsManager);
   await flushPromises();
@@ -334,8 +344,12 @@ it('preserves the existing Load view when Download progress is absent', async ()
   // claim that a real model has been loaded.
   const state = transformersJsService.getState();
   vi.spyOn(transformersJsService, 'getState').mockReturnValue({
-    ...state, status: 'loading', progress: 45, downloadProgress: undefined,
-    error: undefined, isLoadingFromCache: true,
+    ...state,
+    status: 'loading',
+    progress: 45,
+    downloadProgress: undefined,
+    error: undefined,
+    isLoadingFromCache: true,
   });
   wrapper = mount(TransformersJsManager);
   expect(wrapper.find('[data-testid="download-progress"]').exists()).toBe(false);

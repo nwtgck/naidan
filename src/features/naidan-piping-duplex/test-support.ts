@@ -42,10 +42,22 @@ export async function keyPair() {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange timed out')), 5000);
   const jobs = {
-    a: establishNaidanPipingKeys({ role: 'initiator', identity: a, expectedPeer: b.publicKey, binding,
-      channel: { send: toB.send, receive: toA.receive }, signal: stop.signal }),
-    b: establishNaidanPipingKeys({ role: 'responder', identity: b, expectedPeer: a.publicKey, binding,
-      channel: { send: toA.send, receive: toB.receive }, signal: stop.signal }),
+    a: establishNaidanPipingKeys({
+      role: 'initiator',
+      identity: a,
+      expectedPeer: b.publicKey,
+      binding,
+      channel: { send: toB.send, receive: toA.receive },
+      signal: stop.signal,
+    }),
+    b: establishNaidanPipingKeys({
+      role: 'responder',
+      identity: b,
+      expectedPeer: a.publicKey,
+      binding,
+      channel: { send: toA.send, receive: toB.receive },
+      signal: stop.signal,
+    }),
   };
   for (const job of Object.values(jobs)) void job.catch(error => stop.abort(error));
   try {

@@ -130,18 +130,22 @@ export async function resolveRepositoryModel({ name }: { name: string }): Promis
 }
 export async function listHuggingFaceModels(): Promise<LocalModel[]> {
   const result: LocalModel[] = [];
-  await visitRepositories({ visit: async ({ repository }) => {
-    result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
-  } });
+  await visitRepositories({
+    visit: async ({ repository }) => {
+      result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
+    },
+  });
   return result;
 }
 export async function listPendingDownloads(): Promise<DownloadJournal[]> {
   const result: DownloadJournal[] = [];
-  await visitRepositories({ visit: async ({ repository, folder }) => {
-    const journal = await readJournal({ folder });
-    if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
-    result.push(journal);
-  } });
+  await visitRepositories({
+    visit: async ({ repository, folder }) => {
+      const journal = await readJournal({ folder });
+      if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
+      result.push(journal);
+    },
+  });
   return result;
 }
 export async function withRepositoryLock<T>({ repository, operation }: { repository: string, operation: () => Promise<T> }): Promise<T> {

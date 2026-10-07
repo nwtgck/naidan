@@ -145,11 +145,17 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
 
   function snapshot(): ProductionProviderCaptureSnapshot {
     const base = exactObject<CaptureSnapshotBase>()({
-      runId, modelId, run: runState, lifetime, abortReason, disposal,
+      runId,
+      modelId,
+      run: runState,
+      lifetime,
+      abortReason,
+      disposal,
       observation: observationStatus(),
       events: Object.freeze(events.slice()),
       capabilities: Object.freeze({
-        providerCallbacks: 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner',
+        providerCallbacks: 'parts_and_tools_projection',
+        nativeInvocations: 'not-collected-by-this-owner',
         tools: isCaptureScenarioSelected({ plan, scenario: 'natural-tool-minimal' }) ? 'fixed-public-weather-tool' : 'not-selected',
         images: isCaptureScenarioSelected({ plan, scenario: 'image' }) ? 'fixed-public-image' : 'not-selected',
       }),
@@ -159,7 +165,9 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       return Object.freeze(exactObject<CaptureRequestSnapshot>()({
         ...identity,
         status: input === undefined ? 'not-started' : captured.settled === undefined ? 'awaiting-settlement' : 'settled',
-        input, trace: captured, notStartedReason,
+        input,
+        trace: captured,
+        notStartedReason,
       }));
     });
     return Object.freeze(exactObject<ProductionProviderCaptureSnapshot>()({ ...base, format: 'production-provider-capture-v3', plan, requests: Object.freeze(capturedRequests) }));
@@ -243,8 +251,13 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       try {
         // Settlement is the ordinary common operation after every child, tool
         // and Provider scope has completed, not a callback-era chat Promise.
-        const result = await generateProductionProviderCapture({ provider, modelId,
-          input: request.input, trace: request.trace, abortController: controller });
+        const result = await generateProductionProviderCapture({
+          provider,
+          modelId,
+          input: request.input,
+          trace: request.trace,
+          abortController: controller,
+        });
         switch (result.type) {
         case 'error': throw result.error;
         case 'finished': case 'interrupted': break;
@@ -310,13 +323,23 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
   }
 
   return {
-    run, snapshot, abort, dispose,
+    run,
+    snapshot,
+    abort,
+    dispose,
     /** Sampling must neither copy captured output nor interpose UI callbacks
      * between common operation settlement and the next continuity request. */
     getProgress(): ProductionProviderCaptureProgress {
       return Object.freeze(exactObject<ProductionProviderCaptureProgress>()({
-        runId, modelId, plan, run: runState, lifetime, activeRequest,
-        totalRequests: requests.length, selectedRequests, settledRequests,
+        runId,
+        modelId,
+        plan,
+        run: runState,
+        lifetime,
+        activeRequest,
+        totalRequests: requests.length,
+        selectedRequests,
+        settledRequests,
         loadStatus: serviceOwner.service.getState().status,
       }));
     },

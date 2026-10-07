@@ -49,11 +49,14 @@ describe('wesh core command parsing', () => {
   }
 
   it('supports legacy head -N syntax', async () => {
-    await writeFile({ name: 'head.txt', data: `\
+    await writeFile({
+      name: 'head.txt',
+      data: `\
 a
 b
 c
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({ script: 'head -2 head.txt' });
 
@@ -76,11 +79,14 @@ b
   });
 
   it('supports legacy tail -N syntax', async () => {
-    await writeFile({ name: 'tail.txt', data: `\
+    await writeFile({
+      name: 'tail.txt',
+      data: `\
 a
 b
 c
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({ script: 'tail -2 tail.txt' });
 
@@ -93,11 +99,14 @@ c
   });
 
   it('supports tail +N syntax to start from a specific line', async () => {
-    await writeFile({ name: 'tail-plus.txt', data: `\
+    await writeFile({
+      name: 'tail-plus.txt',
+      data: `\
 a
 b
 c
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({ script: 'tail +2 tail-plus.txt' });
 

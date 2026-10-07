@@ -7,8 +7,15 @@ afterEach(() => vi.restoreAllMocks());
 describe('private browser diagnostics', () => {
   it('reports a handled dispatch split as information, not a device failure', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const diagnostic = { event: 'native-info', nativeOperation: 'dispatch-split', nativeBackend: 'WebGPU',
-      dispatchAxis: 'x', dispatchCount: 116100, dispatchLimit: 65535, chunkCount: 2 } as const;
+    const diagnostic = {
+      event: 'native-info',
+      nativeOperation: 'dispatch-split',
+      nativeBackend: 'WebGPU',
+      dispatchAxis: 'x',
+      dispatchCount: 116100,
+      dispatchLimit: 65535,
+      chunkCount: 2,
+    } as const;
     logDiagnostic({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
   });
@@ -22,9 +29,18 @@ describe('private browser diagnostics', () => {
     const listener = vi.fn();
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
     const diagnostic = {
-      event: 'cache-reuse', reason: 'prefix-mismatch', reusedTokens: 0, evaluatedTokens: 48,
-      tokens: 48, cachedTokens: 357, commonPrefixTokens: 17, cacheComparison: 'token-mismatch',
-      nativeMemoryKind: 'hybrid', nativePositionMin: 0, nativePositionMax: 356, nativeRollbackTokens: 0,
+      event: 'cache-reuse',
+      reason: 'prefix-mismatch',
+      reusedTokens: 0,
+      evaluatedTokens: 48,
+      tokens: 48,
+      cachedTokens: 357,
+      commonPrefixTokens: 17,
+      cacheComparison: 'token-mismatch',
+      nativeMemoryKind: 'hybrid',
+      nativePositionMin: 0,
+      nativePositionMax: 356,
+      nativeRollbackTokens: 0,
     } as const;
     try {
       logDiagnostic({ diagnostic });
@@ -86,7 +102,9 @@ describe('private browser diagnostics', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({
-      event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content',
+      event: 'failed',
+      stage: 'stream-emit',
+      reason: 'non-monotonic-content',
       message: 'Failed while delivering parsed output to the response stream. The parser revised content that had already been streamed.',
     });
     debug.mockClear();
@@ -223,9 +241,12 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     }
   });
   it('does not let a failed diagnostic acknowledgement abort inference', async () => {
-    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: async () => {
-      throw new Error('private transport error');
-    } });
+    const unsubscribe = subscribeDiagnostics({
+      debug: 'on',
+      listener: async () => {
+        throw new Error('private transport error');
+      },
+    });
     try {
       await expect(logOperation({ diagnostic: { event: 'operation-start', stage: 'image-tokenize' } })).resolves.toBeUndefined();
     } finally {
@@ -281,8 +302,16 @@ describe('projector diagnostic boundaries', () => {
 
 describe('bounded progress delivery diagnostics', () => {
   it('allows only bounded aggregate counts, never progress histories or user data', () => {
-    const delivery = { received: 10000, sent: 2, settled: 2, coalesced: 9998,
-      discarded: 0, callbackFailures: 0, peakInFlight: 1, peakPending: 1 };
+    const delivery = {
+      received: 10000,
+      sent: 2,
+      settled: 2,
+      coalesced: 9998,
+      discarded: 0,
+      callbackFailures: 0,
+      peakInFlight: 1,
+      peakPending: 1,
+    };
     const report = { event: 'generation-progress' as const, progressDelivery: delivery };
     expect(diagnosticSchema.safeParse(report).success).toBe(true);
     for (const extra of [{ text: 'private' }, { tokens: [1] }, { history: [1, 2] },
@@ -294,9 +323,21 @@ describe('bounded progress delivery diagnostics', () => {
 
 
 describe('bounded model read diagnostics', () => {
-  const fileReads = { target: 'model' as const, mode: 'read-ahead' as const, requests: 1024, sourceCalls: 17,
-    sourceBytes: 1048576, deliveredBytes: 1048576, directReads: 1, fills: 16, hits: 1007, hitBytes: 1031168,
-    peakBufferBytes: 65536, allocationFallbacks: 0, sourceReadMs: 12 };
+  const fileReads = {
+    target: 'model' as const,
+    mode: 'read-ahead' as const,
+    requests: 1024,
+    sourceCalls: 17,
+    sourceBytes: 1048576,
+    deliveredBytes: 1048576,
+    directReads: 1,
+    fills: 16,
+    hits: 1007,
+    hitBytes: 1031168,
+    peakBufferBytes: 65536,
+    allocationFallbacks: 0,
+    sourceReadMs: 12,
+  };
   it('publishes count-only snapshots for model and projector loads', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     for (const target of ['model', 'projector'] as const) logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });

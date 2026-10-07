@@ -21,8 +21,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 async function pending() {
-  const snapshot = snapshotImageGeneration({ request: requestFixture(), sourceCommit: 'a'.repeat(40), createdAt: 1,
-    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }) });
+  const snapshot = snapshotImageGeneration({
+    request: requestFixture(),
+    sourceCommit: 'a'.repeat(40),
+    createdAt: 1,
+    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }),
+  });
   const output = finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['image']), width: 256, height: 256, modelVersion: 'model', uniformOutput: false }, previews: [], elapsedMs: 1 });
   const save = vi.fn().mockRejectedValueOnce(new Error('quota')).mockResolvedValue(undefined);
   const id = pendingImageHistory.retain({ ...output, save });

@@ -12,9 +12,13 @@ import { readImageArtifacts } from './build-runtime';
 it('connects the installed bicore image dependency without replacing the llama dependency', () => {
   const rootDir = process.cwd();
   const pkg = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8')));
-  const lock = z.object({ packages: z.record(z.string(), z.object({
-    dependencies: z.record(z.string(), z.string()).optional(), resolved: z.string().optional(), integrity: z.string().optional(),
-  })) }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8')));
+  const lock = z.object({
+    packages: z.record(z.string(), z.object({
+      dependencies: z.record(z.string(), z.string()).optional(),
+      resolved: z.string().optional(),
+      integrity: z.string().optional(),
+    })),
+  }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8')));
   const name = 'stable-diffusion-cpp-browser-core';
   const specifier = pkg.dependencies[name];
   expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);

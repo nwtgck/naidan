@@ -113,7 +113,9 @@ export function adaptDispatchShader({ source, entryPoint }: { source: string, en
   return {
     code: source.slice(0, start) + signature.join(', ') + ') {\n' + aliases.join('\n') + '\n'
       + source.slice(bodyStart) + '\n' + declarations.join('\n') + '\n',
-    gridDependent, offsetDependent, bindingGroups,
+    gridDependent,
+    offsetDependent,
+    bindingGroups,
   };
 }
 export const TEST_ONLY = {

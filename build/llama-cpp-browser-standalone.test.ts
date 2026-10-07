@@ -120,7 +120,8 @@ int unrelated;`;
       const boundaryId = boundaryModuleId(identity);
       const localeSources = new Map(BOUNDARY_STRING_LOCALES.map(locale => [packModuleId({ ...identity, locale }), `export const message = ${JSON.stringify(locale)};`]));
       localeSources.set(boundaryId, `export const locales = {${BOUNDARY_STRING_LOCALES.map(locale => `${JSON.stringify(locale)}: () => import(${JSON.stringify(packModuleId({ ...identity, locale }))})`).join(',')}};`);
-      const localeFixture: Plugin = { name: 'llama-mini-locale-fixture',
+      const localeFixture: Plugin = {
+        name: 'llama-mini-locale-fixture',
         resolveId(id) {
           return localeSources.has(id) ? `\0${id}` : undefined;
         },
@@ -145,7 +146,11 @@ int unrelated;`;
       let collectedDependencies: readonly BuildLicenseDependency[] = [];
       const releaseReportFile = path.join(root, 'release-report.json');
       const archives: { locale: string | undefined, names: string[], hashes: Map<string, string> }[] = [];
-      const result = await build({ configFile: false, root, base: './', logLevel: 'silent',
+      const result = await build({
+        configFile: false,
+        root,
+        base: './',
+        logLevel: 'silent',
         define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: 'true', __BUILD_MODE_IS_HOSTED__: 'false' },
         resolve: { alias: [...createStandaloneFacadeAliases({ resolvePath }), { find: '@', replacement: path.join(repo, 'src') }] },
         plugins: [localeFixture, adapter.corePlugin,
@@ -156,8 +161,11 @@ int unrelated;`;
             },
           }),
           createNaidanStandalonePlugin({
-            workers, embeddedBinaries: adapter.embeddedBinaries, diagnostics,
-            systemRuntimePath: require.resolve('systemjs/dist/system.min.js'), sourceAudit: { mode: 'inline' },
+            workers,
+            embeddedBinaries: adapter.embeddedBinaries,
+            diagnostics,
+            systemRuntimePath: require.resolve('systemjs/dist/system.min.js'),
+            sourceAudit: { mode: 'inline' },
             releaseValidation: {
               outputDirectory,
               getCollectedLicenseDependencies: () => collectedDependencies,
@@ -168,9 +176,17 @@ int unrelated;`;
             releasePackaging: {
               async packageRelease({ variants }) {
                 const archiveDirectory = path.join(root, 'archives');
-                await createZipPackages({ sourceDirectory: outputDirectory, archiveDirectory, version: 'fixture', packages: variants.map(variant => ({
-                  zipFileName: `${variant.id}.zip`, folderName: 'fixture', excludedFileNames: new Set(variant.excludedFileNames), fileOverrides: new Map([['index.html', variant.indexHtml]]),
-                })) });
+                await createZipPackages({
+                  sourceDirectory: outputDirectory,
+                  archiveDirectory,
+                  version: 'fixture',
+                  packages: variants.map(variant => ({
+                    zipFileName: `${variant.id}.zip`,
+                    folderName: 'fixture',
+                    excludedFileNames: new Set(variant.excludedFileNames),
+                    fileOverrides: new Map([['index.html', variant.indexHtml]]),
+                  })),
+                });
                 for (const variant of variants) {
                   const zip = await JSZip.loadAsync(readFileSync(path.join(archiveDirectory, `${variant.id}.zip`)));
                   const hashes = new Map<string, string>(); const names: string[] = [];
@@ -188,12 +204,15 @@ int unrelated;`;
       });
       if (Array.isArray(result) || !('output' in result)) throw new Error('Unexpected build result');
       expect(JSON.parse(readFileSync(releaseReportFile, 'utf8'))).toMatchObject({
-        passed: true, failures: [],
+        passed: true,
+        failures: [],
         licenseAudit: { missingBundledPackages: [], incompleteRecords: [], missingExternalLicenseIdentities: [] },
       });
       const coreLicense = collectedDependencies.filter(dependency => dependency.name === 'llama-cpp-browser-core');
       expect(coreLicense).toEqual([{
-        name: 'llama-cpp-browser-core', version: '0.1.0', license: 'MIT',
+        name: 'llama-cpp-browser-core',
+        version: '0.1.0',
+        license: 'MIT',
         licenseText: readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core/LICENSE'), 'utf8'),
       }]);
       const chunks = result.output.filter((file): file is Rollup.OutputChunk => file.type === 'chunk');

@@ -261,15 +261,26 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       id: chatId,
       content: {
         root: {
-          items: [{ id: toMessageId({ raw: '00000000-0000-4000-a000-000000000012' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, { type: 'attachment', attachment: {
-            id: toAttachmentId({ raw: '00000000-0000-4000-a000-000000000013' }),
-            binaryObjectId,
-            originalName: 'attachment.txt',
-            mimeType: 'text/plain',
-            size: 10,
-            uploadedAt: 1,
-            status: 'persisted',
-          } }], replies: { items: [] } }],
+          items: [{
+            id: toMessageId({ raw: '00000000-0000-4000-a000-000000000012' }),
+            role: 'user',
+            createdAt: 1,
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, {
+              type: 'attachment',
+              attachment: {
+                id: toAttachmentId({ raw: '00000000-0000-4000-a000-000000000013' }),
+                binaryObjectId,
+                originalName: 'attachment.txt',
+                mimeType: 'text/plain',
+                size: 10,
+                uploadedAt: 1,
+                status: 'persisted',
+              },
+            }],
+            replies: { items: [] },
+          }],
         },
       },
     });

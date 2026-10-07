@@ -14,8 +14,11 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
   const identity = createRpcIdentityLoader({ read: () => naidanRpcStorage.readIdentity() });
   const inputBudget = createInferenceBudget({ capacity: 256 * 1024 * 1024 });
   const deliveryBudget = createInferenceBudget({ capacity: 128 * 1024 * 1024 });
-  const inference = createInferenceLifetime({ budgets: [inputBudget, deliveryBudget], load: () => import('@/features/naidan-peer-rpc/handlers/inference/resources-factory')
-    .then(({ createReadOnlyResources }) => createReadOnlyResources({ directories: () => settings()?.experimental?.hostModelDirectories ?? [] })) });
+  const inference = createInferenceLifetime({
+    budgets: [inputBudget, deliveryBudget],
+    load: () => import('@/features/naidan-peer-rpc/handlers/inference/resources-factory')
+      .then(({ createReadOnlyResources }) => createReadOnlyResources({ directories: () => settings()?.experimental?.hostModelDirectories ?? [] })),
+  });
   const storage = {
     readIdentity: () => naidanRpcStorage.readIdentity(),
     list: () => naidanRpcStorage.list(),
@@ -29,27 +32,45 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
       await naidanRpcStorage.remove(args); control.registryChanged();
     },
   };
-  const manager: NaidanPeerManager = new NaidanPeerManager({ dependencies: { storage, identity: () => identity.load(),
-    acquireOwner: async ({ signal }) => {
-      const lease = await acquireRpcOwner({ signal });
-      try {
-        signal.throwIfAborted();
-        const unregister = control.registerOwner({ ownerId: nanoid(), stop: () => {
-          stopping(); return manager.setEnabled({ enabled: false });
-        } });
-        let released = false;
-        return { release() {
-          if (released) return; released = true; unregister(); lease.release();
-        } };
-      } catch (error) {
-        lease.release(); throw error;
-      }
+  const manager: NaidanPeerManager = new NaidanPeerManager({
+    dependencies: {
+      storage,
+      identity: () => identity.load(),
+      acquireOwner: async ({ signal }) => {
+        const lease = await acquireRpcOwner({ signal });
+        try {
+          signal.throwIfAborted();
+          const unregister = control.registerOwner({
+            ownerId: nanoid(),
+            stop: () => {
+              stopping(); return manager.setEnabled({ enabled: false });
+            },
+          });
+          let released = false;
+          return {
+            release() {
+              if (released) return; released = true; unregister(); lease.release();
+            },
+          };
+        } catch (error) {
+          lease.release(); throw error;
+        }
+      },
+      open: openPipingRpc,
+      changed,
+      retireResources: () => inference.retire(),
+      inference: {
+        resources: inference.resources,
+        inputBudget,
+        deliveryBudget,
+      },
     },
-    open: openPipingRpc, changed, retireResources: () => inference.retire(), inference: { resources: inference.resources,
-      inputBudget, deliveryBudget } } });
-  storageService.subscribeNaidanRpcRegistryChanges({ listener: () => {
-    void manager.revalidate().catch(changed);
-  } });
+  });
+  storageService.subscribeNaidanRpcRegistryChanges({
+    listener: () => {
+      void manager.revalidate().catch(changed);
+    },
+  });
   return manager;
 }
 export const TEST_ONLY = {

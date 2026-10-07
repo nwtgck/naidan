@@ -40,15 +40,22 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     const modelSelection = library.captureModelSelection({ loras: form.loras.value });
     const destination = library.hostDirectories.destination.value;
     return {
-      ...(width.success ? { width: width.data } : {}), ...(height.success ? { height: height.data } : {}),
-      seedMode: seedMode.value, ...(seed.success && seed.data !== '-1' ? { seed: seed.data } : {}),
+      ...(width.success ? { width: width.data } : {}),
+      ...(height.success ? { height: height.data } : {}),
+      seedMode: seedMode.value,
+      ...(seed.success && seed.data !== '-1' ? { seed: seed.data } : {}),
       debug: form.debug.value,
       historyPersistence: historyEnabled.value ? 'enabled' : 'disabled',
       modelDownloadDestination: destination === 'opfs' ? { kind: 'opfs' } : { kind: 'host', directoryId: toHostModelDirectoryId({ raw: destination }) },
       imageDownload: { ...form.imageDownloadPreferences.value },
       ...(modelSelection ? { modelSelection } : {}),
-      preview: { enabled: preview.enabled ? 'enabled' : 'disabled', mode: preview.mode,
-        ...(interval.success ? { interval: interval.data } : {}), ...(startStep.success ? { startStep: startStep.data } : {}), ...(maxEdge.success ? { maxEdge: maxEdge.data } : {}) },
+      preview: {
+        enabled: preview.enabled ? 'enabled' : 'disabled',
+        mode: preview.mode,
+        ...(interval.success ? { interval: interval.data } : {}),
+        ...(startStep.success ? { startStep: startStep.data } : {}),
+        ...(maxEdge.success ? { maxEdge: maxEdge.data } : {}),
+      },
       keepPreviews: form.keepPreviews.value ? 'enabled' : 'disabled',
       ...(Number.isInteger(maxPreviews) && maxPreviews >= 1 && maxPreviews <= 100 ? { maxPreviews } : {}),
       ...(Number.isInteger(maxResults) && maxResults >= 1 && maxResults <= 100 ? { maxResults } : {}),
@@ -56,7 +63,9 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     };
   }
   function merge({ base, patch }: { base: BrowserImageGenerationSettings | undefined, patch: BrowserImageGenerationSettings }): BrowserImageGenerationSettings {
-    return { ...base, ...patch,
+    return {
+      ...base,
+      ...patch,
       ...(patch.preview ? { preview: { ...base?.preview, ...patch.preview } } : {}),
       ...(patch.imageDownload ? { imageDownload: { ...base?.imageDownload, ...patch.imageDownload } } : {}),
     };
@@ -72,9 +81,13 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     try {
       // The updater executes against the latest settings under the existing
       // storage lock, preserving concurrent locale/host-directory changes.
-      const outcome = await updateForStorage({ isCurrent: owner, updater: ({ experimental }) => ({ ...experimental,
-        browserImageGeneration: merge({ base: experimental?.browserImageGeneration, patch }),
-      }) });
+      const outcome = await updateForStorage({
+        isCurrent: owner,
+        updater: ({ experimental }) => ({
+          ...experimental,
+          browserImageGeneration: merge({ base: experimental?.browserImageGeneration, patch }),
+        }),
+      });
       switch (outcome) {
       case 'saved': if (!owner()) invalidate({ owner }); break;
       case 'changed': invalidate({ owner }); break;
@@ -119,14 +132,24 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
       const saved = settings.value.experimental?.browserImageGeneration;
       const { width, height, seedMode: savedSeedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation: _inferenceLocation, remoteModelEditors: _remoteModelEditors, preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = saved ?? {};
       unhandled satisfies Record<PropertyKey, never>;
-      form.parameters.value = { ...form.parameters.value, width: width ?? defaults.width, height: height ?? defaults.height,
-        seed: seed ?? defaults.seed, bf16WeightType: bf16WeightType ?? defaults.bf16WeightType };
+      form.parameters.value = {
+        ...form.parameters.value,
+        width: width ?? defaults.width,
+        height: height ?? defaults.height,
+        seed: seed ?? defaults.seed,
+        bf16WeightType: bf16WeightType ?? defaults.bf16WeightType,
+      };
       seedMode.value = savedSeedMode ?? defaults.seedMode;
       form.debug.value = debug ?? defaults.debug;
       historyEnabled.value = (historyPersistence ?? defaults.historyPersistence) === 'enabled';
       form.imageDownloadPreferences.value = { format: imageDownload?.format ?? defaults.imageDownload.format, metadata: imageDownload?.metadata ?? defaults.imageDownload.metadata };
-      form.preview.value = { enabled: (preview?.enabled ?? defaults.preview.enabled) === 'enabled', mode: preview?.mode ?? defaults.preview.mode,
-        interval: preview?.interval ?? defaults.preview.interval, startStep: preview?.startStep ?? defaults.preview.startStep, maxEdge: preview?.maxEdge ?? defaults.preview.maxEdge };
+      form.preview.value = {
+        enabled: (preview?.enabled ?? defaults.preview.enabled) === 'enabled',
+        mode: preview?.mode ?? defaults.preview.mode,
+        interval: preview?.interval ?? defaults.preview.interval,
+        startStep: preview?.startStep ?? defaults.preview.startStep,
+        maxEdge: preview?.maxEdge ?? defaults.preview.maxEdge,
+      };
       form.keepPreviews.value = (keepPreviews ?? defaults.keepPreviews) === 'enabled';
       form.maxPreviews.value = maxPreviews ?? defaults.maxPreviews; form.maxResults.value = maxResults ?? defaults.maxResults;
       const destination = modelDownloadDestination ?? defaults.modelDownloadDestination;

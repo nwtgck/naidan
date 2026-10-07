@@ -31,8 +31,10 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
   if (value === undefined) return { access: { providerGeneration, persistence, registryId: undefined }, connections: [] };
   const { version: _version, id, connections, ...rest } = ExperimentalNaidanRpcRegistrySchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
-  return { access: { providerGeneration, persistence, registryId: toNaidanRpcRegistryId({ raw: id }) },
-    connections: connections.map(value => rpcConnectionFromDto({ value })) };
+  return {
+    access: { providerGeneration, persistence, registryId: toNaidanRpcRegistryId({ raw: id }) },
+    connections: connections.map(value => rpcConnectionFromDto({ value })),
+  };
 }
 /** The caller holds the common storage lock, including provider switching and
  * clearing. Only the selected record is changed in the latest registry. */

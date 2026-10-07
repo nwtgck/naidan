@@ -32,38 +32,62 @@ function createFixture(): string {
       const file = `src/strings/messages/${key}/${locale}.ts`;
       writeFile({ root, file, source: fs.readFileSync(path.join(projectRoot, file), 'utf8') });
     }
-    writeFile({ root, file: `src/strings/catalogs/${locale}.ts`, source: `\
+    writeFile({
+      root,
+      file: `src/strings/catalogs/${locale}.ts`,
+      source: `\
 ${keys.map(key => `import { ${key} } from '@/strings/messages/${key}/${locale}';`).join('\n')}
 export const catalog = { ${keys.join(', ')} };
-` });
+`,
+    });
   }
   writeFile({ root, file: 'index.html', source: '<!doctype html><html><head></head><body><script type="module" src="/src/main.ts"></script></body></html>' });
-  writeFile({ root, file: 'src/main.ts', source: `\
+  writeFile({
+    root,
+    file: 'src/main.ts',
+    source: `\
 import { lazyStrings } from '@/strings';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/locale-fixture';
 globalThis.headerLabel = () => lazyStrings.ChatPaneHeader__model_and_chat_settings();
 globalThis.rpcLabels = () => [lazyStrings.naidanRpc__remember_help(), lazyStrings.ImageRecoveredOutputs__managed_by_pending_run()];
 globalThis.loadImageActions = () => import('./image-actions');
 globalThis.createFixtureWorker = createStandaloneWorker;
-` });
-  writeFile({ root, file: 'src/image-actions.ts', source: `\
+`,
+  });
+  writeFile({
+    root,
+    file: 'src/image-actions.ts',
+    source: `\
 import { lazyStrings } from '@/strings';
 export const imageActionLabels = () => [lazyStrings.imageGeneration__copy_prompt(), lazyStrings.imageGeneration__export_notice()];
-` });
-  writeFile({ root, file: 'src/worker.ts', source: `\
+`,
+  });
+  writeFile({
+    root,
+    file: 'src/worker.ts',
+    source: `\
 import { lazyStrings } from '@/strings';
 globalThis.workerLabel = () => lazyStrings.imageGeneration__copy_prompt();
-` });
+`,
+  });
   // Only application-independent runtime plumbing is a fixture. The boundary
   // compiler, SystemJS conversion and package planner are the production code.
-  writeFile({ root, file: 'src/strings/index.ts', source: `\
+  writeFile({
+    root,
+    file: 'src/strings/index.ts',
+    source: `\
 export const lazyStrings = new Proxy({}, { get() { return () => ''; } });
-` });
-  writeFile({ root, file: 'src/strings/runtime.ts', source: `\
+`,
+  });
+  writeFile({
+    root,
+    file: 'src/strings/runtime.ts',
+    source: `\
 export function registerStringBoundary(value: unknown): void {
   (globalThis.registrations ??= []).push(value);
 }
-` });
+`,
+  });
   return root;
 }
 
@@ -93,7 +117,10 @@ async function buildLocaleFixture({ root }: { root: string }): Promise<string[]>
     },
   };
   await build({
-    configFile: false, root, base: './', logLevel: 'silent',
+    configFile: false,
+    root,
+    base: './',
+    logLevel: 'silent',
     resolve: { alias: { '@': path.join(root, 'src') } },
     plugins: [createBoundaryStringsPlugin(), createNaidanStandalonePlugin({
       workers: [{ name: 'locale-fixture', entry: path.join(root, 'src/worker.ts'), virtualId: 'virtual:file-protocol-standalone/worker/locale-fixture' }],

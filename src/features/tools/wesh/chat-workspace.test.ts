@@ -78,12 +78,14 @@ describe('chat workspace', () => {
   });
 
   it('recognizes a lexically equivalent existing workspace path', async () => {
-    const target = chat({ mounts: [{
-      type: 'volume',
-      volumeId: toVolumeId({ raw: 'existing' }),
-      mountPath: '/workspace/./',
-      readOnly: true,
-    }] });
+    const target = chat({
+      mounts: [{
+        type: 'volume',
+        volumeId: toVolumeId({ raw: 'existing' }),
+        mountPath: '/workspace/./',
+        readOnly: true,
+      }],
+    });
 
     await ensureChatWorkspaceMounted({ chat: target });
 
@@ -104,12 +106,14 @@ describe('chat workspace', () => {
   });
 
   it('does not provision when /workspace is already occupied', async () => {
-    const target = chat({ mounts: [{
-      type: 'volume',
-      volumeId: toVolumeId({ raw: 'existing' }),
-      mountPath: '/workspace',
-      readOnly: true,
-    }] });
+    const target = chat({
+      mounts: [{
+        type: 'volume',
+        volumeId: toVolumeId({ raw: 'existing' }),
+        mountPath: '/workspace',
+        readOnly: true,
+      }],
+    });
 
     await ensureChatWorkspaceMounted({ chat: target });
 

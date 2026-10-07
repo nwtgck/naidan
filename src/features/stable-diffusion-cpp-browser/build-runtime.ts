@@ -11,10 +11,14 @@ const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegat
 const rootManifestSchema = z.object({ formatVersion: z.literal(3), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/), files: z.array(fileSchema) });
 const provenanceSchema = z.object({ sourceCommit: z.string(), sourceDirty: z.literal(false), profile: profileSchema, variant: z.literal('browser'), configuration: z.object({ memory64: z.boolean(), jspi: z.boolean(), asyncify: z.boolean(), webgpu: z.literal(true), pthreads: z.literal(false) }), validation: z.object({ compiled: z.literal(true), browserSmoke: z.literal(true) }) });
 const imageManifestSchema = z.object({
-  formatVersion: z.literal(2), runtime: z.literal('stable-diffusion-cpp'), abiVersion: z.literal(2),
+  formatVersion: z.literal(2),
+  runtime: z.literal('stable-diffusion-cpp'),
+  abiVersion: z.literal(2),
   schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true) }),
-  sourceCommit: z.string(), experimental: z.literal(true), files: z.array(fileSchema),
+  sourceCommit: z.string(),
+  experimental: z.literal(true),
+  files: z.array(fileSchema),
   profiles: z.record(z.string(), z.object({ variants: z.object({ browser: provenanceSchema }) })),
 });
 

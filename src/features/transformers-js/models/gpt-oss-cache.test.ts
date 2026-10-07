@@ -39,8 +39,16 @@ function fixture() {
   const sequences = new runtime.Tensor('int64', [10n, 11n, 12n, 13n], [1, 4]);
   const retain = { owner: 'same-operation', model, config, messages, assistant, baseInputs, inputs: baseInputs, sequences, pastKeyValues, tensorClass: runtime.Tensor };
   const cache = retainGptOssContinuation(retain);
-  const prepare = { cache, owner: retain.owner, model, config, messages: next,
-    buildBaseInputs: vi.fn(() => baseInputs), buildSuffixInputs: vi.fn(() => inputs({ ids: [14n, 15n] })), tensorClass: runtime.Tensor };
+  const prepare = {
+    cache,
+    owner: retain.owner,
+    model,
+    config,
+    messages: next,
+    buildBaseInputs: vi.fn(() => baseInputs),
+    buildSuffixInputs: vi.fn(() => inputs({ ids: [14n, 15n] })),
+    tensorClass: runtime.Tensor,
+  };
   return { retain, prepare, pastKeyValues, sequences };
 }
 
@@ -115,9 +123,12 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
   it.each(['AbortError', 'ProductionWorkerLifecycleError', 'RequiredDownloadedModelResourceError'])('preserves terminal %s instead of treating it as an optimization miss', name => {
     const error = new Error('Synthetic terminal error'); error.name = name;
-    expect(() => prepareGptOssContinuation({ ...fixture().prepare, buildBaseInputs: () => {
-      throw error;
-    } })).toThrow(error);
+    expect(() => prepareGptOssContinuation({
+      ...fixture().prepare,
+      buildBaseInputs: () => {
+        throw error;
+      },
+    })).toThrow(error);
   });
   it('refuses circular/oversized identity and plain-array tensors without a GPU readback', () => {
     const value = fixture(); const circular: { self?: unknown } = {}; circular.self = circular;

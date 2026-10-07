@@ -26,24 +26,30 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: m
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
   const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view');
-  return { useImageGeneration(): ImageGenerationView {
-    mocks.owners++; onScopeDispose(() => {
-      mocks.disposed++;
-    });
-    const form = useImageGeneration();
-    const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
-    return { ...form, supported: computed(() => true), formDisabled: computed(() => false), draftDisabled: computed(() => false),
-      captureDraft(): ImageGenerationDraft {
-        return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
-      },
-      async restoreDraft({ draft }) {
-        await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
-      },
-      resetDraft() {
-        form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
-      },
-    };
-  } };
+  return {
+    useImageGeneration(): ImageGenerationView {
+      mocks.owners++; onScopeDispose(() => {
+        mocks.disposed++;
+      });
+      const form = useImageGeneration();
+      const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
+      return {
+        ...form,
+        supported: computed(() => true),
+        formDisabled: computed(() => false),
+        draftDisabled: computed(() => false),
+        captureDraft(): ImageGenerationDraft {
+          return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
+        },
+        async restoreDraft({ draft }) {
+          await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
+        },
+        resetDraft() {
+          form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
+        },
+      };
+    },
+  };
 });
 const a = generationSessionFixture({ id: 'session-aa' }), b = { ...generationSessionFixture({ id: 'session-bb' }), title: 'Second purpose', updatedAt: 10 };
 let wrapper: VueWrapper | undefined;
@@ -70,10 +76,12 @@ afterEach(async () => {
 async function open({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [...routes.filter(route => route.path === '/image-generation'), { path: '/', component: { template: '<div />' } }] });
   await router.push(path); await router.isReady();
-  wrapper = mount(defineComponent({ setup() {
-    const { active } = useImageGenerationWorkspaceNavigation();
-    return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
-  } }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
+  wrapper = mount(defineComponent({
+    setup() {
+      const { active } = useImageGenerationWorkspaceNavigation();
+      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+    },
+  }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises();
   const view = useImageGenerationWorkspaceNavigation().active.value?.view;
   if (!view) throw new Error('Missing workspace owner.');

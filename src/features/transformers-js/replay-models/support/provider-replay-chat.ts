@@ -21,19 +21,37 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
   unhandled satisfies Record<PropertyKey, never>;
   const outcome = await generateChatTurn({
     onToolCallDraftsChange: undefined,
-    provider, model, parameters, tools, readBinaryObject, debug, abortController, approvalContext: undefined,
+    provider,
+    model,
+    parameters,
+    tools,
+    readBinaryObject,
+    debug,
+    abortController,
+    approvalContext: undefined,
     createAssistantMessage: () => {
       const node: AssistantMessageNode = {
-        id: toMessageId({ raw: `generated_${generated.length}` }), role: 'assistant', createdAt: 0,
-        parts: [], interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] },
+        id: toMessageId({ raw: `generated_${generated.length}` }),
+        role: 'assistant',
+        createdAt: 0,
+        parts: [],
+        interruption: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+        replies: { items: [] },
       };
       generated.push(node);
       return node;
     },
     createToolMessage: () => {
       const node: ToolMessageNode = {
-        id: toMessageId({ raw: `generated_${generated.length}` }), role: 'tool', createdAt: 0,
-        parts: [], modelId: undefined, lmParameters: undefined, replies: { items: [] },
+        id: toMessageId({ raw: `generated_${generated.length}` }),
+        role: 'tool',
+        createdAt: 0,
+        parts: [],
+        modelId: undefined,
+        lmParameters: undefined,
+        replies: { items: [] },
       };
       generated.push(node);
       return node;
@@ -63,8 +81,16 @@ export function createReplayImageAttachment({ dataUrl }: { dataUrl: string }): A
   if (!dataUrl.startsWith(prefix)) throw new Error('Expected an embedded PNG fixture');
   const bytes = Uint8Array.from(atob(dataUrl.slice(prefix.length)), character => character.charCodeAt(0));
   const blob = new Blob([bytes], { type: 'image/png' });
-  return { id: toAttachmentId({ raw: 'image' }), binaryObjectId: toBinaryObjectId({ raw: 'image' }),
-    originalName: 'image.png', mimeType: 'image/png', size: bytes.byteLength, uploadedAt: 0, status: 'memory', blob };
+  return {
+    id: toAttachmentId({ raw: 'image' }),
+    binaryObjectId: toBinaryObjectId({ raw: 'image' }),
+    originalName: 'image.png',
+    mimeType: 'image/png',
+    size: bytes.byteLength,
+    uploadedAt: 0,
+    status: 'memory',
+    blob,
+  };
 }
 
 /** Check actual observations before and after awaited Worker disposal. */

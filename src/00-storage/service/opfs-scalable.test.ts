@@ -192,12 +192,14 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     }));
     await groupWriter.close();
 
-    await provider.saveHierarchy({ hierarchy: {
-      items: [
-        { type: 'chat', id: chatId },
-        { type: 'chat_group', id: groupId, chat_ids: [] },
-      ],
-    } });
+    await provider.saveHierarchy({
+      hierarchy: {
+        items: [
+          { type: 'chat', id: chatId },
+          { type: 'chat_group', id: groupId, chat_ids: [] },
+        ],
+      },
+    });
 
     const snapshot = await provider.dump();
 

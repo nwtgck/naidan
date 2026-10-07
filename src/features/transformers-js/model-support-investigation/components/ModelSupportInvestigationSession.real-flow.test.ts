@@ -30,13 +30,16 @@ const observed = vi.hoisted(() => ({
 // callback ports, entry, preflight, host, Session and batch runner remain real.
 vi.mock('@/utils/worker-transport', async importOriginal => {
   const original = await importOriginal<typeof transport>();
-  return { ...original, exposeWorkerRemote: ({ api, endpoint }: {
+  return {
+    ...original,
+    exposeWorkerRemote: ({ api, endpoint }: {
     api: WorkerServerApi<IModelSupportInvestigationWorker>;
     endpoint: Parameters<typeof transport.exposeWorkerRemote>[0]['endpoint'];
   }) => {
-    if (endpoint === undefined) observed.planningApi = api;
-    else original.exposeWorkerRemote({ api, endpoint });
-  } };
+      if (endpoint === undefined) observed.planningApi = api;
+      else original.exposeWorkerRemote({ api, endpoint });
+    },
+  };
 });
 // Deliberate preflight failure: this suite proves startup/failure ownership,
 // never successful runtime initialization or a complete Full generation run.
@@ -48,34 +51,59 @@ vi.mock('@/features/transformers-js/runtime/configure-hosted-runtime', () => ({
   }),
 }));
 vi.mock('@huggingface/transformers', () => {
-  const model = { supports: () => true, from_pretrained: () => {
-    throw new Error('Unexpected heavyweight inference');
-  } };
+  const model = {
+    supports: () => true,
+    from_pretrained: () => {
+      throw new Error('Unexpected heavyweight inference');
+    },
+  };
   return {
-    AutoModel: model, AutoModelForAudioTextToText: model, AutoModelForCausalLM: model,
-    AutoModelForImageTextToText: model, AutoModelForSeq2SeqLM: model,
-    AutoModelForSpeechSeq2Seq: model, AutoModelForVision2Seq: model, AutoTokenizer: model,
-    ModelRegistry: {}, PretrainedConfig: class {}, Tensor: class {}, TextStreamer: class {},
-    LogitsProcessor: class {}, LogitsProcessorList: class {}, env: { backends: { onnx: { wasm: {} } } },
+    AutoModel: model,
+    AutoModelForAudioTextToText: model,
+    AutoModelForCausalLM: model,
+    AutoModelForImageTextToText: model,
+    AutoModelForSeq2SeqLM: model,
+    AutoModelForSpeechSeq2Seq: model,
+    AutoModelForVision2Seq: model,
+    AutoTokenizer: model,
+    ModelRegistry: {},
+    PretrainedConfig: class {},
+    Tensor: class {},
+    TextStreamer: class {},
+    LogitsProcessor: class {},
+    LogitsProcessorList: class {},
+    env: { backends: { onnx: { wasm: {} } } },
   };
 });
-vi.mock('onnxruntime-web', () => ({ InferenceSession: { create: () => {
-  throw new Error('Unexpected native inference');
-} }, Tensor: class {} }));
+vi.mock('onnxruntime-web', () => ({
+  InferenceSession: {
+    create: () => {
+      throw new Error('Unexpected native inference');
+    },
+  },
+  Tensor: class {},
+}));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
 
 const workers: InvestigationTestWorker[] = [];
 const preflightOriginFailure = 'ONNX Runtime assets are not configured for the Naidan origin';
 const userInterruptionMessage = 'Model Support Investigation was stopped by the user';
 const batchOutcomeSchema = z.object({
-  targetCount: z.number(), packagedModelCount: z.number(),
+  targetCount: z.number(),
+  packagedModelCount: z.number(),
   targets: z.array(z.object({
-    target: z.string(), status: z.enum(['pending', 'running', 'passed', 'failed', 'skipped', 'interrupted']),
-    runId: z.string().optional(), error: z.string().optional(), evidencePath: z.string().optional(),
+    target: z.string(),
+    status: z.enum(['pending', 'running', 'passed', 'failed', 'skipped', 'interrupted']),
+    runId: z.string().optional(),
+    error: z.string().optional(),
+    evidencePath: z.string().optional(),
   })),
 });
 const archivedRunOutcomeSchema = z.object({
-  runId: z.string(), modelId: z.string(), status: z.enum(['passed', 'failed']), error: z.string().optional(),
+  runId: z.string(),
+  modelId: z.string(),
+  status: z.enum(['passed', 'failed']),
+  error: z.string().optional(),
 });
 const archivedRecoveryOutcomeSchema = z.object({
   status: z.enum(['running', 'completed', 'interrupted']),
@@ -93,16 +121,18 @@ class InvestigationTestWorker extends ProviderReplayTestWorker {
       : pathname.endsWith('/model-support-investigation/evidence-worker/entry.ts') ? 'evidence' : undefined;
     if (kind === undefined) throw new Error(`Unexpected Worker entry: ${pathname}`);
     expect(options?.type).toBe('module');
-    super({ start: async ({ worker }) => {
-      switch (kind) {
-      case 'planning':
-        if (observed.planningApi === undefined) throw new Error('Real planning entry was not loaded');
-        transport.exposeWorkerRemote({ api: observed.planningApi, endpoint: worker.endpoint });
-        break;
-      case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint }); break;
-      default: { const exhaustive: never = kind; throw new Error('Unexpected Worker kind: ' + exhaustive); }
-      }
-    } });
+    super({
+      start: async ({ worker }) => {
+        switch (kind) {
+        case 'planning':
+          if (observed.planningApi === undefined) throw new Error('Real planning entry was not loaded');
+          transport.exposeWorkerRemote({ api: observed.planningApi, endpoint: worker.endpoint });
+          break;
+        case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint }); break;
+        default: { const exhaustive: never = kind; throw new Error('Unexpected Worker kind: ' + exhaustive); }
+        }
+      },
+    });
     this.kind = kind;
     workers.push(this);
   }
@@ -191,9 +221,14 @@ async function exportBatch() {
   await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
   await vi.waitFor(() => expect(exported).toHaveLength(1));
   const zip = await JSZip.loadAsync(new Uint8Array(await exported[0]!.arrayBuffer()));
-  const schema = z.object({ runId: z.string(), steps: z.array(z.object({
-    id: z.string(), status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']), detail: z.string().optional(),
-  })) });
+  const schema = z.object({
+    runId: z.string(),
+    steps: z.array(z.object({
+      id: z.string(),
+      status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
+      detail: z.string().optional(),
+    })),
+  });
   for (const path of Object.keys(zip.files).filter(path => path.endsWith('/run.json'))) {
     const archived = await readArchivedJson({ zip, path, schema });
     const run = retained.runs.find(([, candidate]) => candidate.runId === archived.runId)?.[1];

@@ -10,16 +10,22 @@ export function createImageDownloadWorker(): WorkerServerApi<ImageDownloadWorker
       if (active) throw new Error('Image download Worker is busy');
       const controller = new AbortController(); active = controller;
       try {
-        await downloadImageRecipe({ files, destination, signal: controller.signal, fetch: async ({ request }) => {
-          controller.signal.throwIfAborted();
-          const port = await fetch({ request: { url: request.url, headers: request.headers } });
-          const received = receivePrivacyStream({ port, signal: controller.signal, onFinish() {} });
-          return received.response;
-        }, onProgress: ({ progress }) => {
-          try {
-            void Promise.resolve(onProgress({ progress })).catch(() => undefined);
-          } catch { /* notification only */ }
-        } });
+        await downloadImageRecipe({
+          files,
+          destination,
+          signal: controller.signal,
+          fetch: async ({ request }) => {
+            controller.signal.throwIfAborted();
+            const port = await fetch({ request: { url: request.url, headers: request.headers } });
+            const received = receivePrivacyStream({ port, signal: controller.signal, onFinish() {} });
+            return received.response;
+          },
+          onProgress: ({ progress }) => {
+            try {
+              void Promise.resolve(onProgress({ progress })).catch(() => undefined);
+            } catch { /* notification only */ }
+          },
+        });
       } finally {
         active = undefined;
       }

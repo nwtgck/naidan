@@ -7,7 +7,11 @@ import type { Request, WorkerResult, PreviewSettings } from '@/features/stable-d
 function fixture() {
   const gate = Promise.withResolvers<WorkerResult>();
   const raw: ImageClient = {
-    generate: vi.fn(() => gate.promise), cancel: vi.fn(), updatePreview: vi.fn(), release: vi.fn(), dispose: vi.fn(),
+    generate: vi.fn(() => gate.promise),
+    cancel: vi.fn(),
+    updatePreview: vi.fn(),
+    release: vi.fn(),
+    dispose: vi.fn(),
     inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'not-loaded' })),
   };
   const factory = vi.fn(() => raw);
@@ -77,12 +81,20 @@ it('ignores a released notification from a disposed native client after replacem
   const { args, output } = fixture();
   const callbacks: Array<() => void> = [];
   const clients: ImageClient[] = [];
-  const engine = createOwnedImageEngine({ createClient: ({ onReleased }) => {
-    callbacks.push(onReleased);
-    const client: ImageClient = { generate: vi.fn(async () => output), cancel: vi.fn(), release: vi.fn(), dispose: vi.fn(), updatePreview: vi.fn(),
-      inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'unsupported' })) };
-    clients.push(client); return client;
-  } });
+  const engine = createOwnedImageEngine({
+    createClient: ({ onReleased }) => {
+      callbacks.push(onReleased);
+      const client: ImageClient = {
+        generate: vi.fn(async () => output),
+        cancel: vi.fn(),
+        release: vi.fn(),
+        dispose: vi.fn(),
+        updatePreview: vi.fn(),
+        inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'unsupported' })),
+      };
+      clients.push(client); return client;
+    },
+  });
   const old = engine.createOwner({ onReleased: undefined });
   await old.generate(args); old.dispose();
   const notified = vi.fn(), current = engine.createOwner({ onReleased: notified });

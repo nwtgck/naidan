@@ -11,7 +11,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
+    phase: 'load',
+    modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+    revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
     corePath: 'onnx/audio_encoder_q4f16.onnx',
     externalData: [
       { path: 'audio_encoder_q4f16.onnx_data', artifactPath: 'onnx/audio_encoder_q4f16.onnx_data' },
@@ -19,7 +21,9 @@ const expectedSessions = [
     executionProviders: ['webgpu'],
   },
   {
-    phase: 'load', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
+    phase: 'load',
+    modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+    revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
     corePath: 'onnx/decoder_model_merged_q4f16.onnx',
     externalData: [
       { path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' },
@@ -27,7 +31,9 @@ const expectedSessions = [
     executionProviders: ['webgpu'],
   },
   {
-    phase: 'load', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
+    phase: 'load',
+    modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+    revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
     corePath: 'onnx/embed_tokens_q4f16.onnx',
     externalData: [
       { path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' },
@@ -35,7 +41,9 @@ const expectedSessions = [
     executionProviders: ['webgpu'],
   },
   {
-    phase: 'load', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
+    phase: 'load',
+    modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+    revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
     corePath: 'onnx/vision_encoder_q4f16.onnx',
     externalData: [
       { path: 'vision_encoder_q4f16.onnx_data', artifactPath: 'onnx/vision_encoder_q4f16.onnx_data' },
@@ -367,15 +375,23 @@ describe('Gemma 4 E2B Download replay', () => {
           prepareCandidate: async ({ candidate }) => {
             preparedCandidates.push(candidate);
             return prepareProductionModelCandidate({
-              modelId, revision, candidate, requiredModelPaths: pathsByDtype[candidate.dtype],
-              progressCallback: () => undefined, signal: undefined,
+              modelId,
+              revision,
+              candidate,
+              requiredModelPaths: pathsByDtype[candidate.dtype],
+              progressCallback: () => undefined,
+              signal: undefined,
             });
           },
           acceptCandidate: async ({ candidate }) => {
             acceptedCandidates.push(candidate);
             return acceptDownloadedProductionCandidate({
-              modelId, resolvedRevision: revision, loadRevision: revision, candidate,
-              progressCallback: ({ info }) => acceptancePhases.push(info.status), signal: undefined,
+              modelId,
+              resolvedRevision: revision,
+              loadRevision: revision,
+              candidate,
+              progressCallback: ({ info }) => acceptancePhases.push(info.status),
+              signal: undefined,
             });
           },
         });

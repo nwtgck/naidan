@@ -3,9 +3,21 @@ import { discoverRepository, groupModelFiles, parseRepository } from './catalog'
 import { privacyFetchStream } from '@/features/privacy-fetch';
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 function jsonResponse({ value, headers }: { value: unknown, headers: Headers }): Awaited<ReturnType<typeof privacyFetchStream>> {
-  return { body: new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) {
-    controller.enqueue(new TextEncoder().encode(JSON.stringify(value))); controller.close();
-  } }), headers, status: 200, statusText: 'OK', ok: true, url: '', redirected: false, responseType: 'basic', policyName: 'test' };
+  return {
+    body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(value))); controller.close();
+      },
+    }),
+    headers,
+    status: 200,
+    statusText: 'OK',
+    ok: true,
+    url: '',
+    redirected: false,
+    responseType: 'basic',
+    policyName: 'test',
+  };
 }
 describe('Hugging Face model discovery', () => {
   it('keeps complete split groups and variants distinct without pairing projectors by quantization', () => {

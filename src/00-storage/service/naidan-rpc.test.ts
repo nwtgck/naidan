@@ -17,7 +17,9 @@ function database() {
     const draft = new Map([...stores].map(([name, entries]) => [name, new Map(entries)]));
     let pending = 0, aborted = false, dirty = false, completed = false;
     const tx = {
-      oncomplete: undefined as (() => void) | undefined, onabort: undefined as (() => void) | undefined, onerror: undefined as (() => void) | undefined,
+      oncomplete: undefined as (() => void) | undefined,
+      onabort: undefined as (() => void) | undefined,
+      onerror: undefined as (() => void) | undefined,
       abort() {
         if (aborted) throw new Error('Already aborted'); aborted = true; queueMicrotask(() => tx.onabort?.());
       },
@@ -55,14 +57,20 @@ function database() {
             requests.push(`${name}:getAll`); return task({ run: () => [...entries.values()], write: false });
           },
           add(value: unknown, key: string) {
-            requests.push(`${name}:add`); return task({ run: () => {
-              if (entries.has(key)) throw new Error('ConstraintError'); entries.set(key, structuredClone(value)); return key;
-            }, write: true });
+            requests.push(`${name}:add`); return task({
+              run: () => {
+                if (entries.has(key)) throw new Error('ConstraintError'); entries.set(key, structuredClone(value)); return key;
+              },
+              write: true,
+            });
           },
           put(value: unknown, key: string) {
-            requests.push(`${name}:put`); return task({ run: () => {
-              entries.set(key, structuredClone(value)); return key;
-            }, write: true });
+            requests.push(`${name}:put`); return task({
+              run: () => {
+                entries.set(key, structuredClone(value)); return key;
+              },
+              write: true,
+            });
           },
           delete(key: string) {
             requests.push(`${name}:delete`); return task({ run: () => entries.delete(key), write: true });
@@ -72,25 +80,46 @@ function database() {
     };
     return tx;
   }
-  vi.stubGlobal('indexedDB', { open(name: string) {
-    names.push(name);
-    const result = { transaction, close: closes, onversionchange: undefined };
-    const request = { result, onsuccess: undefined as (() => void) | undefined };
-    queueMicrotask(() => request.onsuccess?.()); return request;
-  } });
-  return { stores, requests, closes, scopes, names, failNextCommit() {
-    rejectCommit = true;
-  } };
+  vi.stubGlobal('indexedDB', {
+    open(name: string) {
+      names.push(name);
+      const result = { transaction, close: closes, onversionchange: undefined };
+      const request = { result, onsuccess: undefined as (() => void) | undefined };
+      queueMicrotask(() => request.onsuccess?.()); return request;
+    },
+  });
+  return {
+    stores,
+    requests,
+    closes,
+    scopes,
+    names,
+    failNextCommit() {
+      rejectCommit = true;
+    },
+  };
 }
 let identity: NaidanRpcIdentity;
-const connection: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
-  autoConnect: 'disabled', localPublicKey: 'A'.repeat(43), label: 'Peer', revision: 0, allowedMethods: ['generateChat'], transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] } };
+const connection: NaidanRpcConnection = {
+  id: toNaidanRpcConnectionId({ raw: 'connection-1' }),
+  peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+  autoConnect: 'disabled',
+  localPublicKey: 'A'.repeat(43),
+  label: 'Peer',
+  revision: 0,
+  allowedMethods: ['generateChat'],
+  transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] },
+};
 beforeEach(async () => {
   localStorage.clear();
   let previous = Promise.resolve();
-  vi.stubGlobal('navigator', { locks: { request: vi.fn((_name: string, run: () => Promise<unknown>) => {
-    const result = previous.then(run); previous = result.then(() => {}, () => {}); return result;
-  }) } });
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: vi.fn((_name: string, run: () => Promise<unknown>) => {
+        const result = previous.then(run); previous = result.then(() => {}, () => {}); return result;
+      }),
+    },
+  });
   await storageService.init({ type: 'local' });
   const key = await crypto.subtle.generateKey({ name: 'X25519' }, false, ['deriveBits']);
   identity = { privateKey: key.privateKey, publicKey: connection.localPublicKey };
@@ -225,9 +254,11 @@ it('retains the original provider when copying its registry to a new provider fa
 });
 it('notifies registry observers in the writing page without making their errors part of the commit', async () => {
   database(); const observed = vi.fn();
-  const unsubscribeThrower = storageService.subscribeNaidanRpcRegistryChanges({ listener: () => {
-    throw new Error('Observer failure');
-  } });
+  const unsubscribeThrower = storageService.subscribeNaidanRpcRegistryChanges({
+    listener: () => {
+      throw new Error('Observer failure');
+    },
+  });
   const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: observed });
   try {
     storageService.notify({ event: { type: 'settings', timestamp: 0 } }); expect(observed).not.toHaveBeenCalled();

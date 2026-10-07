@@ -206,10 +206,9 @@ export function createSedRuntimeCommands({
           address: command.address,
           rangeEnd: command.rangeEnd,
           negated: command.negated,
-          targetIndex:
-              command.targetLabel === undefined
-                ? undefined
-                : labelIndices.get(command.targetLabel),
+          targetIndex: command.targetLabel === undefined
+            ? undefined
+            : labelIndices.get(command.targetLabel),
         },
         inRange: false,
         rangeStarted: false,

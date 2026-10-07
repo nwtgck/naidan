@@ -397,15 +397,18 @@ export function createChatDataStore({
       }
     }
 
-    await storageService.updateChatMeta({ id: id, updater: async ({ current: curr }) => {
-      const fullChat = curr ? await storageService.loadChat({ id }) : null;
-      const updatedFull = await updater({ current: fullChat });
-      if (!updatedFull) return curr!;
-      const { root: _r, ...meta } = updatedFull;
-      return {
-        ...meta,
-      } as ChatMeta;
-    } });
+    await storageService.updateChatMeta({
+      id: id,
+      updater: async ({ current: curr }) => {
+        const fullChat = curr ? await storageService.loadChat({ id }) : null;
+        const updatedFull = await updater({ current: fullChat });
+        if (!updatedFull) return curr!;
+        const { root: _r, ...meta } = updatedFull;
+        return {
+          ...meta,
+        } as ChatMeta;
+      },
+    });
   }
 
   async function updateChatScopedSettings({
@@ -570,84 +573,86 @@ export function createChatDataStore({
     }
   }
 
-  storageService.subscribeToChanges({ listener: async ({ event }) => {
-    switch (event.type) {
-    case 'chat_meta_and_chat_group': {
-      debouncedSidebarReload();
+  storageService.subscribeToChanges({
+    listener: async ({ event }) => {
+      switch (event.type) {
+      case 'chat_meta_and_chat_group': {
+        debouncedSidebarReload();
 
-      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
-        const chatId = toChatId({ raw: event.id });
-        const fresh = await storageService.loadChat({ id: chatId });
-        if (fresh && currentChatRef.value) {
-          pruneVolatileAssistantErrorsForChat({ chat: fresh });
-          Object.assign(currentChatRef.value, fresh);
-          triggerRef(currentChatRef);
-        } else if (!hasActiveGeneration({ chatId })) {
-          currentChatRef.value = null;
-        }
-      }
-
-      if (event.id && currentChatGroupRef.value && idToRaw({ id: currentChatGroupRef.value.id }) === event.id) {
-        const allGroups = await storageService.listChatGroups();
-        currentChatGroupRef.value = allGroups.find((group) => idToRaw({ id: group.id }) === event.id) || null;
-      }
-      break;
-    }
-    case 'chat_content_generation': {
-      const chatId = toChatId({ raw: event.id });
-      switch (event.status) {
-      case 'started':
-        if (!hasActiveGeneration({ chatId })) {
-          onExternalGenerationStarted({ chatId });
-        }
-        break;
-      case 'stopped':
-        onExternalGenerationStopped({ chatId });
-        break;
-      case 'abort_request':
-        onExternalGenerationAbortRequest({ chatId });
-        break;
-      default: {
-        const _ex: never = event.status;
-        throw new Error(`Unhandled status: ${_ex}`);
-      }
-      }
-      break;
-    }
-    case 'chat_content': {
-      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
-        const chatId = toChatId({ raw: event.id });
-        if (!hasActiveGeneration({ chatId })) {
+        if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+          const chatId = toChatId({ raw: event.id });
           const fresh = await storageService.loadChat({ id: chatId });
           if (fresh && currentChatRef.value) {
             pruneVolatileAssistantErrorsForChat({ chat: fresh });
-            currentChatRef.value.root = fresh.root;
-            currentChatRef.value.currentLeafId = fresh.currentLeafId;
+            Object.assign(currentChatRef.value, fresh);
             triggerRef(currentChatRef);
+          } else if (!hasActiveGeneration({ chatId })) {
+            currentChatRef.value = null;
           }
         }
-      }
-      break;
-    }
-    case 'migration': {
-      onMigration();
-      liveChatRegistry.clear();
-      currentChatRef.value = null;
-      currentChatGroupRef.value = null;
 
-      await loadData();
-      break;
-    }
-    case 'binary_objects':
-    case 'settings':
-    case 'naidan_rpc_registry':
-      break;
-    default: {
-      const _ex: never = event;
-      throw new Error(`Unhandled event: ${_ex}`);
-    }
-    }
-  } });
+        if (event.id && currentChatGroupRef.value && idToRaw({ id: currentChatGroupRef.value.id }) === event.id) {
+          const allGroups = await storageService.listChatGroups();
+          currentChatGroupRef.value = allGroups.find((group) => idToRaw({ id: group.id }) === event.id) || null;
+        }
+        break;
+      }
+      case 'chat_content_generation': {
+        const chatId = toChatId({ raw: event.id });
+        switch (event.status) {
+        case 'started':
+          if (!hasActiveGeneration({ chatId })) {
+            onExternalGenerationStarted({ chatId });
+          }
+          break;
+        case 'stopped':
+          onExternalGenerationStopped({ chatId });
+          break;
+        case 'abort_request':
+          onExternalGenerationAbortRequest({ chatId });
+          break;
+        default: {
+          const _ex: never = event.status;
+          throw new Error(`Unhandled status: ${_ex}`);
+        }
+        }
+        break;
+      }
+      case 'chat_content': {
+        if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+          const chatId = toChatId({ raw: event.id });
+          if (!hasActiveGeneration({ chatId })) {
+            const fresh = await storageService.loadChat({ id: chatId });
+            if (fresh && currentChatRef.value) {
+              pruneVolatileAssistantErrorsForChat({ chat: fresh });
+              currentChatRef.value.root = fresh.root;
+              currentChatRef.value.currentLeafId = fresh.currentLeafId;
+              triggerRef(currentChatRef);
+            }
+          }
+        }
+        break;
+      }
+      case 'migration': {
+        onMigration();
+        liveChatRegistry.clear();
+        currentChatRef.value = null;
+        currentChatGroupRef.value = null;
+
+        await loadData();
+        break;
+      }
+      case 'binary_objects':
+      case 'settings':
+      case 'naidan_rpc_registry':
+        break;
+      default: {
+        const _ex: never = event;
+        throw new Error(`Unhandled event: ${_ex}`);
+      }
+      }
+    },
+  });
 
   return {
     rootItems,

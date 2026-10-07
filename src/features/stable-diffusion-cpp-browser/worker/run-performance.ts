@@ -5,10 +5,23 @@ export type PerformancePhase = 'runtime' | 'model-header' | 'model-load' | 'prep
 export type NativePerformanceSignal = { kind: 'conditioning' } | { kind: 'sampling-progress', step: number, steps: number };
 const emptyPhases = () => ({ runtime: 0, 'model-header': 0, 'model-load': 0, prepare: 0, conditioning: 0, sampling: 0, decoding: 0, encoding: 0, cleanup: 0 });
 const emptyPlacement = () => ({
-  allocationReports: 0, invalidReports: 0, assignedNodes: 0, cpuNodes: 0, webgpuNodes: 0, otherNodes: 0,
-  bf16WeightMatmuls: 0, inspectedBf16WeightMatmuls: 0, cpuBf16WeightMatmuls: 0, webgpuBf16WeightMatmuls: 0, otherBf16WeightMatmuls: 0,
-  cpuBf16WebgpuUnsupported: 0, webgpuBf16WeightUses: 0, hostBf16WeightUses: 0, otherBf16WeightUses: 0,
-  scheduledWebgpuToCpuBf16WeightUses: 0, scheduledWebgpuToCpuBf16WeightUseBytes: 0,
+  allocationReports: 0,
+  invalidReports: 0,
+  assignedNodes: 0,
+  cpuNodes: 0,
+  webgpuNodes: 0,
+  otherNodes: 0,
+  bf16WeightMatmuls: 0,
+  inspectedBf16WeightMatmuls: 0,
+  cpuBf16WeightMatmuls: 0,
+  webgpuBf16WeightMatmuls: 0,
+  otherBf16WeightMatmuls: 0,
+  cpuBf16WebgpuUnsupported: 0,
+  webgpuBf16WeightUses: 0,
+  hostBf16WeightUses: 0,
+  otherBf16WeightUses: 0,
+  scheduledWebgpuToCpuBf16WeightUses: 0,
+  scheduledWebgpuToCpuBf16WeightUseBytes: 0,
 });
 
 function parsePlacement({ message }: { message: string }): ReturnType<typeof emptyPlacement> | 'invalid' | undefined {
@@ -21,10 +34,23 @@ function parsePlacement({ message }: { message: string }): ReturnType<typeof emp
   if (nodes === undefined || cpu === undefined || webgpu === undefined || other === undefined || bf16 === undefined || inspected === undefined || cpuBf16 === undefined || webgpuBf16 === undefined || otherBf16 === undefined || unsupported === undefined || gpuWeights === undefined || hostWeights === undefined || otherWeights === undefined || gpuCpu === undefined || gpuCpuBytes === undefined) return 'invalid';
   if (cpu + webgpu + other !== nodes || bf16 > nodes || inspected > bf16 || cpuBf16 + webgpuBf16 + otherBf16 !== inspected || gpuWeights + hostWeights + otherWeights !== inspected || cpuBf16 > cpu || webgpuBf16 > webgpu || otherBf16 > other || unsupported > cpuBf16 || gpuCpu > cpuBf16 || gpuCpu > gpuWeights || (gpuCpu === 0 && gpuCpuBytes !== 0)) return 'invalid';
   return {
-    allocationReports: 1, invalidReports: 0, assignedNodes: nodes, cpuNodes: cpu, webgpuNodes: webgpu, otherNodes: other,
-    bf16WeightMatmuls: bf16, inspectedBf16WeightMatmuls: inspected, cpuBf16WeightMatmuls: cpuBf16, webgpuBf16WeightMatmuls: webgpuBf16, otherBf16WeightMatmuls: otherBf16,
-    cpuBf16WebgpuUnsupported: unsupported, webgpuBf16WeightUses: gpuWeights, hostBf16WeightUses: hostWeights, otherBf16WeightUses: otherWeights,
-    scheduledWebgpuToCpuBf16WeightUses: gpuCpu, scheduledWebgpuToCpuBf16WeightUseBytes: gpuCpuBytes,
+    allocationReports: 1,
+    invalidReports: 0,
+    assignedNodes: nodes,
+    cpuNodes: cpu,
+    webgpuNodes: webgpu,
+    otherNodes: other,
+    bf16WeightMatmuls: bf16,
+    inspectedBf16WeightMatmuls: inspected,
+    cpuBf16WeightMatmuls: cpuBf16,
+    webgpuBf16WeightMatmuls: webgpuBf16,
+    otherBf16WeightMatmuls: otherBf16,
+    cpuBf16WebgpuUnsupported: unsupported,
+    webgpuBf16WeightUses: gpuWeights,
+    hostBf16WeightUses: hostWeights,
+    otherBf16WeightUses: otherWeights,
+    scheduledWebgpuToCpuBf16WeightUses: gpuCpu,
+    scheduledWebgpuToCpuBf16WeightUseBytes: gpuCpuBytes,
   };
 }
 
@@ -71,12 +97,19 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     } catch { /* observational */ }
   }
   function reportPlacement({ metric, counts }: { metric: 'graph-placement-window' | 'graph-placement-summary', counts: ReturnType<typeof emptyPlacement> }): void {
-    report({ metric, fields: {
-      phase, step, ...counts,
-      uninspectedBf16WeightMatmuls: counts.bf16WeightMatmuls - counts.inspectedBf16WeightMatmuls,
-      coverage: counts.invalidReports || counts.bf16WeightMatmuls !== counts.inspectedBf16WeightMatmuls ? 'partial' : counts.allocationReports ? 'observed-allocations' : 'not-observed',
-      observation: 'allocation-metadata', weightBytesMeaning: 'operand-uses-not-unique-residency', actualTransfersMeasured: false,
-    } });
+    report({
+      metric,
+      fields: {
+        phase,
+        step,
+        ...counts,
+        uninspectedBf16WeightMatmuls: counts.bf16WeightMatmuls - counts.inspectedBf16WeightMatmuls,
+        coverage: counts.invalidReports || counts.bf16WeightMatmuls !== counts.inspectedBf16WeightMatmuls ? 'partial' : counts.allocationReports ? 'observed-allocations' : 'not-observed',
+        observation: 'allocation-metadata',
+        weightBytesMeaning: 'operand-uses-not-unique-residency',
+        actualTransfersMeasured: false,
+      },
+    });
   }
   function flushPlacement(): void {
     if (!placementWindow.allocationReports && !placementWindow.invalidReports) return;
@@ -89,13 +122,19 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     phases[phase] += ms;
     report({ metric: 'phase-wall', fields: { phase, milliseconds: ms, startMs: phaseStart - began, endMs: time - began } });
     flushPlacement();
-    checkpoint({ point: { phase: next, step: (() => {
-      switch (next) {
-      case 'sampling': return step;
-      case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'decoding': case 'encoding': case 'cleanup': return 0;
-      default: { const exhaustive: never = next; throw new Error(String(exhaustive)); }
-      }
-    })(), reason: 'phase' } });
+    checkpoint({
+      point: {
+        phase: next,
+        step: (() => {
+          switch (next) {
+          case 'sampling': return step;
+          case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'decoding': case 'encoding': case 'cleanup': return 0;
+          default: { const exhaustive: never = next; throw new Error(String(exhaustive)); }
+          }
+        })(),
+        reason: 'phase',
+      },
+    });
     phase = next; phaseStart = time;
   }
   return {
@@ -105,16 +144,34 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       // Exact approved flag only; do not parse/export arbitrary model arguments.
       const arg = p.modelArguments.trim();
       const cacheFlag = /^qwen_image_2_1_prefix_cache=(true|false)$/.exec(arg)?.[1];
-      report({ metric: 'run-settings', fields: { appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__.slice(0, 128) : 'not-available',
-        previewStartStep: request.preview.startStep, previewMaxEdge: request.preview.maxEdge,
-        conditioningCacheSize: p.conditioningCacheSize, qwenVaePolicy: p.qwenVaePolicy, distilledGuidance: p.distilledGuidance, bf16WeightType: p.bf16WeightType,
-        modelArgumentsPresent: !!arg, qwenPrefixCacheRequested: cacheFlag ?? (arg ? 'not-disclosed' : 'native-default'),
-        modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((a, c) => a + c.file.size, 0), 0),
-        gpuTimestampMeasured: false, semanticBackendTrace: false, backendPlacementObservation: 'native-allocation-summary-when-available', previewNativeTime: 'rounded-native-log-when-available' } });
+      report({
+        metric: 'run-settings',
+        fields: {
+          appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__.slice(0, 128) : 'not-available',
+          previewStartStep: request.preview.startStep,
+          previewMaxEdge: request.preview.maxEdge,
+          conditioningCacheSize: p.conditioningCacheSize,
+          qwenVaePolicy: p.qwenVaePolicy,
+          distilledGuidance: p.distilledGuidance,
+          bf16WeightType: p.bf16WeightType,
+          modelArgumentsPresent: !!arg,
+          qwenPrefixCacheRequested: cacheFlag ?? (arg ? 'not-disclosed' : 'native-default'),
+          modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((a, c) => a + c.file.size, 0), 0),
+          gpuTimestampMeasured: false,
+          semanticBackendTrace: false,
+          backendPlacementObservation: 'native-allocation-summary-when-available',
+          previewNativeTime: 'rounded-native-log-when-available',
+        },
+      });
       if (typeof navigator !== 'undefined') {
         const match = /(?:Chrome|Chromium|Firefox)\/(\d+(?:\.\d+){0,3})/.exec(navigator.userAgent ?? '');
-        report({ metric: 'run-environment', fields: { browserVersion: match?.[0] ?? 'not-disclosed',
-          hardwareConcurrency: navigator.hardwareConcurrency ?? 0 } });
+        report({
+          metric: 'run-environment',
+          fields: {
+            browserVersion: match?.[0] ?? 'not-disclosed',
+            hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
+          },
+        });
       }
     },
     phase: setPhase,
@@ -133,8 +190,17 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       if (stepStart === undefined || next <= step) return;
       const time = now(), ms = Math.max(0, time - stepStart);
       stepSum += ms; stepMin = Math.min(stepMin, ms); stepMax = Math.max(stepMax, ms); stepsSeen++;
-      report({ metric: 'step-wall', fields: { step: next, previousStep: step, steps, milliseconds: ms,
-        includesPreviewWork: true, previewReportedMs: previewMs - stepPreviewMs } });
+      report({
+        metric: 'step-wall',
+        fields: {
+          step: next,
+          previousStep: step,
+          steps,
+          milliseconds: ms,
+          includesPreviewWork: true,
+          previewReportedMs: previewMs - stepPreviewMs,
+        },
+      });
       flushPlacement();
       checkpoint({ point: { phase: 'sampling', step: next, reason: 'completed-step' } });
       step = next; stepStart = time; stepPreviewMs = previewMs;
@@ -199,14 +265,33 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       // Older cores or retained runs without allocations are unobserved, not
       // proof that BF16/CPU work was absent. Re-emit coverage for every run.
       reportPlacement({ metric: 'graph-placement-summary', counts: placementTotal });
-      report({ metric: 'run-wall', fields: { outcome, milliseconds: Math.max(0, time - began), ...phases,
-        partialStepWallMs,
-        completedStepIntervals: stepsSeen, stepWallSumMs: stepSum, stepMinMs: stepsSeen ? stepMin : 0, stepMaxMs: stepMax,
-        nativeConditionMs: conditionMs, nativeConditionReports: conditionReports, nativeSamplingMs: samplingMs, nativeSamplingReports: samplingReports,
-        nativeFinalDecodeMs: finalDecodeMs, nativeFinalDecodeReports: finalDecodeReports,
-        nativePreviewDecodeMs: previewMs, nativePreviewDecodeReports: previewReports,
-        diffusionGraphStarts: diffusionGraphs, textGraphStarts: textGraphs, vaeGraphStarts: vaeGraphs, otherGraphStarts: otherGraphs,
-        nativeTimesOverlapWall: true, nativeTimesAreRounded: true } });
+      report({
+        metric: 'run-wall',
+        fields: {
+          outcome,
+          milliseconds: Math.max(0, time - began),
+          ...phases,
+          partialStepWallMs,
+          completedStepIntervals: stepsSeen,
+          stepWallSumMs: stepSum,
+          stepMinMs: stepsSeen ? stepMin : 0,
+          stepMaxMs: stepMax,
+          nativeConditionMs: conditionMs,
+          nativeConditionReports: conditionReports,
+          nativeSamplingMs: samplingMs,
+          nativeSamplingReports: samplingReports,
+          nativeFinalDecodeMs: finalDecodeMs,
+          nativeFinalDecodeReports: finalDecodeReports,
+          nativePreviewDecodeMs: previewMs,
+          nativePreviewDecodeReports: previewReports,
+          diffusionGraphStarts: diffusionGraphs,
+          textGraphStarts: textGraphs,
+          vaeGraphStarts: vaeGraphs,
+          otherGraphStarts: otherGraphs,
+          nativeTimesOverlapWall: true,
+          nativeTimesAreRounded: true,
+        },
+      });
       closed = true;
     },
   };

@@ -45,8 +45,14 @@ describe("investigation recovery", () => {
     const now = () => '2026-09-09T00:00:00.000Z';
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'later-interruption', now });
     checkpoint.run.freshMetadata = {
-      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
-      status: 'prepared', maximumBytes: 1024, receivedBytes: 0, requests: [],
+      schemaVersion: 1,
+      modelId: 'org/model',
+      revision: 'a'.repeat(40),
+      source: 'fresh-network-memory',
+      status: 'prepared',
+      maximumBytes: 1024,
+      receivedBytes: 0,
+      requests: [],
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
     };
     const stopped = interruptInvestigationCheckpoint({ checkpoint, error: new Error('Later phase stopped'), now });

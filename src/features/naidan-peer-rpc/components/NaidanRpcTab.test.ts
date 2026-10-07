@@ -4,22 +4,57 @@ import NaidanRpcTab from './NaidanRpcTab.vue';
 import type { RpcConnectionView, NaidanPeerManager } from '@/features/naidan-peer-rpc/runtime/manager';
 import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 
-const fixture = vi.hoisted(() => ({ rows: [] as RpcConnectionView[], reload: vi.fn(), pair: vi.fn(), remember: vi.fn(), updateAllowedMethods: vi.fn(),
-  confirm: vi.fn(), connect: vi.fn(), setAutoConnect: vi.fn(), getPeerProvidedMethods: vi.fn(), prepareDisconnect: vi.fn(), disconnect: vi.fn(), cancelPairing: vi.fn(), rename: vi.fn(), edit: vi.fn(), forget: vi.fn(), listeners: new Set<() => void>() }));
+const fixture = vi.hoisted(() => ({
+  rows: [] as RpcConnectionView[],
+  reload: vi.fn(),
+  pair: vi.fn(),
+  remember: vi.fn(),
+  updateAllowedMethods: vi.fn(),
+  confirm: vi.fn(),
+  connect: vi.fn(),
+  setAutoConnect: vi.fn(),
+  getPeerProvidedMethods: vi.fn(),
+  prepareDisconnect: vi.fn(),
+  disconnect: vi.fn(),
+  cancelPairing: vi.fn(),
+  rename: vi.fn(),
+  edit: vi.fn(),
+  forget: vi.fn(),
+  listeners: new Set<() => void>(),
+}));
 vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_, name) => () => String(name) }), ensureStrings: new Proxy({}, { get: (_, name) => async () => String(name) }) }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: fixture.confirm }) }));
-vi.mock('../runtime/feature', () => ({ getRpcManager: async () => ({ ...fixture, list: () => fixture.rows }), subscribeRpcState: ({ listener }: { listener(): void }) => {
-  fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
-} }));
+vi.mock('../runtime/feature', () => ({
+  getRpcManager: async () => ({ ...fixture, list: () => fixture.rows }),
+  subscribeRpcState: ({ listener }: { listener(): void }) => {
+    fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
+  },
+}));
 const wrappers: ReturnType<typeof mount>[] = [];
 function panel() {
   const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); return wrapper;
 }
 const id = toNaidanRpcConnectionId({ raw: 'connection-1' });
 function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcConnectionView['phase'], persistence?: RpcConnectionView['persistence'] } = {}): RpcConnectionView {
-  return { connection: { id, peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), autoConnect: 'disabled', localPublicKey: 'A'.repeat(43), label: 'Peer 1234',
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] }, allowedMethods: [], revision: 0 },
-  phase, persistence, registryPersistence: persistence === 'saved' ? 'durable' : undefined, access: { effective: [], desired: [], saved: [], revision: 0, persistence }, failure: undefined, health: undefined, session: phase === 'connected' ? {} : undefined };
+  return {
+    connection: {
+      id,
+      peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+      autoConnect: 'disabled',
+      localPublicKey: 'A'.repeat(43),
+      label: 'Peer 1234',
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] },
+      allowedMethods: [],
+      revision: 0,
+    },
+    phase,
+    persistence,
+    registryPersistence: persistence === 'saved' ? 'durable' : undefined,
+    access: { effective: [], desired: [], saved: [], revision: 0, persistence },
+    failure: undefined,
+    health: undefined,
+    session: phase === 'connected' ? {} : undefined,
+  };
 }
 beforeEach(() => {
   fixture.rows = []; vi.clearAllMocks(); fixture.reload.mockResolvedValue(undefined); fixture.connect.mockResolvedValue(undefined);
@@ -141,8 +176,12 @@ it('rebinds all editable fields when the selected connection disappears', async 
   old.connection.label = 'Removed peer';
   old.access.effective = ['generateChat'];
   const replacement = row({ persistence: 'saved', phase: 'disconnected' });
-  replacement.connection = { ...replacement.connection, id: toNaidanRpcConnectionId({ raw: 'connection-2' }),
-    label: 'Other peer', transport: { ...replacement.connection.transport, serverUrl: 'https://other.example', headers: [] } };
+  replacement.connection = {
+    ...replacement.connection,
+    id: toNaidanRpcConnectionId({ raw: 'connection-2' }),
+    label: 'Other peer',
+    transport: { ...replacement.connection.transport, serverUrl: 'https://other.example', headers: [] },
+  };
   fixture.rows = [old, replacement];
   const wrapper = panel(); await flushPromises();
   await wrapper.get('[data-testid="rpc-method-generateImage"]').setValue(true);

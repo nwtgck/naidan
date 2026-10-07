@@ -7,9 +7,13 @@ import { contract, procedure, expose } from '@/features/naidan-rpc/contract';
 
 it('ordinary Zod optional fields materialize as explicit undefined and unknown fields are removed', () => {
   const plan = compile({ schema: z.object({ known: z.number(), missing: z.string().optional() }), capabilitiesAllowed: true, callbacksAllowed: true });
-  const result = project({ plan, value: { known: 2, newer: true }, proxy: () => {
-    throw new Error('No refs');
-  } });
+  const result = project({
+    plan,
+    value: { known: 2, newer: true },
+    proxy: () => {
+      throw new Error('No refs');
+    },
+  });
   expect(result.value).toEqual({ known: 2, missing: undefined });
   expect(Object.hasOwn(result.value as object, 'missing')).toBe(true);
   expect(() => project({ plan, value: { known: '2' }, proxy: () => {} })).toThrow();
@@ -31,18 +35,24 @@ it('a cloned stream custom schema is not silently serialized as a finite value',
 
 it('unknown capability fields are not exposed through a loose object schema', () => {
   const plan = compile({ schema: z.looseObject({ value: z.number() }), capabilitiesAllowed: true, callbacksAllowed: true });
-  const projection = project({ plan, value: { value: 5, extra: new Reference({ id: 1, mode: 'items' }) }, proxy: () => {
-    throw new Error('Unknown proxy');
-  } });
+  const projection = project({
+    plan,
+    value: { value: 5, extra: new Reference({ id: 1, mode: 'items' }) },
+    proxy: () => {
+      throw new Error('Unknown proxy');
+    },
+  });
   expect(projection.value).toEqual({ value: 5 }); expect(projection.accepted.size).toBe(0);
 });
 
 it('source validation rejects duplicate or locked streams without reading any producer', () => {
   const plan = compile({ schema: z.object({ a: rpc.byteStream(), b: rpc.byteStream() }), capabilitiesAllowed: true, callbacksAllowed: true });
   let reads = 0;
-  const source = new ReadableStream({ pull() {
-    reads++;
-  } }, { highWaterMark: 0 }); let id = 1;
+  const source = new ReadableStream({
+    pull() {
+      reads++;
+    },
+  }, { highWaterMark: 0 }); let id = 1;
   expect(() => pack({ plan, value: { a: source, b: source }, allocate: () => id++ })).toThrow();
   const reader = source.getReader();
   expect(() => pack({ plan, value: { a: source, b: new ReadableStream() }, allocate: () => id++ })).toThrow();

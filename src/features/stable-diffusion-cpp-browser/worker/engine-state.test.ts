@@ -12,11 +12,15 @@ function harness() {
     ['sd_ctx_params_t:n_threads', -1], ['sd_ctx_params_t:backend', 999n], ['sd_ctx_params_t:webgpu_bf16_type', 0],
   ]);
   const core: Parameters<typeof inspectImageEngine>[0]['core'] = {
-    busy: false, module: { HEAPU8: new Uint8Array(65536) },
+    busy: false,
+    module: { HEAPU8: new Uint8Array(65536) },
     api: { sd_ctx_get_runtime_info: vi.fn(async () => 1), sd_ctx_get_memory_info: vi.fn(async () => 1), sd_ctx_get_params: vi.fn(async () => 1) },
-    allocRecord: vi.fn(() => ++next), recordSize: vi.fn(() => 128), free: vi.fn(),
+    allocRecord: vi.fn(() => ++next),
+    recordSize: vi.fn(() => 128),
+    free: vi.fn(),
     getField: vi.fn((record, _pointer, field) => fields.get(record + ':' + field) ?? 0),
-    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : 1), readUtf8: vi.fn(() => 'WebGPU'),
+    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : 1),
+    readUtf8: vi.fn(() => 'WebGPU'),
   };
   const inspect = () => inspectImageEngine({ core, context: 1n, profile: 'webgpu-wasm64-jspi', source: 'a'.repeat(40), modelVersion: 'Loaded model', fileReadCacheBytes: 32 });
   return { core, fields, inspect };

@@ -5,8 +5,16 @@ import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
 import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
 import { cloneEndpoint, areEndpointsEqual, isConfiguredEndpoint } from '@/01-models/endpoint';
 import { ExperimentalNaidanRpcConnectionSchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
-const connection: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
-  autoConnect: 'disabled', localPublicKey: 'A'.repeat(43), label: 'Peer', revision: 0, allowedMethods: ['generateChat'], transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'secret' }] } };
+const connection: NaidanRpcConnection = {
+  id: toNaidanRpcConnectionId({ raw: 'connection-1' }),
+  peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+  autoConnect: 'disabled',
+  localPublicKey: 'A'.repeat(43),
+  label: 'Peer',
+  revision: 0,
+  allowedMethods: ['generateChat'],
+  transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'secret' }] },
+};
 it('projects nested Vue proxies to a cloneable persistence record without losing headers', () => {
   const form = reactive(connection); expect(() => structuredClone(form.transport)).toThrow();
   const dto = rpcConnectionToDto({ connection: form }); expect(structuredClone(dto)).toEqual(dto);
@@ -14,10 +22,13 @@ it('projects nested Vue proxies to a cloneable persistence record without losing
 });
 it('reads additional connection, transport and header fields while preserving known settings', () => {
   const dto = rpcConnectionToDto({ connection });
-  const restored = rpcConnectionFromDto({ value: {
-    ...dto, future: true,
-    transport: { ...dto.transport, future: true, headers: dto.transport.headers.map(header => ({ ...header, future: true })) },
-  } });
+  const restored = rpcConnectionFromDto({
+    value: {
+      ...dto,
+      future: true,
+      transport: { ...dto.transport, future: true, headers: dto.transport.headers.map(header => ({ ...header, future: true })) },
+    },
+  });
   expect(restored).toEqual(connection);
 });
 it('RPC endpoints clone only a connection reference, never a live proxy transport', () => {

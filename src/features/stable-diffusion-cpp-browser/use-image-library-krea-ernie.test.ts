@@ -26,10 +26,22 @@ it.each([
       : ggufFixture({ name: entry.path, tensors, metadata: entry.role === 'lm' ? { 'general.architecture': krea ? 'qwen3vl' : 'mistral3' } : flattened ? { 'general.architecture': 'krea2' } : {}, extraBytes: 0 }).file;
     // saveImageCatalogFile publishes OPFS bytes under main, while receipts
     // and network requests still identify the exact pinned source revision.
-    return { id: destination === 'opfs' ? `huggingface.co/${entry.repository}/resolve/main` : `host/${destination}/${entry.repository}`, name: entry.repository,
+    return {
+      id: destination === 'opfs' ? `huggingface.co/${entry.repository}/resolve/main` : `host/${destination}/${entry.repository}`,
+      name: entry.repository,
       ...(destination === 'opfs' ? {} : { hostSource: { directoryId: destination, directoryName: 'Linked models', repository: entry.repository } }),
-      files: [{ path: entry.path, file, receipt: { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified,
-        source: { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) } } }] };
+      files: [{
+        path: entry.path,
+        file,
+        receipt: {
+          version: 1 as const,
+          kind: 'naidan-model-file' as const,
+          size: file.size,
+          lastModified: file.lastModified,
+          source: { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
+        },
+      }],
+    };
   });
   let available = entries.slice(0, 1);
   const scope = effectScope();
@@ -38,9 +50,17 @@ it.each([
       available = entries;
     });
     const list = vi.fn<typeof listImageRepositories>(async ({ repositoryIds }) => repositoryIds ? available.filter(entry => repositoryIds.includes(entry.id)) : available);
-    const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-      list, scan: scanImageRepositories, import: vi.fn(), download,
-    } }))!;
+    const library = scope.run(() => useImageLibrary({
+      downloadsBlocked: () => false,
+      blocked: () => false,
+      onSelection() {},
+      dependencies: {
+        list,
+        scan: scanImageRepositories,
+        import: vi.fn(),
+        download,
+      },
+    }))!;
     library.hostDirectories.destination.value = destination;
     await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
     expect(library.selectedFacts.value).toMatchObject({ family: krea ? 'krea2' : 'ernie-image', variant: 'turbo' });

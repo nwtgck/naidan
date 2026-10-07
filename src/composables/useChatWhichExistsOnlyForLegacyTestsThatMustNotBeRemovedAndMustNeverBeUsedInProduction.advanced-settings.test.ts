@@ -26,7 +26,8 @@ vi.mock('../00-storage/service', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -74,21 +75,23 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.clearAllMocks();
 
     // Default Global Settings
-    __testOnlySetSettings({ newSettings: {
-      endpoint: { type: 'openai', url: 'http://global-openai' },
-      defaultModelId: 'global-gpt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      systemPrompt: 'Global Default Prompt',
-      lmParameters: {
-        ...EMPTY_LM_PARAMETERS,
-        temperature: 0.7,
-        maxCompletionTokens: 1000,
-        reasoning: { effort: undefined },
+    __testOnlySetSettings({
+      newSettings: {
+        endpoint: { type: 'openai', url: 'http://global-openai' },
+        defaultModelId: 'global-gpt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        systemPrompt: 'Global Default Prompt',
+        lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
+          temperature: 0.7,
+          maxCompletionTokens: 1000,
+          reasoning: { effort: undefined },
+        },
       },
-    } });
+    });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
@@ -122,15 +125,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
 
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
-      __testOnlySetSettings({ newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        providerProfiles: [{
-          id: 'p1',
-          name: 'Profile 1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
-          systemPrompt: 'Profile Prompt',
-        }],
-      } });
+      __testOnlySetSettings({
+        newSettings: {
+          ...JSON.parse(JSON.stringify(settings.value)),
+          providerProfiles: [{
+            id: 'p1',
+            name: 'Profile 1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            systemPrompt: 'Profile Prompt',
+          }],
+        },
+      });
 
       await sendMessage({ content: 'Hi' });
       await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
@@ -152,15 +157,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
 
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
-      __testOnlySetSettings({ newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        providerProfiles: [{
-          id: 'p1',
-          name: 'Profile 1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
-          systemPrompt: 'Profile Prompt',
-        } as any],
-      } });
+      __testOnlySetSettings({
+        newSettings: {
+          ...JSON.parse(JSON.stringify(settings.value)),
+          providerProfiles: [{
+            id: 'p1',
+            name: 'Profile 1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            systemPrompt: 'Profile Prompt',
+          } as any],
+        },
+      });
       await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
 
       await sendMessage({ content: 'Hi' });
@@ -175,37 +182,42 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   describe('LM Parameters Resolution (Deep Merge)', () => {
     it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
-      __testOnlySetSettings({ newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        lmParameters: {
-          ...EMPTY_LM_PARAMETERS,
-          temperature: 0.1,
-          topP: 0.9,
-          maxCompletionTokens: 100, // Will be overridden by chat
-          reasoning: { effort: undefined },
-        },
-        // Profile should be ignored at runtime
-        providerProfiles: [{
-          id: 'p1',
-          name: 'P1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
+      __testOnlySetSettings({
+        newSettings: {
+          ...JSON.parse(JSON.stringify(settings.value)),
           lmParameters: {
             ...EMPTY_LM_PARAMETERS,
-            temperature: 0.5,
-            presencePenalty: 1.0,
+            temperature: 0.1,
+            topP: 0.9,
+            maxCompletionTokens: 100, // Will be overridden by chat
             reasoning: { effort: undefined },
           },
-        } as any],
-      } });
-
-      await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
-        lmParameters: {
-          ...EMPTY_LM_PARAMETERS,
-          maxCompletionTokens: 500,
-          frequencyPenalty: 0.5,
-          reasoning: { effort: undefined },
+          // Profile should be ignored at runtime
+          providerProfiles: [{
+            id: 'p1',
+            name: 'P1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            lmParameters: {
+              ...EMPTY_LM_PARAMETERS,
+              temperature: 0.5,
+              presencePenalty: 1.0,
+              reasoning: { effort: undefined },
+            },
+          } as any],
         },
-      } });
+      });
+
+      await updateChatSettings({
+        id: idToRaw({ id: currentChat.value!.id }),
+        updates: {
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+            maxCompletionTokens: 500,
+            frequencyPenalty: 0.5,
+            reasoning: { effort: undefined },
+          },
+        },
+      });
 
       await sendMessage({ content: 'Hi' });
       await vi.waitUntil(() => !isProcessing({ chatId: currentChat.value!.id }));
@@ -213,10 +225,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const params = callParams.parameters;
 
       expect(params).toEqual({
-        temperature: 0.1,         // From Global (Profile 0.5 ignored)
-        topP: 0.9,                // From Global
+        temperature: 0.1, // From Global (Profile 0.5 ignored)
+        topP: 0.9, // From Global
         maxCompletionTokens: 500, // From Chat
-        frequencyPenalty: 0.5,    // From Chat
+        frequencyPenalty: 0.5, // From Chat
         reasoning: { effort: undefined },
         // presencePenalty: 1.0 from Profile should be missing
       });
@@ -280,16 +292,18 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    __testOnlySetSettings({ newSettings: {
-      endpoint: { type: 'openai', url: 'http://global-openai' },
-      defaultModelId: 'global-gpt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      systemPrompt: undefined,
-      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
-    } });
+    __testOnlySetSettings({
+      newSettings: {
+        endpoint: { type: 'openai', url: 'http://global-openai' },
+        defaultModelId: 'global-gpt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        systemPrompt: undefined,
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
+      },
+    });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat({ id: idToRaw({ id: chat!.id }) });
   });
@@ -307,13 +321,16 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // Return the live chat so the updater receives a valid object.
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
-    await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
-      endpoint: {
-        type: 'openai',
-        url: 'http://chat-specific-url',
-        httpHeaders: [['Authorization', 'Bearer secret']],
+    await updateChatSettings({
+      id: idToRaw({ id: currentChat.value!.id }),
+      updates: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://chat-specific-url',
+          httpHeaders: [['Authorization', 'Bearer secret']],
+        },
       },
-    } });
+    });
 
     expect(capturedStorageUpdater).toBeDefined();
 
@@ -342,13 +359,16 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // First updateChatMeta is from updateChatSettings — just let it resolve.
     vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater: _updater }) => Promise.resolve(undefined as any));
 
-    await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
-      endpoint: {
-        type: 'openai',
-        url: 'http://chat-specific-url',
-        httpHeaders: [['Authorization', 'Bearer secret']],
+    await updateChatSettings({
+      id: idToRaw({ id: currentChat.value!.id }),
+      updates: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://chat-specific-url',
+          httpHeaders: [['Authorization', 'Bearer secret']],
+        },
       },
-    } });
+    });
 
     expect(currentChat.value?.endpoint).toEqual({
       type: 'openai',

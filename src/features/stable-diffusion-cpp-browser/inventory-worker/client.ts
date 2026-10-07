@@ -26,16 +26,18 @@ export async function inspectImageInventory({ signal, onProgress, repositories, 
     remote = wrapWorkerRemote<InventoryWorker>({ endpoint: worker });
     pulse();
     if (signal.aborted) abort();
-    return await Promise.race([remote.inspect(repositories, workerProxy({ value: ({ progress }) => {
-      if (closed || signal.aborted) return;
-      const parsed = inspectionProgressSchema.safeParse(progress);
-      if (!parsed.success) return;
-      lastProgress = `${parsed.data.phase}: ${parsed.data.path.slice(0, 512)}`;
-      pulse();
-      try {
-        onProgress({ progress: parsed.data });
-      } catch { /* observational */ }
-    } }), hostDirectories, repositoryIds), stopped.promise]);
+    return await Promise.race([remote.inspect(repositories, workerProxy({
+      value: ({ progress }) => {
+        if (closed || signal.aborted) return;
+        const parsed = inspectionProgressSchema.safeParse(progress);
+        if (!parsed.success) return;
+        lastProgress = `${parsed.data.phase}: ${parsed.data.path.slice(0, 512)}`;
+        pulse();
+        try {
+          onProgress({ progress: parsed.data });
+        } catch { /* observational */ }
+      },
+    }), hostDirectories, repositoryIds), stopped.promise]);
   } finally {
     closed = true; clearTimeout(timer); signal.removeEventListener('abort', abort);
     worker.removeEventListener('error', crash); worker.removeEventListener('messageerror', crash);

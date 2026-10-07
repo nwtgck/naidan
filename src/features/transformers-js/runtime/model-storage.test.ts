@@ -36,9 +36,12 @@ async function folderAt({ path }: { path: string }): Promise<FileSystemDirectory
 }
 beforeEach(() => {
   root = memoryDirectory({ name: '' });
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: {
-    request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
-  } });
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+      request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
+    },
+  });
   service = createTransformersJsService({ createWorkerClient });
 });
 afterEach(async () => {

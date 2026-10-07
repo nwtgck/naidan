@@ -12,13 +12,15 @@ export function createInferenceBudget({ capacity }: { capacity: number }) {
       if (bytes > 0 && reserved === 0) idle = Promise.withResolvers<void>();
       reserved += bytes;
       let owned = true;
-      return { release() {
-        if (!owned) return;
-        owned = false; reserved -= bytes;
-        if (reserved === 0) {
-          const completed = idle; idle = undefined; completed?.resolve();
-        }
-      } };
+      return {
+        release() {
+          if (!owned) return;
+          owned = false; reserved -= bytes;
+          if (reserved === 0) {
+            const completed = idle; idle = undefined; completed?.resolve();
+          }
+        },
+      };
     },
     get reserved(): number {
       return reserved;

@@ -10,9 +10,11 @@ import ImageHistoryImage from './ImageHistoryImage.vue';
 const entries = shallowRef(imagePendingRuns.list()), failure = ref('');
 const failed = computed(() => entries.value.filter(entry => entry.state.needsRetry));
 const { showConfirm } = useConfirm();
-const unsubscribe = imagePendingRuns.subscribe({ listener() {
-  entries.value = imagePendingRuns.list();
-} });
+const unsubscribe = imagePendingRuns.subscribe({
+  listener() {
+    entries.value = imagePendingRuns.list();
+  },
+});
 onScopeDispose(unsubscribe);
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
   return imagePendingRuns.list().flatMap(entry => entry.state.pending).flatMap(output => output.files).find(file => file.binaryObjectId === binaryObjectId)?.blob;

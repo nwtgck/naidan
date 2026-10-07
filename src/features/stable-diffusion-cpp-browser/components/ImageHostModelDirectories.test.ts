@@ -17,8 +17,13 @@ afterEach(() => {
 function createView({ supported, entries }: { supported: boolean, entries: HostModelDirectoryChoice[] }): HostModelDirectoriesView {
   const destination = ref('opfs');
   return {
-    supported: computed(() => supported), entries: computed(() => entries), destination, busy: ref(false),
-    add: vi.fn(async () => {}), reconnect: vi.fn(async () => {}), remove: vi.fn(async () => {}),
+    supported: computed(() => supported),
+    entries: computed(() => entries),
+    destination,
+    busy: ref(false),
+    add: vi.fn(async () => {}),
+    reconnect: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}),
     selectDestination: vi.fn(({ id }: { id: string }) => {
       destination.value = id;
     }),
@@ -38,10 +43,16 @@ it('defaults to browser storage and keeps unsupported folder controls visible an
 
 it('selects a registered root and shows its real repository-relative nested layout', async () => {
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'my-image-models', access: 'readwrite', error: undefined }] });
-  wrapper = mount(ImageHostModelDirectories, { props: {
-    view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false,
-    layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
-  } });
+  wrapper = mount(ImageHostModelDirectories, {
+    props: {
+      view,
+      opfsSupported: true,
+      disabled: false,
+      mutationDisabled: false,
+      downloading: false,
+      layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
+    },
+  });
   await wrapper.get('[data-testid="image-download-destination"]').setValue('root-a');
   expect(view.selectDestination).toHaveBeenCalledWith({ id: 'root-a' });
   const preview = wrapper.get('[data-testid="image-host-folder-layout"] pre').text();
@@ -59,10 +70,13 @@ my-image-models/
 });
 
 it('keeps missing registrations visible for reconnect and distinguishes them by ID', async () => {
-  const view = createView({ supported: true, entries: [
-    { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
-    { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
-  ] });
+  const view = createView({
+    supported: true,
+    entries: [
+      { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
+      { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
+    ],
+  });
   wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLOptionElement>('option[value="missing-a"]').element.disabled).toBe(true);
   expect(wrapper.get<HTMLOptionElement>('option[value="available-b"]').element.disabled).toBe(false);

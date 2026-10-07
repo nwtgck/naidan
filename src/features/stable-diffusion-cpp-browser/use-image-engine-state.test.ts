@@ -12,9 +12,16 @@ function harness() {
   const progress = shallowRef<Progress>(), modelResident = ref(true), supported = ref(true);
   let current: ImageClient | undefined = client;
   const owner = useImageEngineState({ client: () => current, supported, progress, modelResident });
-  return { ...owner, inspectEngine, progress, modelResident, supported, setClient({ value }: { value: ImageClient | undefined }) {
-    current = value;
-  } };
+  return {
+    ...owner,
+    inspectEngine,
+    progress,
+    modelResident,
+    supported,
+    setClient({ value }: { value: ImageClient | undefined }) {
+      current = value;
+    },
+  };
 }
 it('does not inspect before opening or during closed lifecycle events, and never creates a missing client', async () => {
   const h = harness(); h.afterRun(); await h.view.refresh();

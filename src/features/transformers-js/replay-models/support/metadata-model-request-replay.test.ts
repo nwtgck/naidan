@@ -11,7 +11,8 @@ const corpus = z.object({
   schemaVersion: z.literal(1),
   source: z.object({ zipSha256: z.string(), representation: z.literal('parsed-json-not-original-bytes'), note: z.string() }).strict(),
   models: z.array(z.object({
-    modelId: z.string(), revision: z.string().regex(/^[a-f0-9]{40}$/u),
+    modelId: z.string(),
+    revision: z.string().regex(/^[a-f0-9]{40}$/u),
     repositoryFiles: z.array(z.object({ path: z.string(), size: z.number().int().nonnegative() }).strict()),
     declarations: z.array(z.object({ path: z.string(), originalByteLength: z.number().int().nonnegative(), value: z.record(z.string(), z.unknown()) }).strict()),
   }).strict()).length(9),
@@ -47,9 +48,13 @@ describe('explicit Causal planner prepass control', () => {
   afterEach(cleanupParsedMetadataRequests);
   it.each(['q4f16', 'q4'] as const)('distinguishes %s progress prepass from actual body consumption', async dtype => {
     const fixture = corpus.models.find(model => model.modelId === 'onnx-community/Qwen3.5-2B-ONNX')!;
-    await assertCausalMetadataPrepass({ fixture, dtype, expectedConsumedPaths: [
-      `onnx/decoder_model_merged_${dtype}.onnx`, `onnx/decoder_model_merged_${dtype}.onnx_data`,
-      `onnx/embed_tokens_${dtype}.onnx`, `onnx/embed_tokens_${dtype}.onnx_data`,
-    ] });
+    await assertCausalMetadataPrepass({
+      fixture,
+      dtype,
+      expectedConsumedPaths: [
+        `onnx/decoder_model_merged_${dtype}.onnx`, `onnx/decoder_model_merged_${dtype}.onnx_data`,
+        `onnx/embed_tokens_${dtype}.onnx`, `onnx/embed_tokens_${dtype}.onnx_data`,
+      ],
+    });
   });
 });

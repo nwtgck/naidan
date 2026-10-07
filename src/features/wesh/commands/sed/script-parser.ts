@@ -674,10 +674,9 @@ function parseExecuteCommand({
       address,
       rangeEnd,
       negated,
-      command:
-        command.length === 0
-          ? undefined
-          : toSedLocaleText({ text: command, characterLocaleMode }),
+      command: command.length === 0
+        ? undefined
+        : toSedLocaleText({ text: command, characterLocaleMode }),
     },
     nextIndex: cursor,
   };

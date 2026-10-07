@@ -55,13 +55,15 @@ function fixture({ size, filename, version }: { size: number | undefined, filena
     let response: Response | Promise<Response> | undefined;
     let lifetime: Promise<unknown> | undefined;
     const event: DownloadFetchEvent = {
-      request: new Request(requestUrl, { method, referrer: '', headers: range ? { Range: range } : {} }), clientId,
+      request: new Request(requestUrl, { method, referrer: '', headers: range ? { Range: range } : {} }),
+      clientId,
       respondWith(value) {
         response = value;
       },
       waitUntil(promise) {
         lifetime = promise;
-      }, stopImmediatePropagation: vi.fn(),
+      },
+      stopImmediatePropagation: vi.fn(),
     };
     if (mode === 'navigate') Object.defineProperty(event.request, 'mode', { value: mode });
     onFetch(event);
@@ -72,7 +74,8 @@ function fixture({ size, filename, version }: { size: number | undefined, filena
     onMessage({
       data: { type: 'naidan-download/keepalive', version, token },
       source: { id: owner, type: 'window', url: 'https://example.test/nested/app/index.html' },
-      ports: [], waitUntil(promise) {
+      ports: [],
+      waitUntil(promise) {
         lifetime = promise;
       },
     });
@@ -84,11 +87,14 @@ function fixture({ size, filename, version }: { size: number | undefined, filena
 describe('streaming download Service Worker', () => {
   it('claims once under a nested scope, without opening the source during registration', async () => {
     const f = fixture({ version: 1, size: undefined, filename: '日本語.zip' });
-    const source = f.prepare({ owner: 'owner', stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-      },
-    }) });
+    const source = f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+        },
+      }),
+    });
     await vi.waitFor(() => expect(f.messages).toContainEqual(expect.objectContaining({ type: 'ready' })));
     expect(source.openStream).not.toHaveBeenCalled();
     const { response, event } = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url });
@@ -103,9 +109,14 @@ describe('streaming download Service Worker', () => {
 
   it('does not let a foreign client, range, HEAD, or POST consume the reservation', async () => {
     const f = fixture({ version: 1, size: 0, filename: 'empty' });
-    f.prepare({ owner: 'owner', stream: new ReadableStream({ start(controller) {
-      controller.close();
-    } }) });
+    f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    });
     for (const [clientId, method, range, status] of [
       ['other', 'GET', undefined, 403], ['owner', 'HEAD', undefined, 405],
       ['owner', 'POST', undefined, 405], ['owner', 'GET', 'bytes=0-', 416],
@@ -130,11 +141,14 @@ describe('streaming download Service Worker', () => {
 
   it.each([2, 4])('rejects a dishonest content length of %i rather than reporting completion', async size => {
     const f = fixture({ version: 1, size, filename: 'broken' });
-    f.prepare({ owner: 'owner', stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-      },
-    }) });
+    f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+        },
+      }),
+    });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     await expect(response.arrayBuffer()).rejects.toThrow('size mismatch');
     await vi.waitFor(() => expect(f.messages).toContainEqual(expect.objectContaining({ type: 'error' })));
@@ -144,11 +158,15 @@ describe('streaming download Service Worker', () => {
   it('propagates download cancellation to a blocked producer', async () => {
     const f = fixture({ version: 1, size: undefined, filename: 'cancelled' });
     const cancel = vi.fn();
-    const source = f.prepare({ owner: 'owner', stream: new ReadableStream({
-      pull() {
-        return new Promise(() => undefined);
-      }, cancel,
-    }) });
+    const source = f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel,
+      }),
+    });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     const reader = response.body!.getReader();
     const read = reader.read();
@@ -222,9 +240,14 @@ describe('streaming download Service Worker', () => {
 describe('fragment downloads', () => {
   it.each(['', 'new-iframe'])('claims once with no referrer and iframe clientId=%j', async clientId => {
     const f = fixture({ version: 2, size: 3, filename: 'private.zip' });
-    const source = f.prepare({ owner: 'owner', stream: new ReadableStream({ start(controller) {
-      controller.enqueue(new Uint8Array([7, 8, 9])); controller.close();
-    } }) });
+    const source = f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([7, 8, 9])); controller.close();
+        },
+      }),
+    });
     await vi.waitFor(() => expect(f.messages).toContainEqual(expect.objectContaining({ type: 'ready', version: 2 })));
     expect(source.openStream).not.toHaveBeenCalled();
     const { response, event } = f.fetch({ clientId, method: 'GET', range: undefined, requestUrl: f.url, mode: 'navigate' });
@@ -238,9 +261,14 @@ describe('fragment downloads', () => {
 
   it('rejects non-navigation reads and modified URLs without consuming the capability', async () => {
     const f = fixture({ version: 2, size: 0, filename: 'empty' });
-    const source = f.prepare({ owner: 'owner', stream: new ReadableStream({ start(controller) {
-      controller.close();
-    } }) });
+    const source = f.prepare({
+      owner: 'owner',
+      stream: new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    });
     const u = new URL(f.url);
     const token = u.hash.substring('#?id='.length);
     const clean = new URL(u); clean.hash = '';

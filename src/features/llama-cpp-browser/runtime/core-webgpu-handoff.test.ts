@@ -5,9 +5,15 @@ const host = vi.hoisted(() => ({ load: vi.fn<typeof import('./artifacts').loadCo
 vi.mock('./artifacts', () => ({ loadCoreModule: host.load }));
 // Stop at the native-loader handoff: this suite does not need a native ABI or
 // tensor fixture, and must not accidentally initialize Wasm or a GPU device.
-vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({ default: {
-  abiVersion: 1, schemaSha256: 'factory-handoff-fixture', constants: [], records: [], functions: [],
-} }));
+vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
+  default: {
+    abiVersion: 1,
+    schemaSha256: 'factory-handoff-fixture',
+    constants: [],
+    records: [],
+    functions: [],
+  },
+}));
 afterEach(() => {
   vi.resetAllMocks(); vi.unstubAllGlobals();
 });

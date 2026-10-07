@@ -204,7 +204,12 @@ describe("runCandidateLoadAttempt", () => {
         sessions: [{ name: "model", inputNames: ["input_ids"], outputNames: ["logits"] }],
         sessionFileCorrelations: [],
         effectiveMinimumGenerationConfig: {
-          maxNewTokens: 1, doSample: false, bosTokenId: 1, eosTokenId: 2, padTokenId: 0, decoderStartTokenId: undefined,
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
         },
       }),
       buildInput,

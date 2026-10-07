@@ -12,11 +12,27 @@ const timingMocks = vi.hoisted(() => ({ snapshot: vi.fn() }));
 vi.mock('@/features/transformers-js', () => ({ transformersJsService: { getDownloadTimingSnapshot: timingMocks.snapshot } }));
 
 function timingSnapshot(): DownloadTimingSnapshot {
-  return { format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
-    serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1,
-    availability: 'recorded', droppedOperations: 0,
-    records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1, outcome: 'failed',
-      timingStatus: 'measured', wallMs: 100, truncated: false, droppedObservations: 0, observations: [] }] };
+  return {
+    format: 'transformers-js-download-timing-v1',
+    measurementVersion: 1,
+    source: 'ordinary-download',
+    serviceEpoch: '11111111-1111-4111-8111-111111111111',
+    identityStatus: 'available',
+    sequence: 1,
+    availability: 'recorded',
+    droppedOperations: 0,
+    records: [{
+      operationId: '11111111-1111-4111-8111-111111111111/1',
+      modelId: 'org/previous',
+      runtimeEpoch: 1,
+      outcome: 'failed',
+      timingStatus: 'measured',
+      wallMs: 100,
+      truncated: false,
+      droppedObservations: 0,
+      observations: [],
+    }],
+  };
 }
 
 vi.mock('vue-router', async importOriginal => ({

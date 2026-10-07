@@ -12,8 +12,12 @@ function publication() {
   const sessionId = toImageGenerationSessionId({ raw: 'unsaved-exit-session' });
   const plan = generationRunFixture({ id: 'unsaved-exit-run', sessionId, count: 1, seed: '42' });
   const snapshot = { id: toImageGenerationId({ raw: 'unsaved-exit-image' }), createdAt: 1, request: plan.request, inputFiles: [] };
-  const output = finishImageGenerationSnapshot({ snapshot, previews: [], elapsedMs: 1,
-    result: { png: new Blob(['pixels']), width: 256, height: 256, modelVersion: 'test', uniformOutput: false } });
+  const output = finishImageGenerationSnapshot({
+    snapshot,
+    previews: [],
+    elapsedMs: 1,
+    result: { png: new Blob(['pixels']), width: 256, height: 256, modelVersion: 'test', uniformOutput: false },
+  });
   return { plan, sessionId, snapshot, output };
 }
 function allowsReload(): boolean {
@@ -24,8 +28,11 @@ function allowsReload(): boolean {
 
 it('retains recovery pixels after a view detaches without a browser reload warning', () => {
   const { snapshot } = publication();
-  const recovered = recoverImageGenerationSnapshot({ snapshot, elapsedMs: 1,
-    output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined } });
+  const recovered = recoverImageGenerationSnapshot({
+    snapshot,
+    elapsedMs: 1,
+    output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined },
+  });
   const unsubscribe = imageRecoveryStore.subscribe({ listener: vi.fn() });
   const reservation = imageRecoveryStore.reserve({ bytes: 6 }); unsubscribe();
   const id = reservation.retain({ ...recovered, retry: undefined });
@@ -54,8 +61,13 @@ it('allows reload during a run and after a failed output save while preserving r
     commit: vi.fn<ImageGenerationRunPersistence['commit']>().mockRejectedValueOnce(new Error('quota')).mockResolvedValue(undefined),
     update: vi.fn<ImageGenerationRunPersistence['update']>().mockResolvedValue(undefined),
   };
-  const run = imagePendingRuns.create({ store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'unsaved-exit-store' }) },
-    sessionId, count: 1, sources: [], persistence });
+  const run = imagePendingRuns.create({
+    store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'unsaved-exit-store' }) },
+    sessionId,
+    count: 1,
+    sources: [],
+    persistence,
+  });
   onTestFinished(async () => {
     await run.retire(); imagePendingRuns.discard({ id: run.id });
   });

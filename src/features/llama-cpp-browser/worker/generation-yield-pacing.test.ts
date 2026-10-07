@@ -9,8 +9,14 @@ describe('bounded generation task yields', () => {
     for (let i = 0; i < 3; i++) expect(pacing.shouldYield()).toBe(false);
     expect(pacing.shouldYield()).toBe(true);
     pacing.yielded();
-    expect(pacing.counters).toEqual({ mode: 'coalesced', checks: 5, requestedYields: 2,
-      completedYields: 2, coalescedYields: 3, maximumDecodesBetweenYields: 4 });
+    expect(pacing.counters).toEqual({
+      mode: 'coalesced',
+      checks: 5,
+      requestedYields: 2,
+      completedYields: 2,
+      coalescedYields: 3,
+      maximumDecodesBetweenYields: 4,
+    });
   });
   it('checks elapsed time at each decode boundary, including parsing and delivery time', () => {
     let at = 0;
@@ -59,8 +65,14 @@ describe('bounded generation task yields', () => {
       expect(pacing.shouldYield()).toBe(true); pacing.yielded();
     }
     expect(now).not.toHaveBeenCalled();
-    expect(pacing.counters).toEqual({ mode: 'per-token', checks: 20, requestedYields: 20,
-      completedYields: 20, coalescedYields: 0, maximumDecodesBetweenYields: 1 });
+    expect(pacing.counters).toEqual({
+      mode: 'per-token',
+      checks: 20,
+      requestedYields: 20,
+      completedYields: 20,
+      coalescedYields: 0,
+      maximumDecodesBetweenYields: 1,
+    });
   });
   it('never lets a caller replace a pending real task with another decode', () => {
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => 0 });

@@ -11,9 +11,11 @@ function png(): Uint8Array<ArrayBuffer> {
   view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44); return bytes;
 }
 function source<T>({ values }: { values: T[] }): ReadableStream<T> {
-  return new ReadableStream({ start(controller) {
-    for (const value of values) controller.enqueue(value); controller.close();
-  } });
+  return new ReadableStream({
+    start(controller) {
+      for (const value of values) controller.enqueue(value); controller.close();
+    },
+  });
 }
 function setup() {
   const request: PeerImageInput = {

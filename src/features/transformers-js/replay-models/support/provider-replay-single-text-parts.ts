@@ -72,8 +72,17 @@ export function verifySingleTextPartsObservation({ recordedEvents, invocation, c
   expected.push({ kind: 'assistant_message', messageId, sequence: 0, phase: 'before-settlement' });
   let applied = '';
   const snapshot = ({ completeness }: { completeness: 'partial' | 'complete' }) => {
-    expected.push({ kind: 'part_text', messageId, partId, index: 0, partType: 'text', text: applied, completeness,
-      sequence: expected.length, phase: 'before-settlement' });
+    expected.push({
+      kind: 'part_text',
+      messageId,
+      partId,
+      index: 0,
+      partType: 'text',
+      text: applied,
+      completeness,
+      sequence: expected.length,
+      phase: 'before-settlement',
+    });
   };
   snapshot({ completeness: 'partial' });
   for (const event of finalized) {
@@ -106,23 +115,26 @@ export function projectSingleTextReplayInput({ input, precedingEvents }: {
   precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
 }): unknown {
   const checked = inputSchema.parse(input);
-  return { ...checked, messages: checked.messages.map(message => {
-    if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
-    const current = assistantPartsSchema.parse(message);
-    const precedingPart = (() => {
-      if (precedingEvents === undefined) return undefined;
-      const events = precedingEvents;
-      const starts = events.filter(event => event.kind === 'assistant_message');
-      const revisions = events.filter(event => event.kind === 'part_text');
-      const last = revisions.at(-1);
-      if (starts.length !== 1 || !last || last.partType !== 'text' || last.index !== 0
+  return {
+    ...checked,
+    messages: checked.messages.map(message => {
+      if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
+      const current = assistantPartsSchema.parse(message);
+      const precedingPart = (() => {
+        if (precedingEvents === undefined) return undefined;
+        const events = precedingEvents;
+        const starts = events.filter(event => event.kind === 'assistant_message');
+        const revisions = events.filter(event => event.kind === 'part_text');
+        const last = revisions.at(-1);
+        if (starts.length !== 1 || !last || last.partType !== 'text' || last.index !== 0
         || revisions.some(event => event.messageId !== starts[0]!.messageId || event.partId !== last.partId || event.partType !== 'text' || event.index !== 0)
         || events.some(event => event.kind === 'part_call')) return undefined;
-      return { id: last.partId, type: 'text', text: last.text, completeness: last.completeness };
-    })();
-    expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);
-    return { role: current.role, content: current.parts[0].text };
-  }) };
+        return { id: last.partId, type: 'text', text: last.text, completeness: last.completeness };
+      })();
+      expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);
+      return { role: current.role, content: current.parts[0].text };
+    }),
+  };
 }
 
 export const TEST_ONLY = {

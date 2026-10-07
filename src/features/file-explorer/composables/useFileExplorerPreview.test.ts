@@ -73,11 +73,17 @@ describe('useFileExplorerPreview', () => {
           }
           return { kind: 'text', rawText: 'big content', displayText: 'big content', languageHint: 'typescript', oversized: false };
         case '/data.json':
-          return { kind: 'text', rawText: '{"a":1,"b":2}', displayText: `\
+          return {
+            kind: 'text',
+            rawText: '{"a":1,"b":2}',
+            displayText: `\
 {
   "a": 1,
   "b": 2
-}`, languageHint: 'json', oversized: false };
+}`,
+            languageHint: 'json',
+            oversized: false,
+          };
         case '/photo.png':
         case '/clip.mp4':
         case '/song.mp3':

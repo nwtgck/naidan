@@ -425,10 +425,12 @@ async function attachCopyAsVolume({ entries, name }: {
     await finishMount({ volumeId: vol.id, name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: await ensureStrings.ChatInput__failed_to_copy({
-        name,
-        errorMessage: (e as Error).message,
-      }) });
+      addToast({
+        message: await ensureStrings.ChatInput__failed_to_copy({
+          name,
+          errorMessage: (e as Error).message,
+        }),
+      });
     }
   } finally {
     releaseActivity();
@@ -446,9 +448,11 @@ async function attachLinkAsVolume() {
     await finishMount({ volumeId: vol.id, name: vol.name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: await ensureStrings.ChatInput__failed_to_link_folder({
-        errorMessage: (e as Error).message,
-      }) });
+      addToast({
+        message: await ensureStrings.ChatInput__failed_to_link_folder({
+          errorMessage: (e as Error).message,
+        }),
+      });
     }
   } finally {
     releaseActivity();
@@ -610,13 +614,15 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
 
-  openFileExplorer({ options: {
-    kind: 'wesh-mounts',
-    title: await ensureStrings.fileExplorer__files(),
-    rootName: await ensureStrings.fileExplorer__files(),
-    mounts: workerMounts,
-    initialPath,
-  } });
+  openFileExplorer({
+    options: {
+      kind: 'wesh-mounts',
+      title: await ensureStrings.fileExplorer__files(),
+      rootName: await ensureStrings.fileExplorer__files(),
+      mounts: workerMounts,
+      initialPath,
+    },
+  });
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
@@ -983,11 +989,14 @@ watch(
   (_newId, oldId) => {
     // Save previous draft
     if (oldId !== undefined) {
-      chatDraft.saveDraft({ chatId: oldId, draft: {
-        input: input.value,
-        attachments: attachments.value,
-        attachmentUrls: attachmentUrls.value,
-      } });
+      chatDraft.saveDraft({
+        chatId: oldId,
+        draft: {
+          input: input.value,
+          attachments: attachments.value,
+          attachmentUrls: attachmentUrls.value,
+        },
+      });
     }
 
     const draft = chatDraft.getDraft({ chatId: props.chatId });
@@ -1060,11 +1069,14 @@ useEventTargetListener(window, 'resize', handleWindowResize);
 
 onUnmounted(() => {
   // Save final state
-  chatDraft.saveDraft({ chatId: props.chatId, draft: {
-    input: input.value,
-    attachments: attachments.value,
-    attachmentUrls: attachmentUrls.value,
-  } });
+  chatDraft.saveDraft({
+    chatId: props.chatId,
+    draft: {
+      input: input.value,
+      attachments: attachments.value,
+      attachmentUrls: attachmentUrls.value,
+    },
+  });
 
   // Revoke all created URLs across all drafts to prevent leaks
   chatDraft.revokeAll();
@@ -1158,7 +1170,14 @@ function focusInput({
   }
 }
 
-defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFiles, processDropItems, formatLabel,
+defineExpose({
+  focus: focusInput,
+  input,
+  applySuggestion,
+  isMaximized,
+  processFiles,
+  processDropItems,
+  formatLabel,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       adjustTextareaHeight,
@@ -1169,7 +1188,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
       handleAdvancedEditorModeUpdate,
       selectedReasoningEffort,
     },
-  }) || {}) });
+  }) || {}),
+});
 </script>
 
 <template>

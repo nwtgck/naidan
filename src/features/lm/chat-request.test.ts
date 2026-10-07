@@ -56,10 +56,18 @@ describe('persisted tool text decoding', () => {
   const toolCallId = toToolCallId({ raw: 'call-utf8' });
   const binaryObjectId = toBinaryObjectId({ raw: 'result-utf8' });
   function message({ bytesReference }: { bytesReference: boolean }): ChatMessage {
-    return { id, role: 'tool', parts: [{ type: 'tool_result', result: {
-      toolCallId, status: 'success',
-      content: bytesReference ? { type: 'binary_object', id: binaryObjectId } : { type: 'text', text: '\uFEFF  結果🙂\r\n' },
-    } }] };
+    return {
+      id,
+      role: 'tool',
+      parts: [{
+        type: 'tool_result',
+        result: {
+          toolCallId,
+          status: 'success',
+          content: bytesReference ? { type: 'binary_object', id: binaryObjectId } : { type: 'text', text: '\uFEFF  結果🙂\r\n' },
+        },
+      }],
+    };
   }
   it('keeps the leading BOM as tool content instead of treating it as file framing', async () => {
     const inline = await buildApiChatMessages({ messages: [message({ bytesReference: false })], readBinaryObject: undefined, signal: undefined });

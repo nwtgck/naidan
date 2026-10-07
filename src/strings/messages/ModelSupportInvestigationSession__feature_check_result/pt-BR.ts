@@ -12,7 +12,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "tool-probe": "Protocolo de ferramenta forçado",
     "tool-parser": "Analisador de ferramentas",
     "tool-template": "Modelo de resultado de ferramenta",
-    "stage": "Etapa da investigação"
+    "stage": "Etapa da investigação",
   };
   const outcomes = {
     "passed": "Execução bem-sucedida",
@@ -22,7 +22,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "not-run": "Não executado",
     "not-selected": "Não selecionado",
     "not-recorded": "Não registrado",
-    "unavailable": "Indisponível"
+    "unavailable": "Indisponível",
   };
   return `${features[kind]} · ${outcomes[outcome]} (${context})`;
 };

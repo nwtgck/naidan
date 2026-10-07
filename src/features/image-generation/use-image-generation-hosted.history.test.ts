@@ -18,8 +18,24 @@ vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ getRpcManager: rp
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
   let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
-  return { generate: vi.fn(), inspectEngine: vi.fn(), cancel: vi.fn(), release: vi.fn(), dispose: vi.fn(), save: vi.fn(), remove: vi.fn(), removeBinary: vi.fn(), getFile: vi.fn(), query: vi.fn(), prepareFiles: vi.fn(), downloadBlob: vi.fn(), download: vi.fn(), setTransfer: vi.fn(), models,
-    storageType: 'opfs', listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
+  return {
+    generate: vi.fn(),
+    inspectEngine: vi.fn(),
+    cancel: vi.fn(),
+    release: vi.fn(),
+    dispose: vi.fn(),
+    save: vi.fn(),
+    remove: vi.fn(),
+    removeBinary: vi.fn(),
+    getFile: vi.fn(),
+    query: vi.fn(),
+    prepareFiles: vi.fn(),
+    downloadBlob: vi.fn(),
+    download: vi.fn(),
+    setTransfer: vi.fn(),
+    models,
+    storageType: 'opfs',
+    listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
     select(value: { family: 'z-image', turbo: boolean }) {
       selection(value);
     },
@@ -31,19 +47,21 @@ const mocks = vi.hoisted(() => {
 const preferenceSettings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } });
 const preferencesInitialized = ref(false);
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: preferenceSettings, initialized: preferencesInitialized, updateExperimental: vi.fn(), captureExperimentalStorage: () => () => true, updateExperimentalForStorage: vi.fn(async () => 'saved' as const) }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: {
-  getCurrentType: () => mocks.storageType,
-  subscribeToChanges: ({ listener }: { listener: ({ event }: { event: { type: 'migration', timestamp: number } }) => void }) => {
-    mocks.listeners.add(listener); return () => {
-      mocks.listeners.delete(listener);
-    };
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    getCurrentType: () => mocks.storageType,
+    subscribeToChanges: ({ listener }: { listener: ({ event }: { event: { type: 'migration', timestamp: number } }) => void }) => {
+      mocks.listeners.add(listener); return () => {
+        mocks.listeners.delete(listener);
+      };
+    },
+    createImageGenerationHistoryWriter: () => ({ ready: async () => {}, save: (...args: unknown[]) => mocks.save(...args) }),
+    saveImageGeneration: (...args: unknown[]) => mocks.save(...args),
+    deleteImageGeneration: (...args: unknown[]) => mocks.remove(...args),
+    deleteBinaryObject: (...args: unknown[]) => mocks.removeBinary(...args),
+    getFile: (...args: unknown[]) => mocks.getFile(...args),
   },
-  createImageGenerationHistoryWriter: () => ({ ready: async () => {}, save: (...args: unknown[]) => mocks.save(...args) }),
-  saveImageGeneration: (...args: unknown[]) => mocks.save(...args),
-  deleteImageGeneration: (...args: unknown[]) => mocks.remove(...args),
-  deleteBinaryObject: (...args: unknown[]) => mocks.removeBinary(...args),
-  getFile: (...args: unknown[]) => mocks.getFile(...args),
-} }));
+}));
 vi.mock('./history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: vi.fn() }));
@@ -55,34 +73,40 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
 });
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () => {
   const { createDisabledImageLibrary } = await import('@/features/stable-diffusion-cpp-browser/library-standalone');
-  return { useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void }) => {
-    mocks.selection(onSelection);
-    const library = createDisabledImageLibrary(); library.main.value = 'selected';
-    const transfers = { importing: ref(false), downloading: ref(false) };
-    mocks.setTransfer.mockImplementation(({ operation, active }: { operation: keyof typeof transfers, active: boolean }) => {
-      transfers[operation].value = active;
-    });
-    return { ...library, ...transfers, ready: computed(() => true), selectedModels: () => mocks.models,
-      selectedFacts: computed(() => ({ family: 'z-image', variant: 'turbo', evidence: [] })),
-      prepareHistoryFiles: () => mocks.prepareFiles(),
-      restoreModelSelection() {
-        library.main.value = 'missing-primary';
-        return { loras: [], missing: ['missing.gguf'], missingInactive: [] };
-      },
-      chooseMain({ id }: { id: string }) {
-        library.main.value = id;
-      },
-      useManualFiles() {
-        library.main.value = '';
-      },
-      historyFileLocation({ file }: { file: File }) {
-        return { type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` };
-      },
-      findHistoryFile({ location }: { location: { name: string } }) {
-        return mocks.models.find(model => model.file.name === location.name)?.file;
-      },
-    };
-  } };
+  return {
+    useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void }) => {
+      mocks.selection(onSelection);
+      const library = createDisabledImageLibrary(); library.main.value = 'selected';
+      const transfers = { importing: ref(false), downloading: ref(false) };
+      mocks.setTransfer.mockImplementation(({ operation, active }: { operation: keyof typeof transfers, active: boolean }) => {
+        transfers[operation].value = active;
+      });
+      return {
+        ...library,
+        ...transfers,
+        ready: computed(() => true),
+        selectedModels: () => mocks.models,
+        selectedFacts: computed(() => ({ family: 'z-image', variant: 'turbo', evidence: [] })),
+        prepareHistoryFiles: () => mocks.prepareFiles(),
+        restoreModelSelection() {
+          library.main.value = 'missing-primary';
+          return { loras: [], missing: ['missing.gguf'], missingInactive: [] };
+        },
+        chooseMain({ id }: { id: string }) {
+          library.main.value = id;
+        },
+        useManualFiles() {
+          library.main.value = '';
+        },
+        historyFileLocation({ file }: { file: File }) {
+          return { type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` };
+        },
+        findHistoryFile({ location }: { location: { name: string } }) {
+          return mocks.models.find(model => model.file.name === location.name)?.file;
+        },
+      };
+    },
+  };
 });
 import { useImageGeneration } from './use-image-generation-hosted';
 import { pendingImageHistory } from './history/pending-saves';
@@ -91,9 +115,11 @@ let editor: VueWrapper | undefined;
 let resultsPanel: VueWrapper | undefined;
 let active: ImageGenerationView | undefined;
 function open(): ImageGenerationView {
-  wrapper = mount(defineComponent({ setup() {
-    active = useImageGeneration(); return () => h('div');
-  } }));
+  wrapper = mount(defineComponent({
+    setup() {
+      active = useImageGeneration(); return () => h('div');
+    },
+  }));
   if (!active) throw new Error('Missing image owner');
   active.parameters.value = parametersFixture();
   return active;
@@ -266,8 +292,19 @@ describe('hosted image history integration with a synthetic inference client', (
     view.parameters.value.prompt = 'Another model and prompt';
     view.preview.value.enabled = true;
     mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
-      onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 2, revision: 0, step: 2, steps: 8, width: 128, height: 128,
-        mode: 'vae', png: new Blob(['partial image'], { type: 'image/png' }) } });
+      onPreview({
+        frame: {
+          type: 'naidan-image-preview-v1',
+          runId: 2,
+          revision: 0,
+          step: 2,
+          steps: 8,
+          width: 128,
+          height: 128,
+          mode: 'vae',
+          png: new Blob(['partial image'], { type: 'image/png' }),
+        },
+      });
       throw new Error('VAE decoding failed');
     });
     await view.generate({ submission: undefined });
@@ -321,8 +358,19 @@ describe('hosted image history integration with a synthetic inference client', (
     view.parameters.value.steps = 8;
     view.preview.value.enabled = true;
     mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
-      onPreview({ frame: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 1, steps: 8, width: 128, height: 128,
-        mode: 'vae', png: new Blob(['partial image'], { type: 'image/png' }) } });
+      onPreview({
+        frame: {
+          type: 'naidan-image-preview-v1',
+          runId: 1,
+          revision: 0,
+          step: 1,
+          steps: 8,
+          width: 128,
+          height: 128,
+          mode: 'vae',
+          png: new Blob(['partial image'], { type: 'image/png' }),
+        },
+      });
       return { cancelled: true, modelResident: true };
     });
     await view.generate({ submission: undefined });
@@ -574,8 +622,12 @@ describe('hosted image history integration with a synthetic inference client', (
     const record = mocks.save.mock.calls[0]![0].record;
     mocks.getFile.mockResolvedValue(new Blob(['stored PNG'], { type: 'image/png' }));
     expect(await view.downloadHistory({ record, binaryObjectId: record.previews[0].binaryObjectId, format: 'webp', includeMetadata: true })).toEqual({ status: 'downloaded' });
-    expect(mocks.downloadBlob.mock.calls[0]![0]).toMatchObject({ request: record.request, format: 'webp', includeMetadata: true,
-      image: { kind: 'preview', width: 64, height: 64, step: 3, steps: 9, mode: 'vae' } });
+    expect(mocks.downloadBlob.mock.calls[0]![0]).toMatchObject({
+      request: record.request,
+      format: 'webp',
+      includeMetadata: true,
+      image: { kind: 'preview', width: 64, height: 64, step: 3, steps: 9, mode: 'vae' },
+    });
     const conversion = Promise.withResolvers<Blob>(); mocks.downloadBlob.mockReturnValueOnce(conversion.promise);
     const operation = view.downloadResult({ resultId: view.results.value[0]!.id, format: 'png', includeMetadata: true });
     wrapper?.unmount(); wrapper = undefined;
@@ -795,8 +847,12 @@ describe('hosted image history integration with a synthetic inference client', (
     mocks.models = [{ slot: 'diffusion', file: base, path: 'split/base.gguf', companions: [{ path: 'split/part-two.gguf', file: companion }] },
       { slot: 'vae', file: vae, path: 'original/vae.gguf' }];
     const request = requestFixture(); request.models = mocks.models; request.parameters.seed = '42';
-    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const snapshot = snapshotImageGeneration({
+      request,
+      sourceCommit: 'a'.repeat(40),
+      createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }),
+    });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
     const original = structuredClone(saved.record);
     const view = open();
@@ -809,7 +865,9 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(mocks.generate).toHaveBeenCalledOnce();
     const models = mocks.generate.mock.calls[0]![0].request.models;
     expect(models.find((model: Request['models'][number]) => model.slot === 'diffusion')).toMatchObject({
-      file: base, path: 'split/base.gguf', companions: [{ path: 'split/part-two.gguf', file: companion }],
+      file: base,
+      path: 'split/base.gguf',
+      companions: [{ path: 'split/part-two.gguf', file: companion }],
     });
     expect(models.find((model: Request['models'][number]) => model.slot === 'vae')).toMatchObject({ file: replacement });
     expect(models.find((model: Request['models'][number]) => model.slot === 'vae').path).toBeUndefined();
@@ -835,8 +893,12 @@ describe('hosted image history integration with a synthetic inference client', (
       { slot: 'vae', file: vae, path: 'vae/model.gguf', companions: [{ path: 'vae/part.gguf', file: vaePart }] },
       { slot: 'lm', file: lm, path: 'text/model.gguf', companions: [{ path: 'text/part.gguf', file: lmPart }] }];
     request.loras = [{ file: base, strength: 0.7 }];
-    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const snapshot = snapshotImageGeneration({
+      request,
+      sourceCommit: 'a'.repeat(40),
+      createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }),
+    });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
     const original = structuredClone(saved.record), view = open();
     view.library.findHistoryFile = ({ location }) => [base, oldPart, vae, vaePart, lm, lmPart].find(file => file.name === location.name);
@@ -856,8 +918,12 @@ describe('hosted image history integration with a synthetic inference client', (
   });
   it('keeps the editor unchanged while local reuse preparation is pending or fails', async () => {
     const request = requestFixture(); request.models = mocks.models; request.parameters.prompt = 'Saved prompt';
-    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const snapshot = snapshotImageGeneration({
+      request,
+      sourceCommit: 'a'.repeat(40),
+      createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }),
+    });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
     const pending = Promise.withResolvers<void>(); mocks.prepareFiles.mockReturnValueOnce(pending.promise);
     const view = open(); const restore = view.reuseHistory({ record: saved.record });
@@ -870,8 +936,12 @@ describe('hosted image history integration with a synthetic inference client', (
   });
   it.each(['settings', 'image'] as const)('ignores a delayed %s reuse error from before storage changed', async action => {
     const request = requestFixture(); request.models = mocks.models;
-    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const snapshot = snapshotImageGeneration({
+      request,
+      sourceCommit: 'a'.repeat(40),
+      createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }),
+    });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
     const pending = Promise.withResolvers<never>();
     const view = open();
@@ -897,8 +967,12 @@ describe('hosted image history integration with a synthetic inference client', (
   it.each([0, 0.7])('keeps the base model and only requires acknowledgement for an enabled missing adapter (strength %s)', async strength => {
     const request = requestFixture(); request.models = mocks.models;
     request.loras = [{ file: new File(['adapter'], 'missing-adapter.gguf'), path: 'missing-adapter.gguf', strength }];
-    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
+    const snapshot = snapshotImageGeneration({
+      request,
+      sourceCommit: 'a'.repeat(40),
+      createdAt: 1,
+      locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }),
+    });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
     const view = open();
     await view.reuseHistory({ record: saved.record }); await nextTick(); await flushPromises();
@@ -978,9 +1052,15 @@ describe('hosted image history integration with a synthetic inference client', (
 });
 
 it('clears only preference-restoration missing files when a usable base model is explicitly selected', async () => {
-  preferenceSettings.value.experimental = { browserImageGeneration: { modelSelection: {
-    primary: { slot: 'model', location: { kind: 'opfs', path: 'models/missing.gguf' } }, components: [], loras: [],
-  } } };
+  preferenceSettings.value.experimental = {
+    browserImageGeneration: {
+      modelSelection: {
+        primary: { slot: 'model', location: { kind: 'opfs', path: 'models/missing.gguf' } },
+        components: [],
+        loras: [],
+      },
+    },
+  };
   preferencesInitialized.value = true;
   const view = open(); await flushPromises();
   expect(view.historyActions.missingFiles.value).toEqual(['missing.gguf']);
@@ -992,9 +1072,12 @@ it('clears only preference-restoration missing files when a usable base model is
 
 describe('Image Generation submission and draft integration', () => {
   function submission({ count }: { count: number }) {
-    return { count, accepted: vi.fn<import('./generation-submission').ImageGenerationSubmission['accepted']>().mockResolvedValue(),
+    return {
+      count,
+      accepted: vi.fn<import('./generation-submission').ImageGenerationSubmission['accepted']>().mockResolvedValue(),
       output: vi.fn<import('./generation-submission').ImageGenerationSubmission['output']>().mockResolvedValue(),
-      finished: vi.fn<import('./generation-submission').ImageGenerationSubmission['finished']>().mockResolvedValue() };
+      finished: vi.fn<import('./generation-submission').ImageGenerationSubmission['finished']>().mockResolvedValue(),
+    };
   }
   it('accepts one immutable plan, publishes consecutive actual seeds and releases the model only after the run', async () => {
     const view = open(), sink = submission({ count: 3 });
@@ -1144,13 +1227,22 @@ function rpcBinding() {
     const bytes = new Uint8Array(57), view = new DataView(bytes.buffer);
     bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
     view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
-    return { result: Promise.resolve({ image: new ReadableStream({ start(controller) {
-      controller.enqueue(bytes); controller.close();
-    } }),
-    events: new ReadableStream({ start(controller) {
-      controller.enqueue({ type: 'completed' as const, seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'remote-version', uniformOutput: false }); controller.close();
-    } }) }),
-    closed: Promise.resolve(), cancel: vi.fn() };
+    return {
+      result: Promise.resolve({
+        image: new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes); controller.close();
+          },
+        }),
+        events: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'completed' as const, seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'remote-version', uniformOutput: false }); controller.close();
+          },
+        }),
+      }),
+      closed: Promise.resolve(),
+      cancel: vi.fn(),
+    };
   });
   const unexpected = vi.fn((): never => {
     throw new Error('Unexpected catalogue access');
@@ -1335,8 +1427,15 @@ it('does not apply the next run retention policy to a previous resident when acc
   const view = open(); view.retainModel.value = true; await view.generate({ submission: undefined });
   expect(view.modelResident.value).toBe(true); mocks.release.mockClear();
   view.retainModel.value = false;
-  await view.generate({ submission: { count: 1, accepted: async () => {
-    throw new Error('acceptance write failed');
-  }, output: async () => {}, finished: async () => {} } });
+  await view.generate({
+    submission: {
+      count: 1,
+      accepted: async () => {
+        throw new Error('acceptance write failed');
+      },
+      output: async () => {},
+      finished: async () => {},
+    },
+  });
   expect(mocks.generate).toHaveBeenCalledOnce(); expect(mocks.release).not.toHaveBeenCalled(); expect(view.modelResident.value).toBe(true);
 });

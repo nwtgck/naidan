@@ -135,7 +135,10 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     root!.folder('chat-contents')!.file(`${chatID}.json`, JSON.stringify({
       root: {
         items: [{
-          id: msgID, role: 'user', content: 'hello', timestamp: 0,
+          id: msgID,
+          role: 'user',
+          content: 'hello',
+          timestamp: 0,
           attachments: [{
             id: attID,
             binaryObjectId: binaryID,
@@ -165,10 +168,13 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
 
     // 2. Import into empty storage
-    await importExportService.executeImport({ zipFile: zipBlob, config: {
-      data: { mode: 'replace' },
-      settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-    } });
+    await importExportService.executeImport({
+      zipFile: zipBlob,
+      config: {
+        data: { mode: 'replace' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+      },
+    });
 
     // 3. Verify storage is now sharded and hydrated correctly
     const loadedChat = await storageService.loadChat({ id: toChatId({ raw: chatID }) });

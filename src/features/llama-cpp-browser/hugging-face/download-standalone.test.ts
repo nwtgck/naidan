@@ -12,13 +12,19 @@ vi.mock('./writer-client', async () => import('./writer-client-standalone'));
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => {
   const original = await importOriginal<typeof import('@/utils/worker-transport')>();
-  return { ...original, wrapWorkerRemote: () => {
-    const writer = createDownloadWriter();
-    if (calls.pause) writer.pause = calls.pause;
-    if (calls.append) writer.append = calls.append;
-    return writer;
-  }, releaseWorkerRemote: calls.release, workerTransfer: ({ value }: { value: object }) => value,
-  workerProxy: ({ value }: { value: object }) => value, getReadableStreamTransferSupport: async () => 'unsupported' };
+  return {
+    ...original,
+    wrapWorkerRemote: () => {
+      const writer = createDownloadWriter();
+      if (calls.pause) writer.pause = calls.pause;
+      if (calls.append) writer.append = calls.append;
+      return writer;
+    },
+    releaseWorkerRemote: calls.release,
+    workerTransfer: ({ value }: { value: object }) => value,
+    workerProxy: ({ value }: { value: object }) => value,
+    getReadableStreamTransferSupport: async () => 'unsupported',
+  };
 });
 class TestWorker extends EventTarget {
   terminate = vi.fn();
@@ -34,10 +40,21 @@ beforeEach(() => {
       throw new Error('Raw Worker is forbidden in standalone');
     }
   });
-  vi.mocked(privacyFetchStream).mockImplementation(async () => ({ status: 200, statusText: '', ok: true, url: '', redirected: false, responseType: 'basic', policyName: 'standalone-fixture', headers: new Headers(),
-    body: new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) {
-      controller.enqueue(ggufBytes()); controller.close();
-    } }) }));
+  vi.mocked(privacyFetchStream).mockImplementation(async () => ({
+    status: 200,
+    statusText: '',
+    ok: true,
+    url: '',
+    redirected: false,
+    responseType: 'basic',
+    policyName: 'standalone-fixture',
+    headers: new Headers(),
+    body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+      start(controller) {
+        controller.enqueue(ggufBytes()); controller.close();
+      },
+    }),
+  }));
 });
 afterEach(() => {
   vi.useRealTimers(); vi.unstubAllGlobals();
@@ -120,9 +137,11 @@ describe('standalone browser model downloads', () => {
   });
   it('preserves storage unavailability and retires the writer before any fetch', async () => {
     vi.stubGlobal('navigator', {
-      storage: { getDirectory: async () => {
-        throw new DOMException('Denied', 'SecurityError');
-      } },
+      storage: {
+        getDirectory: async () => {
+          throw new DOMException('Denied', 'SecurityError');
+        },
+      },
       locks: { request: async (_name: string, _options: object, operation: (lock: object) => Promise<unknown>) => operation({}) },
     });
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow('unavailable');

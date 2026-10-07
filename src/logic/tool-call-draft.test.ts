@@ -23,7 +23,9 @@ describe('transient tool call drafts', () => {
     const snapshots: (readonly ToolCallDraft[])[] = [];
     const persisted: AssistantMessageNode['parts'][] = [];
     const completed = call();
-    await consumeChatGeneration({ node, abortController: new AbortController(),
+    await consumeChatGeneration({
+      node,
+      abortController: new AbortController(),
       onChange: () => {
         expect(snapshots.at(-1)).toEqual([]);
         persisted.push(structuredClone(node.parts));
@@ -33,13 +35,16 @@ describe('transient tool call drafts', () => {
         else expect(node.parts).toEqual([{ type: 'tool_call', toolCall: completed }]);
         snapshots.push(drafts);
       },
-      items: createChatGenerationStream({ signal: undefined, run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: undefined, arguments: undefined });
-        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo' } });
-        await writer.callDraft({ key: 0, name: undefined, arguments: { offset: 15, text: ' hello' } });
-        await writer.call({ key: 0, toolCall: completed });
-        return { type: 'finished', next: 'tool_results' };
-      } }),
+      items: createChatGenerationStream({
+        signal: undefined,
+        run: async ({ writer }) => {
+          await writer.callDraft({ key: 0, name: undefined, arguments: undefined });
+          await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo' } });
+          await writer.callDraft({ key: 0, name: undefined, arguments: { offset: 15, text: ' hello' } });
+          await writer.call({ key: 0, toolCall: completed });
+          return { type: 'finished', next: 'tool_results' };
+        },
+      }),
     });
     expect(snapshots[0]).toEqual([{ partId: 'part_0', index: 0, name: '', arguments: '', beforePartIndex: 0 }]);
     expect(snapshots[2]?.[0]?.arguments).toBe('{"script":"echo hello');
@@ -49,17 +54,22 @@ describe('transient tool call drafts', () => {
   it('supports revised partial JSON, explicit truncation, and unchanged fields', async () => {
     const snapshots: string[] = [];
     const onChange = vi.fn();
-    await consumeChatGeneration({ node: message(), abortController: new AbortController(), onChange,
+    await consumeChatGeneration({
+      node: message(),
+      abortController: new AbortController(),
+      onChange,
       onToolCallDraftsChange: ({ drafts }) => {
         if (drafts[0]) snapshots.push(drafts[0].arguments);
       },
-      items: sequence({ items: [
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo"}' } },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 15, text: ' hi"}' } },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: undefined },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 10, text: '' } },
-        { type: 'result', result: { type: 'interrupted', reason: 'limit' } },
-      ] }),
+      items: sequence({
+        items: [
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo"}' } },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 15, text: ' hi"}' } },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: undefined },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 10, text: '' } },
+          { type: 'result', result: { type: 'interrupted', reason: 'limit' } },
+        ],
+      }),
     });
     expect(snapshots).toEqual(['{"script":"echo"}', '{"script":"echo hi"}', '{"script":"echo hi"}', '{"script":']);
     expect(onChange).not.toHaveBeenCalled();
@@ -68,15 +78,21 @@ describe('transient tool call drafts', () => {
   it('places parallel drafts around materialized parts using logical order, including late completion', async () => {
     const node = message();
     const observed: { partId: string, beforePartIndex: number }[][] = [];
-    await consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {},
+    await consumeChatGeneration({
+      node,
+      abortController: new AbortController(),
+      onChange: () => {},
       onToolCallDraftsChange: ({ drafts }) => observed.push(drafts.map(({ partId, beforePartIndex }) => ({ partId, beforePartIndex }))),
-      items: createChatGenerationStream({ signal: undefined, run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: 'first', arguments: undefined });
-        await writer.text({ type: 'text', text: 'between' });
-        await writer.callDraft({ key: 1, name: 'second', arguments: undefined });
-        await writer.call({ key: 0, toolCall: call() });
-        return { type: 'interrupted', reason: 'limit' };
-      } }),
+      items: createChatGenerationStream({
+        signal: undefined,
+        run: async ({ writer }) => {
+          await writer.callDraft({ key: 0, name: 'first', arguments: undefined });
+          await writer.text({ type: 'text', text: 'between' });
+          await writer.callDraft({ key: 1, name: 'second', arguments: undefined });
+          await writer.call({ key: 0, toolCall: call() });
+          return { type: 'interrupted', reason: 'limit' };
+        },
+      }),
     });
     expect(observed).toContainEqual([{ partId: 'part_0', beforePartIndex: 0 }, { partId: 'part_2', beforePartIndex: 1 }]);
     expect(observed).toContainEqual([{ partId: 'part_2', beforePartIndex: 2 }]);
@@ -87,34 +103,51 @@ describe('transient tool call drafts', () => {
   it.each([-1, 1, 0.5, Number.NaN])('rejects an invalid argument suffix offset %s and clears the preview', async offset => {
     const snapshots: (readonly ToolCallDraft[])[] = [];
     const node = message();
-    await expect(consumeChatGeneration({ node, abortController: new AbortController(), onChange: () => {},
+    await expect(consumeChatGeneration({
+      node,
+      abortController: new AbortController(),
+      onChange: () => {},
       onToolCallDraftsChange: ({ drafts }) => {
         snapshots.push(drafts);
       },
-      items: sequence({ items: [
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: undefined },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset, text: 'x' } },
-      ] }),
+      items: sequence({
+        items: [
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: undefined },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset, text: 'x' } },
+        ],
+      }),
     })).rejects.toThrow('Invalid tool call draft argument offset');
     expect(snapshots.at(-1)).toEqual([]);
     expect(node.parts).toEqual([]);
   });
 
   it('rejects a draft that collides with another logical position', async () => {
-    await expect(consumeChatGeneration({ node: message(), abortController: new AbortController(), onChange: () => {}, onToolCallDraftsChange: undefined,
-      items: sequence({ items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
-        { type: 'tool_call_draft', partId: 'b', index: 0, name: undefined, arguments: undefined },
-      ] }),
+    await expect(consumeChatGeneration({
+      node: message(),
+      abortController: new AbortController(),
+      onChange: () => {},
+      onToolCallDraftsChange: undefined,
+      items: sequence({
+        items: [
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
+          { type: 'tool_call_draft', partId: 'b', index: 0, name: undefined, arguments: undefined },
+        ],
+      }),
     })).rejects.toThrow('duplicate generated part position');
   });
 
   it('does not accept a successful result with an unfinished draft', async () => {
-    await expect(consumeChatGeneration({ node: message(), abortController: new AbortController(), onChange: () => {}, onToolCallDraftsChange: undefined,
-      items: sequence({ items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
-        { type: 'result', result: { type: 'finished', next: 'user' } },
-      ] }),
+    await expect(consumeChatGeneration({
+      node: message(),
+      abortController: new AbortController(),
+      onChange: () => {},
+      onToolCallDraftsChange: undefined,
+      items: sequence({
+        items: [
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
+          { type: 'result', result: { type: 'finished', next: 'user' } },
+        ],
+      }),
     })).rejects.toThrow('unfinished tool call draft');
   });
 
@@ -122,16 +155,21 @@ describe('transient tool call drafts', () => {
     const controller = new AbortController();
     const node = message();
     const snapshots: (readonly ToolCallDraft[])[] = [];
-    await consumeChatGeneration({ node, abortController: controller, onChange: () => {},
+    await consumeChatGeneration({
+      node,
+      abortController: controller,
+      onChange: () => {},
       onToolCallDraftsChange: ({ drafts }) => {
         snapshots.push(drafts);
         if (drafts.length !== 0) controller.abort();
       },
-      items: sequence({ items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: 'shell', arguments: undefined },
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: { offset: 0, text: 'queued' } },
-        { type: 'result', result: { type: 'interrupted', reason: 'aborted' } },
-      ] }),
+      items: sequence({
+        items: [
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: 'shell', arguments: undefined },
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: { offset: 0, text: 'queued' } },
+          { type: 'result', result: { type: 'interrupted', reason: 'aborted' } },
+        ],
+      }),
     });
     expect(snapshots).toHaveLength(2);
     expect(snapshots.at(-1)).toEqual([]);
@@ -152,7 +190,11 @@ describe('transient tool call drafts', () => {
       default: { const _ex: never = ending; throw new Error(`Unhandled ending: ${_ex}`); }
       }
     })();
-    const pending = consumeChatGeneration({ node, items, abortController: new AbortController(), onChange,
+    const pending = consumeChatGeneration({
+      node,
+      items,
+      abortController: new AbortController(),
+      onChange,
       onToolCallDraftsChange: ({ drafts }) => {
         snapshots.push(drafts);
       },
@@ -171,11 +213,14 @@ describe('transient tool call drafts', () => {
 
   it('bounds a large patch and abandons its blocked producer without leaking a pending write', async () => {
     const cancelled = vi.fn();
-    const stream = createChatGenerationStream({ signal: undefined, run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', cancelled);
-      await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: 'x'.repeat(1024 * 1024) } });
-      return { type: 'interrupted', reason: 'limit' };
-    } });
+    const stream = createChatGenerationStream({
+      signal: undefined,
+      run: async ({ writer, signal }) => {
+        signal.addEventListener('abort', cancelled);
+        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: 'x'.repeat(1024 * 1024) } });
+        return { type: 'interrupted', reason: 'limit' };
+      },
+    });
     const iterator = stream[Symbol.asyncIterator]();
     for (let index = 0; index < 2; index++) {
       const item = (await iterator.next()).value;

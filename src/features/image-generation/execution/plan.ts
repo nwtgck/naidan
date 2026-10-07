@@ -21,7 +21,9 @@ export function createImageExecutionPlan<Snapshot>({ snapshot, copySnapshot, sta
       const token = {}; active = token;
       let job: ImageExecutionJob;
       try {
-        job = start({ seed, signal,
+        job = start({
+          seed,
+          signal,
           onProgress({ event }) {
             if (active !== token || signal.aborted) return;
             try {

@@ -123,7 +123,9 @@ export function captureScenarioInput({ scenario, firstSettled }: {
     maxCompletionTokens = 128;
     tools = Object.freeze([Object.freeze({ fixtureId: 'model-support-weather-v1', name: 'lookup_weather', description: 'Return deterministic weather fixture data.', parameters: Object.freeze({ type: 'object', properties: Object.freeze({ city: Object.freeze({ type: 'string' }) }), required: Object.freeze(['city'] as const), additionalProperties: false }) })] as const);
   }
-  return Object.freeze({ messages: Object.freeze(messages.map(message => Object.freeze(message))), tools,
+  return Object.freeze({
+    messages: Object.freeze(messages.map(message => Object.freeze(message))),
+    tools,
     parameters: Object.freeze({ temperature: 0, topP: 1, maxCompletionTokens, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: Object.freeze({ effort }) }),
   });
 }
@@ -161,39 +163,58 @@ export function captureProviderMessages({ input }: { input: CaptureRequestInput 
     const id = toMessageId({ raw: `capture_input_${index}` });
     if ('parts' in message) {
       const { role, parts, ...rest } = message; rest satisfies Record<PropertyKey, never>;
-      return { id, role, parts: parts.map(part => {
-        switch (part.type) {
-        case 'text': case 'reasoning': {
-          const { id: _id, type, text, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-          return { type, text, completeness };
-        }
-        case 'tool_call': {
-          const { id: _id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-          const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
-          const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
-          return { type, toolCall: { id: toToolCallId({ raw: callId }), type: callType, function: { name, arguments: args } } };
-        }
-        default: { const exhaustive: never = part; throw new Error('Unhandled captured assistant part: ' + exhaustive); }
-        }
-      }) };
+      return {
+        id,
+        role,
+        parts: parts.map(part => {
+          switch (part.type) {
+          case 'text': case 'reasoning': {
+            const { id: _id, type, text, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+            return { type, text, completeness };
+          }
+          case 'tool_call': {
+            const { id: _id, type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+            const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
+            const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
+            return { type, toolCall: { id: toToolCallId({ raw: callId }), type: callType, function: { name, arguments: args } } };
+          }
+          default: { const exhaustive: never = part; throw new Error('Unhandled captured assistant part: ' + exhaustive); }
+          }
+        }),
+      };
     }
     if ('tool_calls' in message) {
       const { role, content, tool_calls, ...rest } = message; rest satisfies Record<PropertyKey, never>;
-      return { id, role, parts: [
-        { type: 'text', text: content, completeness: 'complete' },
-        ...tool_calls.map(({ id, type, function: fn, ...rest }) => {
+      return {
+        id,
+        role,
+        parts: [
+          { type: 'text', text: content, completeness: 'complete' },
+          ...tool_calls.map(({ id, type, function: fn, ...rest }) => {
           rest satisfies Record<PropertyKey, never>;
           const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
-          return { type: 'tool_call' as const,
-            toolCall: { id: toToolCallId({ raw: id }), type, function: { name, arguments: args } } };
-        }),
-      ] };
+          return {
+            type: 'tool_call' as const,
+            toolCall: { id: toToolCallId({ raw: id }), type, function: { name, arguments: args } },
+          };
+          }),
+        ],
+      };
     }
     if ('tool_call_id' in message) {
       const { role, content, tool_call_id, ...rest } = message; rest satisfies Record<PropertyKey, never>;
-      return { id, role, parts: [{ type: 'tool_result', result: {
-        toolCallId: toToolCallId({ raw: tool_call_id }), status: 'success', content: { type: 'text', text: content },
-      } }] };
+      return {
+        id,
+        role,
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: toToolCallId({ raw: tool_call_id }),
+            status: 'success',
+            content: { type: 'text', text: content },
+          },
+        }],
+      };
     }
     const { role, content, ...rest } = message; rest satisfies Record<PropertyKey, never>;
     if (typeof content === 'string') return { id, role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
@@ -202,28 +223,41 @@ export function captureProviderMessages({ input }: { input: CaptureRequestInput 
     case 'assistant': case 'system': throw new Error('Only the fixed user input can contain an image');
     default: { const exhaustive: never = role; throw new Error('Unhandled capture role: ' + exhaustive); }
     }
-    return { id, role, parts: content.map(part => {
-      switch (part.type) {
-      case 'text': {
-        const { type, text, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-        return { type, text, completeness: 'complete' };
-      }
-      case 'image_url': {
-        const { type: _type, image_url, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-        const { url, ...restImage } = image_url; restImage satisfies Record<PropertyKey, never>;
-        // This capture may materialize only its embedded public image, never fetch
-        // an archive-supplied URL or grant the production worker network access.
-        if (url !== image.dataUrl) throw new Error('Unknown capture image fixture');
-        const bytes = Uint8Array.from(atob(image.dataUrl.slice(image.dataUrl.indexOf(',') + 1)), character => character.charCodeAt(0));
-        const blob = new Blob([bytes], { type: image.mimeType });
-        return { type: 'attachment', attachment: {
-          id: toAttachmentId({ raw: 'capture_image' }), binaryObjectId: toBinaryObjectId({ raw: image.fixtureId }),
-          originalName: 'capture.png', mimeType: image.mimeType, size: blob.size, uploadedAt: 0, status: 'memory', blob,
-        } };
-      }
-      default: { const exhaustive: never = part; throw new Error('Unhandled capture part: ' + exhaustive); }
-      }
-    }) };
+    return {
+      id,
+      role,
+      parts: content.map(part => {
+        switch (part.type) {
+        case 'text': {
+          const { type, text, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+          return { type, text, completeness: 'complete' };
+        }
+        case 'image_url': {
+          const { type: _type, image_url, ...rest } = part; rest satisfies Record<PropertyKey, never>;
+          const { url, ...restImage } = image_url; restImage satisfies Record<PropertyKey, never>;
+          // This capture may materialize only its embedded public image, never fetch
+          // an archive-supplied URL or grant the production worker network access.
+          if (url !== image.dataUrl) throw new Error('Unknown capture image fixture');
+          const bytes = Uint8Array.from(atob(image.dataUrl.slice(image.dataUrl.indexOf(',') + 1)), character => character.charCodeAt(0));
+          const blob = new Blob([bytes], { type: image.mimeType });
+          return {
+            type: 'attachment',
+            attachment: {
+              id: toAttachmentId({ raw: 'capture_image' }),
+              binaryObjectId: toBinaryObjectId({ raw: image.fixtureId }),
+              originalName: 'capture.png',
+              mimeType: image.mimeType,
+              size: blob.size,
+              uploadedAt: 0,
+              status: 'memory',
+              blob,
+            },
+          };
+        }
+        default: { const exhaustive: never = part; throw new Error('Unhandled capture part: ' + exhaustive); }
+        }
+      }),
+    };
   });
 }
 

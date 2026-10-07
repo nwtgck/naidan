@@ -97,7 +97,7 @@ export const mainChatMetadata: ChatMeta = {
     httpHeaders: [['Authorization', 'secret-token']],
   },
   modelId: 'gpt-5',
-  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   originChatId: toChatId({ raw: 'origin-chat' }),
   originMessageId: toMessageId({ raw: 'origin-message' }),
   systemPrompt: { behavior: 'append', content: 'Be concise.' },
@@ -136,7 +136,7 @@ export const mainChatContent: ChatContent = {
           {
             type: 'text',
             text: 'Root user',
-            completeness: 'complete'
+            completeness: 'complete',
           }
         ],
         replies: {
@@ -151,7 +151,7 @@ export const mainChatContent: ChatContent = {
                 {
                   type: 'text',
                   text: 'Root assistant',
-                  completeness: 'complete'
+                  completeness: 'complete',
                 }
               ],
               interruption: undefined,
@@ -167,7 +167,7 @@ export const mainChatContent: ChatContent = {
                       {
                         type: 'text',
                         text: 'Branch A user',
-                        completeness: 'complete'
+                        completeness: 'complete',
                       }
                     ],
                     replies: {
@@ -182,11 +182,11 @@ export const mainChatContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch A first leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                         {
                           id: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
@@ -198,14 +198,14 @@ export const mainChatContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch A current leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                       ],
-                    }
+                    },
                   },
                   {
                     id: toMessageId({ raw: 'Pu3bC6D7e8F9g0H1i2J3' }),
@@ -217,7 +217,7 @@ export const mainChatContent: ChatContent = {
                       {
                         type: 'text',
                         text: 'Branch B user',
-                        completeness: 'complete'
+                        completeness: 'complete',
                       }
                     ],
                     replies: {
@@ -232,20 +232,20 @@ export const mainChatContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch B leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                       ],
-                    }
+                    },
                   },
                 ],
-              }
+              },
             },
           ],
-        }
+        },
       },
     ],
   },
@@ -278,7 +278,7 @@ function createLinearContent({
             {
               type: 'text',
               text: userText,
-              completeness: 'complete'
+              completeness: 'complete',
             }
           ],
           replies: {
@@ -293,14 +293,14 @@ function createLinearContent({
                   {
                     type: 'text',
                     text: assistantText,
-                    completeness: 'complete'
+                    completeness: 'complete',
                   }
                 ],
                 interruption: undefined,
-                replies: { items: [] }
+                replies: { items: [] },
               },
             ],
-          }
+          },
         },
       ],
     },
@@ -334,7 +334,7 @@ export const chatGroup: ChatGroup = {
     httpHeaders: [['Authorization', 'group-secret-token']],
   },
   modelId: 'gpt-5',
-  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   systemPrompt: { behavior: 'append', content: 'Group prompt.' },
   lmParameters: undefined,
   mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-2' }), mountPath: '/shared', readOnly: true }],
@@ -411,7 +411,7 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
         sidebarItems: createSidebarItems(),
         hierarchy: {
           items: [
-            { type: 'chat_group', id: toChatGroupId({ raw: 'chat-group-1'}), chat_ids: [toChatId({ raw: 'chat-1' }), toChatId({ raw: 'chat-2' })] },
+            { type: 'chat_group', id: toChatGroupId({ raw: 'chat-group-1' }), chat_ids: [toChatId({ raw: 'chat-1' }), toChatId({ raw: 'chat-2' })] },
             { type: 'chat', id: toChatId({ raw: 'chat-3' }) },
           ],
         },

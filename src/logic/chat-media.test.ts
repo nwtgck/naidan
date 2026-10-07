@@ -13,8 +13,15 @@ function user({ id, parts, createdAt }: { id: string; parts: UserMessageNode['pa
   return { id: toMessageId({ raw: id }), role: 'user', parts, createdAt, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
 function attachment({ status }: { status: 'persisted' | 'missing' }): Attachment {
-  return { id: toAttachmentId({ raw: 'attachment' }), binaryObjectId: toBinaryObjectId({ raw: 'attachment-body' }),
-    originalName: 'original.png', mimeType: 'image/png', size: 8, uploadedAt: 1, status };
+  return {
+    id: toAttachmentId({ raw: 'attachment' }),
+    binaryObjectId: toBinaryObjectId({ raw: 'attachment-body' }),
+    originalName: 'original.png',
+    mimeType: 'image/png',
+    size: 8,
+    uploadedAt: 1,
+    status,
+  };
 }
 
 describe('collectChatMedia', () => {
@@ -47,11 +54,15 @@ describe('collectChatMedia', () => {
 
   it('keeps image occurrence identity when earlier parts are inserted or removed', () => {
     const file = attachment({ status: 'persisted' });
-    const message = user({ id: 'u', createdAt: 1, parts: [
-      { type: 'attachment', attachment: file },
-      { type: 'attachment', attachment: file },
-      { type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'partial' },
-    ] });
+    const message = user({
+      id: 'u',
+      createdAt: 1,
+      parts: [
+        { type: 'attachment', attachment: file },
+        { type: 'attachment', attachment: file },
+        { type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'partial' },
+      ],
+    });
     const before = collectChatMedia({ messages: [message], order: 'forward' })[0]!.items;
     expect(new Set(before.map(item => item.id)).size).toBe(3);
     message.parts.unshift({ type: 'text', text: '', completeness: 'partial' });
@@ -62,13 +73,20 @@ describe('collectChatMedia', () => {
 
   it('does not join a split metadata fence or parse reasoning as generated images', () => {
     const block = imageBlock({ id: 'not-an-image' }); const middle = Math.floor(block.length / 2);
-    const message: MessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 1,
-      modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] },
+    const message: MessageNode = {
+      id: toMessageId({ raw: 'a' }),
+      role: 'assistant',
+      createdAt: 1,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
+      replies: { items: [] },
       parts: [
         { type: 'reasoning', text: block, completeness: 'complete' },
         { type: 'text', text: block.slice(0, middle), completeness: 'complete' },
         { type: 'text', text: block.slice(middle), completeness: 'complete' },
-      ] };
+      ],
+    };
     expect(collectChatMedia({ messages: [message], order: 'forward' })).toEqual([]);
   });
 
@@ -87,11 +105,15 @@ invalid-json
     const persisted = attachment({ status: 'persisted' });
     const blob = new Blob(['image'], { type: 'image/png' });
     const memory: Attachment = { ...persisted, status: 'memory', blob };
-    const message = user({ id: 'u', createdAt: 1, parts: [
-      { type: 'attachment', attachment: attachment({ status: 'missing' }) },
-      { type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
-      { type: 'attachment', attachment: memory },
-    ] });
+    const message = user({
+      id: 'u',
+      createdAt: 1,
+      parts: [
+        { type: 'attachment', attachment: attachment({ status: 'missing' }) },
+        { type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
+        { type: 'attachment', attachment: memory },
+      ],
+    });
     const groups = collectChatMedia({ messages: [message], order: 'forward' });
     expect(groups[0]?.items).toHaveLength(1);
     expect(groups[0]?.items[0]?.memoryBlob).toBe(blob);

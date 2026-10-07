@@ -26,12 +26,16 @@ describe('selective tool stream decoding', () => {
     const chunks: string[] = [];
     const entered: unknown[] = [];
     const streamer = new TextStreamer(view, { skip_prompt: true, skip_special_tokens: false, callback_function: (text: string) => chunks.push(text) });
-    const hook = observeNativeStreamer({ streamer, streamerPrototype: TextStreamer.prototype, capture: {
-      setNativeStreamAvailability: vi.fn(),
-      recordNativeStream: ({ operation, phase, args }) => {
-        if (operation === 'put' && phase === 'entering') entered.push(structuredClone(args));
+    const hook = observeNativeStreamer({
+      streamer,
+      streamerPrototype: TextStreamer.prototype,
+      capture: {
+        setNativeStreamAvailability: vi.fn(),
+        recordNativeStream: ({ operation, phase, args }) => {
+          if (operation === 'put' && phase === 'entering') entered.push(structuredClone(args));
+        },
       },
-    } });
+    });
     const puts = grouping === 'single' ? [[21n], [10n], [20n], [11n], [7n], [99n]] : [[21n], [10n, 20n, 11n, 7n, 99n]];
     try {
       for (const tokens of puts) streamer.put([tokens]);

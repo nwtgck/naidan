@@ -37,15 +37,19 @@ export function createFreshMetadataTransport({ modelId, revision, maximumBytes, 
     if (requests.length >= FRESH_METADATA_MAX_REQUESTS) throw new Error('Fresh metadata request budget exceeded');
     const observation: FreshMetadataHttpObservation = {
       consumer,
-      path: url.pathname.slice(prefix.length), request: request.headers.has('Range') ? 'size-probe' : 'full',
-      status: 'requesting', receivedBytes: 0,
+      path: url.pathname.slice(prefix.length),
+      request: request.headers.has('Range') ? 'size-probe' : 'full',
+      status: 'requesting',
+      receivedBytes: 0,
     };
     requests.push(observation);
     onObservation();
     try {
       const response = await originalFetch(request, {
         signal: AbortSignal.any([request.signal, operationSignal]),
-        credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store',
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+        cache: 'no-store',
       });
       if (operationSignal.aborted) {
         void response.body?.cancel().catch(() => undefined);

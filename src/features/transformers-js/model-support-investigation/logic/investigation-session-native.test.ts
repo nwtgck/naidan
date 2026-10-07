@@ -29,40 +29,90 @@ async function capturedSession({ batchId, modelId, observation }: { batchId: str
     ? createProductionProviderTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } })
     : createProductionProviderPartsTrace({ requestId: context.requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
   if (observation === 'parts') {
-    trace.observeAssistant({ message: { id: toMessageId({ raw: 'synthetic-assistant' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, parts: [
-      { type: 'reasoning', text: '  reason\n', completeness: 'complete' },
-      { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-    ] } });
+    trace.observeAssistant({
+      message: {
+        id: toMessageId({ raw: 'synthetic-assistant' }),
+        role: 'assistant',
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
+        replies: { items: [] },
+        parts: [
+          { type: 'reasoning', text: '  reason\n', completeness: 'complete' },
+          { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        ],
+      },
+    });
     trace.observeResult({ result: { type: 'interrupted', reason: 'limit' } });
   }
   trace.settle({ outcome: 'fulfilled', error: undefined });
   const provider: ProductionProviderCaptureSnapshot = {
-    format: observation === 'legacy' ? 'production-provider-capture-v2' : 'production-provider-capture-v3', runId, modelId, plan: 'first-only', run: { status: 'completed' },
-    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
-    requests: [{ runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
-      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
+    format: observation === 'legacy' ? 'production-provider-capture-v2' : 'production-provider-capture-v3',
+    runId,
+    modelId,
+    plan: 'first-only',
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
+    events: [],
+    requests: [{
+      runId,
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
+      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
+      trace: trace.snapshot(),
+    }],
     capabilities: { providerCallbacks: observation === 'legacy' ? 'bounded-projection' : 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
   checkpoint.run.productionProviderCapture = provider;
   const bytes = Uint8Array.of(5, 6);
   const native: ProductionProviderNativeCollectionSnapshot = {
-    format: 'production-provider-native-collection-v1', runId, maximumWorkerEpochs: 8, phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [],
-    epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
-      collection: { status: 'returned', result: { status: 'captured', capture: {
-        schemaVersion: 1, runId, workerEpoch: 1, byteOrder: 'little-endian',
-        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
-        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes } }],
-        incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      } } } }],
+    format: 'production-provider-native-collection-v1',
+    runId,
+    maximumWorkerEpochs: 8,
+    phase: 'finished',
+    unrecordedWorkerCreations: 0,
+    incompleteReasons: [],
+    epochs: [{
+      workerEpoch: 1,
+      lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: {
+        status: 'returned',
+        result: {
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId,
+            workerEpoch: 1,
+            byteOrder: 'little-endian',
+            limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+            calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+            events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes } }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        },
+      },
+    }],
   };
   const sidecar = await createProductionProviderNativeEvidence({ native, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
   bytes.fill(99);
   return {
-    view: 'results', batchId, targets: [modelId], configuration: configurationForPreset({ preset: 'full' }),
+    view: 'results',
+    batchId,
+    targets: [modelId],
+    configuration: configurationForPreset({ preset: 'full' }),
     executions: [{ target: modelId, status: 'passed', run: checkpoint.run, error: undefined }],
-    runs: [[modelId, checkpoint.run]], recoveries: [[modelId, checkpoint.recovery]], replayMetadata: [],
-    nativeEvidence: [[modelId, sidecar]], selectedTarget: modelId,
+    runs: [[modelId, checkpoint.run]],
+    recoveries: [[modelId, checkpoint.recovery]],
+    replayMetadata: [],
+    nativeEvidence: [[modelId, sidecar]],
+    selectedTarget: modelId,
     reservedProviderRetention: { nativeBinaryBytes: 0, nativeJsonCharacters: 0, providerJsonCharacters: 0 },
   };
 }
@@ -73,9 +123,13 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => {
     throw new Error('Session retention must not access the network');
   }));
-  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(() => {
-    throw new Error('Session retention must not access OPFS');
-  }) } });
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: vi.fn(() => {
+        throw new Error('Session retention must not access OPFS');
+      }),
+    },
+  });
 });
 afterEach(() => {
   expect(fetch).not.toHaveBeenCalled();

@@ -24,8 +24,12 @@ it('never reclassifies a post-plan required resource failure as repairable missi
   const put = vi.fn();
   const verifyDownloadedModelCandidate = vi.fn(async () => {
     const operation = createRequiredDownloadedResourceOperation({
-      modelId, revision, requiredPaths: ['onnx/model_q4f16.onnx'], workerLocationUrl: 'https://naidan.example/worker.js',
-      modelCache: { match: async () => undefined, put }, cacheOnlyFetch: forbiddenFetch,
+      modelId,
+      revision,
+      requiredPaths: ['onnx/model_q4f16.onnx'],
+      workerLocationUrl: 'https://naidan.example/worker.js',
+      modelCache: { match: async () => undefined, put },
+      cacheOnlyFetch: forbiddenFetch,
     });
     try {
       await operation.cache.match(`https://huggingface.co/${modelId}/resolve/${revision}/onnx/model_q4f16.onnx`).catch(() => undefined);
@@ -42,18 +46,23 @@ it('never reclassifies a post-plan required resource failure as repairable missi
   });
   const dispose = vi.fn(async () => {});
   vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
-    verifyDownloadedModelCandidate, verifyDownloadedModelRevision: vi.fn(), dispose,
+    verifyDownloadedModelCandidate,
+    verifyDownloadedModelRevision: vi.fn(),
+    dispose,
   });
   const startFreshDownload = vi.fn();
   const operation = (async () => {
     const reuse = await reuseDownloadedProductionRevision({
-      modelId, resolvedRevision: revision, storageRoot: {} as FileSystemDirectoryHandle,
+      modelId,
+      resolvedRevision: revision,
+      storageRoot: {} as FileSystemDirectoryHandle,
       candidateOrderByRevision: {
         [revision]: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
         main: [{ device: 'webgpu', dtype: 'q4' }],
       },
       inspectCachedRevisions: async () => ({
-        modelId, normalizedModelId: modelId,
+        modelId,
+        normalizedModelId: modelId,
         revisions: [
           { revision, kind: 'immutable-sha', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 1, status: 'committed-file-set' },
           { revision: 'main', kind: 'legacy-main', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 1, status: 'committed-file-set' },
@@ -78,10 +87,13 @@ it('treats a transported resource cleanup deadline as terminal candidate failure
     verifyDownloadedModelCandidate: vi.fn(async () => {
       throw error;
     }),
-    verifyDownloadedModelRevision: vi.fn(), dispose,
+    verifyDownloadedModelRevision: vi.fn(),
+    dispose,
   });
   await expect(acceptDownloadedProductionCandidate({
-    modelId: 'org/model', resolvedRevision: '1'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4f16' },
+    modelId: 'org/model',
+    resolvedRevision: '1'.repeat(40),
+    candidate: { device: 'webgpu', dtype: 'q4f16' },
   })).resolves.toMatchObject({ status: 'failed', error: { name: 'RequiredDownloadedResourceCleanupError' } });
   expect(dispose).toHaveBeenCalledOnce();
 });
@@ -94,10 +106,15 @@ it('stops candidate fallback when the session owner wraps cleanup as a lifecycle
   });
   const dispose = vi.fn(async () => {});
   vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
-    verifyDownloadedModelCandidate, verifyDownloadedModelRevision: vi.fn(), dispose,
+    verifyDownloadedModelCandidate,
+    verifyDownloadedModelRevision: vi.fn(),
+    dispose,
   });
   await expect(acceptDownloadedProductionRevision({
-    modelId: 'org/model', repositoryResolvedRevision: '1'.repeat(40), cacheRevision: '1'.repeat(40), loadRevision: '1'.repeat(40),
+    modelId: 'org/model',
+    repositoryResolvedRevision: '1'.repeat(40),
+    cacheRevision: '1'.repeat(40),
+    loadRevision: '1'.repeat(40),
     candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
   })).resolves.toMatchObject({ status: 'failed', error: { name: 'ProductionWorkerLifecycleError' } });
   expect(verifyDownloadedModelCandidate).toHaveBeenCalledOnce();
@@ -107,12 +124,17 @@ it('stops candidate fallback when the session owner wraps cleanup as a lifecycle
 it('does not grant cache repair authority to a runtime error that merely quotes the offline policy', async () => {
   const error = Object.assign(new Error('Runtime diagnostic quotes MUST NOT fetch model artifacts'), { name: 'RuntimeRejectedError' });
   vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
-    verifyDownloadedModelCandidate: vi.fn(), verifyDownloadedModelRevision: vi.fn(async () => {
+    verifyDownloadedModelCandidate: vi.fn(),
+    verifyDownloadedModelRevision: vi.fn(async () => {
       throw error;
-    }), dispose: vi.fn(async () => {}),
+    }),
+    dispose: vi.fn(async () => {}),
   });
   await expect(acceptDownloadedProductionRevision({
-    modelId: 'org/model', repositoryResolvedRevision: '1'.repeat(40), cacheRevision: '1'.repeat(40), loadRevision: '1'.repeat(40),
+    modelId: 'org/model',
+    repositoryResolvedRevision: '1'.repeat(40),
+    cacheRevision: '1'.repeat(40),
+    loadRevision: '1'.repeat(40),
   })).resolves.toMatchObject({ status: 'rejected', error: { name: 'RuntimeRejectedError' } });
 });
 
@@ -127,7 +149,8 @@ it('keeps planning failure distinct from repairable missing files through revisi
   const dispose = vi.fn(async () => {});
   const verifyDownloadedModelRevision = vi.fn(async () => {
     const entries = await planDownloadedModelCandidates({
-      modelId, revision,
+      modelId,
+      revision,
       candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }, { device: 'wasm', dtype: 'q4' }],
       modelCache: { match },
       getModelFiles: async ({ candidate }) => {
@@ -148,13 +171,24 @@ it('keeps planning failure distinct from repairable missing files through revisi
   const startFreshDownload = vi.fn();
   const operation = (async () => {
     const reuse = await reuseDownloadedProductionRevision({
-      modelId, resolvedRevision: revision, storageRoot: {} as FileSystemDirectoryHandle,
+      modelId,
+      resolvedRevision: revision,
+      storageRoot: {} as FileSystemDirectoryHandle,
       inspectCachedRevisions: async () => ({
-        modelId, normalizedModelId: modelId,
+        modelId,
+        normalizedModelId: modelId,
         revisions: [{
-          revision, kind: 'immutable-sha', totalBytes: 3, fileCount: 1, completionMarkerCount: 1,
-          incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1,
-          lastModified: 1, status: 'committed-file-set',
+          revision,
+          kind: 'immutable-sha',
+          totalBytes: 3,
+          fileCount: 1,
+          completionMarkerCount: 1,
+          incompleteFileCount: 0,
+          zeroByteFileCount: 0,
+          weightFileCount: 1,
+          committedWeightFileCount: 1,
+          lastModified: 1,
+          status: 'committed-file-set',
         }],
       }),
     });

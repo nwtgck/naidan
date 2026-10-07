@@ -5,14 +5,24 @@ import { freshMetadataResultSchema, freshMetadataSummarySchema, type FreshMetada
 function result(): FreshMetadataResult {
   return {
     summary: {
-      schemaVersion: 1, modelId: 'fixture/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
-      status: 'prepared', maximumBytes: 1024, receivedBytes: 2,
+      schemaVersion: 1,
+      modelId: 'fixture/model',
+      revision: 'a'.repeat(40),
+      source: 'fresh-network-memory',
+      status: 'prepared',
+      maximumBytes: 1024,
+      receivedBytes: 2,
       requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', status: 'complete', receivedBytes: 2 }],
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
     },
     replayMetadata: {
-      schemaVersion: 1, modelId: 'fixture/model', revision: 'a'.repeat(40), status: 'complete',
-      budgetBytes: 1024, receivedBytes: 2, retainedBytes: 2,
+      schemaVersion: 1,
+      modelId: 'fixture/model',
+      revision: 'a'.repeat(40),
+      status: 'complete',
+      budgetBytes: 1024,
+      receivedBytes: 2,
+      retainedBytes: 2,
       files: [{ path: 'config.json', source: 'remote-exact', status: 'collected', byteLength: 2, sha256: '0'.repeat(64) }],
     },
     files: [{ path: 'config.json', blob: new Blob(['{}']) }],

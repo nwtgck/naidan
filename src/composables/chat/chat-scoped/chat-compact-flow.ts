@@ -218,8 +218,11 @@ export async function runCompactCurrentBranchForChat({
     });
 
     const draft = createCompactBranchFromResponse({
-      compactContent: '', suffix: [], compactModelId: resolvedModel,
-      createMessageId: () => generateId<MessageId>(), now: () => Date.now(),
+      compactContent: '',
+      suffix: [],
+      compactModelId: resolvedModel,
+      createMessageId: () => generateId<MessageId>(),
+      now: () => Date.now(),
     }).compactNode;
     // Consume every child, including reasoning, without installing a partial
     // compaction as a new branch. The original tree remains the source of truth.
@@ -227,7 +230,8 @@ export async function runCompactCurrentBranchForChat({
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node: draft,
-      items: provider.chat({ debug: undefined,
+      items: provider.chat({
+        debug: undefined,
         messages: requestMessages,
         model: resolvedModel,
         parameters: resolveCompactLmParameters({ endpoint: resolved.endpoint, parameters: resolved.lmParameters }),
@@ -244,11 +248,17 @@ export async function runCompactCurrentBranchForChat({
       abortController: controller,
       onChange: () => {
         compactContent = getMessageText({ message: draft });
-        contextCompactRuntime.setProgress({ chatId: mutableChat.id, progress: {
-          phase: 'receiving_compact', compactedMessageCount: split.prefix.length,
-          suffixMessageCount: split.suffix.length, outputChars: compactContent.length,
-          requestPreview, outputPreview: compactContent,
-        } });
+        contextCompactRuntime.setProgress({
+          chatId: mutableChat.id,
+          progress: {
+            phase: 'receiving_compact',
+            compactedMessageCount: split.prefix.length,
+            suffixMessageCount: split.suffix.length,
+            outputChars: compactContent.length,
+            requestPreview,
+            outputPreview: compactContent,
+          },
+        });
       },
     });
     controller.signal.throwIfAborted();

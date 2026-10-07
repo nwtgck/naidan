@@ -4,8 +4,12 @@ import { createPendingImageHistory } from './pending-saves';
 import { finishImageGenerationSnapshot, snapshotImageGeneration } from './snapshot';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 function publication() {
-  const snapshot = snapshotImageGeneration({ request: requestFixture(), sourceCommit: 'a'.repeat(40), createdAt: 1,
-    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }) });
+  const snapshot = snapshotImageGeneration({
+    request: requestFixture(),
+    sourceCommit: 'a'.repeat(40),
+    createdAt: 1,
+    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }),
+  });
   return finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['pixels'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false }, previews: [], elapsedMs: 1 });
 }
 it('keeps cloned metadata and the original immutable bytes after a view detaches', async () => {
@@ -44,9 +48,11 @@ it('limits admission, retains completed pixels, and never evicts an earlier fail
 });
 it('view listener errors cannot fail retention or completion', async () => {
   const store = createPendingImageHistory({ maxEntries: 1, byteLimit: 100 });
-  store.subscribe({ listener() {
-    throw new Error('detached');
-  } });
+  store.subscribe({
+    listener() {
+      throw new Error('detached');
+    },
+  });
   const id = store.retain({ ...publication(), save: async () => {} });
   await store.retry({ id }); expect(store.list()).toEqual([]);
 });

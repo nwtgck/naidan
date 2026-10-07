@@ -54,8 +54,11 @@ export function createTextExportStream({ produce }: {
       writer.releaseLock();
     }
   })().catch(() => undefined);
-  return createAbortableByteStream({ stream: output.readable, signal: abort.signal,
-    onCancel: () => abort.abort(new DOMException('Text export cancelled', 'AbortError')) });
+  return createAbortableByteStream({
+    stream: output.readable,
+    signal: abort.signal,
+    onCancel: () => abort.abort(new DOMException('Text export cancelled', 'AbortError')),
+  });
 }
 
 export const TEST_ONLY = {

@@ -27,11 +27,14 @@ describe('bounded byte stream ports', () => {
 
   it('opens lazily and transfers only one bounded slice per pull without detaching source bytes', async () => {
     const bytes = new Uint8Array(BYTE_STREAM_CHUNK_BYTES * 3 + 7).fill(42);
-    const fixture = connect({ stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
-    }), signal: undefined });
+    const fixture = connect({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes); controller.close();
+        },
+      }),
+      signal: undefined,
+    });
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(fixture.openStream).not.toHaveBeenCalled();
     const reader = fixture.receiver.stream.getReader();
@@ -51,11 +54,14 @@ describe('bounded byte stream ports', () => {
 
   it('does not read ahead while the consumer is paused', async () => {
     let produced = 0;
-    const fixture = connect({ signal: undefined, stream: new ReadableStream({
-      pull(controller) {
-        produced++; controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
-      },
-    }, { highWaterMark: 0 }) });
+    const fixture = connect({
+      signal: undefined,
+      stream: new ReadableStream({
+        pull(controller) {
+          produced++; controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
+        },
+      }, { highWaterMark: 0 }),
+    });
     const reader = fixture.receiver.stream.getReader();
     await reader.read();
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -68,22 +74,29 @@ describe('bounded byte stream ports', () => {
 
   it('sends the selected subarray, not unrelated backing bytes', async () => {
     const bytes = new Uint8Array([99, 10, 20, 99]);
-    const fixture = connect({ signal: undefined, stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(bytes.subarray(1, 3)); controller.close();
-      },
-    }) });
+    const fixture = connect({
+      signal: undefined,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes.subarray(1, 3)); controller.close();
+        },
+      }),
+    });
     expect([...new Uint8Array(await new Response(fixture.receiver.stream).arrayBuffer())]).toEqual([10, 20]);
     await fixture.sender.completed;
   });
 
   it('propagates consumer cancellation through a pending read', async () => {
     const cancel = vi.fn();
-    const fixture = connect({ signal: undefined, stream: new ReadableStream({
-      pull() {
-        return new Promise(() => undefined);
-      }, cancel,
-    }) });
+    const fixture = connect({
+      signal: undefined,
+      stream: new ReadableStream({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel,
+      }),
+    });
     const reader = fixture.receiver.stream.getReader();
     const pending = reader.read();
     await vi.waitFor(() => expect(fixture.openStream).toHaveBeenCalledOnce());
@@ -99,7 +112,8 @@ describe('bounded byte stream ports', () => {
     const stream = new ReadableStream<Uint8Array>({
       pull() {
         return new Promise(() => undefined);
-      }, cancel,
+      },
+      cancel,
     }, { highWaterMark: 0 });
     const fixture = connect({ signal: undefined, stream });
     const reader = fixture.receiver.stream.getReader();
@@ -129,11 +143,14 @@ describe('bounded byte stream ports', () => {
   });
 
   it('propagates producer errors instead of returning a truncated successful stream', async () => {
-    const fixture = connect({ signal: undefined, stream: new ReadableStream({
-      pull(controller) {
-        controller.error(new Error('disk read failed'));
-      },
-    }) });
+    const fixture = connect({
+      signal: undefined,
+      stream: new ReadableStream({
+        pull(controller) {
+          controller.error(new Error('disk read failed'));
+        },
+      }),
+    });
     await expect(new Response(fixture.receiver.stream).arrayBuffer()).rejects.toThrow('disk read failed');
     await expect(fixture.sender.completed).rejects.toThrow('disk read failed');
   });

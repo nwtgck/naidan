@@ -7,10 +7,27 @@ import { createReadOnlyResources } from './resources-hosted';
 import type { PeerImageInput } from './resources';
 const mocks = vi.hoisted(() => {
   const commit = 'a'.repeat(40), profile = 'webgpu-wasm32-asyncify';
-  return { scan: vi.fn(), opfs: vi.fn(async () => []), host: vi.fn(async () => []), create: vi.fn(), generate: vi.fn(), dispose: vi.fn(),
-    configuration: { kind: 'available', sourceCommit: commit, artifacts: [{ profile, modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
-      wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${commit}/examples/runtime/index.mjs`,
-      schemaSha256: 'a'.repeat(64), wasmSha256: 'b'.repeat(64), wasmBytes: 100 }] } };
+  return {
+    scan: vi.fn(),
+    opfs: vi.fn(async () => []),
+    host: vi.fn(async () => []),
+    create: vi.fn(),
+    generate: vi.fn(),
+    dispose: vi.fn(),
+    configuration: {
+      kind: 'available',
+      sourceCommit: commit,
+      artifacts: [{
+        profile,
+        modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
+        wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
+        helpersPath: `stable-diffusion-cpp-runtime/${commit}/examples/runtime/index.mjs`,
+        schemaSha256: 'a'.repeat(64),
+        wasmSha256: 'b'.repeat(64),
+        wasmBytes: 100,
+      }],
+    },
+  };
 });
 vi.mock('@/features/llama-cpp-browser/index-hosted', () => ({ createReadOnlyLlamaCppClient: () => ({ generate: vi.fn(), dispose: vi.fn(async () => {}) }), llamaCppBrowserService: { listModels: vi.fn(async () => []) } }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inference/engine', () => ({ createImageEngineClient: mocks.create }));
@@ -19,14 +36,30 @@ vi.mock('@/features/stable-diffusion-cpp-browser/logic/model-candidates', () => 
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify' }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: mocks.configuration }));
 function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles'] }): ModelCandidate {
-  return { id: path, repositoryId: 'user/model', path, roles, classes: [], hostSource: undefined,
-    format: 'gguf', size: 16, family: 'sd-checkpoint', evidence: [], issue: undefined, turboHint: false, variant: 'unknown',
-    files: [{ path, file: new File([new Uint8Array(16)], path, { lastModified: 123 }) }] };
+  return {
+    id: path,
+    repositoryId: 'user/model',
+    path,
+    roles,
+    classes: [],
+    hostSource: undefined,
+    format: 'gguf',
+    size: 16,
+    family: 'sd-checkpoint',
+    evidence: [],
+    issue: undefined,
+    turboHint: false,
+    variant: 'unknown',
+    files: [{ path, file: new File([new Uint8Array(16)], path, { lastModified: 123 }) }],
+  };
 }
 function request(): PeerImageInput {
-  return { modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/model/model.gguf' }, expected: { size: 16, lastModified: 123 } } }, components: [], loras: [] },
+  return {
+    modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/model/model.gguf' }, expected: { size: 16, lastModified: 123 } } }, components: [], loras: [] },
     parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
-    preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 }, imageInputs: { initial: undefined, references: [], strength: 0.5 } };
+    preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
+    imageInputs: { initial: undefined, references: [], strength: 0.5 },
+  };
 }
 function resource() {
   return createReadOnlyResources({ directories: () => [] });
@@ -142,14 +175,31 @@ RuntimeError: private-model-path
 wasm-function[42]:0xab`;
   mocks.generate.mockImplementationOnce(async ({ onDiagnostic }: Parameters<ImageClient['generate']>[0]) => {
     onDiagnostic?.({ diagnostic: { event: 'progress', stage: 'sampling', elapsedMs: 1, fields: {} } });
-    onDiagnostic?.({ diagnostic: { event: 'failed', stage: 'worker', elapsedMs: 2,
-      fields: { errorType: 'wasm-trap', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' }, message: native.message } });
+    onDiagnostic?.({
+      diagnostic: {
+        event: 'failed',
+        stage: 'worker',
+        elapsedMs: 2,
+        fields: { errorType: 'wasm-trap', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' },
+        message: native.message,
+      },
+    });
     // The Worker boundary can wrap a RuntimeError in an ordinary Error.
     throw new Error(native.message);
   });
-  await expect(generate({ input: request() })).rejects.toMatchObject({ code: 'HANDLER_FAILED', message: 'HANDLER_FAILED',
-    details: { kind: 'image-generation', stage: 'sampling', reason: 'engine-failed', errorType: 'wasm-trap',
-      profile: 'webgpu-wasm32-asyncify', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' } });
+  await expect(generate({ input: request() })).rejects.toMatchObject({
+    code: 'HANDLER_FAILED',
+    message: 'HANDLER_FAILED',
+    details: {
+      kind: 'image-generation',
+      stage: 'sampling',
+      reason: 'engine-failed',
+      errorType: 'wasm-trap',
+      profile: 'webgpu-wasm32-asyncify',
+      wasmFrames: 'wasm-function[42]:0xab',
+      nativeCall: 'generate_image',
+    },
+  });
   expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ stage: 'sampling', message: native.message }));
 });
 

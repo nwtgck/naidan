@@ -14,9 +14,14 @@ import type { UserMessageNode } from '@/01-models/types';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { TEST_ONLY } from '@/utils/stream-download';
 
-vi.mock('@/00-storage/service', () => ({ storageService: {
-  getFile: vi.fn(), getBinaryObject: vi.fn(), deleteBinaryObject: vi.fn(), subscribeToChanges: vi.fn(() => () => {}),
-} }));
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    getFile: vi.fn(),
+    getBinaryObject: vi.fn(),
+    deleteBinaryObject: vi.fn(),
+    subscribeToChanges: vi.fn(() => () => {}),
+  },
+}));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
 const wrappers: ReturnType<typeof mount>[] = [];
@@ -27,13 +32,26 @@ function png() {
   return new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a14sAAAAASUVORK5CYII='), character => character.charCodeAt(0))], { type: 'image/png' });
 }
 function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
-  const base = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
-    originalName: 'local.png', mimeType: 'image/png', size: 68, uploadedAt: 0 };
-  return { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
+  const base = {
+    id: toAttachmentId({ raw: 'a' }),
+    binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
+    originalName: 'local.png',
+    mimeType: 'image/png',
+    size: 68,
+    uploadedAt: 0,
+  };
+  return {
+    id: toMessageId({ raw: 'u' }),
+    role: 'user',
+    createdAt: 0,
+    modelId: undefined,
+    lmParameters: undefined,
     parts: [
       { type: 'text', text: 'A local image', completeness: 'complete' },
       { type: 'attachment', attachment: blob === undefined ? { ...base, status: 'persisted' } : { ...base, status: 'memory', blob } },
-    ], replies: { items: [] } };
+    ],
+    replies: { items: [] },
+  };
 }
 function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; showMessage: boolean }) {
   const nodes = ref(messages);
@@ -45,7 +63,8 @@ function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; sh
       return () => h('div', [
         showMessage && nodes.value[0] ? h(MessageItem, { chatId, message: nodes.value[0] }) : h(ChatMediaShelf, { chatId, messages: nodes.value }),
         preview.state.value ? h(BinaryObjectPreviewModal, {
-          objects: preview.state.value.objects, initialId: preview.state.value.initialId,
+          objects: preview.state.value.objects,
+          initialId: preview.state.value.initialId,
           onClose: preview.closePreview,
           onDownload: (obj: BinaryObjectPreviewItem) => downloadBinaryObject({ obj, memoryBlob: obj.memoryBlob }),
         }) : undefined,
@@ -153,9 +172,16 @@ it('snapshots preview metadata while keeping the exact local Blob reference', as
 it('uses the supplied filename and local bytes when embedding explicit metadata', async () => {
   const blob = png(); const before = await readBytes({ blob });
   await ImageDownloadHydrator.download({
-    id: toBinaryObjectId({ raw: 'not-persisted' }), name: 'local.PNG', memoryBlob: blob,
-    prompt: '山の風景', steps: 4, seed: 12, model: 'model', withMetadata: true,
-    storageService, onError: () => {
+    id: toBinaryObjectId({ raw: 'not-persisted' }),
+    name: 'local.PNG',
+    memoryBlob: blob,
+    prompt: '山の風景',
+    steps: 4,
+    seed: 12,
+    model: 'model',
+    withMetadata: true,
+    storageService,
+    onError: () => {
       throw new Error('Embedding failed.');
     },
   });

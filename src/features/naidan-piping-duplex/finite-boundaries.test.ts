@@ -54,9 +54,11 @@ it.each([-1, 0.5, NaN, Infinity, 65537])('rejects invalid allocation bound %s wi
 
 it('permits an absent or empty body at zero capacity but never accepts one nonempty byte', async () => {
   await expect(readBounded({ response: new Response(), maxBytes: 0 })).resolves.toEqual(new Uint8Array());
-  const empty = new Response(new ReadableStream<Uint8Array>({ start(controller) {
-    controller.enqueue(new Uint8Array()); controller.close();
-  } }));
+  const empty = new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array()); controller.close();
+    },
+  }));
   await expect(readBounded({ response: empty, maxBytes: 0 })).resolves.toEqual(new Uint8Array());
   const nonempty = new Response(new Uint8Array([1]));
   await expect(readBounded({ response: nonempty, maxBytes: 0 })).rejects.toMatchObject({ kind: 'transient' });

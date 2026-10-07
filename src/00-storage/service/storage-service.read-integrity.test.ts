@@ -11,13 +11,15 @@ vi.mock('@/strings', () => ({ ensureStrings: { StorageService__an_error_occurred
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only event sink observes the existing storage notification boundary.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: report, addInfoEvent: vi.fn() }) }));
 vi.mock('@/utils/opfs-detection', () => ({ checkOPFSSupport: async () => false }));
-vi.mock('./synchronizer', () => ({ StorageSynchronizer: class {
-  async withLock<T>({ fn, lockKey }: { fn: () => Promise<T>; lockKey: string }): Promise<T> {
-    locks(lockKey);
-    return fn();
-  }
-  notify = notify;
-} }));
+vi.mock('./synchronizer', () => ({
+  StorageSynchronizer: class {
+    async withLock<T>({ fn, lockKey }: { fn: () => Promise<T>; lockKey: string }): Promise<T> {
+      locks(lockKey);
+      return fn();
+    }
+    notify = notify;
+  },
+}));
 
 const id = toChatId({ raw: 'read-before-write' });
 const contentKey = `${STORAGE_KEY_PREFIX}lsp:chat_content:read-before-write`;
@@ -74,36 +76,68 @@ describe('read-update-write chat content', () => {
   it('can retry after explicit repair without retaining the failed read as empty content', async () => {
     localStorage.setItem(contentKey, '{');
     await expect(service.updateChatContent({ id, updater: () => replacementContent })).rejects.toThrow();
-    localStorage.setItem(contentKey, JSON.stringify({ root: { items: [{ id: 'a', role: 'assistant', createdAt: 9,
-      parts: [{ type: 'reasoning', text: '  R\r\n' }, { type: 'text', text: '<think>raw</think> ', completeness: 'partial' }],
-      interruption: { type: 'error', message: '通信が途切れました' }, replies: { items: [] } }] }, currentLeafId: 'a' }));
+    localStorage.setItem(contentKey, JSON.stringify({
+      root: {
+        items: [{
+          id: 'a',
+          role: 'assistant',
+          createdAt: 9,
+          parts: [{ type: 'reasoning', text: '  R\r\n' }, { type: 'text', text: '<think>raw</think> ', completeness: 'partial' }],
+          interruption: { type: 'error', message: '通信が途切れました' },
+          replies: { items: [] },
+        }],
+      },
+      currentLeafId: 'a',
+    }));
     const before = await service.loadChatContent({ id });
-    await service.updateChatContent({ id, updater: ({ current }) => {
-      expect(current).toEqual(before);
-      if (!current) throw new Error('The repaired content must exist.');
-      return current;
-    } });
+    await service.updateChatContent({
+      id,
+      updater: ({ current }) => {
+        expect(current).toEqual(before);
+        if (!current) throw new Error('The repaired content must exist.');
+        return current;
+      },
+    });
     expect(await service.loadChatContent({ id })).toEqual(before);
     expect(notify).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledOnce();
   });
 
   it('migrates a valid V1 tree only on the successful explicit save', async () => {
-    const raw = JSON.stringify({ root: { items: [{ id: 'a', role: 'assistant', timestamp: 9,
-      thinking: ' R ', content: ' <think>literal</think> [Generation Aborted]', replies: { items: [] } }] }, currentLeafId: 'a' });
+    const raw = JSON.stringify({
+      root: {
+        items: [{
+          id: 'a',
+          role: 'assistant',
+          timestamp: 9,
+          thinking: ' R ',
+          content: ' <think>literal</think> [Generation Aborted]',
+          replies: { items: [] },
+        }],
+      },
+      currentLeafId: 'a',
+    });
     localStorage.setItem(contentKey, raw);
     const before = await service.loadChatContent({ id });
     expect(localStorage.getItem(contentKey)).toBe(raw);
-    await service.updateChatContent({ id, updater: ({ current }) => {
-      if (!current) throw new Error('Legacy content must exist.');
-      return current;
-    } });
+    await service.updateChatContent({
+      id,
+      updater: ({ current }) => {
+        if (!current) throw new Error('Legacy content must exist.');
+        return current;
+      },
+    });
     const saved = JSON.parse(localStorage.getItem(contentKey)!);
-    expect(saved.root.items[0]).toEqual({ id: 'a', role: 'assistant', createdAt: 9,
+    expect(saved.root.items[0]).toEqual({
+      id: 'a',
+      role: 'assistant',
+      createdAt: 9,
       parts: [
         { type: 'reasoning', text: ' R ' },
         { type: 'text', text: ' <think>literal</think> [Generation Aborted]' },
-      ], replies: { items: [] } });
+      ],
+      replies: { items: [] },
+    });
     expect(await service.loadChatContent({ id })).toEqual(before);
     expect(before?.currentLeafId).toBe(toMessageId({ raw: 'a' }));
   });
@@ -125,10 +159,13 @@ describe('read-update-write chat metadata', () => {
 
   it('permits genuine new metadata and does not replace unreadable content', async () => {
     localStorage.setItem(contentKey, '{');
-    await service.updateChatMeta({ id, updater: ({ current }) => {
-      expect(current).toBeNull();
-      return replacementMeta;
-    } });
+    await service.updateChatMeta({
+      id,
+      updater: ({ current }) => {
+        expect(current).toBeNull();
+        return replacementMeta;
+      },
+    });
     expect(await service.loadChatMeta({ id })).toMatchObject(replacementMeta);
     expect(localStorage.getItem(contentKey)).toBe('{');
     expect(notify).toHaveBeenCalledOnce();

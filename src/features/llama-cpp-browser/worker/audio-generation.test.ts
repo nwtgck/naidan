@@ -94,9 +94,17 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
   it('finishes between complete steps and flushes partial WAV through the normal output API', async () => {
     const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 100;
     let finish = false;
-    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: undefined, shouldComplete: () => finish, onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 1) finish = true;
-    } });
+    const result = await synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: undefined,
+      shouldComplete: () => finish,
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating' && progress.completed === 1) finish = true;
+      },
+    });
     expect(result).toMatchObject({ finishReason: 'user-stop', frames: 1 });
     expect(result.wav).toEqual(audioResult().wav);
     expect(native.api.mtmd_helper_gen_audio_step_gen).toHaveBeenCalledOnce();
@@ -111,9 +119,17 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
   });
   it('keeps cancellation stronger than a finish request and discards the partial output', async () => {
     const native = audioNativeFixture({ pointerBytes }); const controller = new AbortController();
-    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: controller.signal, shouldComplete: () => true, onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 1) controller.abort();
-    } })).rejects.toThrow('aborted');
+    await expect(synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: controller.signal,
+      shouldComplete: () => true,
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating' && progress.completed === 1) controller.abort();
+      },
+    })).rejects.toThrow('aborted');
     expect(native.api.mtmd_helper_gen_audio_get_output).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
   });
   it('uses the same finish boundary for continuous Pocket generation without a token sampler', async () => {
@@ -145,9 +161,16 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
   });
   it('yields to task-queued cancellation and never publishes accumulated output after Stop', async () => {
     const native = audioNativeFixture({ pointerBytes }); const controller = new AbortController();
-    const promise = synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: controller.signal, onProgress: ({ progress }) => {
-      if (progress.phase === 'generating') setTimeout(() => controller.abort(), 0);
-    } });
+    const promise = synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: controller.signal,
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating') setTimeout(() => controller.abort(), 0);
+      },
+    });
     await expect(promise).rejects.toThrow('aborted');
     expect(native.api.mtmd_helper_gen_audio_get_output).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
   });
@@ -222,19 +245,27 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
     const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 150;
     const outputs = growingOutput({ native }); let version = 0;
     const previews: AudioGenerationPreview[] = []; const versions: number[] = [];
-    const result = await synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: undefined,
+    const result = await synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: undefined,
       onProgress: ({ progress }) => {
         if (progress.phase !== 'generating') return;
         if (progress.completed === 1) version = 1;
         if (progress.completed === 71) version = 2;
         if (progress.completed === 73) version = 3;
       },
-      preview: { requestedVersion: () => version, onPreview: async ({ result, requestVersion }) => {
-        expect(native.api.mtmd_helper_gen_audio_free).not.toHaveBeenCalled();
-        previews.push(result); versions.push(requestVersion);
-        // Growing Wasm after a preview cannot invalidate the delivered copy.
-        native.controls.growDuringStep = true;
-      } },
+      preview: {
+        requestedVersion: () => version,
+        onPreview: async ({ result, requestVersion }) => {
+          expect(native.api.mtmd_helper_gen_audio_free).not.toHaveBeenCalled();
+          previews.push(result); versions.push(requestVersion);
+          // Growing Wasm after a preview cannot invalidate the delivered copy.
+          native.controls.growDuringStep = true;
+        },
+      },
     });
     expect(outputs).toEqual([72, 144, 150]);
     expect(versions).toEqual([2, 3]); expect(previews.map(p => p.frames)).toEqual([72, 144]);
@@ -259,9 +290,20 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
     const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 150;
     growingOutput({ native }); const cancellation = new AbortController();
     const entered = Promise.withResolvers<void>(); const ack = Promise.withResolvers<void>();
-    const pending = synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: cancellation.signal, onProgress: () => {}, preview: { requestedVersion: () => 1, onPreview: async () => {
-      entered.resolve(); await ack.promise;
-    } } });
+    const pending = synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: cancellation.signal,
+      onProgress: () => {},
+      preview: {
+        requestedVersion: () => 1,
+        onPreview: async () => {
+          entered.resolve(); await ack.promise;
+        },
+      },
+    });
     await entered.promise; expect(native.controls.steps).toBe(72);
     const rejected = expect(pending).rejects.toThrow('aborted'); cancellation.abort(); ack.resolve(); await rejected;
     expect(native.controls.steps).toBe(72); expect(native.owned.size).toBe(0);
@@ -281,9 +323,20 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
   it('cleans resources on a failed preview delivery without reporting final success', async () => {
     const native = audioNativeFixture({ pointerBytes }); native.controls.stopAfter = 80;
     growingOutput({ native });
-    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: undefined, onProgress: () => {}, preview: { requestedVersion: () => 1, onPreview: async () => {
-      throw new Error('consumer gone');
-    } } })).rejects.toThrow('consumer gone');
+    await expect(synthesizeAudio({
+      core: native.core,
+      context: 20n,
+      projector: 30n,
+      request: request(),
+      cancellationSignal: undefined,
+      onProgress: () => {},
+      preview: {
+        requestedVersion: () => 1,
+        onPreview: async () => {
+          throw new Error('consumer gone');
+        },
+      },
+    })).rejects.toThrow('consumer gone');
     expect(native.controls.steps).toBe(72); expect(native.owned.size).toBe(0);
   });
 });

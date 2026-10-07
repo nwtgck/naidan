@@ -16,16 +16,41 @@ afterEach(() => {
 function adapter({ source, root }: { source: ModelFileReceipt['source'] | undefined, root: string | undefined }): ModelCandidate {
   const file = new File(['synthetic adapter'], entry.source.path);
   Object.defineProperty(file, 'size', { value: entry.source.size });
-  return { id: `${root ?? 'opfs'}/adapter`, repositoryId: root ? `host/${root}/${entry.source.repository}` : `huggingface.co/${entry.source.repository}/resolve/main`, path: entry.source.path,
+  return {
+    id: `${root ?? 'opfs'}/adapter`,
+    repositoryId: root ? `host/${root}/${entry.source.repository}` : `huggingface.co/${entry.source.repository}/resolve/main`,
+    path: entry.source.path,
     files: [{ path: entry.source.path, file, ...(source ? { receipt: { version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source } as const } : {}) }],
-    format: 'safetensors', size: file.size, family: 'unknown', classes: ['lora'], roles: [], evidence: [], issue: undefined, turboHint: false, variant: 'unknown',
-    ...(root ? { hostSource: { directoryId: root, directoryName: root, repository: entry.source.repository } } : {}) };
+    format: 'safetensors',
+    size: file.size,
+    family: 'unknown',
+    classes: ['lora'],
+    roles: [],
+    evidence: [],
+    issue: undefined,
+    turboHint: false,
+    variant: 'unknown',
+    ...(root ? { hostSource: { directoryId: root, directoryName: root, repository: entry.source.repository } } : {}),
+  };
 }
 const source = (): ModelFileReceipt['source'] => ({ kind: 'hugging-face', repository: entry.source.repository, revision: entry.source.revision, path: entry.source.path, sha256: entry.source.sha256 });
 function harness() {
   const file = new File(['synthetic checkpoint'], 'model.gguf');
-  const model: ModelCandidate = { id: 'model', repositoryId: 'user/model', path: file.name, files: [{ path: file.name, file }],
-    format: 'gguf', size: file.size, family: 'sd-checkpoint', classes: [], roles: ['model'], evidence: [], issue: undefined, turboHint: false, variant: 'unknown' };
+  const model: ModelCandidate = {
+    id: 'model',
+    repositoryId: 'user/model',
+    path: file.name,
+    files: [{ path: file.name, file }],
+    format: 'gguf',
+    size: file.size,
+    family: 'sd-checkpoint',
+    classes: [],
+    roles: ['model'],
+    evidence: [],
+    issue: undefined,
+    turboHint: false,
+    variant: 'unknown',
+  };
   const inventory: ModelInventory = { candidates: [model], issues: [] };
   const download = vi.fn(async (_request: ImageRecipeDownloadRequest) => {});
   const onSelection = vi.fn(), scope = effectScope(); scopes.push(scope);

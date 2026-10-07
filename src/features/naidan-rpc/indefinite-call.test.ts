@@ -19,9 +19,12 @@ function peers({ run, maximum }: { run: () => Promise<number>; maximum: number |
 }
 it('an explicitly unbounded call does not expire after arbitrary hours of slow computation', async () => {
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
-  const { a, transport } = peers({ run: () => {
-    started.resolve(); return gate.promise;
-  }, maximum: undefined });
+  const { a, transport } = peers({
+    run: () => {
+      started.resolve(); return gate.promise;
+    },
+    maximum: undefined,
+  });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   await started.promise; let ended = false; void call.result.then(() => {
     ended = true;
@@ -33,27 +36,36 @@ it('an explicitly unbounded call does not expire after arbitrary hours of slow c
 });
 it('an unbounded call still responds to explicit caller cancellation without waiting for its producer', async () => {
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>(), cancel = new AbortController();
-  const { a } = peers({ run: () => {
-    started.resolve(); return gate.promise;
-  }, maximum: undefined });
+  const { a } = peers({
+    run: () => {
+      started.resolve(); return gate.promise;
+    },
+    maximum: undefined,
+  });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: cancel.signal, timeoutMs: undefined });
   await started.promise; const rejected = expect(call.result).rejects.toBeDefined(); cancel.abort(); await rejected;
   gate.resolve(1); await expect(call.closed).rejects.toBeDefined();
 });
 it('a caller that explicitly chooses a deadline still gets bounded failure', async () => {
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
-  const { a } = peers({ run: () => {
-    started.resolve(); return gate.promise;
-  }, maximum: undefined });
+  const { a } = peers({
+    run: () => {
+      started.resolve(); return gate.promise;
+    },
+    maximum: undefined,
+  });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: 100 });
   const rejected = expect(call.result).rejects.toBeDefined(); await started.promise; await vi.advanceTimersByTimeAsync(100); await rejected;
   gate.resolve(1); await expect(call.closed).rejects.toBeDefined();
 });
 it('a locally configured peer maximum still applies when the caller requests no deadline', async () => {
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
-  const { a } = peers({ run: () => {
-    started.resolve(); return gate.promise;
-  }, maximum: 100 });
+  const { a } = peers({
+    run: () => {
+      started.resolve(); return gate.promise;
+    },
+    maximum: 100,
+  });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   const rejected = expect(call.result).rejects.toBeDefined(); await started.promise; await vi.advanceTimersByTimeAsync(100); await rejected;
   gate.resolve(1); await expect(call.closed).rejects.toBeDefined();

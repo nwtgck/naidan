@@ -49,12 +49,26 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
   async function start({ plan }: { plan: BenchmarkPlan }): Promise<void> {
     if (dead || active) throw new Error('Benchmark is disposed or already running');
     const control = new AbortController(); active = control;
-    const batch: BenchmarkSnapshot = { plan, state: 'running', runs: plan.models.flatMap((_model, modelIndex) => Array.from({ length: plan.protocol.repeats }, (_, runIndex): BenchmarkRun => ({
-      record: { id: `m${String(modelIndex + 1).padStart(3, '0')}-r${String(runIndex + 1).padStart(3, '0')}`, modelIndex, runIndex,
-        plannedKind: plan.protocol.mode === 'cold-warm' && runIndex > 0 ? 'warm' : 'cold', status: 'queued',
-        metrics: { diagnosticsReceived: 0, invalidDiagnostics: 0, omittedDiagnostics: 0, steps: [] },
-        image: { status: 'no-output', bytes: 0 }, previewFrames: 0, hiddenObserved: false, visibilityChanges: 0 }, diagnostics: '', png: undefined,
-    }))) };
+    const batch: BenchmarkSnapshot = {
+      plan,
+      state: 'running',
+      runs: plan.models.flatMap((_model, modelIndex) => Array.from({ length: plan.protocol.repeats }, (_, runIndex): BenchmarkRun => ({
+        record: {
+          id: `m${String(modelIndex + 1).padStart(3, '0')}-r${String(runIndex + 1).padStart(3, '0')}`,
+          modelIndex,
+          runIndex,
+          plannedKind: plan.protocol.mode === 'cold-warm' && runIndex > 0 ? 'warm' : 'cold',
+          status: 'queued',
+          metrics: { diagnosticsReceived: 0, invalidDiagnostics: 0, omittedDiagnostics: 0, steps: [] },
+          image: { status: 'no-output', bytes: 0 },
+          previewFrames: 0,
+          hiddenObserved: false,
+          visibilityChanges: 0,
+        },
+        diagnostics: '',
+        png: undefined,
+      }))),
+    };
     snapshot = batch;
     let imageBytes = 0;
     try {
@@ -79,12 +93,14 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
             const started = now();
             try {
               let previousHidden: boolean | undefined;
-              stopVisibility = observeVisibility({ changed({ hidden }) {
+              stopVisibility = observeVisibility({
+                changed({ hidden }) {
                 // The observer reports the initial state before subscribing.
                 // It matters for hiddenObserved, but is not a visibility change.
-                if (previousHidden !== undefined && previousHidden !== hidden) run.record.visibilityChanges++;
-                previousHidden = hidden; run.record.hiddenObserved ||= hidden;
-              } });
+                  if (previousHidden !== undefined && previousHidden !== hidden) run.record.visibilityChanges++;
+                  previousHidden = hidden; run.record.hiddenObserved ||= hidden;
+                },
+              });
               client ??= createClient();
               if (plan.protocol.timeoutSeconds) timer = setTimeout(() => {
                 timedOut = true; operation.abort(new DOMException('Benchmark run timed out', 'TimeoutError'));
@@ -98,7 +114,9 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
                 report();
                 // UI observers can synchronously request Stop, including on first progress.
                 if (control.signal.aborted) abort(); operation.signal.throwIfAborted();
-                const result = workerResultSchema.parse(await Promise.race([client.generate({ request, signal: operation.signal,
+                const result = workerResultSchema.parse(await Promise.race([client.generate({
+                  request,
+                  signal: operation.signal,
                   onDiagnostic({ diagnostic }) {
                     if (liveLog === log && current === run.record.id) log.append({ diagnostic });
                   },
@@ -158,7 +176,8 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
     }
   }
   return {
-    start, stop,
+    start,
+    stop,
     snapshot(): BenchmarkSnapshot | undefined {
       updateLive(); return snapshot;
     },

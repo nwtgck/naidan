@@ -90,8 +90,17 @@ function saveRecord({ id, content }: { id: string, content: string }) {
 }
 
 const validContent = JSON.stringify({ root: { items: [] } });
-const invalidContent = JSON.stringify({ root: { items: [{ id: 'future', role: 'assistant', createdAt: 0,
-  parts: [{ id: 'p', type: 'future_part', text: 'Preserve the original record' }], replies: { items: [] } }] } });
+const invalidContent = JSON.stringify({
+  root: {
+    items: [{
+      id: 'future',
+      role: 'assistant',
+      createdAt: 0,
+      parts: [{ id: 'p', type: 'future_part', text: 'Preserve the original record' }],
+      replies: { items: [] },
+    }],
+  },
+});
 
 function deferredChat() {
   let resolve!: (chat: Chat | null) => void;

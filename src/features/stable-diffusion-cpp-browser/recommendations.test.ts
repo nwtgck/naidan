@@ -33,11 +33,23 @@ it('identifies Qwen from tensor structure independently of the filename', async 
 it.each([{ id: 'z-image-turbo', steps: 8 }, { id: 'z-image-base', steps: 50 }, { id: 'flux2-klein-4b', steps: 4 }, { id: 'anima-turbo-1.1', steps: 10 }])('uses a reviewed receipt plus tensor evidence for metadata-stripped $id weights', async ({ id, steps }) => {
   const option = imageModelRecipes.find(recipe => recipe.id === id)!.components.find(item => item.role === 'diffusion')!.options[0]!;
   const file = ggufFixture({ name: 'renamed.gguf', tensors: id === 'flux2-klein-4b' ? flux2KleinTensors : id === 'anima-turbo-1.1' ? animaTensors : zImageTensors, metadata: {}, extraBytes: 0 }).file;
-  const receipt = { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified,
-    source: { kind: 'hugging-face' as const, repository: option.repository, revision: option.revision, path: option.path, sha256: '0'.repeat(64) } };
-  const scan = (revision: string) => scanImageRepositories({ signal: undefined, repositories: [{ id: 'user/x', name: 'x', files: [
-    { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
-  ] }] });
+  const receipt = {
+    version: 1 as const,
+    kind: 'naidan-model-file' as const,
+    size: file.size,
+    lastModified: file.lastModified,
+    source: { kind: 'hugging-face' as const, repository: option.repository, revision: option.revision, path: option.path, sha256: '0'.repeat(64) },
+  };
+  const scan = (revision: string) => scanImageRepositories({
+    signal: undefined,
+    repositories: [{
+      id: 'user/x',
+      name: 'x',
+      files: [
+        { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
+      ],
+    }],
+  });
   const known = await scan(option.revision);
   expect(recommendationForSelection({ model: known.candidates[0] })?.parameters.steps).toBe(steps);
   const unreviewed = await scan('f'.repeat(40));

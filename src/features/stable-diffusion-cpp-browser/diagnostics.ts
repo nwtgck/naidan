@@ -57,8 +57,13 @@ export function createImageTrace({ debug, secrets, listener, now }: {
     // GPU/file observations belong to the last native stage; they must not
     // turn a stalled model load into a misleading 'generation' report.
     if (event !== 'gpu' && event !== 'file-read' && event !== 'native' && event !== 'dropped') stage = next;
-    const entry = imageDiagnosticSchema.safeParse({ event, stage, elapsedMs: Math.max(0, now() - began),
-      message: message === undefined ? undefined : sanitizeImageLog({ message, secrets }), fields });
+    const entry = imageDiagnosticSchema.safeParse({
+      event,
+      stage,
+      elapsedMs: Math.max(0, now() - began),
+      message: message === undefined ? undefined : sanitizeImageLog({ message, secrets }),
+      fields,
+    });
     if (!entry.success) return;
     try {
       listener?.({ diagnostic: entry.data });

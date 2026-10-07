@@ -8,9 +8,12 @@ import { repositoryFolder, listPendingDownloads, listHuggingFaceModels } from '@
 const selection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
 beforeEach(() => {
   const root = memoryDirectory({ name: '' });
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: {
-    request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
-  } });
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+      request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
+    },
+  });
 });
 afterEach(() => vi.unstubAllGlobals());
 async function writeFile({ folder, name, value }: { folder: FileSystemDirectoryHandle, name: string, value: string }): Promise<void> {

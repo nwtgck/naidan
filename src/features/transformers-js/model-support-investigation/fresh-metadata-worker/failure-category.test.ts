@@ -13,15 +13,19 @@ it('classifies built-in failures without copying their private payloads', () => 
 
 it('does not read arbitrary error names, messages or causes to classify a failure', () => {
   const error = new Error();
-  for (const key of ['name', 'message', 'stack', 'cause']) Object.defineProperty(error, key, { get() {
-    throw new Error('A private error property was inspected');
-  } });
+  for (const key of ['name', 'message', 'stack', 'cause']) Object.defineProperty(error, key, {
+    get() {
+      throw new Error('A private error property was inspected');
+    },
+  });
   expect(classifyFreshMetadataFailure({ error })).toBe('error');
 });
 
 it('does not let an uninspectable thrown value hide partial evidence', () => {
-  const error = new Proxy({}, { getPrototypeOf() {
-    throw new Error('An uninspectable fixture value');
-  } });
+  const error = new Proxy({}, {
+    getPrototypeOf() {
+      throw new Error('An uninspectable fixture value');
+    },
+  });
   expect(classifyFreshMetadataFailure({ error })).toBe('unknown');
 });

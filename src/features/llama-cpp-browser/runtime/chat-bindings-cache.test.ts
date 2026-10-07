@@ -3,9 +3,13 @@ import { errorCode } from '@/features/llama-cpp-browser/types';
 import { bindNativeChat } from './chat-bindings';
 
 function disposableVector<T>(values: T[]) {
-  return { ...values, [Symbol.iterator]: function* () {
-    yield* values;
-  }, delete: vi.fn() };
+  return {
+    ...values,
+    [Symbol.iterator]: function* () {
+      yield* values;
+    },
+    delete: vi.fn(),
+  };
 }
 
 function fixture() {

@@ -283,8 +283,14 @@ describe('ImageEditor', () => {
 
       const canvas = wrapper.find('canvas').element;
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
-        left: 0, top: 0, width: 100, height: 100,
-        bottom: 100, right: 100, x: 0, y: 0,
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 100,
+        bottom: 100,
+        right: 100,
+        x: 0,
+        y: 0,
         toJSON: () => {},
       });
 
@@ -322,8 +328,14 @@ describe('ImageEditor', () => {
       const container = wrapper.find('[data-testid="image-editor-container"]');
       const canvas = wrapper.find('canvas').element;
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
-        left: 0, top: 0, width: 100, height: 100,
-        bottom: 100, right: 100, x: 0, y: 0,
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 100,
+        bottom: 100,
+        right: 100,
+        x: 0,
+        y: 0,
         toJSON: () => {},
       });
 
@@ -458,8 +470,14 @@ describe('ImageEditor', () => {
       const container = wrapper.find('[data-testid="image-editor-container"]');
       const canvas = wrapper.find('canvas').element;
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
-        left: 0, top: 0, width: 100, height: 100,
-        bottom: 100, right: 100, x: 0, y: 0,
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 100,
+        bottom: 100,
+        right: 100,
+        x: 0,
+        y: 0,
         toJSON: () => {},
       });
 
@@ -489,8 +507,14 @@ describe('ImageEditor', () => {
       const container = wrapper.find('[data-testid="image-editor-container"]');
       const canvas = wrapper.find('canvas').element;
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
-        left: 0, top: 0, width: 100, height: 100,
-        bottom: 100, right: 100, x: 0, y: 0,
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 100,
+        bottom: 100,
+        right: 100,
+        x: 0,
+        y: 0,
         toJSON: () => {},
       });
 

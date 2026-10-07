@@ -32,10 +32,14 @@ function coordinateModelPreset({ state, input, initialized, isOnboardingDismisse
     // request to inspect this repository, so the UI may fetch metadata without
     // another click. This does NOT authorize background catalog discovery or
     // a model download; file transfer still requires a separate user action.
-    state.preset.value = { input: value, target: isOnboardingDismissed.value ? 'settings' : 'onboarding', claim: () => {
-      if (claimed) return false;
-      claimed = true; return true;
-    } };
+    state.preset.value = {
+      input: value,
+      target: isOnboardingDismissed.value ? 'settings' : 'onboarding',
+      claim: () => {
+        if (claimed) return false;
+        claimed = true; return true;
+      },
+    };
   }, { immediate: true });
 }
 export function useModelPresetCoordinator(): Readonly<ShallowRef<ModelPreset | undefined>> | undefined {

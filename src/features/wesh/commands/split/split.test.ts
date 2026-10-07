@@ -187,10 +187,13 @@ c
   });
 
   it('accepts explicit plus signs only for positive size and suffix-length options', async () => {
-    await writeFile({ path: 'input.txt', data: `\
+    await writeFile({
+      path: 'input.txt',
+      data: `\
 a
 b
-` });
+`,
+    });
 
     const lineCount = await execute({
       script: "split -l '+1' input.txt line-",

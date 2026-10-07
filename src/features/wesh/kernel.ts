@@ -499,7 +499,9 @@ class PipeHandle implements WeshFileHandle {
       mode: 0o600,
       type: 'fifo',
       mtime: Date.now(),
-      ino: 0, uid: 0, gid: 0,
+      ino: 0,
+      uid: 0,
+      gid: 0,
     };
   }
 

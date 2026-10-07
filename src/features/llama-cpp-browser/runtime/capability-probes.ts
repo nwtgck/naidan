@@ -70,10 +70,14 @@ export async function checkJspi(): Promise<void> {
   if (!('promising' in wasm) || typeof wasm.promising !== 'function'
     || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function') throw new Error('JSPI');
   const integration = wasm as PromiseIntegration;
-  const probe = await WebAssembly.instantiate(suspensionProbe, { e: { f: new integration.Suspending(async () => {
-    await Promise.resolve();
-    return 7;
-  }) } });
+  const probe = await WebAssembly.instantiate(suspensionProbe, {
+    e: {
+      f: new integration.Suspending(async () => {
+        await Promise.resolve();
+        return 7;
+      }),
+    },
+  });
   const run = probe.instance.exports.run;
   if (typeof run !== 'function' || await integration.promising(run)() !== 7) throw new Error('JSPI suspension');
 }

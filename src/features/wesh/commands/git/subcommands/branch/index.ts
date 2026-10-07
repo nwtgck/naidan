@@ -134,10 +134,22 @@ export async function runBranch({ context, args }: {
       if (logAllRefUpdates || await pathExists({ files: context.files, path: headLogPath })) {
         const zero = '0000000000000000000000000000000000000000';
         await appendReflog({
-          files: context.files, path: headLogPath, oldObjectId: objectId, newObjectId: zero, identity, timestamp, message,
+          files: context.files,
+          path: headLogPath,
+          oldObjectId: objectId,
+          newObjectId: zero,
+          identity,
+          timestamp,
+          message,
         });
         await appendReflog({
-          files: context.files, path: headLogPath, oldObjectId: zero, newObjectId: objectId, identity, timestamp, message,
+          files: context.files,
+          path: headLogPath,
+          oldObjectId: zero,
+          newObjectId: objectId,
+          identity,
+          timestamp,
+          message,
         });
       }
     }

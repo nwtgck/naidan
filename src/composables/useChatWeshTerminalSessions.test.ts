@@ -187,7 +187,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
     });
 
     it('includes chat group mounts between global and chat mounts', async () => {
@@ -221,7 +221,7 @@ describe('useChatWeshTerminalSessions', () => {
 
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' })});
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' }) });
     });
 
     it('chat mount overrides chat group mount at the same path', async () => {
@@ -240,7 +240,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at the shared path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/shared')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
     });
 
     it('works with only chat group mounts and no chat-level mounts', async () => {

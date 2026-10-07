@@ -830,10 +830,12 @@ async function writeEd({
       });
       hasIncompleteLine ||= result.incomplete;
       if (result.escapedEdTerminator) {
-        await writer.writeText({ text: `\
+        await writer.writeText({
+          text: `\
 .
 s/.//
-` });
+`,
+        });
         inputBlockOpen = false;
       }
     }

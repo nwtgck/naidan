@@ -114,7 +114,10 @@ describe('prepareProductionModelCandidate', () => {
   ])('admits exact identity with resolve in $modelId and $path', async ({ modelId, path }) => {
     const url = `https://huggingface.co/${modelId}/resolve/${REVISION}/${path}`;
     vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue({
-      ...observed(), modelId, paths: [path], requests: [{ path, url }],
+      ...observed(),
+      modelId,
+      paths: [path],
+      requests: [{ path, url }],
     });
     const prefetch = result({ files: [{ status: 'downloaded', url, path: `models/huggingface.co/${modelId}/resolve/${REVISION}/${path}`, byteLength: 4, expectedByteLength: 4 }] });
     const prefetchUrls = vi.fn(async () => prefetch);
@@ -127,9 +130,11 @@ describe('prepareProductionModelCandidate', () => {
 
   it('does not let optional measurement assembly replace the original successful result', async () => {
     const prefetch = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
-    Object.defineProperty(prefetch, 'timing', { get() {
-      throw new Error('Synthetic invalid advisory property');
-    } });
+    Object.defineProperty(prefetch, 'timing', {
+      get() {
+        throw new Error('Synthetic invalid advisory property');
+      },
+    });
     const dispose = vi.fn(async () => undefined);
     const prefetchUrls = vi.fn(async () => prefetch);
     const observer = vi.fn();
@@ -152,7 +157,10 @@ describe('prepareProductionModelCandidate', () => {
     const dispose = vi.fn(async () => undefined);
     vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
     const actual = await prepareProductionModelCandidate({
-      modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS,
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidate: CANDIDATE,
+      requiredModelPaths: REQUIRED_MODEL_PATHS,
       onPlan: ({ paths }) => {
         order.push('plan'); capturedPlans.push([...paths]); throw new Error('Broken plan display');
       },

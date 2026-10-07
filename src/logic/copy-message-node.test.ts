@@ -5,11 +5,20 @@ import { copyMessageWithoutReplies } from './copy-message-node';
 
 describe('copying one history node', () => {
   it('copies assistant parts and recorded metadata without sharing mutable state', () => {
-    const source: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 123, parts: [
-      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
-      { type: 'text', text: '<think>literal</think>A', completeness: 'partial' },
-      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
-    ], modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } }, interruption: { type: 'error', message: '日本語' }, replies: { items: [] } };
+    const source: AssistantMessageNode = {
+      id: toMessageId({ raw: 'a' }),
+      role: 'assistant',
+      createdAt: 123,
+      parts: [
+        { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+        { type: 'text', text: '<think>literal</think>A', completeness: 'partial' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+      ],
+      modelId: 'm',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } },
+      interruption: { type: 'error', message: '日本語' },
+      replies: { items: [] },
+    };
     const copied = copyMessageWithoutReplies({ message: source });
     expect(copied).toEqual(source); expect(copied).not.toBe(source);
     if (copied.role !== 'assistant') throw new Error('Wrong role');

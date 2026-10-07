@@ -208,11 +208,15 @@ describe('Transformers.js Worker client cleanup', () => {
     try {
       await MockWorker.latest.publishReady();
       const pending = client.generateText({
-        messages: [], onChunk: async ({ chunk }) => {
+        messages: [],
+        onChunk: async ({ chunk }) => {
           received.push(chunk);
           entered.resolve();
           await release.promise;
-        }, onToolCalls: vi.fn(), params: undefined, tools: undefined,
+        },
+        onToolCalls: vi.fn(),
+        params: undefined,
+        tools: undefined,
       });
       const rejected = expect(pending).rejects.toThrow('Production Worker disposed');
       await entered.promise;
@@ -238,7 +242,10 @@ const captureLimits: GenerationCaptureRequest['limits'] = {
   maxEvents: 32,
   maxTextBytes: 1024,
   maxTensorBytes: 1024,
-  maxTotalTensorBytes: 4096, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144,
+  maxTotalTensorBytes: 4096,
+  maxTokensPerStreamEvent: 4096,
+  maxTotalStreamTokens: 16384,
+  maxTotalStreamTokenBytes: 262144,
 };
 
 function generate({ client }: { client: TransformersJsWorkerClient }): Promise<void> {
@@ -301,7 +308,10 @@ describe('investigation-owned generation capture client', () => {
     const getActiveRequest = vi.fn(() => active);
     const limits = { ...captureLimits };
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits, getActiveRequest,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits,
+      getActiveRequest,
     });
     try {
       const first = generate({ client: owner.client });
@@ -333,7 +343,10 @@ describe('investigation-owned generation capture client', () => {
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const getActiveRequest = vi.fn(() => ({ runId: 'synthetic-run', requestId: 'first-request' }));
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 2, limits: { ...captureLimits, maxCalls: 1 }, getActiveRequest,
+      runId: 'synthetic-run',
+      workerEpoch: 2,
+      limits: { ...captureLimits, maxCalls: 1 },
+      getActiveRequest,
     });
     try {
       await MockWorker.latest.publishReady();
@@ -359,7 +372,9 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ generateText });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
       getActiveRequest: () => {
         throw new Error('Synthetic observer failure');
       },
@@ -379,7 +394,9 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ generateText });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
       getActiveRequest: () => ({ runId: 'other-run', requestId: 'first-request' }),
     });
     try {
@@ -398,7 +415,10 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest: () => undefined,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest: () => undefined,
     });
     await MockWorker.latest.publishReady();
     await expect(owner.takeGenerationCapture()).resolves.toEqual({ status: 'busy' });
@@ -416,7 +436,10 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest: () => undefined,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest: () => undefined,
     });
     try {
       await MockWorker.latest.publishReady();
@@ -433,7 +456,10 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ loadDownloadedModel });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest: () => undefined,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest: () => undefined,
     });
     try {
       await MockWorker.latest.publishReady();
@@ -446,15 +472,27 @@ describe('investigation-owned generation capture client', () => {
   });
 
   it('rejects a structurally valid capture belonging to another Worker epoch', async () => {
-    const takeGenerationCapture = vi.fn().mockResolvedValue({ status: 'captured', capture: {
-      runId: 'synthetic-run', workerEpoch: 2, schemaVersion: 1, byteOrder: 'little-endian', limits: captureLimits,
-      calls: [], events: [], incompleteReasons: [],
-      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-    } });
+    const takeGenerationCapture = vi.fn().mockResolvedValue({
+      status: 'captured',
+      capture: {
+        runId: 'synthetic-run',
+        workerEpoch: 2,
+        schemaVersion: 1,
+        byteOrder: 'little-endian',
+        limits: captureLimits,
+        calls: [],
+        events: [],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
+    });
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest: () => undefined,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest: () => undefined,
     });
     try {
       await MockWorker.latest.publishReady();
@@ -465,15 +503,27 @@ describe('investigation-owned generation capture client', () => {
   });
 
   it('rejects a structurally valid capture with different recording limits', async () => {
-    const takeGenerationCapture = vi.fn().mockResolvedValue({ status: 'captured', capture: {
-      runId: 'synthetic-run', workerEpoch: 1, schemaVersion: 1, byteOrder: 'little-endian', limits: { ...captureLimits, maxCalls: 4 },
-      calls: [], events: [], incompleteReasons: [],
-      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-    } });
+    const takeGenerationCapture = vi.fn().mockResolvedValue({
+      status: 'captured',
+      capture: {
+        runId: 'synthetic-run',
+        workerEpoch: 1,
+        schemaVersion: 1,
+        byteOrder: 'little-endian',
+        limits: { ...captureLimits, maxCalls: 4 },
+        calls: [],
+        events: [],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
+    });
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest: () => undefined,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest: () => undefined,
     });
     try {
       await MockWorker.latest.publishReady();
@@ -488,21 +538,31 @@ describe('investigation-owned generation capture client', () => {
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
     const getActiveRequest = vi.fn(() => ({ runId: 'synthetic-run', requestId: 'first-request' }));
     const owner = createTransformersJsGenerationCaptureClient({
-      runId: 'synthetic-run', workerEpoch: 1, limits: captureLimits, getActiveRequest,
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      limits: captureLimits,
+      getActiveRequest,
     });
     try {
       await expect(generate({ client: owner.client })).rejects.toThrow('not available in this environment');
       await expect(owner.takeGenerationCapture()).rejects.toThrow('not available in this environment');
       expect(owner.getCaptureLifetime()).toEqual({
-        runId: 'synthetic-run', workerEpoch: 1, session: 'inactive', issuedCalls: [], loadRequests: [], incompleteReasons: [],
+        runId: 'synthetic-run',
+        workerEpoch: 1,
+        session: 'inactive',
+        issuedCalls: [],
+        loadRequests: [],
+        incompleteReasons: [],
         // The host ledger exists independently of Worker availability. No Load
         // was requested, so this is not evidence of an unobserved successful Load.
         loadDiagnostics: {
-          format: 'production-load-diagnostics-v1', owner: { runId: 'synthetic-run', workerEpoch: 1 },
+          format: 'production-load-diagnostics-v1',
+          owner: { runId: 'synthetic-run', workerEpoch: 1 },
           limits: { maxEvents: 512, maxResources: 128 },
           byteAccounting: 'successful-allocation-request-sum-not-live-memory-or-gc',
           coverage: 'transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals',
-          events: [], incompleteReasons: [],
+          events: [],
+          incompleteReasons: [],
         },
       });
       expect(getActiveRequest).not.toHaveBeenCalled();

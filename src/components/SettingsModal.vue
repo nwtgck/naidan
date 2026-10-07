@@ -122,15 +122,18 @@ const hasUnsavedConnectionChanges = computed(() => {
 async function handleImportRecipes({ recipes }: { recipes: { newName: string, matchedModelId?: string, recipe: ChatGroupRecipe }[] }) {
   try {
     for (const item of recipes) {
-      await chatOrganization.createChatGroup({ name: item.newName, options: {
-        modelId: item.matchedModelId,
-        systemPrompt: item.recipe.systemPrompt,
-        lmParameters: item.recipe.lmParameters ? {
-          ...EMPTY_LM_PARAMETERS,
-          ...item.recipe.lmParameters,
-          reasoning: { effort: item.recipe.lmParameters.reasoning?.effort },
-        } : EMPTY_LM_PARAMETERS,
-      } });
+      await chatOrganization.createChatGroup({
+        name: item.newName,
+        options: {
+          modelId: item.matchedModelId,
+          systemPrompt: item.recipe.systemPrompt,
+          lmParameters: item.recipe.lmParameters ? {
+            ...EMPTY_LM_PARAMETERS,
+            ...item.recipe.lmParameters,
+            reasoning: { effort: item.recipe.lmParameters.reasoning?.effort },
+          } : EMPTY_LM_PARAMETERS,
+        },
+      });
     }
 
     addToast({

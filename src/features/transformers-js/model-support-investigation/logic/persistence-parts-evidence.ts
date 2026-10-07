@@ -4,7 +4,8 @@ import { idToRaw } from '@/01-models/ids';
 
 // Fixed synthetic histories only: this is not a format for exporting user chats.
 const textPartSchema = z.object({
-  type: z.literal('text'), text: z.string(),
+  type: z.literal('text'),
+  text: z.string(),
   completeness: z.enum(['complete', 'partial']),
 });
 
@@ -12,34 +13,40 @@ export const persistencePartsMessageSchema = z.discriminatedUnion('role', [
   z.object({ id: z.string(), role: z.literal('system'), parts: z.array(textPartSchema) }),
   z.object({ id: z.string(), role: z.literal('user'), parts: z.array(textPartSchema) }),
   z.object({
-    id: z.string(), role: z.literal('assistant'),
+    id: z.string(),
+    role: z.literal('assistant'),
     parts: z.array(z.discriminatedUnion('type', [
       z.object({
-        type: z.literal('reasoning'), text: z.string(),
+        type: z.literal('reasoning'),
+        text: z.string(),
         completeness: z.enum(['complete', 'partial']),
       }),
       textPartSchema,
       z.object({
         type: z.literal('tool_call'),
         toolCall: z.object({
-          id: z.string(), type: z.literal('function'),
+          id: z.string(),
+          type: z.literal('function'),
           function: z.object({ name: z.string(), arguments: z.string() }),
         }),
       }),
     ])),
   }),
   z.object({
-    id: z.string(), role: z.literal('tool'),
+    id: z.string(),
+    role: z.literal('tool'),
     parts: z.array(z.object({
       type: z.literal('tool_result'),
       result: z.discriminatedUnion('status', [
         z.object({ toolCallId: z.string(), status: z.literal('executing') }),
         z.object({
-          toolCallId: z.string(), status: z.literal('success'),
+          toolCallId: z.string(),
+          status: z.literal('success'),
           content: z.object({ type: z.literal('text'), text: z.string() }),
         }),
         z.object({
-          toolCallId: z.string(), status: z.literal('error'),
+          toolCallId: z.string(),
+          status: z.literal('error'),
           error: z.object({
             code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']),
             message: z.object({ type: z.literal('text'), text: z.string() }),

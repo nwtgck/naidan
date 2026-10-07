@@ -113,11 +113,14 @@ describe('wesh patch', () => {
   });
 
   it('requires explicit path stripping when safe path resolution is enabled', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch --safe-paths',
@@ -143,11 +146,14 @@ three
   });
 
   it('applies git-style paths when safe path resolution has explicit stripping', async () => {
-    await writeFile({ path: 'sub/file.txt', data: `\
+    await writeFile({
+      path: 'sub/file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch --safe-paths -p1',
@@ -173,11 +179,14 @@ three
   });
 
   it('applies a unified diff from stdin using basename path selection', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch',
@@ -227,10 +236,13 @@ three
   });
 
   it('patches the selected existing file when header names differ', async () => {
-    await writeFile({ path: 'old.txt', data: `\
+    await writeFile({
+      path: 'old.txt',
+      data: `\
 one
 two
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch',
@@ -255,10 +267,13 @@ TWO
   });
 
   it('inserts zero-count hunks after the declared source line', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch',
@@ -401,17 +416,23 @@ Index: actual.txt
   });
 
   it('reads a patch file operand and applies a normal diff to an explicit file', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
-    await writeFile({ path: 'change.diff', data: `\
+`,
+    });
+    await writeFile({
+      path: 'change.diff',
+      data: `\
 2c2
 < two
 ---
 > TWO
-` });
+`,
+    });
 
     const { result, stderr } = await execute({ script: 'patch file.txt change.diff' });
 
@@ -425,10 +446,13 @@ three
   });
 
   it('applies normal-diff append commands after the addressed line', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch file.txt',
@@ -448,11 +472,14 @@ two
   });
 
   it('applies a context diff', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch',
@@ -481,11 +508,14 @@ three
   });
 
   it('applies an ed script when -e is specified', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch -e file.txt',
@@ -524,12 +554,15 @@ s/.//
   });
 
   it('finds an offset and creates the default mismatch backup', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 zero
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch',
@@ -562,11 +595,14 @@ three
   });
 
   it('uses GNU pluralization for negative one-line offsets', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch',
@@ -592,11 +628,14 @@ three
   });
 
   it('uses fuzz only for edge context lines', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 DIFFERENT
 two
 three
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch -F1',
@@ -622,12 +661,15 @@ three
   });
 
   it('uses asymmetric GNU fuzz counts without discarding short-side context too early', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 DIFFERENT
 two
 three
 four
-` });
+`,
+    });
 
     const patchText = `\
 --- file.txt
@@ -661,13 +703,16 @@ four
   });
 
   it('keeps an asymmetric line-one hunk anchored until enough fuzz is available', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 prefix
 one
 two
 three
 four
-` });
+`,
+    });
     const patchText = `\
 --- file.txt
 +++ file.txt
@@ -862,12 +907,15 @@ beta
   });
 
   it('applies successful hunks and writes failed hunks to a reject file', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
 four
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch',
@@ -926,12 +974,15 @@ four
   });
 
   it('uses original source coordinates after an earlier hunk changes line count', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 one
 two
 three
 four
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch',
@@ -1864,10 +1915,13 @@ Hunk #2 FAILED at 1.
       'patch --posix --backup-if-mismatch',
       'patch --backup-if-mismatch --posix',
     ]) {
-      await writeFile({ path: 'file.txt', data: `\
+      await writeFile({
+        path: 'file.txt',
+        data: `\
 prefix
 old
-` });
+`,
+      });
 
       const { result, stderr } = await execute({
         script,
@@ -2117,11 +2171,14 @@ new mode 100755
   });
 
   it('uses fuzz when context exists on only one side of a hunk', async () => {
-    await writeFile({ path: 'file.txt', data: `\
+    await writeFile({
+      path: 'file.txt',
+      data: `\
 old
 two
 DIFFERENT
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'patch -F1',
@@ -2194,13 +2251,16 @@ DIFFERENT
 
   it('resolves patch input and output relative to -d', async () => {
     await writeFile({ path: 'work/file.txt', data: 'old\n' });
-    await writeFile({ path: 'work/change.diff', data: `\
+    await writeFile({
+      path: 'work/change.diff',
+      data: `\
 --- file.txt
 +++ file.txt
 @@ -1 +1 @@
 -old
 +new
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch -d work -i change.diff -o output.txt',
@@ -2215,13 +2275,16 @@ DIFFERENT
 
   it('applies repeated directory options cumulatively', async () => {
     await writeFile({ path: 'outer/inner/file.txt', data: 'old\n' });
-    await writeFile({ path: 'outer/inner/change.diff', data: `\
+    await writeFile({
+      path: 'outer/inner/change.diff',
+      data: `\
 --- file.txt
 +++ file.txt
 @@ -1 +1 @@
 -old
 +new
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch -d outer -d inner -i change.diff -o output.txt',
@@ -2341,13 +2404,16 @@ try: --help, --version, -p NUM, --strip=NUM, -F NUM, --fuzz=NUM, -l, --ignore-wh
 
   it('accepts attached short values for input, output, reject, and directory options', async () => {
     await writeFile({ path: 'work/file.txt', data: 'old\n' });
-    await writeFile({ path: 'work/change.diff', data: `\
+    await writeFile({
+      path: 'work/change.diff',
+      data: `\
 --- file.txt
 +++ file.txt
 @@ -1 +1 @@
 -old
 +new
-` });
+`,
+    });
 
     const { result, stderr } = await execute({
       script: 'patch -dwork -ichange.diff -ooutput.txt -rreject.diff',
@@ -2421,10 +2487,13 @@ try: --help, --version, -p NUM, --strip=NUM, -F NUM, --fuzz=NUM, -l, --ignore-wh
     expect(await exists({ path: 'posix-environment-delete.txt' })).toBe(true);
     expect(await readFile({ path: 'posix-environment-delete.txt' })).toBe('');
 
-    await writeFile({ path: 'posix-environment-offset.txt', data: `\
+    await writeFile({
+      path: 'posix-environment-offset.txt',
+      data: `\
 prefix
 old
-` });
+`,
+    });
     const offsetPatch = `\
 --- posix-environment-offset.txt
 +++ posix-environment-offset.txt
@@ -2439,10 +2508,13 @@ old
     expect(defaultBackup.result.exitCode).toBe(0);
     expect(await exists({ path: 'posix-environment-offset.txt.orig' })).toBe(false);
 
-    await writeFile({ path: 'posix-environment-explicit.txt', data: `\
+    await writeFile({
+      path: 'posix-environment-explicit.txt',
+      data: `\
 prefix
 old
-` });
+`,
+    });
     const explicitBackup = await execute({
       script: 'patch --backup-if-mismatch posix-environment-explicit.txt',
       stdinText: offsetPatch.replaceAll('posix-environment-offset.txt', 'posix-environment-explicit.txt'),

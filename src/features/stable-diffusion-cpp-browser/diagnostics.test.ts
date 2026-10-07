@@ -54,9 +54,14 @@ it('keeps the export buffer bounded even for graph-stage diagnostics', () => {
   expect(new TextEncoder().encode(exported).length).toBeLessThan(385 * 1024);
 });
 it('does not let a throwing observer break a native callback', () => {
-  const trace = createImageTrace({ debug: 'on', secrets: [], listener() {
-    throw new Error('renderer gone');
-  }, now: () => 0 });
+  const trace = createImageTrace({
+    debug: 'on',
+    secrets: [],
+    listener() {
+      throw new Error('renderer gone');
+    },
+    now: () => 0,
+  });
   expect(() => trace.native({ message: 'ok', level: 0 })).not.toThrow();
 });
 it('retains initial context and a bounded tail, including while a call is still running', () => {
@@ -112,8 +117,10 @@ it('bounds both stack scanning and the number of exported Wasm frames', () => {
 
 it('does not let a throwing stack accessor replace the original error', () => {
   const error = new Error('original');
-  Object.defineProperty(error, 'stack', { get() {
-    throw new Error('unreadable stack');
-  } });
+  Object.defineProperty(error, 'stack', {
+    get() {
+      throw new Error('unreadable stack');
+    },
+  });
   expect(imageErrorContext({ error })).toEqual({ errorType: 'error', wasmFrames: '' });
 });

@@ -15,8 +15,16 @@ export function createProgressQueue({ deliver, signal }: {
   let pending: NumericProgress | undefined;
   let accepting = true;
   let failed = false;
-  const counters = { received: 0, sent: 0, settled: 0, coalesced: 0, discarded: 0,
-    callbackFailures: 0, peakInFlight: 0, peakPending: 0 };
+  const counters = {
+    received: 0,
+    sent: 0,
+    settled: 0,
+    coalesced: 0,
+    discarded: 0,
+    callbackFailures: 0,
+    peakInFlight: 0,
+    peakPending: 0,
+  };
   const discardPending = (): void => {
     if (pending) counters.discarded++;
     pending = undefined;

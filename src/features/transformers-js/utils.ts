@@ -189,9 +189,15 @@ export async function assertFullResourceResponse({ response }: { response: Respo
  * the old marker must not certify replacement bytes when verification fails.
  */
 export async function writeToOpfs({ path, response }: { path: string, response: Response }): Promise<void> {
-  await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) => {
-    await writeDirectUnderLease({ path, response, lease });
-  } });
+  await withOpfsFileLease({
+    path,
+    mode: 'exclusive',
+    availability: 'wait',
+    signal: undefined,
+    run: async ({ lease }) => {
+      await writeDirectUnderLease({ path, response, lease });
+    },
+  });
 }
 
 async function writeDirectUnderLease({ path, response, lease }: {
@@ -271,8 +277,14 @@ export async function writeIncompleteOpfsFile({ path, response, lease }: {
  * existing completion marker must not survive a failed repair.
  */
 export async function writeToOpfsWithStaging({ path, response }: { path: string, response: Response }): Promise<{ byteLength: number }> {
-  return await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
-    await writeToOpfsWithStagingUnderLease({ path, response, lease }) });
+  return await withOpfsFileLease({
+    path,
+    mode: 'exclusive',
+    availability: 'wait',
+    signal: undefined,
+    run: async ({ lease }) =>
+      await writeToOpfsWithStagingUnderLease({ path, response, lease }),
+  });
 }
 
 export async function writeToOpfsWithStagingUnderLease({ path, response, lease }: {

@@ -25,9 +25,20 @@ const mockObjects: BinaryObjectPreviewItem[] = [
 
 const globalStubs = {
   Teleport: true,
-  XIcon: true, DownloadIcon: true, Trash2Icon: true, ChevronLeftIcon: true, ChevronRightIcon: true,
-  ZoomInIcon: true, ZoomOutIcon: true, CopyIcon: true, CheckIcon: true, File: true, EyeIcon: true,
-  RefreshCwIcon: true, Calendar: true, InfoIcon: true,
+  XIcon: true,
+  DownloadIcon: true,
+  Trash2Icon: true,
+  ChevronLeftIcon: true,
+  ChevronRightIcon: true,
+  ZoomInIcon: true,
+  ZoomOutIcon: true,
+  CopyIcon: true,
+  CheckIcon: true,
+  File: true,
+  EyeIcon: true,
+  RefreshCwIcon: true,
+  Calendar: true,
+  InfoIcon: true,
 };
 
 beforeEach(async () => {

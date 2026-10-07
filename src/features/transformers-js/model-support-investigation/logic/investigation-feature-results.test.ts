@@ -13,8 +13,16 @@ describe('recorded feature results versus collection completion', () => {
     const trace = createProductionProviderTrace({ requestId, limits: { maximumEvents: 16, maximumCharacters: 1024 } });
     trace.settle({ outcome: 'fulfilled', error: undefined });
     run.productionProviderCapture = {
-      format: 'production-provider-capture-v2', runId: run.runId, modelId: run.modelId, plan: 'first-only', run: { status: 'completed' },
-      lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
+      format: 'production-provider-capture-v2',
+      runId: run.runId,
+      modelId: run.modelId,
+      plan: 'first-only',
+      run: { status: 'completed' },
+      lifetime: 'open',
+      abortReason: undefined,
+      disposal: 'not-requested',
+      observation: 'open',
+      events: [],
       requests: [{ runId: run.runId, requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined, input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
       capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
     };
@@ -32,12 +40,23 @@ describe('recorded feature results versus collection completion', () => {
   it('retains nested failure and reason when the outer collection passed', () => {
     const { run } = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'failed-first-turn', now: () => '2026-09-09T00:00:00.000Z' });
     run.status = 'passed';
-    run.productionLane = { status: 'passed', observation: undefined, error: undefined, partialObservation: {
-      modelId: run.modelId, resolvedRevision: 'a'.repeat(40), candidate: undefined, route: undefined, isEncoderDecoder: undefined,
-      firstTurn: { status: 'failed', error: { name: 'FirstTurnError', message: 'generation failed' } },
-      continuity: { status: 'not-run', reason: 'First turn failed' },
-      toolResultContinuation: undefined, reasoning: undefined, multimodal: undefined,
-    } };
+    run.productionLane = {
+      status: 'passed',
+      observation: undefined,
+      error: undefined,
+      partialObservation: {
+        modelId: run.modelId,
+        resolvedRevision: 'a'.repeat(40),
+        candidate: undefined,
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: { status: 'failed', error: { name: 'FirstTurnError', message: 'generation failed' } },
+        continuity: { status: 'not-run', reason: 'First turn failed' },
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      },
+    };
     const result = investigationFeatureResults({ run });
     expect(result.failed).toBe(1);
     expect(result.notRun).toBe(1);

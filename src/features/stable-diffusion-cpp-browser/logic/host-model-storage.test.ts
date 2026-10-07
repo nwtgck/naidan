@@ -15,8 +15,13 @@ let root: MemoryDirectory, opfs: MemoryDirectory;
 const bytes = new Uint8Array(32);
 new DataView(bytes.buffer).setUint32(0, 0x46554747, true);
 new DataView(bytes.buffer).setUint32(4, 3, true);
-const file: ImageFileIdentity = { repository: 'owner/repo', revision: 'a'.repeat(40), path: 'nested/model.gguf', size: bytes.length,
-  sha256: createHash('sha256').update(bytes).digest('hex') };
+const file: ImageFileIdentity = {
+  repository: 'owner/repo',
+  revision: 'a'.repeat(40),
+  path: 'nested/model.gguf',
+  size: bytes.length,
+  sha256: createHash('sha256').update(bytes).digest('hex'),
+};
 const destination = { kind: 'host' as const, directoryId: 'root-1' };
 
 async function directory(): Promise<MemoryDirectory> {
@@ -26,21 +31,34 @@ async function directory(): Promise<MemoryDirectory> {
 }
 const fetch = vi.fn<CatalogFetch>();
 function serve({ offset }: { offset: number }): void {
-  fetch.mockResolvedValue({ url: '', statusText: '', responseType: 'basic', policyName: 'huggingface_models', redirected: false, ok: true,
-    status: offset ? 206 : 200, headers: new Headers(offset ? { 'Content-Range': `bytes ${offset}-31/32` } : {}),
-    body: new ReadableStream({ start(controller) {
-      controller.enqueue(bytes.slice(offset)); controller.close();
-    } }) });
+  fetch.mockResolvedValue({
+    url: '',
+    statusText: '',
+    responseType: 'basic',
+    policyName: 'huggingface_models',
+    redirected: false,
+    ok: true,
+    status: offset ? 206 : 200,
+    headers: new Headers(offset ? { 'Content-Range': `bytes ${offset}-31/32` } : {}),
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(offset)); controller.close();
+      },
+    }),
+  });
 }
 beforeEach(() => {
   root = new MemoryDirectory('models'); opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
   fetch.mockReset(); serve({ offset: 0 });
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs }, locks: {
-    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-      options.signal?.throwIfAborted(); await run();
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => opfs },
+    locks: {
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); await run();
+      },
     },
-  } });
+  });
 });
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
@@ -95,13 +113,30 @@ describe('host image model storage', () => {
 
   it('commits a graceful pause and resumes from that durable byte position with Range', async () => {
     const controller = new AbortController();
-    fetch.mockResolvedValueOnce({ url: '', statusText: '', responseType: 'basic', policyName: 'huggingface_models', redirected: false, ok: true,
-      status: 200, headers: new Headers(), body: new ReadableStream({ start(stream) {
-        stream.enqueue(bytes.slice(0, 16)); stream.enqueue(bytes.slice(16)); stream.close();
-      } }) });
-    await expect(saveImageCatalogFile({ file, destination, fetch, signal: controller.signal, report({ progress }) {
-      if (progress.phase === 'transferring' && progress.bytes === 16) controller.abort();
-    } })).rejects.toThrow();
+    fetch.mockResolvedValueOnce({
+      url: '',
+      statusText: '',
+      responseType: 'basic',
+      policyName: 'huggingface_models',
+      redirected: false,
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: new ReadableStream({
+        start(stream) {
+          stream.enqueue(bytes.slice(0, 16)); stream.enqueue(bytes.slice(16)); stream.close();
+        },
+      }),
+    });
+    await expect(saveImageCatalogFile({
+      file,
+      destination,
+      fetch,
+      signal: controller.signal,
+      report({ progress }) {
+        if (progress.phase === 'transferring' && progress.bytes === 16) controller.abort();
+      },
+    })).rejects.toThrow();
     const folder = await directory();
     expect((await folder.getFileHandle('model.gguf')).data).toEqual(bytes.slice(0, 16));
     const journal = JSON.parse(await (await (await folder.getFileHandle('.model.gguf.pending')).getFile()).text());

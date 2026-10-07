@@ -74,32 +74,42 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should interrupt current generation and start new one when regenerateMessage is called', async () => {
     const { sendMessage, regenerateMessage, streaming } = chatStore;
     const chat = reactive<Chat>({
-      id: toChatId({ raw: 'regen-interrupt-test' }), title: 'Regen Interrupt', root: { items: [] },
-      createdAt: 1, updatedAt: 1, debugEnabled: false,
+      id: toChatId({ raw: 'regen-interrupt-test' }),
+      title: 'Regen Interrupt',
+      root: { items: [] },
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
     });
     __testOnlySetCurrentChat({ chat });
     const started = Promise.withResolvers<void>();
     const stopped = Promise.withResolvers<void>();
     let firstGenAborted = false;
-    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => {
-        firstGenAborted = true; stopped.resolve();
-      }, { once: true });
-      await writer.text({ type: 'text', text: 'First chunk' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    } }));
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        signal.addEventListener('abort', () => {
+          firstGenAborted = true; stopped.resolve();
+        }, { once: true });
+        await writer.text({ type: 'text', text: 'First chunk' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
     try {
       expect(await sendMessage({ content: 'Hello' })).toBe(true);
       await started.promise;
       const user = chat.root.items[0]!;
       const first = user.replies.items[0]!;
       await vi.waitUntil(() => getMessageText({ message: first }) === 'First chunk');
-      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'Second Response' });
-        return { type: 'finished', next: 'user' };
-      } }));
+      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Second Response' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
       await regenerateMessage({ failedMessageId: idToRaw({ id: first.id }) });
       await vi.waitUntil(() => !streaming.value);
       expect(firstGenAborted).toBe(true);
@@ -121,31 +131,41 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should interrupt current generation and start new one when editMessage (resend) is called', async () => {
     const { sendMessage, editMessage, streaming } = chatStore;
     const chat = reactive<Chat>({
-      id: toChatId({ raw: 'edit-interrupt-test' }), title: 'Edit Interrupt', root: { items: [] },
-      createdAt: 1, updatedAt: 1, debugEnabled: false,
+      id: toChatId({ raw: 'edit-interrupt-test' }),
+      title: 'Edit Interrupt',
+      root: { items: [] },
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
     });
     __testOnlySetCurrentChat({ chat });
     const started = Promise.withResolvers<void>();
     const stopped = Promise.withResolvers<void>();
     let firstGenAborted = false;
-    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => {
-        firstGenAborted = true; stopped.resolve();
-      }, { once: true });
-      await writer.text({ type: 'text', text: 'First chunk' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    } }));
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        signal.addEventListener('abort', () => {
+          firstGenAborted = true; stopped.resolve();
+        }, { once: true });
+        await writer.text({ type: 'text', text: 'First chunk' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
     try {
       await sendMessage({ content: 'Hello' });
       await started.promise;
       const user = chat.root.items[0]!;
       const first = user.replies.items[0]!;
-      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'Edited Response' });
-        return { type: 'finished', next: 'user' };
-      } }));
+      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Edited Response' });
+          return { type: 'finished', next: 'user' };
+        },
+      }));
       await editMessage({ messageId: idToRaw({ id: user.id }), newContent: 'Hello Again' });
       await vi.waitUntil(() => !streaming.value);
       expect(firstGenAborted).toBe(true);

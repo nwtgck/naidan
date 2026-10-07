@@ -11,7 +11,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'LiquidAI/LFM2.5-350M-ONNX', revision: 'd11593fd9eb408e322667926656598896c2d5ff9',
+    phase: 'load',
+    modelId: 'LiquidAI/LFM2.5-350M-ONNX',
+    revision: 'd11593fd9eb408e322667926656598896c2d5ff9',
     corePath: 'onnx/model_q4f16.onnx',
     externalData: [
       { path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' },
@@ -345,19 +347,22 @@ describe('LFM2.5 350M Download replay', () => {
         const downloadCallsBefore = [...h.downloadCapabilityCalls];
         const removals: Array<{ status: string, file: string, removed: boolean, modelStats: string[], modelBodyReads: string[] }> = [];
 
-        const outcome = await h.freshLoad({ progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
-          // The real bundle's getModelFile dispatches initiate before getCache and
-          // loadResourceFile. Production has already completed candidate planning;
-          // no ONNX File snapshot/body has been consumed for this runtime load yet.
-          const activity = h.fs.activity.slice(activityBoundary);
-          removals.push({
-            status: info.status, file: info.file,
-            removed: h.fs.files.delete(missingBody),
-            modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
-            modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
-          });
-        } }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
+        const outcome = await h.freshLoad({
+          progressCallback: ({ info }) => {
+            if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+            // The real bundle's getModelFile dispatches initiate before getCache and
+            // loadResourceFile. Production has already completed candidate planning;
+            // no ONNX File snapshot/body has been consumed for this runtime load yet.
+            const activity = h.fs.activity.slice(activityBoundary);
+            removals.push({
+              status: info.status,
+              file: info.file,
+              removed: h.fs.files.delete(missingBody),
+              modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
+              modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
+            });
+          },
+        }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
         expect(removals).toHaveLength(1);
         expect(removals[0]).toMatchObject({ status: 'initiate', file: missingPath, removed: true, modelBodyReads: [] });

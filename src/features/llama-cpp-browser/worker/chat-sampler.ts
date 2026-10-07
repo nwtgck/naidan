@@ -87,7 +87,9 @@ export async function createChatSampler({ core, vocab, chain, params }: { core: 
       }
     };
     logDiagnostic({ diagnostic: { event: 'sampler-ready', grammar: !!grammar, grammarLazy: params.grammar_lazy, reasoning: !!budget, pointerBytes: core.pointerBytes } });
-    return { dispose, preservedTokens,
+    return {
+      dispose,
+      preservedTokens,
       async sample({ context }: { context: bigint }): Promise<number> {
         let stage: DiagnosticStage = 'reasoning-state';
         try {

@@ -4,9 +4,24 @@ import { createBenchmarkPlan, benchmarkParameters } from './plan';
 import { planFixture, targetFixture } from './test-fixtures';
 import { parametersFixture, artifactFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
-const input = () => ({ id: 'batch', createdAt: 'now', appVersion: 'test', notes: '', protocol: { mode: 'cold-warm', repeats: 3, cooldownSeconds: 0, timeoutSeconds: 0, keepImages: false, order: 'listed' },
-  targets: [targetFixture({ id: 'a' })], common: parametersFixture(), overrides: {}, loras: {}, imageInputs: {}, strategy: 'shared' as const, artifact: artifactFixture(), baseUrl: 'https://app.test/',
-  preview: { enabled: false, mode: 'vae' as const, interval: 2, startStep: 1, maxEdge: 256 }, weightResidency: 'auto' as const, gpuBudgetMiB: undefined });
+const input = () => ({
+  id: 'batch',
+  createdAt: 'now',
+  appVersion: 'test',
+  notes: '',
+  protocol: { mode: 'cold-warm', repeats: 3, cooldownSeconds: 0, timeoutSeconds: 0, keepImages: false, order: 'listed' },
+  targets: [targetFixture({ id: 'a' })],
+  common: parametersFixture(),
+  overrides: {},
+  loras: {},
+  imageInputs: {},
+  strategy: 'shared' as const,
+  artifact: artifactFixture(),
+  baseUrl: 'https://app.test/',
+  preview: { enabled: false, mode: 'vae' as const, interval: 2, startStep: 1, maxEdge: 256 },
+  weightResidency: 'auto' as const,
+  gpuBudgetMiB: undefined,
+});
 it('freezes effective values before work; shared form edits do not alter a captured plan', () => {
   const options = input(); const plan = createBenchmarkPlan(options);
   options.common.steps = 99; options.targets[0]!.models![0]!.path = 'other.gguf'; options.preview.enabled = true; options.protocol.repeats = 10;

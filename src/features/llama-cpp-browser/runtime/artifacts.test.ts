@@ -6,12 +6,15 @@ import { loadWasmBinary as loadStandaloneWasm } from './artifacts-standalone';
 import { installBrotliDecoderForTest } from '@/features/file-protocol-standalone/embedded-binary.test-support';
 
 const embedded = vi.hoisted(() => ({
-  base64: 'CwCARwM=', byteLength: 1,
+  base64: 'CwCARwM=',
+  byteLength: 1,
   sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
 }));
 vi.mock('virtual:file-protocol-standalone/binary/llama-cpp-browser', () => embedded);
 vi.mock('virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', () => ({
-  ...embedded, base64: 'iwCASE0D', byteLength: 2,
+  ...embedded,
+  base64: 'iwCASE0D',
+  byteLength: 2,
   sha256: '58462b5910a20aab56603dcc673dc581942c66f14846580beaaf4aaa5d6bde47',
 }));
 const nativeDecompressionStream = DecompressionStream;
@@ -64,9 +67,11 @@ describe('hosted artifact transport', () => {
       }
     });
     // Hosted does not select a compression format by browser name.
-    vi.stubGlobal('navigator', { get userAgent() {
-      throw new Error('No browser sniffing');
-    } });
+    vi.stubGlobal('navigator', {
+      get userAgent() {
+        throw new Error('No browser sniffing');
+      },
+    });
     await expect(loadHostedWasm({ signal: undefined, profile, assetBaseURL: 'https://fixture.invalid/runtime/' })).resolves.toEqual(source);
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher.mock.calls[0]).toEqual([new URL(`${profile}/core.wasm.gz`, 'https://fixture.invalid/runtime/'), { signal: undefined }]);

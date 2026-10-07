@@ -128,16 +128,24 @@ describe('immutable generation records and explicit state', () => {
     const { store } = await createStore(); const session = generationSessionFixture({ id: 'session-aB' });
     await saveImageGenerationSession({ store, session, expectedRevision: undefined });
     const run = generationRunFixture({ id: 'run-cD', sessionId: session.id, count: 1, seed: '42' });
-    await expect(createImageGenerationRun({ store, run, writeInputs: async () => {
-      throw new Error('input bytes failed');
-    } })).rejects.toThrow('input bytes failed');
+    await expect(createImageGenerationRun({
+      store,
+      run,
+      writeInputs: async () => {
+        throw new Error('input bytes failed');
+      },
+    })).rejects.toThrow('input bytes failed');
     expect(await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id })).toBeUndefined();
   });
   it('does not publish an asset before the binary callback succeeds', async () => {
     const { store, session, run } = await start({ count: 1 }); const asset = generationAssetFixture({ id: 'asset-eF', run, index: 0 });
-    await expect(commitImageGenerationAsset({ store, asset, writeImages: async () => {
-      throw new Error('disk full');
-    } })).rejects.toThrow('disk full');
+    await expect(commitImageGenerationAsset({
+      store,
+      asset,
+      writeImages: async () => {
+        throw new Error('disk full');
+      },
+    })).rejects.toThrow('disk full');
     expect(await loadImageGenerationAsset({ store, sessionId: session.id, assetId: asset.id })).toBeUndefined();
   });
   it('accepts identical asset retries but rejects altered bytes metadata and duplicate output slots', async () => {

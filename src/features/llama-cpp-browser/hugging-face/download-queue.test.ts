@@ -42,9 +42,14 @@ describe('page-lifetime sequential model download queue', () => {
     const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined);
     const queue = createDownloadQueue({ download });
     const first = queue.enqueue({ key: 'first', repository: selection.repository, source: 'suggestion', prepare: () => gate.promise });
-    const second = queue.enqueue({ key: 'second', repository: selection.repository, source: 'suggestion', prepare: async () => {
-      throw new SuggestionPlanError();
-    } });
+    const second = queue.enqueue({
+      key: 'second',
+      repository: selection.repository,
+      source: 'suggestion',
+      prepare: async () => {
+        throw new SuggestionPlanError();
+      },
+    });
     await flushPromises(); queue.cancel({ id: first.id }); gate.resolve(selection);
     expect((await first.done).status).toBe('cancelled');
     expect(await second.done).toMatchObject({ status: 'failed', error: 'selection-unavailable' });

@@ -20,10 +20,14 @@ function platform() {
   const root = { getFileHandle: vi.fn(async (_name: string) => file), removeEntry: vi.fn(async () => {}) };
   const request = vi.fn(async (_name: string, operation: () => Promise<void>) => operation());
   const nav = { storage: { getDirectory: vi.fn(async () => root) }, locks: { request }, gpu: { requestAdapter: vi.fn(async () => ({ features: new Set(['shader-f16']) })) } };
-  const wasm = { validate: vi.fn(() => true), instantiate: vi.fn(async () => ({ instance: { exports: { run: () => 7 } } })),
+  const wasm = {
+    validate: vi.fn(() => true),
+    instantiate: vi.fn(async () => ({ instance: { exports: { run: () => 7 } } })),
     Suspending: class {
       constructor(_callback: () => Promise<number>) {}
-    }, promising: vi.fn(() => async () => 7) };
+    },
+    promising: vi.fn(() => async () => 7),
+  };
   return { nav, wasm, root, file, close, read, sync, write, abort, writableClose };
 }
 let environment: ReturnType<typeof platform>;
@@ -37,19 +41,25 @@ afterEach(() => {
 describe('standalone Worker capability detection', () => {
   it('reports both embedded choices and recommends wasm32 when memory64 is unavailable', async () => {
     environment.wasm.validate.mockReturnValue(false);
-    await expect(probeRuntimeProfiles()).resolves.toEqual({ recommended: 'webgpu-wasm32-jspi', profiles: [
-      { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
-      { profile: 'webgpu-wasm32-jspi', status: 'available' },
-    ] });
+    await expect(probeRuntimeProfiles()).resolves.toEqual({
+      recommended: 'webgpu-wasm32-jspi',
+      profiles: [
+        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
+        { profile: 'webgpu-wasm32-jspi', status: 'available' },
+      ],
+    });
   });
   it('reports a shared JSPI failure for both embedded choices without CPU fallback', async () => {
     environment.wasm.promising.mockImplementation(() => {
       throw new Error('unsupported');
     });
-    await expect(probeRuntimeProfiles()).resolves.toEqual({ recommended: undefined, profiles: [
-      { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'jspi' },
-      { profile: 'webgpu-wasm32-jspi', status: 'unavailable', reason: 'jspi' },
-    ] });
+    await expect(probeRuntimeProfiles()).resolves.toEqual({
+      recommended: undefined,
+      profiles: [
+        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'jspi' },
+        { profile: 'webgpu-wasm32-jspi', status: 'unavailable', reason: 'jspi' },
+      ],
+    });
   });
   it('validates the actual small suspension probe independently of mocked capabilities', async () => {
     expect(actualWasm.validate(TEST_ONLY.suspensionProbe)).toBe(true);
@@ -59,9 +69,11 @@ describe('standalone Worker capability detection', () => {
     expect(run()).toBe(7);
   });
   it('checks JSPI suspension and actual OPFS operations without reading User-Agent', async () => {
-    Object.defineProperty(environment.nav, 'userAgent', { get() {
-      throw new Error('Do not sniff browsers');
-    } });
+    Object.defineProperty(environment.nav, 'userAgent', {
+      get() {
+        throw new Error('Do not sniff browsers');
+      },
+    });
     await expect(resolveRuntimeProfile({ profile: 'webgpu-wasm64-jspi' })).resolves.toBe('webgpu-wasm64-jspi');
     expect(environment.wasm.promising).toHaveBeenCalledOnce();
     expect(environment.write).toHaveBeenCalledOnce();
@@ -80,9 +92,11 @@ describe('standalone Worker capability detection', () => {
     { memory64: false, expected: 'webgpu-wasm32-jspi' },
   ])('auto selects $expected with memory64=$memory64 and verifies shared capabilities', async ({ memory64, expected }) => {
     environment.wasm.validate.mockReturnValue(memory64);
-    Object.defineProperty(environment.nav, 'userAgent', { get() {
-      throw new Error('Do not sniff browsers');
-    } });
+    Object.defineProperty(environment.nav, 'userAgent', {
+      get() {
+        throw new Error('Do not sniff browsers');
+      },
+    });
     await expect(resolveRuntimeProfile({ profile: 'auto' })).resolves.toBe(expected);
     expect(environment.wasm.promising).toHaveBeenCalledOnce();
     expect(environment.write).toHaveBeenCalledOnce();
@@ -124,9 +138,11 @@ describe('standalone Worker capability detection', () => {
     }); break;
     case 'brotli-data': vi.stubGlobal('DecompressionStream', class {
       // Accepts the format but decodes the known probe to the wrong byte.
-      readonly readable = new ReadableStream<Uint8Array>({ start(controller) {
-        controller.enqueue(new Uint8Array([72])); controller.close();
-      } });
+      readonly readable = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([72])); controller.close();
+        },
+      });
       readonly writable = new WritableStream();
     }); break;
     case 'hash': vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('denied')); break;

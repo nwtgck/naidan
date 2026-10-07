@@ -13,13 +13,17 @@ const pendingRuns = shallowRef(imagePendingRuns.list());
 // controls here made 'discard image' silently discard other outputs in the run.
 const unowned = computed(() => entries.value.filter(entry => !pendingRuns.value.some(run =>
   run.state.pending.some(output => output.asset.result.binaryObjectId === entry.record.result.binaryObjectId))));
-onScopeDispose(imagePendingRuns.subscribe({ listener() {
-  pendingRuns.value = imagePendingRuns.list();
-} }));
+onScopeDispose(imagePendingRuns.subscribe({
+  listener() {
+    pendingRuns.value = imagePendingRuns.list();
+  },
+}));
 const { showConfirm } = useConfirm();
-const unsubscribe = imageRecoveryStore.subscribe({ listener() {
-  entries.value = imageRecoveryStore.list();
-} });
+const unsubscribe = imageRecoveryStore.subscribe({
+  listener() {
+    entries.value = imageRecoveryStore.list();
+  },
+});
 onScopeDispose(unsubscribe);
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
   return imageRecoveryStore.list().flatMap(entry => entry.files).find(file => file.binaryObjectId === binaryObjectId)?.blob;

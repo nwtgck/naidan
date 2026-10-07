@@ -22,7 +22,10 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
   const { options } = createPWABuild({ buildId });
   const outDir = path.join(root, 'dist');
   await build({
-    root, configFile: false, logLevel: 'silent', base: './',
+    root,
+    configFile: false,
+    logLevel: 'silent',
+    base: './',
     plugins: [VitePWA({ ...options, srcDir: path.join(projectRoot, 'pwa') })],
     build: { outDir, emptyOutDir: true },
   });
@@ -38,4 +41,5 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
   return { outDir, files, script: (await readFile(path.join(outDir, 'sw.js'), 'utf8')) };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

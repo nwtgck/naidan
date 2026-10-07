@@ -23,13 +23,15 @@ describe('read-only message display', () => {
     expect(copyChatMessage({ message })).toEqual(before);
   });
   it('preserves native reasoning, repeated part kinds, and tool position', () => {
-    const message = assistant({ parts: [
-      { type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
-      { type: 'text', text: '  A', completeness: 'complete' },
-      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
-      { type: 'reasoning', text: 'R2', completeness: 'partial' },
-      { type: 'text', text: ' B ', completeness: 'partial' },
-    ] });
+    const message = assistant({
+      parts: [
+        { type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
+        { type: 'text', text: '  A', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
+        { type: 'reasoning', text: 'R2', completeness: 'partial' },
+        { type: 'text', text: ' B ', completeness: 'partial' },
+      ],
+    });
     const display = getAssistantDisplayParts({ message });
     expect(display.map(p => p.type)).toEqual(['reasoning', 'text', 'tool_call', 'reasoning', 'text']);
     expect(display[0]).toMatchObject({ type: 'reasoning', text: '<think>literal inside native</think>' });

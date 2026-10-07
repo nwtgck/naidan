@@ -16,9 +16,16 @@ function copyInput({ input }: { input: PeerImageInput }): PeerImageInput {
   rest satisfies Record<PropertyKey, never>;
   const { initial, references, strength, ...imageRest } = imageInputs;
   imageRest satisfies Record<PropertyKey, never>;
-  return { modelSelection: imageModelSelectionSchema.parse(modelSelection), parameters: peerImageParametersSchema.parse(parameters),
-    preview: peerImagePreviewSchema.parse(preview), imageInputs: { initial, references: [...references],
-      strength: naidanPeerContract.methods.generateImage.input.shape.imageInputs.shape.strength.parse(strength) } };
+  return {
+    modelSelection: imageModelSelectionSchema.parse(modelSelection),
+    parameters: peerImageParametersSchema.parse(parameters),
+    preview: peerImagePreviewSchema.parse(preview),
+    imageInputs: {
+      initial,
+      references: [...references],
+      strength: naidanPeerContract.methods.generateImage.input.shape.imageInputs.shape.strength.parse(strength),
+    },
+  };
 }
 function copySnapshot({ snapshot }: { snapshot: PeerImageExecutionSnapshot }): PeerImageExecutionSnapshot {
   const { target, input, ...rest } = snapshot;
@@ -50,19 +57,29 @@ export function preparePeerImageExecution({ binding, input }: {
   const { client, signal: sessionSignal, connection, ...rest } = binding;
   rest satisfies Record<PropertyKey, never>;
   const snapshot = copySnapshot({ snapshot: { target: { type: 'naidan_rpc', connection }, input } });
-  return createImageExecutionPlan({ snapshot, copySnapshot,
+  return createImageExecutionPlan({
+    snapshot,
+    copySnapshot,
     start({ seed, signal, onProgress, onPreview }) {
       const stop = AbortSignal.any([signal, sessionSignal]);
-      const job = startPeerImage({ client, input: { ...copyInput({ input: snapshot.input }), parameters: { ...snapshot.input.parameters, seed } },
-        signal: stop, onProgress: ({ value }) => onProgress({ event: progress({ value }) }), onPreview });
-      return { cancel: job.cancel, updatePreview: undefined,
+      const job = startPeerImage({
+        client,
+        input: { ...copyInput({ input: snapshot.input }), parameters: { ...snapshot.input.parameters, seed } },
+        signal: stop,
+        onProgress: ({ value }) => onProgress({ event: progress({ value }) }),
+        onPreview,
+      });
+      return {
+        cancel: job.cancel,
+        updatePreview: undefined,
         result: job.result.then((outcome): ImageExecutionOutcome => {
           switch (outcome.status) {
           case 'completed': return { status: 'completed', output: outcome.output };
           case 'interrupted': case 'cancelled': case 'failed': return outcome;
           default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
           }
-        }) };
+        }),
+      };
     },
   });
 }

@@ -12,15 +12,26 @@ export async function collectChatGeneration({ items, abortController, onText }: 
   onText?: ({ text }: { text: string }) => void,
 }): Promise<{ text: string, result: ChatGenerationResult }> {
   const node: AssistantMessageNode = {
-    id: toMessageId({ raw: 'collected-assistant' }), role: 'assistant',
-    createdAt: 0, parts: [], modelId: undefined, lmParameters: undefined,
-    interruption: undefined, replies: { items: [] },
+    id: toMessageId({ raw: 'collected-assistant' }),
+    role: 'assistant',
+    createdAt: 0,
+    parts: [],
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
+    replies: { items: [] },
   };
-  const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, abortController, onChange: () => {
-    try {
-      if (onText) void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
-    } catch { /* Presentation cannot own stream consumption. */ }
-  } });
+  const result = await consumeChatGeneration({
+    onToolCallDraftsChange: undefined,
+    node,
+    items,
+    abortController,
+    onChange: () => {
+      try {
+        if (onText) void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
+      } catch { /* Presentation cannot own stream consumption. */ }
+    },
+  });
   return { text: getMessageText({ message: node }), result };
 }
 

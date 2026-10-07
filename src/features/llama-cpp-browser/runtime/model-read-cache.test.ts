@@ -28,8 +28,16 @@ describe('load-scoped small-read window', () => {
   it('uses 17 source reads for 1024 adjacent 1 KiB reads without changing their bytes', () => {
     const f = fixture({ size: 1024 * 1024, mode: 'read-ahead' });
     for (let offset = 0; offset < f.bytes.length; offset += 1024) expect(f.request({ offset, length: 1024 })).toBe(1024);
-    expect(f.cache.counters).toMatchObject({ requests: 1024, sourceCalls: 17, directReads: 1, fills: 16,
-      hits: 1007, sourceBytes: 1024 * 1024, deliveredBytes: 1024 * 1024, peakBufferBytes: 65536 });
+    expect(f.cache.counters).toMatchObject({
+      requests: 1024,
+      sourceCalls: 17,
+      directReads: 1,
+      fills: 16,
+      hits: 1007,
+      sourceBytes: 1024 * 1024,
+      deliveredBytes: 1024 * 1024,
+      peakBufferBytes: 65536,
+    });
   });
   it('keeps the reference path uncached and allocation-free', () => {
     const f = fixture({ size: 10000, mode: 'direct' });
@@ -75,10 +83,14 @@ describe('load-scoped small-read window', () => {
   });
   it('shares one fixed window across 100 shards and never confuses their contents', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
-    const sources = Array.from({ length: 100 }, (_, index) => cache.wrap({ source: { size: 200000,
-      read: ({ destination }) => {
-        destination.fill(index); return destination.length;
-      } } }));
+    const sources = Array.from({ length: 100 }, (_, index) => cache.wrap({
+      source: {
+        size: 200000,
+        read: ({ destination }) => {
+          destination.fill(index); return destination.length;
+        },
+      },
+    }));
     for (let index = 0; index < sources.length; index++) {
       for (const offset of [0, 8, 16]) {
         const destination = new Uint8Array(8); sources[index]!.read({ destination, offset });
@@ -92,9 +104,12 @@ describe('load-scoped small-read window', () => {
   it('does not use a window for a newly wrapped source even with identical metadata', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     let fill = 1;
-    const backing = { size: 200000, read: ({ destination }: { destination: Uint8Array, offset: number }) => {
-      destination.fill(fill); return destination.length;
-    } };
+    const backing = {
+      size: 200000,
+      read: ({ destination }: { destination: Uint8Array, offset: number }) => {
+        destination.fill(fill); return destination.length;
+      },
+    };
     const old = cache.wrap({ source: backing }); const destination = new Uint8Array(8);
     old.read({ destination, offset: 0 }); old.read({ destination, offset: 8 });
     fill = 2;
@@ -110,10 +125,15 @@ describe('load-scoped small-read window', () => {
   it('handles a shared destination and offsets above 4 GiB without truncation', () => {
     const cache = createModelReadCache({ mode: 'read-ahead', now: undefined });
     const size = 2 ** 40 + 100;
-    const source = cache.wrap({ source: { size, read: ({ destination, offset }) => {
-      for (let i = 0; i < destination.length; i++) destination[i] = (offset + i) % 251;
-      return destination.length;
-    } } });
+    const source = cache.wrap({
+      source: {
+        size,
+        read: ({ destination, offset }) => {
+          for (let i = 0; i < destination.length; i++) destination[i] = (offset + i) % 251;
+          return destination.length;
+        },
+      },
+    });
     for (const offset of [2 ** 40, 2 ** 40 + 8, 2 ** 40 + 16]) {
       const destination = new Uint8Array(new SharedArrayBuffer(8));
       expect(source.read({ destination, offset })).toBe(8);
@@ -157,12 +177,14 @@ describe('load-scoped small-read window', () => {
     f.request({ offset: 0, length: 8 });
     const Original = Uint8Array;
     let rejections = 0;
-    vi.stubGlobal('Uint8Array', new Proxy(Original, { construct(target, args) {
-      if (args[0] === TEST_ONLY.windowBytes) {
-        rejections++; throw new RangeError('allocation denied');
-      }
-      return Reflect.construct(target, args);
-    } }));
+    vi.stubGlobal('Uint8Array', new Proxy(Original, {
+      construct(target, args) {
+        if (args[0] === TEST_ONLY.windowBytes) {
+          rejections++; throw new RangeError('allocation denied');
+        }
+        return Reflect.construct(target, args);
+      },
+    }));
     for (const offset of [8, 16, 24, 32]) f.request({ offset, length: 8 });
     expect(rejections).toBe(1); expect(f.cache.counters).toMatchObject({ sourceCalls: 5, allocationFallbacks: 1, fills: 0, peakBufferBytes: 0 });
   });
@@ -185,9 +207,14 @@ describe('load-scoped small-read window', () => {
   it('measures source calls only, not cache hits, when timing is enabled', () => {
     let clock = 0; const now = vi.fn(() => clock++);
     const cache = createModelReadCache({ mode: 'read-ahead', now });
-    const source = cache.wrap({ source: { size: 100000, read: ({ destination }) => {
-      destination.fill(0); return destination.length;
-    } } });
+    const source = cache.wrap({
+      source: {
+        size: 100000,
+        read: ({ destination }) => {
+          destination.fill(0); return destination.length;
+        },
+      },
+    });
     for (const offset of [0, 8, 16, 24]) source.read({ destination: new Uint8Array(8), offset });
     expect(now).toHaveBeenCalledTimes(4); expect(cache.counters.sourceReadMs).toBe(2);
   });

@@ -18,10 +18,20 @@ afterEach(() => {
 });
 function runFixture({ image }: { image: BenchmarkRun['record']['image']['status'] }): BenchmarkRun {
   return {
-    record: { id: 'm001-r001', modelIndex: 0, runIndex: 0, plannedKind: 'cold', status: 'succeeded',
+    record: {
+      id: 'm001-r001',
+      modelIndex: 0,
+      runIndex: 0,
+      plannedKind: 'cold',
+      status: 'succeeded',
       metrics: { diagnosticsReceived: 0, invalidDiagnostics: 0, omittedDiagnostics: 0, steps: [] },
-      image: { status: image, bytes: image === 'retained' ? 3 : 0 }, previewFrames: 0, hiddenObserved: false, visibilityChanges: 0 },
-    diagnostics: '', png: image === 'retained' ? new Blob(['PNG'], { type: 'image/png' }) : undefined,
+      image: { status: image, bytes: image === 'retained' ? 3 : 0 },
+      previewFrames: 0,
+      hiddenObserved: false,
+      visibilityChanges: 0,
+    },
+    diagnostics: '',
+    png: image === 'retained' ? new Blob(['PNG'], { type: 'image/png' }) : undefined,
   };
 }
 async function toggle({ open }: { open: boolean }): Promise<void> {

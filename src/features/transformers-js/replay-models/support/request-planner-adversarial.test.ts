@@ -87,8 +87,12 @@ async function harness({ config, progress }: { config: Record<string, unknown>; 
     vi.stubGlobal('process', originalProcess);
   }
   Object.assign(runtime.env, {
-    allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false,
-    useCustomCache: true, useWasmCache: false, fetch: forbiddenFetch,
+    allowLocalModels: true,
+    allowRemoteModels: false,
+    useBrowserCache: false,
+    useCustomCache: true,
+    useWasmCache: false,
+    fetch: forbiddenFetch,
   });
   const release = Promise.withResolvers<void>();
   const requests: string[] = [];
@@ -113,7 +117,11 @@ async function harness({ config, progress }: { config: Record<string, unknown>; 
     },
   };
   const options: Options = {
-    config, revision: REVISION, device: 'webgpu', dtype: 'q4f16', local_files_only: true,
+    config,
+    revision: REVISION,
+    device: 'webgpu',
+    dtype: 'q4f16',
+    local_files_only: true,
     ...(progress === 'enabled' ? { progress_callback: () => undefined } : {}),
   };
   const artifactPaths = () => [...new Set(requests.filter(path => path.includes('/onnx/'))
@@ -161,8 +169,11 @@ describe('actual web bundle request planner adversarial investigation', () => {
   it('device-specific external-data config changes real requests beyond the registry plan', async () => {
     const h = await harness({
       config: {
-        model_type: 'llama', architectures: ['LlamaForCausalLM'],
-        num_hidden_layers: 1, num_attention_heads: 1, hidden_size: 8,
+        model_type: 'llama',
+        architectures: ['LlamaForCausalLM'],
+        num_hidden_layers: 1,
+        num_attention_heads: 1,
+        hidden_size: 8,
         'transformers.js_config': {
           use_external_data_format: false,
           device_config: { webgpu: { use_external_data_format: 2 } },

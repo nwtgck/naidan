@@ -16,9 +16,14 @@ const files = [...imageModelRecipes[1]!.files];
 beforeEach(() => {
   calls.fetch.mockReset();
   const root = new MemoryDirectory('root');
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-    options.signal?.throwIfAborted(); return run();
-  } } });
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); return run();
+      },
+    },
+  });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -31,10 +36,20 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
     const index = files.findIndex(file => request.url.includes(file.repository + '/'));
     const file = files[index]!, payload = payloads[index]!;
     const bytes = request.url.includes('/api/') ? new TextEncoder().encode(JSON.stringify([{ type: 'file', path: file.path, size: payload.length, lfs: { size: payload.length, oid: createHash('sha256').update(payload).digest('hex') } }])) : payload;
-    return { url: request.url, status: 200, statusText: '', ok: true, redirected: false, responseType: 'basic', policyName: 'test', headers: new Headers(),
-      body: new ReadableStream({ start(controller) {
-        controller.enqueue(bytes); controller.close();
-      } }),
+    return {
+      url: request.url,
+      status: 200,
+      statusText: '',
+      ok: true,
+      redirected: false,
+      responseType: 'basic',
+      policyName: 'test',
+      headers: new Headers(),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes); controller.close();
+        },
+      }),
     };
   });
   const bridge = createImageDownloadFetchBridge({ signal: new AbortController().signal });

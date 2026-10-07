@@ -5,9 +5,13 @@ import { applyImageGenerationPromptEdit, type ImageGenerationPromptChange, type 
 
 function harness() {
   const target: ImageGenerationPromptTarget = {
-    storeId: toImageGenerationStoreId({ raw: 'store-aa' }), sessionId: toImageGenerationSessionId({ raw: 'session-aa' }),
-    bindingId: toImageGenerationBindingId({ raw: 'binding-aa' }), chatId: toChatId({ raw: 'chat-aa' }),
-    revision: toImageGenerationDraftRevisionId({ raw: 'draft-aa' }), prompt: '雨の夜景', negativePrompt: 'blur',
+    storeId: toImageGenerationStoreId({ raw: 'store-aa' }),
+    sessionId: toImageGenerationSessionId({ raw: 'session-aa' }),
+    bindingId: toImageGenerationBindingId({ raw: 'binding-aa' }),
+    chatId: toChatId({ raw: 'chat-aa' }),
+    revision: toImageGenerationDraftRevisionId({ raw: 'draft-aa' }),
+    prompt: '雨の夜景',
+    negativePrompt: 'blur',
   };
   let current: ImageGenerationPromptTarget | undefined = { ...target };
   const controller = new AbortController();
@@ -20,9 +24,15 @@ function harness() {
   const approval = Promise.withResolvers<ApprovalEnsureResult>();
   const ensureApproval = vi.fn(async (_request: { change: ImageGenerationPromptChange }) => approval.promise);
   const options = { target, edit: { field: 'prompt', value: 'A rainy night' }, signal: controller.signal, readTarget, ensureApproval, commit };
-  return { ...options, options, approval, controller, setCurrent({ value }: { value: ImageGenerationPromptTarget | undefined }) {
-    current = value;
-  } };
+  return {
+    ...options,
+    options,
+    approval,
+    controller,
+    setCurrent({ value }: { value: ImageGenerationPromptTarget | undefined }) {
+      current = value;
+    },
+  };
 }
 
 describe('scoped Image Generation prompt access', () => {
@@ -73,10 +83,14 @@ describe('scoped Image Generation prompt access', () => {
   });
   it.each(['changed prompt', 'unchanged text after undo', 'changed model/context', 'changed negative prompt'])('rejects a stale draft: %s', async cause => {
     const h = harness(); const operation = applyImageGenerationPromptEdit(h.options);
-    h.setCurrent({ value: { ...h.target, revision: toImageGenerationDraftRevisionId({ raw: 'new-revision' }),
-      prompt: cause === 'changed prompt' ? 'edited manually' : h.target.prompt,
-      negativePrompt: cause === 'changed negative prompt' ? 'new negative' : h.target.negativePrompt,
-    } });
+    h.setCurrent({
+      value: {
+        ...h.target,
+        revision: toImageGenerationDraftRevisionId({ raw: 'new-revision' }),
+        prompt: cause === 'changed prompt' ? 'edited manually' : h.target.prompt,
+        negativePrompt: cause === 'changed negative prompt' ? 'new negative' : h.target.negativePrompt,
+      },
+    });
     h.approval.resolve({ status: 'approved' });
     expect(await operation).toEqual({ status: 'stale' }); expect(h.commit).not.toHaveBeenCalled();
   });

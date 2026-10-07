@@ -22,51 +22,99 @@ function fixedFixture(): ChatContent {
   const toolCallId = toToolCallId({ raw: 'model-support-investigation-tool-call-1' });
   const nodes: MessageNode[] = [
     {
-      id: toMessageId({ raw: 'model-support-investigation-system' }), role: 'system', createdAt: 0,
-      modelId: undefined, lmParameters: undefined,
+      id: toMessageId({ raw: 'model-support-investigation-system' }),
+      role: 'system',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
       parts: [{ type: 'text', text: 'Keep the supplied history unchanged.', completeness: 'complete' }],
       replies: { items: [] },
     },
     {
-      id: toMessageId({ raw: 'model-support-investigation-user' }), role: 'user', createdAt: 1,
-      modelId: undefined, lmParameters: undefined,
+      id: toMessageId({ raw: 'model-support-investigation-user' }),
+      role: 'user',
+      createdAt: 1,
+      modelId: undefined,
+      lmParameters: undefined,
       parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }],
       replies: { items: [] },
     },
     {
-      id: toMessageId({ raw: 'model-support-investigation-assistant' }), role: 'assistant', createdAt: 2,
-      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      id: toMessageId({ raw: 'model-support-investigation-assistant' }),
+      role: 'assistant',
+      createdAt: 2,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
       parts: [
-        { type: 'reasoning', text: `\
-  Check the forecast.\n`, completeness: 'complete' },
+        {
+          type: 'reasoning',
+          text: `\
+  Check the forecast.\n`,
+          completeness: 'complete',
+        },
         { type: 'text', text: '', completeness: 'complete' },
         { type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { id: toolCallId, type: 'function', function: { name: 'lookup_weather', arguments: `\
+        {
+          type: 'tool_call',
+          toolCall: {
+            id: toolCallId,
+            type: 'function',
+            function: {
+              name: 'lookup_weather',
+              arguments: `\
 {
   "city": "Tokyo",
   "unit": "C"
-}` } } },
+}`,
+            },
+          },
+        },
       ],
       replies: { items: [] },
     },
     {
-      id: toMessageId({ raw: 'model-support-investigation-tool-result' }), role: 'tool', createdAt: 3,
-      modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'tool_result', result: { toolCallId, status: 'success', content: { type: 'text', text: `\
+      id: toMessageId({ raw: 'model-support-investigation-tool-result' }),
+      role: 'tool',
+      createdAt: 3,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{
+        type: 'tool_result',
+        result: {
+          toolCallId,
+          status: 'success',
+          content: {
+            type: 'text',
+            text: `\
 {"temperatureC":20,"condition":"clear"}
-source=fixture` } } }],
+source=fixture`,
+          },
+        },
+      }],
       replies: { items: [] },
     },
     {
-      id: toMessageId({ raw: 'model-support-investigation-partial' }), role: 'assistant', createdAt: 4,
-      modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
-      parts: [{ type: 'text', text: `\
-  Tokyo 🙂\n`, completeness: 'partial' }],
+      id: toMessageId({ raw: 'model-support-investigation-partial' }),
+      role: 'assistant',
+      createdAt: 4,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: { type: 'cancelled' },
+      parts: [{
+        type: 'text',
+        text: `\
+  Tokyo 🙂\n`,
+        completeness: 'partial',
+      }],
       replies: { items: [] },
     },
     {
-      id: toMessageId({ raw: 'model-support-investigation-follow-up' }), role: 'user', createdAt: 5,
-      modelId: undefined, lmParameters: undefined,
+      id: toMessageId({ raw: 'model-support-investigation-follow-up' }),
+      role: 'user',
+      createdAt: 5,
+      modelId: undefined,
+      lmParameters: undefined,
       parts: [{ type: 'text', text: 'Use the tool result in a new answer.', completeness: 'complete' }],
       replies: { items: [] },
     },
@@ -78,9 +126,13 @@ source=fixture` } } }],
 }
 
 function projectPersistenceFixture({ content }: { content: ChatContent }) {
-  return recordPersistencePartsMessages({ messages: buildChatGenerationMessages({
-    chat: content, excludedMessageId: undefined, systemPromptMessages: [],
-  }) });
+  return recordPersistencePartsMessages({
+    messages: buildChatGenerationMessages({
+      chat: content,
+      excludedMessageId: undefined,
+      systemPromptMessages: [],
+    }),
+  });
 }
 
 export async function inspectChatPersistenceRoundTrip(): Promise<ModelSupportInvestigationPersistencePartsRoundTrip> {
@@ -93,11 +145,14 @@ export async function inspectChatPersistenceRoundTrip(): Promise<ModelSupportInv
     const mismatch = firstPersistencePartsMismatch({ expected: originalMessages, actual: restoredMessages });
 
     return {
-      status: 'observed', fixtureId, method,
+      status: 'observed',
+      fixtureId,
+      method,
       modelVisibleProjectionMethod: 'build_chat_generation_messages_parts_v2',
       serializedByteLength: bytes.byteLength,
       serializedSha256: await sha256Hex({ bytes }),
-      originalMessages, restoredMessages,
+      originalMessages,
+      restoredMessages,
       exactModelVisibleMatch: mismatch === undefined,
       firstMismatchIndex: mismatch,
     };

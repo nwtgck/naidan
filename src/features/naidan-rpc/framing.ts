@@ -52,14 +52,26 @@ export class FramedDuplex {
   send({ frame }: { frame: Frame }): Promise<void> {
     if (this.failure) return Promise.reject(this.failure);
     check({ condition: !this.closing, code: 'RESOURCE_EXHAUSTED' });
-    if (this.queue.length >= QUEUE_FRAMES) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: {
-      scope: 'rpc-frame', constraint: 'queued-frames', limit: QUEUE_FRAMES, observed: this.queue.length + 1,
-    } });
+    if (this.queue.length >= QUEUE_FRAMES) throw new NaidanRpcPublicError({
+      code: 'RESOURCE_EXHAUSTED',
+      details: {
+        scope: 'rpc-frame',
+        constraint: 'queued-frames',
+        limit: QUEUE_FRAMES,
+        observed: this.queue.length + 1,
+      },
+    });
     const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES });
     const bytes = new Uint8Array(payload.length + 4); new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
-    if (this.queuedBytes + bytes.length > QUEUE_BYTES) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: {
-      scope: 'rpc-frame', constraint: 'queued-bytes', limit: QUEUE_BYTES, observed: this.queuedBytes + bytes.length,
-    } });
+    if (this.queuedBytes + bytes.length > QUEUE_BYTES) throw new NaidanRpcPublicError({
+      code: 'RESOURCE_EXHAUSTED',
+      details: {
+        scope: 'rpc-frame',
+        constraint: 'queued-bytes',
+        limit: QUEUE_BYTES,
+        observed: this.queuedBytes + bytes.length,
+      },
+    });
     const settled = deferred<void>(); this.queue.push({ bytes, settled }); this.queuedBytes += bytes.length;
     this.kick(); return settled.promise;
   }

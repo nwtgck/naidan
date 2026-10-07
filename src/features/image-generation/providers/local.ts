@@ -17,7 +17,10 @@ export function prepareLocalImageExecution({ request, snapshot, client, onDiagno
 }): PreparedImageExecution {
   // request was schema-projected before this boundary. Copy mutable settings;
   // File objects are immutable and intentionally not cloned or serialized.
-  const captured = { ...request, parameters: { ...request.parameters }, preview: { ...request.preview },
+  const captured = {
+    ...request,
+    parameters: { ...request.parameters },
+    preview: { ...request.preview },
     models: request.models.map(model => ({ ...model, companions: model.companions?.map(file => ({ ...file })) })),
     loras: request.loras.map(lora => ({ ...lora })),
     imageInputs: { ...request.imageInputs, referenceImages: [...request.imageInputs.referenceImages] },
@@ -28,7 +31,8 @@ export function prepareLocalImageExecution({ request, snapshot, client, onDiagno
     } catch { /* Completed pixels must survive a display observer failure. */ }
   }
   return createImageExecutionPlan({
-    snapshot, copySnapshot: copyImageGenerationSnapshot,
+    snapshot,
+    copySnapshot: copyImageGenerationSnapshot,
     reserve({ signal }) {
       return client().reserve?.({ signal }) ?? { release() {} };
     },

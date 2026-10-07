@@ -124,7 +124,7 @@ const sampleMetadata: ChatMeta = {
     httpHeaders: [['Authorization', 'secret-token']],
   },
   modelId: 'gpt-5',
-  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   originChatId: toChatId({ raw: 'origin-chat' }),
   originMessageId: toMessageId({ raw: 'origin-message' }),
   systemPrompt: { behavior: 'append', content: 'Be concise.' },
@@ -155,7 +155,7 @@ const sampleContent: ChatContent = {
           {
             type: 'text',
             text: 'Hello from the user',
-            completeness: 'complete'
+            completeness: 'complete',
           },
           {
             type: 'attachment',
@@ -167,7 +167,7 @@ const sampleContent: ChatContent = {
               size: 1234,
               uploadedAt: 999,
               status: 'persisted',
-            }
+            },
           }
         ],
         replies: {
@@ -182,12 +182,12 @@ const sampleContent: ChatContent = {
                 {
                   type: 'reasoning',
                   text: 'internal thought',
-                  completeness: 'complete'
+                  completeness: 'complete',
                 },
                 {
                   type: 'text',
                   text: 'Assistant reply',
-                  completeness: 'complete'
+                  completeness: 'complete',
                 },
                 {
                   type: 'tool_call',
@@ -198,7 +198,7 @@ const sampleContent: ChatContent = {
                       name: 'shell_execute',
                       arguments: '{"cmd":"echo hi"}',
                     },
-                  }
+                  },
                 }
               ],
               interruption: undefined,
@@ -220,16 +220,16 @@ const sampleContent: ChatContent = {
                             type: 'text',
                             text: 'tool output',
                           },
-                        }
+                        },
                       }
                     ],
-                    replies: { items: [] }
+                    replies: { items: [] },
                   },
                 ],
-              }
+              },
             },
           ],
-        }
+        },
       },
     ],
   },
@@ -249,7 +249,7 @@ const branchingContent: ChatContent = {
           {
             type: 'text',
             text: 'Root user',
-            completeness: 'complete'
+            completeness: 'complete',
           }
         ],
         replies: {
@@ -264,7 +264,7 @@ const branchingContent: ChatContent = {
                 {
                   type: 'text',
                   text: 'Root assistant',
-                  completeness: 'complete'
+                  completeness: 'complete',
                 }
               ],
               interruption: undefined,
@@ -280,7 +280,7 @@ const branchingContent: ChatContent = {
                       {
                         type: 'text',
                         text: 'Branch A user',
-                        completeness: 'complete'
+                        completeness: 'complete',
                       }
                     ],
                     replies: {
@@ -295,11 +295,11 @@ const branchingContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch A first leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                         {
                           id: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
@@ -311,14 +311,14 @@ const branchingContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch A current leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                       ],
-                    }
+                    },
                   },
                   {
                     id: toMessageId({ raw: 'Pu3bC6D7e8F9g0H1i2J3' }),
@@ -330,7 +330,7 @@ const branchingContent: ChatContent = {
                       {
                         type: 'text',
                         text: 'Branch B user',
-                        completeness: 'complete'
+                        completeness: 'complete',
                       }
                     ],
                     replies: {
@@ -345,20 +345,20 @@ const branchingContent: ChatContent = {
                             {
                               type: 'text',
                               text: 'Branch B leaf',
-                              completeness: 'complete'
+                              completeness: 'complete',
                             }
                           ],
                           interruption: undefined,
-                          replies: { items: [] }
+                          replies: { items: [] },
                         },
                       ],
-                    }
+                    },
                   },
                 ],
-              }
+              },
             },
           ],
-        }
+        },
       },
     ],
   },
@@ -375,7 +375,7 @@ const sampleChatGroup: ChatGroup = {
     httpHeaders: [['Authorization', 'group-secret-token']],
   },
   modelId: 'gpt-5',
-  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+  titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   systemPrompt: { behavior: 'append', content: 'Group prompt.' },
   lmParameters: undefined,
   mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-2' }), mountPath: '/shared', readOnly: true }],

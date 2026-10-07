@@ -111,13 +111,18 @@ export class FiniteEndpoint implements FiniteTransport {
         headers?: { name: string; value: string }[];
     }) {
     requireValue({ condition: policy === 'https-only' || policy === 'allow-loopback-http', message: 'Invalid origin policy' });
-    requireValue({ condition: Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2147483647 &&
+    requireValue({
+      condition: Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2147483647 &&
                 Number.isInteger(repairTimeoutMs) && repairTimeoutMs > 0 && repairTimeoutMs <= 2147483647,
-    message: 'Invalid attempt deadlines' });
+      message: 'Invalid attempt deadlines',
+    });
     const url = new URL(baseUrl);
     requireValue({ condition: !url.username && !url.password && !url.search && !url.hash && url.pathname === '/', message: 'Relay base must be an origin' });
-    requireValue({ condition: url.protocol === 'https:' || (policy === 'allow-loopback-http' && url.protocol === 'http:' &&
-                (url.hostname === '127.0.0.1' || url.hostname === '[::1]' || url.hostname === 'localhost')), message: 'HTTPS relay required' });
+    requireValue({
+      condition: url.protocol === 'https:' || (policy === 'allow-loopback-http' && url.protocol === 'http:' &&
+                (url.hostname === '127.0.0.1' || url.hostname === '[::1]' || url.hostname === 'localhost')),
+      message: 'HTTPS relay required',
+    });
     this.headers = restrictedFetchHeadersSchema.parse(headers ?? []);
     this.retryWindowMs = timeoutMs;
     this.internalBase = url.origin;
@@ -139,8 +144,15 @@ export class FiniteEndpoint implements FiniteTransport {
     requireValue({ condition: /^[A-Za-z0-9_-]{1,96}$/.test(route), message: 'Invalid route' });
     const deadline = new Deadline({ parent: signal, milliseconds: timeout });
     try {
-      const options: RequestInit = { method, signal: deadline.signal, credentials: 'omit', redirect: 'error',
-        cache: 'no-store', referrerPolicy: 'no-referrer', mode: 'cors' };
+      const options: RequestInit = {
+        method,
+        signal: deadline.signal,
+        credentials: 'omit',
+        redirect: 'error',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        mode: 'cors',
+      };
       if (this.headers.length) options.headers = this.headers.map(({ name, value }) => [name, value]);
       if (body !== undefined)
         options.body = new Uint8Array(body);
@@ -149,8 +161,10 @@ export class FiniteEndpoint implements FiniteTransport {
         // Headers determine the status without reading a diagnostic body.
         // Join cancellation before relinquishing this request's POST ownership.
         await response.body?.cancel().catch(() => {});
-        throw new AttemptError({ kind: response.status === 408 || response.status === 429 || response.status >= 500
-          ? 'transient' : 'fatal' });
+        throw new AttemptError({
+          kind: response.status === 408 || response.status === 429 || response.status >= 500
+            ? 'transient' : 'fatal',
+        });
       }
       const bytes = await readBounded({ response, maxBytes: response.status === 200 ? limit : 8192 });
       deadline.signal.throwIfAborted();

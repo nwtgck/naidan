@@ -33,26 +33,49 @@ import { prepareChat } from './native-chat';
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
 
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), companion: false, openCompanion: vi.fn(), core: undefined as Core | undefined }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => ({ id: 'user/private-local-name-GGUF', name: 'fixture', modelPath: 'fixture.gguf', projectorPath: host.companion ? 'mmproj.gguf' : undefined, files: [{ path: 'fixture.gguf', file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }), handle: { isSameEntry: async () => host.sameFile, createSyncAccessHandle: async () => ({
-  getSize: () => host.bytes.length,
-  read: (target: Uint8Array, { at }: { at: number }) => {
-    host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
-  },
-  close: host.close,
-}) } }, ...(host.companion ? [{ path: 'mmproj.gguf', file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }), handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } }] : [])] }) }));
-vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => {
+vi.mock('../runtime/model-store', () => ({
+  storedModelDirectory: async () => ({
+    id: 'user/private-local-name-GGUF',
+    name: 'fixture',
+    modelPath: 'fixture.gguf',
+    projectorPath: host.companion ? 'mmproj.gguf' : undefined,
+    files: [{
+      path: 'fixture.gguf',
+      file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }),
+      handle: {
+        isSameEntry: async () => host.sameFile,
+        createSyncAccessHandle: async () => ({
+          getSize: () => host.bytes.length,
+          read: (target: Uint8Array, { at }: { at: number }) => {
+            host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
+          },
+          close: host.close,
+        }),
+      },
+    }, ...(host.companion ? [{ path: 'mmproj.gguf', file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }), handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } }] : [])],
+  }),
+}));
+vi.mock('../runtime/load-runtime', () => ({
+  loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
-  const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
-  host.modelLoads++;
-  host.core = await createCore({ profile: integrationProfile, baseURL: pathToFileURL(folder + '/profiles/'), moduleOptions: {
-    wasmBinary: await readFile(path.join(folder, `profiles/${integrationProfile}/browser/core.wasm`)), print() {}, printErr() {},
-  } });
-  expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm32-jspi': 4, 'webgpu-wasm64-jspi': 8, 'webgpu-wasm32-asyncify': 4 }[integrationProfile]);
-  const setField = host.core.setField;
-  host.core.setField = args => setField({ ...args, value: args.name === 'llama_model_params' && args.field === 'n_gpu_layers' ? 0 : args.value });
-  await host.core.api.llama_backend_init();
-  return host.core;
-} }));
+    const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
+    host.modelLoads++;
+    host.core = await createCore({
+      profile: integrationProfile,
+      baseURL: pathToFileURL(folder + '/profiles/'),
+      moduleOptions: {
+        wasmBinary: await readFile(path.join(folder, `profiles/${integrationProfile}/browser/core.wasm`)),
+        print() {},
+        printErr() {},
+      },
+    });
+    expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm32-jspi': 4, 'webgpu-wasm64-jspi': 8, 'webgpu-wasm32-asyncify': 4 }[integrationProfile]);
+    const setField = host.core.setField;
+    host.core.setField = args => setField({ ...args, value: args.name === 'llama_model_params' && args.field === 'n_gpu_layers' ? 0 : args.value });
+    await host.core.api.llama_backend_init();
+    return host.core;
+  },
+}));
 afterAll(async () => {
   await releaseSession({ releaseRuntime: true });
 });
@@ -82,14 +105,18 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const chunks: string[] = []; const phases: string[] = [];
-    await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'private prompt' }] }),
+    await generate({
+      signal: undefined,
+      request: request({ messages: [{ role: 'user', content: 'private prompt' }] }),
       onEvent: ({ event }) => {
         if (event.type !== 'text') return;
         const chunk = event.text;
         chunks.push(chunk);
-      }, onProgress: ({ progress }) => {
+      },
+      onProgress: ({ progress }) => {
         phases.push(progress.phase);
-      } });
+      },
+    });
     expect(chunks.join('')).toBe('AAAAA');
     expect(phases).toContain('loading'); expect(phases).toContain('prefill'); expect(phases).toContain('generating');
     expect(host.reads).toBeGreaterThan(0); expect(host.maxRead).toBeLessThanOrEqual(8 * 1024 * 1024);
@@ -141,11 +168,16 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       throw new RangeError('controlled optional copy allocation failure');
     });
     const factory = vi.spyOn(renderingModule, 'createTokenRenderer').mockImplementation(({ core, vocab, cacheMode }) => create({
-      core: { ...core, bytes({ pointer, length }) {
-        const view = core.bytes({ pointer, length });
-        view.slice = copy;
-        return view;
-      } }, vocab, cacheMode,
+      core: {
+        ...core,
+        bytes({ pointer, length }) {
+          const view = core.bytes({ pointer, length });
+          view.slice = copy;
+          return view;
+        },
+      },
+      vocab,
+      cacheMode,
     }));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
@@ -216,10 +248,14 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const callbacks: string[] = [];
     try {
-      const result = await generate({ request: req, signal: undefined,
+      const result = await generate({
+        request: req,
+        signal: undefined,
         onEvent: ({ event }) => {
           callbacks.push(event.type);
-        }, onProgress: () => {} });
+        },
+        onProgress: () => {},
+      });
       expect(result.content).toBe('A'); expect(result.finishReason).toBe('length');
       expect(tokenize).toHaveBeenCalledOnce();
       expect(tokenize.mock.calls[0]![3]).not.toBe(0n);
@@ -230,10 +266,19 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
       expect(reports).toHaveLength(1);
       const report = reports[0]!;
-      expect(report.performance).toMatchObject({ version: 1, outcome: 'completed', input: 'text',
-        tokenizeCalls: 1, checkpointTokenizeCalls: 0, sampledTokens: 1, decodedTokens: 0,
-        terminalDecodeDeferred: true, promptTokens: session.cache.tokens.length,
-        prefillDecodedTokens: session.cache.tokens.length, reusedTokens: 0 });
+      expect(report.performance).toMatchObject({
+        version: 1,
+        outcome: 'completed',
+        input: 'text',
+        tokenizeCalls: 1,
+        checkpointTokenizeCalls: 0,
+        sampledTokens: 1,
+        decodedTokens: 0,
+        terminalDecodeDeferred: true,
+        promptTokens: session.cache.tokens.length,
+        prefillDecodedTokens: session.cache.tokens.length,
+        reusedTokens: 0,
+      });
       expect(report.performance!.stages).toContainEqual(expect.objectContaining({ stage: 'cleanup', visits: 1 }));
       expect(report.performance!.stages.reduce((total, item) => total + item.elapsedMs, 0)).toBeCloseTo(report.elapsedMs!, 5);
       expect(report.performance!.firstSampleMs).toBeLessThanOrEqual(report.performance!.firstDeliveryMs!);
@@ -257,8 +302,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(result.content).toHaveLength(limit);
     expect(session.cache.tokens).toHaveLength(10 + limit - 1);
     expect(await sequencePosition()).toBe(10 + limit - 2);
-    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaaX' },
-      { role: 'assistant', content: result.content }, { role: 'user', content: 'XX' }] });
+    const next = request({
+      messages: [{ role: 'user', content: 'aaaaaaaaX' },
+        { role: 'assistant', content: result.content }, { role: 'user', content: 'XX' }],
+    });
     next.stop = ['A', 'B'];
     const batch = vi.spyOn(session.core.api, 'llama_batch_get_one');
     const clear = vi.spyOn(session.core.api, 'llama_memory_clear');
@@ -288,9 +335,14 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await expect(generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: ({ progress }) => {
-        if (progress.phase === 'generating') controller.abort();
-      } })).rejects.toThrow('aborted');
+      await expect(generate({
+        request: req,
+        signal: controller.signal,
+        onEvent: () => {},
+        onProgress: ({ progress }) => {
+          if (progress.phase === 'generating') controller.abort();
+        },
+      })).rejects.toThrow('aborted');
       expect(decode).toHaveBeenCalledOnce();
       expect(session.cache.validity).toBe('invalid');
       const report = readDiagnostics({ calls: debug.mock.calls }).find(item => item.event === 'generation-performance');
@@ -378,11 +430,16 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
       expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
       const chunks: string[] = [];
-      await generate({ request: req, signal: undefined, onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        chunks.push(chunk);
-      }, onProgress: () => {} });
+      await generate({
+        request: req,
+        signal: undefined,
+        onEvent: ({ event }) => {
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          chunks.push(chunk);
+        },
+        onProgress: () => {},
+      });
       expect(chunks.join('')).toBe('AAAAA');
     } finally {
       sample.mockRestore(); debug.mockRestore();
@@ -402,24 +459,34 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const initialContext = sessionTesting.residentContext();
     const next = request({ messages: [{ role: 'user', content: 'different prompt' }] });
     const reused: string[] = [];
-    await generate({ request: next, signal: undefined, onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      reused.push(chunk);
-    }, onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    } });
+    await generate({
+      request: next,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        reused.push(chunk);
+      },
+      onProgress: ({ progress }) => {
+        phases.push(progress.phase);
+      },
+    });
     expect(host.reads).toBe(reads); expect(host.close).toHaveBeenCalledTimes(closes);
     expect(sessionTesting.residentContext()).toBe(initialContext);
     const reusedPosition = await sequencePosition();
     expect(phases).not.toContain('initializing'); expect(phases).not.toContain('loading'); expect(phases).toContain('prefill');
     await releaseSession({ releaseRuntime: false });
     const cold: string[] = [];
-    await generate({ request: next, signal: undefined, onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      cold.push(chunk);
-    }, onProgress: () => {} });
+    await generate({
+      request: next,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        cold.push(chunk);
+      },
+      onProgress: () => {},
+    });
     expect(cold).toEqual(reused); expect(host.reads).toBeGreaterThan(reads);
     // The untrained fixture produces identical tokens even with stale KV. Inspect
     // actual native positions as well, so accidentally omitting the clear fails.
@@ -427,59 +494,91 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
   }, 30000);
   it('keeps the model-limited context allocation across requests', async () => {
     const reads = host.reads; const phases: string[] = [];
-    await generate({ request: request({ messages: [{ role: 'user', content: 'hello' }] }), signal: undefined, onEvent: () => {}, onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    } });
+    await generate({
+      request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        phases.push(progress.phase);
+      },
+    });
     expect(host.reads).toBe(reads); expect(phases).not.toContain('initializing'); expect(phases).not.toContain('loading');
     expect(await host.core!.api.llama_n_ctx(sessionTesting.residentContext()!)).toBe(256);
   }, 30000);
   it('reloads a replaced file even when the name is unchanged', async () => {
     const reads = host.reads; host.revision++;
     const phases: string[] = [];
-    await generate({ request: request({ messages: [{ role: 'user', content: 'hello' }] }), signal: undefined, onEvent: () => {}, onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    } });
+    await generate({
+      request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        phases.push(progress.phase);
+      },
+    });
     expect(host.reads).toBeGreaterThan(reads); expect(phases).toContain('loading');
   }, 30000);
   it('cancels after prefill without dropping weights and can generate again', async () => {
     const reads = host.reads; const controller = new AbortController(); const chunks = vi.fn();
     const req = request({ messages: [{ role: 'user', content: 'cancel this request' }] });
-    await expect(generate({ request: req, signal: controller.signal, onEvent: chunks, onProgress: ({ progress }) => {
-      if (progress.phase === 'prefill' && progress.completed > 0) controller.abort();
-    } })).rejects.toThrow('aborted');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: chunks,
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'prefill' && progress.completed > 0) controller.abort();
+      },
+    })).rejects.toThrow('aborted');
     expect(chunks).not.toHaveBeenCalled(); expect(host.reads).toBe(reads);
     const generated: string[] = []; const phases: string[] = [];
-    await generate({ request: req, signal: undefined, onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      generated.push(chunk);
-    }, onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    } });
+    await generate({
+      request: req,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        generated.push(chunk);
+      },
+      onProgress: ({ progress }) => {
+        phases.push(progress.phase);
+      },
+    });
     expect(generated.length).toBeGreaterThan(0); expect(host.reads).toBe(reads); expect(phases).not.toContain('loading');
   }, 30000);
   it('cancels during generation and never forwards a tail after cancellation', async () => {
     const controller = new AbortController(); const chunks: string[] = []; const reads = host.reads;
-    await expect(generate({ request: request({ messages: [{ role: 'user', content: 'hello' }] }), signal: controller.signal,
+    await expect(generate({
+      request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+      signal: controller.signal,
       onEvent: ({ event }) => {
         if (event.type !== 'text') return;
         const chunk = event.text;
         chunks.push(chunk); controller.abort();
-      }, onProgress: () => {} })).rejects.toThrow('aborted');
+      },
+      onProgress: () => {},
+    })).rejects.toThrow('aborted');
     expect(chunks).toHaveLength(1); expect(host.reads).toBe(reads);
   }, 30000);
   it('does not load or allocate for an already cancelled request', async () => {
     const controller = new AbortController(); controller.abort(); const reads = host.reads;
     const onProgress = vi.fn();
-    await expect(generate({ request: request({ messages: [{ role: 'user', content: 'hello' }] }), signal: controller.signal,
-      onEvent: () => {}, onProgress })).rejects.toThrow('aborted');
+    await expect(generate({
+      request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+      signal: controller.signal,
+      onEvent: () => {},
+      onProgress,
+    })).rejects.toThrow('aborted');
     expect(host.reads).toBe(reads); expect(onProgress).not.toHaveBeenCalled();
   });
   it('reloads if the filesystem identity changes without a size or timestamp change', async () => {
     const reads = host.reads; host.sameFile = false;
     try {
-      await generate({ request: request({ messages: [{ role: 'user', content: 'hello' }] }), signal: undefined,
-        onEvent: () => {}, onProgress: () => {} });
+      await generate({
+        request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+        signal: undefined,
+        onEvent: () => {},
+        onProgress: () => {},
+      });
       expect(host.reads).toBeGreaterThan(reads);
     } finally {
       host.sameFile = true;
@@ -502,14 +601,24 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     await releaseSession({ releaseRuntime: false });
     const controller = new AbortController(); const reads = host.reads; const closes = host.close.mock.calls.length;
     const req = request({ messages: [{ role: 'user', content: 'hello' }] });
-    await expect(generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: ({ progress }) => {
-      if (progress.phase === 'loading') controller.abort();
-    } })).rejects.toThrow('aborted');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'loading') controller.abort();
+      },
+    })).rejects.toThrow('aborted');
     expect(host.close).toHaveBeenCalledTimes(closes + 1);
     const phases: string[] = [];
-    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    } });
+    await generate({
+      request: req,
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        phases.push(progress.phase);
+      },
+    });
     expect(host.reads).toBeGreaterThan(reads); expect(phases).toContain('loading');
     expect(host.close).toHaveBeenCalledTimes(closes + 2);
   }, 30000);
@@ -561,17 +670,32 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     try {
       await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse', cachedTokens: 0, tokens: 11, commonPrefixTokens: 0, cacheComparison: 'empty-cache',
-        nativeMemoryKind: 'attention', nativePositionMin: -1, nativePositionMax: -1, nativeRollbackTokens: 0,
+        event: 'cache-reuse',
+        cachedTokens: 0,
+        tokens: 11,
+        commonPrefixTokens: 0,
+        cacheComparison: 'empty-cache',
+        nativeMemoryKind: 'attention',
+        nativePositionMin: -1,
+        nativePositionMax: -1,
+        nativeRollbackTokens: 0,
       }));
       debug.mockClear();
       const second = request({ messages: [{ role: 'user', content: next }] });
       second.stop = ['A'];
       await generate({ request: second, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse', cachedTokens: 11, tokens: next.length + 1, commonPrefixTokens: common,
-        cacheComparison: comparison, reusedTokens: reused, evaluatedTokens: next.length + 1 - reused,
-        nativeMemoryKind: 'attention', nativePositionMin: 0, nativePositionMax: 10, nativeRollbackTokens: 0,
+        event: 'cache-reuse',
+        cachedTokens: 11,
+        tokens: next.length + 1,
+        commonPrefixTokens: common,
+        cacheComparison: comparison,
+        reusedTokens: reused,
+        evaluatedTokens: next.length + 1 - reused,
+        nativeMemoryKind: 'attention',
+        nativePositionMin: 0,
+        nativePositionMax: 10,
+        nativeRollbackTokens: 0,
       }));
       expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-old');
       expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-new');
@@ -638,7 +762,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] }); first.stop = ['A', 'B'];
     try {
       await expect(generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} })).resolves.toEqual({
-        content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop_sequence',
+        content: '',
+        reasoningContent: '',
+        toolCalls: [],
+        finishReason: 'stop_sequence',
       });
       const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
       expect(session.sequenceRemoval).toBe('none');
@@ -664,26 +791,29 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       name: 'an edited suffix',
       firstMessages: [{ role: 'user', content: 'aaaaaaaabbbbX' }],
       nextMessages: [{ role: 'user', content: 'aaaaaaaaccXX' }],
-      nextPrompt: 'aaaaaaaaccXX', retained: 9,
+      nextPrompt: 'aaaaaaaaccXX',
+      retained: 9,
     },
     {
       name: 'a shortened prompt',
       firstMessages: [{ role: 'user', content: 'aaaaaaaabbbbX' }],
       nextMessages: [{ role: 'user', content: 'aaaaaaaa' }],
-      nextPrompt: 'aaaaaaaa', retained: 8,
+      nextPrompt: 'aaaaaaaa',
+      retained: 8,
     },
     {
       name: 'reasoning omitted by the unchanged template on a new user turn',
       firstMessages: [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: 'X', reasoning_content: 'bbbb' }],
       nextMessages: [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: 'X', reasoning_content: 'bbbb' }, { role: 'user', content: 'X' }],
-      nextPrompt: 'aaaaaaaaXX', retained: 9,
+      nextPrompt: 'aaaaaaaaXX',
+      retained: 9,
     },
   ] satisfies { name: string, firstMessages: WorkerGenerateInput['messages'], nextMessages: WorkerGenerateInput['messages'], nextPrompt: string, retained: number }[])('reuses the native common prefix for $name and matches cold logits', async ({ firstMessages, nextMessages, nextPrompt, retained }) => {
     await releaseSession({ releaseRuntime: false });
     // This fixture deliberately omits past reasoning when a new user turn is
     // present. The application must preserve that template's input semantics.
-    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate:
-      '{% for message in messages %}{% if message.reasoning_content is defined and messages[-1].role == "assistant" %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% endfor %}',
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({
+      chatTemplate: '{% for message in messages %}{% if message.reasoning_content is defined and messages[-1].role == "assistant" %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% endfor %}',
     }));
     const first = request({ messages: firstMessages }); first.stop = ['A', 'B'];
     await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
@@ -712,7 +842,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       expect(batches).toEqual([expectedTokens.slice(retained)]);
       expect(await sequencePosition()).toBe(expectedTokens.length - 1);
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse', reason: 'prefix-partial-match', reusedTokens: retained, evaluatedTokens: expectedTokens.length - retained,
+        event: 'cache-reuse',
+        reason: 'prefix-partial-match',
+        reusedTokens: retained,
+        evaluatedTokens: expectedTokens.length - retained,
       }));
       expect(Math.abs(warmLogits[68]! - originalLogits[68]!)).toBeGreaterThan(0.01);
 
@@ -795,8 +928,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     await releaseSession({ releaseRuntime: false });
     // This fixture has an intentionally simple independent input contract. It
     // tests real native rendering/tokenization/KV, not a particular model's chat protocol.
-    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate:
-      '{% for message in messages %}{{ message.role + ":" }}{% if message.reasoning_content is defined %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% if message.tool_calls is defined %}{% for call in message.tool_calls %}{{ call.function.name + ":" + call.function.arguments }}{% endfor %}{% endif %}{{ ";" }}{% endfor %}',
+    host.bytes = Uint8Array.from(createSyntheticGguf({
+      chatTemplate: '{% for message in messages %}{{ message.role + ":" }}{% if message.reasoning_content is defined %}{{ message.reasoning_content }}{% endif %}{{ message.content }}{% if message.tool_calls is defined %}{% for call in message.tool_calls %}{{ call.function.name + ":" + call.function.arguments }}{% endfor %}{% endif %}{{ ";" }}{% endfor %}',
     }));
     const storage = new MemoryStorageProvider();
     const binaryObjectId = toBinaryObjectId({ raw: 'native-tool-result' });
@@ -804,22 +937,36 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const resultText = '\uFEFF R🙂 ';
     await storage.saveFile({ binaryObjectId, blob: new Blob([resultText]), name: 'result.txt', mimeType: 'text/plain' });
     const tool: ToolMessageNode = {
-      id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      createdAt: 3,
+      modelId: undefined,
+      lmParameters: undefined,
       parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } }],
       replies: { items: [] },
     };
     const assistant: AssistantMessageNode = {
-      id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2,
-      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      id: toMessageId({ raw: 'assistant' }),
+      role: 'assistant',
+      createdAt: 2,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
       parts: [
         { type: 'reasoning', text: ' R\n', completeness: 'complete' },
         { type: 'text', text: '<think>[Aborted]</think> ', completeness: 'complete' },
         { type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } } },
-      ], replies: { items: [tool] },
+      ],
+      replies: { items: [tool] },
     };
     const user: UserMessageNode = {
-      id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'text', text: 'Q ', completeness: 'complete' }], replies: { items: [assistant] },
+      id: toMessageId({ raw: 'user' }),
+      role: 'user',
+      createdAt: 1,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'text', text: 'Q ', completeness: 'complete' }],
+      replies: { items: [assistant] },
     };
     const content: ChatContent = { currentLeafId: tool.id, root: { items: [user] } };
     const original = structuredClone(content);
@@ -831,7 +978,9 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
         model: 'private-local-name.gguf',
         messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
         parameters: { temperature: 0, topP: 0.95, maxCompletionTokens: 5, presencePenalty: undefined, frequencyPenalty: undefined, stop: ['A'], reasoning: { effort: undefined } },
-        tools: undefined, debug: undefined, signal: undefined,
+        tools: undefined,
+        debug: undefined,
+        signal: undefined,
         readBinaryObject: async ({ binaryObjectId, signal }) => {
           signal?.throwIfAborted();
           const blob = await storage.getFile({ binaryObjectId });
@@ -839,15 +988,20 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
           return blob;
         },
       }),
-      options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/',
+      options: { profile: integrationProfile },
+      assetBaseURL: 'https://example.invalid/runtime/',
     });
     const liveRequest = await makeRequest({ chat: content });
     const restoredRequest = await makeRequest({ chat: restored });
     expect(restoredRequest).toEqual(liveRequest);
     expect(restoredRequest.messages).toEqual([
       { role: 'user', content: 'Q ' },
-      { role: 'assistant', content: '<think>[Aborted]</think> ', reasoning_content: ' R\n',
-        tool_calls: [{ id: 'call', type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } }] },
+      {
+        role: 'assistant',
+        content: '<think>[Aborted]</think> ',
+        reasoning_content: ' R\n',
+        tool_calls: [{ id: 'call', type: 'function', function: { name: 'lookup', arguments: ' {"value":" x "} ' } }],
+      },
       { role: 'tool', content: resultText, name: 'lookup', tool_call_id: 'call' },
     ]);
     const { core, model } = await prepareSession({ request: liveRequest, signal: undefined, onProgress: () => {} });
@@ -887,11 +1041,19 @@ user:Q ;assistant: R
       expect(repeated).toEqual(first);
       expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse', reusedTokens: expectedTokens.length, evaluatedTokens: 0, reason: 'prefix-match',
+        event: 'cache-reuse',
+        reusedTokens: expectedTokens.length,
+        evaluatedTokens: 0,
+        reason: 'prefix-match',
       }));
       const followup: UserMessageNode = {
-        id: toMessageId({ raw: 'followup' }), role: 'user', createdAt: 4, modelId: undefined, lmParameters: undefined,
-        parts: [{ type: 'text', text: 'next', completeness: 'complete' }], replies: { items: [] },
+        id: toMessageId({ raw: 'followup' }),
+        role: 'user',
+        createdAt: 4,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'next', completeness: 'complete' }],
+        replies: { items: [] },
       };
       tool.replies.items.push(followup); content.currentLeafId = followup.id;
       const savedExtension = roundTripChatContentPersistenceSerialization({ content }).restored;
@@ -903,7 +1065,10 @@ user:Q ;assistant: R
       expect(batches.flat()).toEqual([...suffix, 68, 68, 68, 68]);
       expect(clear).not.toHaveBeenCalled();
       expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse', reusedTokens: expectedTokens.length, evaluatedTokens: suffix.length, reason: 'prefix-match',
+        event: 'cache-reuse',
+        reusedTokens: expectedTokens.length,
+        evaluatedTokens: suffix.length,
+        reason: 'prefix-match',
       }));
       const warmPosition = await sequencePosition();
       expect(warmPosition).toBe(expectedTokens.length + suffix.length + 3);
@@ -952,9 +1117,14 @@ user:Q ;assistant: R
     try {
       if (failure === 'decode-error') decode.mockResolvedValueOnce(2);
       if (failure === 'decode-exception') decode.mockRejectedValueOnce(new Error('private native failure'));
-      await expect(generate({ request: req, signal: controller.signal, onEvent: () => {
-        if (failure === 'cancelled') controller.abort();
-      }, onProgress: () => {} })).rejects.toThrow();
+      await expect(generate({
+        request: req,
+        signal: controller.signal,
+        onEvent: () => {
+          if (failure === 'cancelled') controller.abort();
+        },
+        onProgress: () => {},
+      })).rejects.toThrow();
       decode.mockClear(); batch.mockClear(); clear.mockClear();
       const result = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(result.content).toBe('AAAAA');
@@ -986,28 +1156,43 @@ user:Q ;assistant: R
     const chunks: string[] = [];
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'continue' }] }), maxTokens: undefined };
     try {
-      const result = await generate({ request: req, signal: undefined, onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        chunks.push(chunk);
-      }, onProgress: () => {} });
+      const result = await generate({
+        request: req,
+        signal: undefined,
+        onEvent: ({ event }) => {
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          chunks.push(chunk);
+        },
+        onProgress: () => {},
+      });
       expect(chunks.join('').length).toBeGreaterThan(1024);
       expect(result.finishReason).toBe('length');
       const capacity = await core.api.llama_n_ctx(sessionTesting.residentContext()!);
       expect(await sequencePosition()).toBe(capacity - 2);
       const limited: string[] = [];
-      await generate({ request: { ...req, maxTokens: 3 }, signal: undefined, onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        limited.push(chunk);
-      }, onProgress: () => {} });
+      await generate({
+        request: { ...req, maxTokens: 3 },
+        signal: undefined,
+        onEvent: ({ event }) => {
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          limited.push(chunk);
+        },
+        onProgress: () => {},
+      });
       expect(limited.join('')).toBe('AAA');
       const oversized: string[] = [];
-      const bounded = await generate({ request: { ...req, maxTokens: 65536 }, signal: undefined, onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        oversized.push(chunk);
-      }, onProgress: () => {} });
+      const bounded = await generate({
+        request: { ...req, maxTokens: 65536 },
+        signal: undefined,
+        onEvent: ({ event }) => {
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          oversized.push(chunk);
+        },
+        onProgress: () => {},
+      });
       expect(oversized.join('')).toBe(chunks.join(''));
       expect(bounded.finishReason).toBe('length');
       expect(await sequencePosition()).toBe(capacity - 2);
@@ -1159,9 +1344,19 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const req: WorkerGenerateInput = {
       ...request({ messages: [{ role: 'user', content: 'Find Tokyo' }] }),
       maxTokens: tokens.length,
-      tools: [{ type: 'function', function: { name: 'lookup', description: 'Look up a city', parameters: {
-        type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false,
-      } } }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'lookup',
+          description: 'Look up a city',
+          parameters: {
+            type: 'object',
+            properties: { city: { type: 'string' } },
+            required: ['city'],
+            additionalProperties: false,
+          },
+        },
+      }],
     };
     // A valid JSON object still does not confirm a call without a native stop.
     if (termination === 'length') req.maxTokens = output.indexOf('</tool_call>');
@@ -1174,16 +1369,21 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const controller = new AbortController();
     let argumentsText = '';
     try {
-      const pending = generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: ({ event }) => {
-        events.push(event);
-        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-          expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
-          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-          previews.push(argumentsText);
-          expect(events.some(value => value.type === 'tool_call')).toBe(false);
-          if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
-        }
-      } });
+      const pending = generate({
+        request: req,
+        signal: controller.signal,
+        onProgress: () => {},
+        onEvent: ({ event }) => {
+          events.push(event);
+          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+            expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
+            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+            previews.push(argumentsText);
+            expect(events.some(value => value.type === 'tool_call')).toBe(false);
+            if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
+          }
+        },
+      });
       if (termination === 'aborted') await expect(pending).rejects.toThrow();
       else {
         const result = await pending;
@@ -1217,9 +1417,15 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       ...prepare(args),
       // Native formats may close JSON in a partial snapshot and revise it later.
       // Inject that parser behavior while keeping the real generation/ACK loop.
-      parse: ({ text }) => ({ content: '', reasoningContent: '', toolCalls: [{
-        id: '', type: 'function', function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
-      }] }),
+      parse: ({ text }) => ({
+        content: '',
+        reasoningContent: '',
+        toolCalls: [{
+          id: '',
+          type: 'function',
+          function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
+        }],
+      }),
     }));
     let count = 0;
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => ++count < 3 ? 3 + 65 : 2);
@@ -1227,14 +1433,19 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     let argumentsText = '';
     const snapshots: string[] = [];
     try {
-      const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-        events.push(event);
-        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-          expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
-          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-          snapshots.push(argumentsText);
-        }
-      } });
+      const result = await generate({
+        request: req,
+        signal: undefined,
+        onProgress: () => {},
+        onEvent: ({ event }) => {
+          events.push(event);
+          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+            expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
+            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+            snapshots.push(argumentsText);
+          }
+        },
+      });
       expect(snapshots).toContain(firstArguments);
       expect(argumentsText).toBe(finalArguments);
       expect(events).toContainEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: prefix.length, text: 'new"}' } });
@@ -1253,9 +1464,14 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     await generate({ request: { ...req, maxTokens: 1 }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
     const core = host.core!;const sample = vi.spyOn(core.api, 'llama_sampler_sample');const gate = Promise.withResolvers<void>();let entered = false;
     try {
-      const task = generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: async () => {
-        entered = true;await gate.promise;
-      } });
+      const task = generate({
+        request: req,
+        signal: undefined,
+        onProgress: () => {},
+        onEvent: async () => {
+          entered = true;await gate.promise;
+        },
+      });
       await vi.waitFor(() => expect(entered).toBe(true));expect(sample).toHaveBeenCalledOnce();
       await new Promise<void>(resolve => setTimeout(resolve, 10));expect(sample).toHaveBeenCalledOnce();
       gate.resolve();await task;expect(sample).toHaveBeenCalledTimes(2);
@@ -1275,9 +1491,14 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     });
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
     try {
-      await expect(generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-        events.push(event);
-      } })).rejects.toThrow('controlled decode failure');
+      await expect(generate({
+        request: req,
+        signal: undefined,
+        onProgress: () => {},
+        onEvent: ({ event }) => {
+          events.push(event);
+        },
+      })).rejects.toThrow('controlled decode failure');
       expect(events).toEqual([{ type: 'text', text: 'A' }]);
     } finally {
       sample.mockRestore();spy.mockRestore();
@@ -1313,9 +1534,14 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[offset++] ?? 2);
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
     try {
-      const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-        events.push(event);
-      } });
+      const result = await generate({
+        request: req,
+        signal: undefined,
+        onProgress: () => {},
+        onEvent: ({ event }) => {
+          events.push(event);
+        },
+      });
       expect(result).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
       expect(events.filter(e => e.type === 'reasoning').map(e => e.text).join('')).toBe('Reason');
       expect(events.filter(e => e.type === 'text').map(e => e.text).join('')).toBe('Answer  ');
@@ -1399,9 +1625,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     if (!checkpoint) throw new Error('Expected a real host checkpoint');
     const boundary = scenario === 'shortened-header' ? 8 : 9;
     expect(checkpoint.tokens).toEqual([1, ...byteTokens({ text: scenario === 'shortened-header' ? 'aaaaaaa' : 'aaaaaaaa' })]);
-    const next = request({ messages: scenario === 'reasoning-omission'
-      ? [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: '', reasoning_content: old.content }, { role: 'user', content: 'bbbb' }]
-      : [{ role: 'user', content: scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaa' }] });
+    const next = request({
+      messages: scenario === 'reasoning-omission'
+        ? [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: '', reasoning_content: old.content }, { role: 'user', content: 'bbbb' }]
+        : [{ role: 'user', content: scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaa' }],
+    });
     next.stop = ['A', 'B'];
     const expectedText = scenario === 'reasoning-omission' ? 'aaaaaaaabbbbGG' : scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaaGG';
     const expectedTokens = [1, ...byteTokens({ text: expectedText })];
@@ -1591,7 +1819,9 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     pacingTime = 0; referenceMode = undefined;
     const createPacing = pacingModule.createOutputPacing;
     vi.spyOn(pacingModule, 'createOutputPacing').mockImplementation(args => createPacing({
-      ...args, mode: referenceMode ?? args.mode, now: () => pacingTime,
+      ...args,
+      mode: referenceMode ?? args.mode,
+      now: () => pacingTime,
     }));
   });
   afterEach(async () => {
@@ -1605,11 +1835,16 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const chunks: string[] = [];
-    const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
-      chunks.push(event.text);
-    } });
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
+        chunks.push(event.text);
+      },
+    });
     const tokens = session.cache.tokens.slice();
     const position = await sequencePosition();
     expect(chunks.map(text => text.length)).toEqual([1, 8, 8, 8, 8]);
@@ -1617,16 +1852,27 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     const report = readDiagnostics({ calls: debug.mock.calls }).find(item => item.event === 'generation-performance');
     expect(report).toBeDefined();
     const streaming = diagnosticSchema.parse(report).performance!.streaming!;
-    expect(streaming).toEqual({ mode: 'coalesced', partialParseCalls: 6, finalParseCalls: 0,
-      parsedCodeUnits: 118, skippedPartialParses: 28, deliveredEvents: 5 });
+    expect(streaming).toEqual({
+      mode: 'coalesced',
+      partialParseCalls: 6,
+      finalParseCalls: 0,
+      parsedCodeUnits: 118,
+      skippedPartialParses: 28,
+      deliveredEvents: 5,
+    });
     // At a length boundary final parsing is still partial; it is intentionally
     // counted again, rather than claiming the final parse has been eliminated.
     await releaseSession({ releaseRuntime: false });
     referenceMode = 'per-token';
     const reference: string[] = [];
-    const perToken = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') reference.push(event.text);
-    } });
+    const perToken = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') reference.push(event.text);
+      },
+    });
     expect(perToken).toEqual(result);
     expect(reference).toHaveLength(33);
     expect(await sequencePosition()).toBe(position);
@@ -1644,9 +1890,14 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       return nativeSample(...args);
     });
     const chunks: string[] = [];
-    await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    } });
+    await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+    });
     expect(chunks).toEqual(['A', 'AAA', 'A']);
   }, 30000);
 
@@ -1658,9 +1909,14 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     let index = 0;
     vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[index++]!);
     const chunks: string[] = [];
-    const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    } });
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+    });
     expect(result.content).toBe(text);
     expect(chunks.join('')).toBe(text);
     expect(chunks[0]).toBe('A');
@@ -1674,9 +1930,14 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     let sampled = 0;
     vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[sampled++]!);
     const chunks: string[] = [];
-    const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    } });
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+    });
     expect(result.content).toBe('axy'); expect(result.finishReason).toBe('stop_sequence');
     expect(sampled).toBe(7); expect(chunks).toEqual(['a', 'xy']);
   }, 30000);
@@ -1699,11 +1960,16 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     const controller = new AbortController();
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const chunks: string[] = [];
-    await expect(generate({ request: req, signal: controller.signal, onProgress: ({ progress }) => {
-      if (failure === 'aborted' && progress.phase === 'generating' && progress.completed === 3) controller.abort();
-    }, onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    } })).rejects.toThrow(failure === 'aborted' ? 'aborted' : failure === 'decode-failure' ? 'runtime-error' : 'controlled sample failure');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onProgress: ({ progress }) => {
+        if (failure === 'aborted' && progress.phase === 'generating' && progress.completed === 3) controller.abort();
+      },
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+    })).rejects.toThrow(failure === 'aborted' ? 'aborted' : failure === 'decode-failure' ? 'runtime-error' : 'controlled sample failure');
     expect(chunks).toEqual(['A', 'AA']);
     expect(sample).toHaveBeenCalledTimes(failure === 'sample-failure' ? 4 : 3);
     expect(session.cache.validity).toBe('invalid'); expect(() => session.core.assertIdle()).not.toThrow();
@@ -1719,14 +1985,19 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const controller = new AbortController();
     const chunks: string[] = [];
-    await expect(generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      chunks.push(event.text);
-      if (chunks.length === 2) {
-        if (failure === 'reject') throw new Error('controlled delivery failure');
-        controller.abort();
-      }
-    } })).rejects.toThrow(failure === 'reject' ? 'controlled delivery failure' : 'aborted');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        chunks.push(event.text);
+        if (chunks.length === 2) {
+          if (failure === 'reject') throw new Error('controlled delivery failure');
+          controller.abort();
+        }
+      },
+    })).rejects.toThrow(failure === 'reject' ? 'controlled delivery failure' : 'aborted');
     expect(chunks).toEqual(['A', 'AAAAAAAA']);
     expect(sample).toHaveBeenCalledTimes(9);
     expect(decode).toHaveBeenCalledTimes(9); // One prefill and eight generation decodes.
@@ -1738,17 +2009,25 @@ describe('bounded partial-output parsing in the native generation loop', () => {
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     const controller = new AbortController();
     const chunks: string[] = [];
-    await expect(generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') {
-        chunks.push(event.text); controller.abort();
-      }
-    } })).rejects.toThrow('aborted');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') {
+          chunks.push(event.text); controller.abort();
+        }
+      },
+    })).rejects.toThrow('aborted');
     expect(chunks).toEqual(['A']); expect(session.cache.validity).toBe('invalid');
   }, 30000);
 
   it('retains per-token parsing for a request with tools', async () => {
-    const req = { ...request({ messages: [{ role: 'user', content: 'with tools' }] }), debug: 'on' as const,
-      tools: [{ type: 'function' as const, function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } } }] };
+    const req = {
+      ...request({ messages: [{ role: 'user', content: 'with tools' }] }),
+      debug: 'on' as const,
+      tools: [{ type: 'function' as const, function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } } }],
+    };
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance');
@@ -1783,9 +2062,13 @@ describe('final-only prefill outputs with real native decoding', () => {
     const pointer = await core.api.llama_get_logits_ith(context, -1);
     expect(pointer).not.toBe(0n);
     const count = await core.api.llama_vocab_n_tokens(vocab);
-    return { logits: Array.from(core.bytes({ pointer, length: count * 4 })),
-      tokens: session.cache.tokens.slice(), validity: session.cache.validity,
-      position: await sequencePosition(), checkpoint: session.cache.checkpoint?.tokens.slice() };
+    return {
+      logits: Array.from(core.bytes({ pointer, length: count * 4 })),
+      tokens: session.cache.tokens.slice(),
+      validity: session.cache.validity,
+      position: await sequencePosition(),
+      checkpoint: session.cache.checkpoint?.tokens.slice(),
+    };
   }
   function observeOutputs({ core }: { core: Core }) {
     const selections: { count: number, logits: number[] | undefined }[] = [];
@@ -1949,8 +2232,12 @@ describe('final-only prefill outputs with real native decoding', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-    expect(report).toMatchObject({ promptTokens: 4096, prefillDecodeCalls: 8, maximumPrefillBatchTokens: 512,
-      prefillOutputs: { requestedLogits: 1, skippedLogits: 7, allocationFallbacks: 0 } });
+    expect(report).toMatchObject({
+      promptTokens: 4096,
+      prefillDecodeCalls: 8,
+      maximumPrefillBatchTokens: 512,
+      prefillOutputs: { requestedLogits: 1, skippedLogits: 7, allocationFallbacks: 0 },
+    });
   }, 30000);
 });
 
@@ -1966,7 +2253,9 @@ describe('bounded task yields through the native generation loop', () => {
     const createYield = yieldModule.createGenerationYieldPacing;
     const createPacing = pacingModule.createOutputPacing;
     vi.spyOn(yieldModule, 'createGenerationYieldPacing').mockImplementation(args => createYield({
-      ...args, mode: referenceMode ?? args.mode, now: () => yieldTime,
+      ...args,
+      mode: referenceMode ?? args.mode,
+      now: () => yieldTime,
     }));
     vi.spyOn(pacingModule, 'createOutputPacing').mockImplementation(args => createPacing({ ...args, now: () => 0 }));
   });
@@ -1982,16 +2271,27 @@ describe('bounded task yields through the native generation loop', () => {
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');
     const chunks: string[] = [];
-    const actual = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') {
-        if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
-        chunks.push(event.text);
-      }
-    } });
+    const actual = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') {
+          if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
+          chunks.push(event.text);
+        }
+      },
+    });
     const state = { tokens: session.cache.tokens.slice(), position: await sequencePosition(), logits: await readNativeLogits() };
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-    expect(report.generationYield).toEqual({ mode: 'coalesced', checks: 32, requestedYields: 8,
-      completedYields: 8, coalescedYields: 24, maximumDecodesBetweenYields: 4 });
+    expect(report.generationYield).toEqual({
+      mode: 'coalesced',
+      checks: 32,
+      requestedYields: 8,
+      completedYields: 8,
+      coalescedYields: 24,
+      maximumDecodesBetweenYields: 4,
+    });
     expect(chunks.map(text => text.length)).toEqual([1, 8, 8, 8, 8]);
     expect(chunks.join('')).toBe(actual.content);
     await releaseSession({ releaseRuntime: false });
@@ -2036,11 +2336,16 @@ describe('bounded task yields through the native generation loop', () => {
     const chunks: string[] = []; let timer: ReturnType<typeof setTimeout> | undefined;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await expect(generate({ request: req, signal: controller.signal, onEvent: ({ event }) => {
-        if (event.type === 'text') chunks.push(event.text);
-      }, onProgress: ({ progress }) => {
-        if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
-      } })).rejects.toThrow('aborted');
+      await expect(generate({
+        request: req,
+        signal: controller.signal,
+        onEvent: ({ event }) => {
+          if (event.type === 'text') chunks.push(event.text);
+        },
+        onProgress: ({ progress }) => {
+          if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
+        },
+      })).rejects.toThrow('aborted');
       const expectedDecodes = scheduleAt === 1 ? 1 : 5;
       expect(sample).toHaveBeenCalledTimes(expectedDecodes);
       expect(chunks.join('')).toBe('A'.repeat(expectedDecodes));
@@ -2059,9 +2364,14 @@ describe('bounded task yields through the native generation loop', () => {
     const req = workload(); const controller = new AbortController();
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');
-    await expect(generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 2) controller.abort();
-    } })).rejects.toThrow('aborted');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating' && progress.completed === 2) controller.abort();
+      },
+    })).rejects.toThrow('aborted');
     expect(sample).toHaveBeenCalledTimes(2); expect(session.cache.validity).toBe('invalid');
   }, 30000);
 
@@ -2072,11 +2382,16 @@ describe('bounded task yields through the native generation loop', () => {
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const entered = Promise.withResolvers<void>(); const gate = Promise.withResolvers<void>();
     let events = 0;
-    const task = generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: async ({ event }) => {
-      if (event.type === 'text' && ++events === 2) {
-        entered.resolve(); await gate.promise;
-      }
-    } });
+    const task = generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: async ({ event }) => {
+        if (event.type === 'text' && ++events === 2) {
+          entered.resolve(); await gate.promise;
+        }
+      },
+    });
     try {
       await entered.promise;
       expect(sample).toHaveBeenCalledTimes(9);
@@ -2091,16 +2406,26 @@ describe('bounded task yields through the native generation loop', () => {
   it('yields every time when each decode window uses the elapsed budget', async () => {
     const req = workload();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: ({ progress }) => {
-      if (progress.phase === 'generating') yieldTime += 8;
-    } });
+    await generate({
+      request: req,
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating') yieldTime += 8;
+      },
+    });
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
     expect(report.generationYield).toMatchObject({ checks: 32, requestedYields: 32, completedYields: 32, coalescedYields: 0, maximumDecodesBetweenYields: 1 });
   }, 30000);
 
   it('retains per-token cooperation for tools and resets the budget for each request', async () => {
-    const req = { ...workload(), tools: [{ type: 'function' as const,
-      function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } } }] };
+    const req = {
+      ...workload(),
+      tools: [{
+        type: 'function' as const,
+        function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } },
+      }],
+    };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const toolReport = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
@@ -2125,9 +2450,14 @@ describe('bounded task yields through the native generation loop', () => {
     });
     const chunks: string[] = [];
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await expect(generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    } })).rejects.toThrow(failure === 'trap' ? 'controlled decode trap' : 'runtime-error');
+    await expect(generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+    })).rejects.toThrow(failure === 'trap' ? 'controlled decode trap' : 'runtime-error');
     expect(sample).toHaveBeenCalledTimes(2); expect(chunks.join('')).toBe('AA');
     expect(session.cache.validity).toBe('invalid');
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
@@ -2143,9 +2473,14 @@ describe('bounded task yields through the native generation loop', () => {
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     let deliveries = 0;
-    await expect(generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      if (event.type === 'text' && ++deliveries === 2) throw new Error('fixture consumer failure');
-    } })).rejects.toThrow('fixture consumer failure');
+    await expect(generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        if (event.type === 'text' && ++deliveries === 2) throw new Error('fixture consumer failure');
+      },
+    })).rejects.toThrow('fixture consumer failure');
     expect(deliveries).toBe(2); expect(sample).toHaveBeenCalledTimes(9);
     expect(session.cache.validity).toBe('invalid');
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
@@ -2183,9 +2518,13 @@ describe('verified initial-memory reset elision with the supplied native runtime
     const count = await session.core.api.llama_vocab_n_tokens(session.vocab);
     const pointer = await session.core.api.llama_get_logits_ith(session.context, -1);
     expect(pointer).not.toBe(0n);
-    return { logits: Array.from(session.core.bytes({ pointer, length: count * 4 })),
-      tokens: session.cache.tokens.slice(), validity: session.cache.validity, checkpoint: session.cache.checkpoint?.tokens.slice(),
-      position: await sequencePosition() };
+    return {
+      logits: Array.from(session.core.bytes({ pointer, length: count * 4 })),
+      tokens: session.cache.tokens.slice(),
+      validity: session.cache.validity,
+      checkpoint: session.cache.checkpoint?.tokens.slice(),
+      position: await sequencePosition(),
+    };
   }
   it.each((['attention', 'hybrid'] as const).flatMap(kind => [0, 0.7].map(temperature => ({ kind, temperature }))))(
     'preserves output, logits and continuation for $kind at temperature $temperature', async ({ kind, temperature }) => {
@@ -2246,9 +2585,14 @@ describe('verified initial-memory reset elision with the supplied native runtime
       case 'delivery': break;
       default: { const exhaustive: never = failure; throw new Error(exhaustive); }
       }
-      await expect(generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: () => {
-        if (failure === 'delivery') throw new Error('delivery fixture');
-      } })).rejects.toThrow();
+      await expect(generate({
+        request: req,
+        signal: controller.signal,
+        onProgress: () => {},
+        onEvent: () => {
+          if (failure === 'delivery') throw new Error('delivery fixture');
+        },
+      })).rejects.toThrow();
       expect(session.cache.initialMemoryState).toBe('unknown'); expect(session.cache.validity).toBe('invalid');
       clear.mockClear();
       await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
@@ -2294,8 +2638,13 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     const count = await session.core.api.llama_vocab_n_tokens(session.vocab);
     const pointer = await session.core.api.llama_get_logits_ith(session.context, -1);
     expect(pointer).not.toBe(0n);
-    return { logits: Array.from(session.core.bytes({ pointer, length: count * 4 })), tokens: session.cache.tokens.slice(), validity: session.cache.validity,
-      checkpoint: session.cache.checkpoint?.tokens.slice(), position: await sequencePosition() };
+    return {
+      logits: Array.from(session.core.bytes({ pointer, length: count * 4 })),
+      tokens: session.cache.tokens.slice(),
+      validity: session.cache.validity,
+      checkpoint: session.cache.checkpoint?.tokens.slice(),
+      position: await sequencePosition(),
+    };
   }
   it.each((['attention', 'hybrid'] as const).flatMap(kind => [0, 0.7].map(temperature => ({ kind, temperature }))))(
     'preserves output and continuation for $kind at temperature $temperature', async ({ kind, temperature }) => {
@@ -2335,13 +2684,18 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       return status;
     });
     const events: GenerationEvent[] = [];
-    const task = generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: ({ event }) => {
-      events.push(event); samplesAtDelivery.push(sample.mock.calls.length);
-      if (events.length === 1) {
-        expect(generationDecodes).toBe(0); return delivery.promise;
-      }
-      return undefined;
-    } });
+    const task = generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event); samplesAtDelivery.push(sample.mock.calls.length);
+        if (events.length === 1) {
+          expect(generationDecodes).toBe(0); return delivery.promise;
+        }
+        return undefined;
+      },
+    });
     try {
       await decoded.promise;
       expect(events).toEqual([{ type: 'text', text: 'A' }]); expect(sample).toHaveBeenCalledOnce();
@@ -2374,15 +2728,17 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       const module: Core['module'] = Object.create(core.module);
       const raw: unknown = Reflect.get(core.module, '_lcb_llama_decode');
       if (typeof raw !== 'function') throw new Error('Missing native decode export');
-      Object.defineProperty(module, '_lcb_llama_decode', { value: async (context: bigint, batch: bigint) => {
-        const status: unknown = raw(context, batch);
-        if (sampled > 0 && !held) {
-          held = true; entered.resolve(); await nativeGate.promise;
-          if (failure === 'decode-trap-first') throw new Error('controlled native trap');
-          if (failure === 'decode-status-first') return -1;
-        }
-        return status;
-      } });
+      Object.defineProperty(module, '_lcb_llama_decode', {
+        value: async (context: bigint, batch: bigint) => {
+          const status: unknown = raw(context, batch);
+          if (sampled > 0 && !held) {
+            held = true; entered.resolve(); await nativeGate.promise;
+            if (failure === 'decode-trap-first') throw new Error('controlled native trap');
+            if (failure === 'decode-status-first') return -1;
+          }
+          return status;
+        },
+      });
       Object.assign(core, attachCore({ module, callMode: 'direct' }));
       const rawSample = core.api.llama_sampler_sample;
       vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async (...args) => {
@@ -2390,9 +2746,14 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       });
       const free = vi.spyOn(core, 'free'); const samplerFree = vi.spyOn(core.api, 'llama_sampler_free');
       const controller = new AbortController(); const events: GenerationEvent[] = []; let settled = false;
-      const task = generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: ({ event }) => {
-        events.push(event); return deliveryGate.promise;
-      } });
+      const task = generate({
+        request: req,
+        signal: controller.signal,
+        onProgress: () => {},
+        onEvent: ({ event }) => {
+          events.push(event); return deliveryGate.promise;
+        },
+      });
       const outcome = task.then(() => new Error('unexpected success'), error => error as Error).finally(() => {
         settled = true;
       });
@@ -2427,9 +2788,14 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     vi.spyOn(session.core.api, 'llama_decode').mockImplementation(async (...args) => {
       if (sample.mock.calls.length) generationDecodes++; return original(...args);
     });
-    await expect(generate({ request: req, signal: controller.signal, onProgress: () => {}, onEvent: () => {
-      if (failure === 'cancel') controller.abort(); else throw new Error('controlled delivery failure');
-    } })).rejects.toThrow(failure === 'cancel' ? 'aborted' : 'controlled delivery failure');
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onProgress: () => {},
+      onEvent: () => {
+        if (failure === 'cancel') controller.abort(); else throw new Error('controlled delivery failure');
+      },
+    })).rejects.toThrow(failure === 'cancel' ? 'aborted' : 'controlled delivery failure');
     expect(sample).toHaveBeenCalledOnce(); expect(generationDecodes).toBe(0); expect(session.cache.validity).toBe('invalid');
   }, 30000);
   it.each(['length', 'stop-sequence', 'eog'] as const)('never pairs the terminal %s with an unused decode', async end => {
@@ -2452,10 +2818,13 @@ describe('bounded delivery/decode overlap through the native generation loop', (
     const prepare = session.core.chat.prepare;
     vi.spyOn(session.core.chat, 'prepare').mockImplementation(args => {
       const chat = prepare(args); let parsed = 0;
-      return { ...chat, parse(params) {
-        const value = chat.parse(params);
-        return ++parsed === 2 ? { ...value, content: 'BBBB' } : value;
-      } };
+      return {
+        ...chat,
+        parse(params) {
+          const value = chat.parse(params);
+          return ++parsed === 2 ? { ...value, content: 'BBBB' } : value;
+        },
+      };
     });
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');
     const decode = session.core.api.llama_decode; let generationDecodes = 0;

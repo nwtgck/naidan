@@ -53,9 +53,12 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
   }
 
   const injected = inject(PREVIEW_KEY, null);
-  if (injected) return { ...injected, ...((__BUILD_MODE_IS_TEST__ && {
-    TEST_ONLY: {},
-  }) || {}) };
+  if (injected) return {
+    ...injected,
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
+  };
 
   // Fallback to local ref if not provided (allows simple local use in a component)
   const state = ref<PreviewState | null>(null);

@@ -79,9 +79,13 @@ describe('Hugging Face download controls', () => {
     vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models, projectors: [] });
     const visible = ref(true);
     const modelPreset: ModelPreset = { input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: vi.fn().mockReturnValueOnce(true).mockReturnValue(false) };
-    const wrapper = mount(defineComponent({ components: { LlamaCppBrowserHuggingFaceManager }, setup() {
-      provideHuggingFaceSession(); return { visible, modelPreset };
-    }, template: '<LlamaCppBrowserHuggingFaceManager v-if="visible" :disabled="false" :model-preset="modelPreset" />' })); wrappers.push(wrapper);
+    const wrapper = mount(defineComponent({
+      components: { LlamaCppBrowserHuggingFaceManager },
+      setup() {
+        provideHuggingFaceSession(); return { visible, modelPreset };
+      },
+      template: '<LlamaCppBrowserHuggingFaceManager v-if="visible" :disabled="false" :model-preset="modelPreset" />',
+    })); wrappers.push(wrapper);
     await flushPromises();
     await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q8_0.gguf'); await flushPromises();
     const checks = vi.mocked(installedSelection).mock.calls.length;

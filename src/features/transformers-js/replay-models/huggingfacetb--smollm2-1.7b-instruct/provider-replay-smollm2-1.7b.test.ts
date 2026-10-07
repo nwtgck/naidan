@@ -23,11 +23,13 @@ const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
 const inputCaseSchema = z.object({
   messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
-  addGenerationPrompt: z.literal(true), renderedText: z.string(),
+  addGenerationPrompt: z.literal(true),
+  renderedText: z.string(),
   inputTokenIds: z.array(z.number().int().nonnegative().safe()),
 }).strict();
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('1b4f3a08b7699d091506a31b9218238cfb5b7dc7c3ff0497b76e060bf7fbc169'),
   modelId: z.literal('HuggingFaceTB/SmolLM2-1.7B-Instruct'),
   revision: z.literal('31b70e2e869a7173562077fd711b654946d38674'),
@@ -40,31 +42,39 @@ const inputEvidence = z.object({
 
 const toolUserMessageSchema = z.object({ role: z.literal('user'), content: z.string() }).strict();
 const toolAssistantMessageSchema = z.object({
-  role: z.literal('assistant'), content: z.literal(''),
+  role: z.literal('assistant'),
+  content: z.literal(''),
   tool_calls: z.tuple([z.object({
-    id: z.literal('call_template_probe_1'), type: z.literal('function'),
+    id: z.literal('call_template_probe_1'),
+    type: z.literal('function'),
     function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
   }).strict()]),
 }).strict();
 const toolResultMessageSchema = z.object({
-  role: z.literal('tool'), tool_call_id: z.literal('call_template_probe_1'), content: z.string(),
+  role: z.literal('tool'),
+  tool_call_id: z.literal('call_template_probe_1'),
+  content: z.string(),
 }).strict();
 const toolInputCaseSchema = z.object({
   tools: z.tuple([z.object({
     type: z.literal('function'),
     function: z.object({
-      name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+      name: z.literal('lookup_weather'),
+      description: z.literal('Return deterministic weather fixture data.'),
       parameters: z.object({
-        type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+        type: z.literal('object'),
+        properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
         required: z.tuple([z.literal('city')]),
       }).strict(),
     }).strict(),
   }).strict()]),
-  addGenerationPrompt: z.literal(true), renderedText: z.string(),
+  addGenerationPrompt: z.literal(true),
+  renderedText: z.string(),
   inputTokenIds: z.array(z.number().int().nonnegative().safe()),
 }).strict();
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('1b4f3a08b7699d091506a31b9218238cfb5b7dc7c3ff0497b76e060bf7fbc169'),
   modelId: z.literal('HuggingFaceTB/SmolLM2-1.7B-Instruct'),
   revision: z.literal('31b70e2e869a7173562077fd711b654946d38674'),
@@ -81,11 +91,17 @@ function captureSmol17NativeInput({ options, tokenizer, runtime }: Parameters<Pr
     ? { isTensor: true as const, type: value.type, location: value.location, dims: [...value.dims], data: value.data.slice() }
     : { isTensor: false as const };
   return {
-    tokenizer, runtimeVersion: runtime.env.version, tokenizerIsInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
-    input: tensor({ value: options.input_ids }), mask: tensor({ value: options.attention_mask }), optionKeys: Object.keys(options),
+    tokenizer,
+    runtimeVersion: runtime.env.version,
+    tokenizerIsInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
+    input: tensor({ value: options.input_ids }),
+    mask: tensor({ value: options.attention_mask }),
+    optionKeys: Object.keys(options),
     settings: { maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample },
-    pastIsNull: options.past_key_values === null, returnDict: options.return_dict_in_generate,
-    isTextStreamer: options.streamer instanceof runtime.TextStreamer, stoppingCriteriaType: typeof options.stopping_criteria,
+    pastIsNull: options.past_key_values === null,
+    returnDict: options.return_dict_in_generate,
+    isTextStreamer: options.streamer instanceof runtime.TextStreamer,
+    stoppingCriteriaType: typeof options.stopping_criteria,
   };
 }
 
@@ -98,10 +114,15 @@ describe('SmolLM2 1.7B Provider / basic', () => {
     expect(source.scenario.tools).toEqual([]);
     const stop = 'smollm2-1.7b first Production input verified; no output tokens supplied';
     const harness = await createProviderReplayTestRuntime({
-      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', expectedRevision: source.identity.resolvedRevision, cacheRevision: source.identity.resolvedRevision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+      expectedRevision: source.identity.resolvedRevision,
+      cacheRevision: source.identity.resolvedRevision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       // Identifiable synthetic bodies replace native weight execution only.
       artifacts: ['onnx/model_q4f16.onnx'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', revision: source.identity.resolvedRevision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', revision: source.identity.resolvedRevision, path }),
       })),
       generate: async context => {
         nativeInputs.push(captureSmol17NativeInput(context));
@@ -130,7 +151,7 @@ describe('SmolLM2 1.7B Provider / basic', () => {
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       await capture.completion;
@@ -165,8 +186,10 @@ describe('SmolLM2 1.7B Provider / basic', () => {
       // The source records these four requested settings, not every merged
       // GenerationConfig default or native GPU state.
       expect({
-        maxNewTokens: native.settings.maxNewTokens, temperature: native.settings.temperature,
-        topP: native.settings.topP, doSample: native.settings.doSample,
+        maxNewTokens: native.settings.maxNewTokens,
+        temperature: native.settings.temperature,
+        topP: native.settings.topP,
+        doSample: native.settings.doSample,
       }).toEqual(source.inputContract.effectiveGenerationConfig);
       expect(native.pastIsNull).toBe(true);
       expect(native.returnDict).toBe(true);
@@ -195,12 +218,15 @@ describe('SmolLM2 1.7B Provider / basic', () => {
       "modelId": "hf.co/HuggingFaceTB/SmolLM2-1.7B-Instruct",
       "resolvedRevision": "31b70e2e869a7173562077fd711b654946d38674",
       "investigationRunId": "23685c03-b461-4e73-8cfb-14e6743cd84b",
-      "transformersJsVersion": "4.2.0"
+      "transformersJsVersion": "4.2.0",
     });
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
-      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', expectedRevision: evidence.identity.resolvedRevision, cacheRevision: evidence.identity.resolvedRevision, metadataCache: "all-fixture",
+      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+      expectedRevision: evidence.identity.resolvedRevision,
+      cacheRevision: evidence.identity.resolvedRevision,
+      metadataCache: "all-fixture",
       // Native model bodies/inference and browser platform are substituted.
       // Original metadata, offline loading and Production streaming remain real.
       artifacts: ["onnx/model_q4f16.onnx"].map(path => ({ path, bytes: Uint8Array.of(1) })),
@@ -233,7 +259,7 @@ describe('SmolLM2 1.7B Provider / basic', () => {
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       await capture.completion;
@@ -281,7 +307,7 @@ Sure, here's a sample message for a template:
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -326,7 +352,7 @@ describe('SmolLM2 1.7B Provider / system', () => {
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -353,7 +379,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'Smol1.7 native input verified; generation intentionally not replayed';
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       // Identifiable tiny bytes replace native weight execution only.
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
@@ -384,7 +414,7 @@ describe('SmolLM2 1.7B Provider / history', () => {
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       await capture.completion;
@@ -415,8 +445,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
       expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: inputEvidence.modelId, revision: inputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx']), core, options,
+        modelId: inputEvidence.modelId,
+        revision: inputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx']),
+        core,
+        options,
       }))).toEqual([{ modelId: inputEvidence.modelId, revision: inputEvidence.revision, corePath: 'onnx/model_q4f16.onnx', externalData: [], executionProviders: ['webgpu'] }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -433,7 +466,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'Smol1.7 native input verified; generation intentionally not replayed';
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       // Identifiable tiny bytes replace native weight execution only.
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
@@ -465,7 +502,7 @@ describe('SmolLM2 1.7B Provider / history', () => {
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       await capture.completion;
@@ -496,8 +533,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
       expect(observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: inputEvidence.modelId, revision: inputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx']), core, options,
+        modelId: inputEvidence.modelId,
+        revision: inputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx']),
+        core,
+        options,
       }))).toEqual([{ modelId: inputEvidence.modelId, revision: inputEvidence.revision, corePath: 'onnx/model_q4f16.onnx', externalData: [], executionProviders: ['webgpu'] }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -516,12 +556,18 @@ describe('SmolLM2 1.7B Provider / history', () => {
       { role: 'user', content: 'Continue with one short sentence.' },
     ]);
     expect(continuity.scenario.boundary).toEqual({
-      kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 2, stopCause: 'not-recorded',
+      kind: 'recorded-ending',
+      lengthRelation: 'below-requested-budget',
+      lastTokenId: 2,
+      stopCause: 'not-recorded',
     });
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
-      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', expectedRevision: continuity.identity.resolvedRevision, cacheRevision: continuity.identity.resolvedRevision, metadataCache: "all-fixture",
+      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+      expectedRevision: continuity.identity.resolvedRevision,
+      cacheRevision: continuity.identity.resolvedRevision,
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1) }],
       generate: async ({ options, tokenizer, runtime }) => {
         expect(tokenizer.decode([2], { skip_special_tokens: false })).toBe('<|im_end|>');
@@ -542,10 +588,18 @@ describe('SmolLM2 1.7B Provider / history', () => {
           model: "hf.co/HuggingFaceTB/SmolLM2-1.7B-Instruct",
           messages: [
             { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: `\
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [{
+                type: 'text',
+                text: `\
 Sure, here's a sample message for a template:
 
-"Hello!`, completeness: 'complete' }] },
+"Hello!`,
+                completeness: 'complete',
+              }],
+            },
             { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }
           ],
           tools: [],
@@ -560,7 +614,7 @@ Sure, here's a sample message for a template:
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       await capture.completion;
@@ -608,7 +662,7 @@ I'm excited to help you with your project or idea.`]);
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -661,7 +715,11 @@ A separate synthetic conversation.<|im_end|>
       },
     ];
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         const next = invocations.shift();
@@ -690,7 +748,7 @@ A separate synthetic conversation.<|im_end|>
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
@@ -716,7 +774,7 @@ A separate synthetic conversation.<|im_end|>
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
@@ -784,7 +842,7 @@ A separate synthetic conversation.<|im_end|>
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         captures.push(firstCapture);
@@ -818,7 +876,7 @@ Sure, here's a sample message for a template:
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         captures.push(continuityCapture);
@@ -846,7 +904,7 @@ Sure, here's a sample message for a template:
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         captures.push(independentCapture);
@@ -886,7 +944,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -924,7 +982,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -962,7 +1020,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -1000,7 +1058,7 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         await capture.completion;
@@ -1027,19 +1085,26 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 1.7B tool input inspected; no inference output supplied';
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // The native matrix recorded an open schema. This is the independently
     // expected public Tool serialization, not an expected value read from a spy.
     const strictToolDefinitions = [{
-      type: 'function', function: {
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      type: 'function',
+      function: {
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
       },
     }];
     const harness = await createProviderReplayTestRuntime({
-      modelId: toolInputEvidence.modelId, expectedRevision: toolInputEvidence.revision, cacheRevision: toolInputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: toolInputEvidence.modelId,
+      expectedRevision: toolInputEvidence.revision,
+      cacheRevision: toolInputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         nativeInputs.push(captureSmol17NativeInput(context));
@@ -1069,7 +1134,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         },
         readBinaryObject: undefined,
         debug: undefined,
-        signal: undefined
+        signal: undefined,
       };
       const originalInput = structuredClone({ messages: request.messages, tools: request.tools, parameters: request.parameters });
       capture = captureProviderChat({ provider: harness.provider, request });
@@ -1087,7 +1152,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
       // the standard generation call uses native default tokenize:true.
       const observedMessageSchema = z.object({
-        role: z.string(), content: z.string(),
+        role: z.string(),
+        content: z.string(),
         tool_calls: toolAssistantMessageSchema.shape.tool_calls.optional(),
         tool_call_id: z.literal('call_template_probe_1').optional(),
       }).strict();
@@ -1105,7 +1171,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         ]);
       expect(productionTokenizations).toStrictEqual([[
         scenario.messages.map(message => ({
-          role: message.role, content: message.content,
+          role: message.role,
+          content: message.content,
           tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
           tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
         })),
@@ -1115,16 +1182,28 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(scenario.renderedText);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toEqual(scenario.inputTokenIds);
 
       // Native limitation, not successful tool support: removing every tool
@@ -1132,7 +1211,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       // (including the tool-result body) are still rendered and tokenized.
       const onlyRoleAndContent = scenario.messages.map(message => ({ role: message.role, content: message.content }));
       expect(actualTokenizer.apply_chat_template(onlyRoleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: [],
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: [],
       })).toBe(scenario.renderedText);
       const changedRoleAndContent = onlyRoleAndContent.map(message => ({ ...message }));
       const lastMessage = changedRoleAndContent.at(-1);
@@ -1142,11 +1223,16 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(scenario.renderedText.split(originalFinalContent)).toHaveLength(2);
       lastMessage.content = 'Changed synthetic final message.';
       expect(actualTokenizer.apply_chat_template(changedRoleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: [],
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: [],
       })).toBe(scenario.renderedText.replace(originalFinalContent, lastMessage.content));
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx']), core, options,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx']),
+        core,
+        options,
       }))).toEqual([{ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx', externalData: [], executionProviders: ['webgpu'] }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1164,19 +1250,26 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     if (scenario === undefined) throw new Error('Missing pinned native input case');
     const boundary = 'SmolLM2 1.7B tool input inspected; no inference output supplied';
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // The native matrix recorded an open schema. This is the independently
     // expected public Tool serialization, not an expected value read from a spy.
     const strictToolDefinitions = [{
-      type: 'function', function: {
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      type: 'function',
+      function: {
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
       },
     }];
     const harness = await createProviderReplayTestRuntime({
-      modelId: toolInputEvidence.modelId, expectedRevision: toolInputEvidence.revision, cacheRevision: toolInputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: toolInputEvidence.modelId,
+      expectedRevision: toolInputEvidence.revision,
+      cacheRevision: toolInputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         nativeInputs.push(captureSmol17NativeInput(context));
@@ -1193,15 +1286,22 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         model: toolInputEvidence.modelId,
         messages: [
           { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "", completeness: 'complete' },
-            { type: 'tool_call', toolCall: {
-              id: toToolCallId({ raw: "call_template_probe_1" }),
-              type: "function",
-              function: {
-                name: "lookup_weather",
-                arguments: "{\"city\":\"Tokyo\"}",
-              },
-            } }] },
+          {
+            id: toMessageId({ raw: 'message_1' }),
+            role: 'assistant',
+            parts: [{ type: 'text', text: "", completeness: 'complete' },
+              {
+                type: 'tool_call',
+                toolCall: {
+                  id: toToolCallId({ raw: "call_template_probe_1" }),
+                  type: "function",
+                  function: {
+                    name: "lookup_weather",
+                    arguments: "{\"city\":\"Tokyo\"}",
+                  },
+                },
+              }],
+          },
           { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
         ],
         tools: [publicTool],
@@ -1216,7 +1316,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         },
         readBinaryObject: undefined,
         debug: undefined,
-        signal: undefined
+        signal: undefined,
       };
       const originalInput = structuredClone({ messages: request.messages, tools: request.tools, parameters: request.parameters });
       capture = captureProviderChat({ provider: harness.provider, request });
@@ -1234,7 +1334,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       // extra calls. Protocol/reasoning probes explicitly use tokenize:false;
       // the standard generation call uses native default tokenize:true.
       const observedMessageSchema = z.object({
-        role: z.string(), content: z.string(),
+        role: z.string(),
+        content: z.string(),
         tool_calls: toolAssistantMessageSchema.shape.tool_calls.optional(),
         tool_call_id: z.literal('call_template_probe_1').optional(),
       }).strict();
@@ -1255,16 +1356,28 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(scenario.renderedText);
       expect(actualTokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toEqual(scenario.inputTokenIds);
 
       // Native limitation, not successful tool support: removing every tool
@@ -1272,7 +1385,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       // (including the tool-result body) are still rendered and tokenized.
       const onlyRoleAndContent = scenario.messages.map(message => ({ role: message.role, content: message.content }));
       expect(actualTokenizer.apply_chat_template(onlyRoleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: [],
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: [],
       })).toBe(scenario.renderedText);
       const changedRoleAndContent = onlyRoleAndContent.map(message => ({ ...message }));
       const lastMessage = changedRoleAndContent.at(-1);
@@ -1282,11 +1397,16 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       expect(scenario.renderedText.split(originalFinalContent)).toHaveLength(2);
       lastMessage.content = 'Changed synthetic final message.';
       expect(actualTokenizer.apply_chat_template(changedRoleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: [],
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: [],
       })).toBe(scenario.renderedText.replace(originalFinalContent, lastMessage.content));
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx']), core, options,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx']),
+        core,
+        options,
       }))).toEqual([{ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx', externalData: [], executionProviders: ['webgpu'] }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1305,7 +1425,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     const lateExecutions: string[] = [];
     let settled = false;
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
@@ -1315,9 +1437,15 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
-      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-1.7B-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
-      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+        ],
+        parameters,
+        debug: undefined,
+        readBinaryObject: undefined,
+      };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
       turn = await runProviderReplayTurn({
@@ -1356,7 +1484,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     const lateExecutions: string[] = [];
     let settled = false;
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
@@ -1366,9 +1496,15 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
-      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-1.7B-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
-      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
+        ],
+        parameters,
+        debug: undefined,
+        readBinaryObject: undefined,
+      };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
       turn = await runProviderReplayTurn({
@@ -1407,7 +1543,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     const lateExecutions: string[] = [];
     let settled = false;
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
@@ -1417,12 +1555,22 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     }];
     try {
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
-      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = { model: "HuggingFaceTB/SmolLM2-1.7B-Instruct", messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-        { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "", completeness: 'complete' },
-          { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] },
-        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
-      ], parameters, debug: undefined, readBinaryObject: undefined };
+      const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
+        model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+        messages: [
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+          {
+            id: toMessageId({ raw: 'message_1' }),
+            role: 'assistant',
+            parts: [{ type: 'text', text: "", completeness: 'complete' },
+              { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }],
+          },
+          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+        ],
+        parameters,
+        debug: undefined,
+        readBinaryObject: undefined,
+      };
       const originalInput = structuredClone(request);
       // The ordinary caller runner owns the error and must not execute tools.
       turn = await runProviderReplayTurn({
@@ -1470,14 +1618,18 @@ describe('SmolLM2 1.7B Provider / images', () => {
         const request: CapturedChatRequest = {
           model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
           messages: [
-            { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }
+            {
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }],
+            }
           ],
           parameters,
           tools: [],
           signal,
           readBinaryObject: undefined,
-          debug: undefined
+          debug: undefined,
         };
         const originalInput = structuredClone({ messages: request.messages, parameters: request.parameters });
         capture = captureProviderChat({ provider: replay.provider, request });
@@ -1499,24 +1651,41 @@ describe('SmolLM2 1.7B Provider / images', () => {
 describe('SmolLM2 1.7B Provider / sequences', () => {
   it('reuses the same runtime for ordinary chat after tool and image operation rejections', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ['natural-tool-minimal', 'image', 'first-turn'],
-      artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ['natural-tool-minimal', 'image', 'first-turn'],
+      artifactPaths: ['onnx/model_q4f16.onnx'],
+      imagePlatform: undefined,
     });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
-      temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined,
-      frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined },
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: undefined },
     };
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
-    const tools: Tool[] = [{ name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+    const tools: Tool[] = [{
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     }];
     const observedTurns: Awaited<ReturnType<typeof runProviderReplayTurn>>[] = [];
     try {
       const toolRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
-        model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', parameters: { ...parameters, maxCompletionTokens: 128 },
-        messages: [{ id: toMessageId({ raw: 'tool-user' }), role: 'user', parts: [
-          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-        ] }], debug: undefined, readBinaryObject: undefined,
+        model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+        parameters: { ...parameters, maxCompletionTokens: 128 },
+        messages: [{
+          id: toMessageId({ raw: 'tool-user' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          ],
+        }],
+        debug: undefined,
+        readBinaryObject: undefined,
       };
       const toolInput = structuredClone(toolRequest);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters: toolRequest.parameters! });
@@ -1539,11 +1708,18 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
       expect(worker).toBeDefined();
 
       const imageRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
-        model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', parameters: { ...parameters, maxCompletionTokens: 1 },
-        messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-          { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-          { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
-        ] }], debug: undefined, readBinaryObject: undefined,
+        model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+        parameters: { ...parameters, maxCompletionTokens: 1 },
+        messages: [{
+          id: toMessageId({ raw: 'image-user' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+          ],
+        }],
+        debug: undefined,
+        readBinaryObject: undefined,
       };
       const imageInput = structuredClone(imageRequest);
       replay.beginNativeRequest({ caseId: 'image', parameters: imageRequest.parameters! });
@@ -1570,19 +1746,36 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
         provider: replay.provider,
         tools: [],
         abortController: new AbortController(),
-        request: { model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', parameters,
-          messages: [{ id: toMessageId({ raw: 'plain-user' }), role: 'user', parts: [
-            { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
-          ] }], debug: undefined, readBinaryObject: undefined },
+        request: {
+          model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+          parameters,
+          messages: [{
+            id: toMessageId({ raw: 'plain-user' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+            ],
+          }],
+          debug: undefined,
+          readBinaryObject: undefined,
+        },
       });
       observedTurns.push(recovered);
       expect(recovered.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
-      expect(recovered.generated).toEqual([expect.objectContaining({ role: 'assistant', interruption: undefined, parts: [
-        expect.objectContaining({ type: 'text', completeness: 'partial', text: `\
+      expect(recovered.generated).toEqual([expect.objectContaining({
+        role: 'assistant',
+        interruption: undefined,
+        parts: [
+          expect.objectContaining({
+            type: 'text',
+            completeness: 'partial',
+            text: `\
 Sure, here's a sample message for a template:
 
-"Hello!` }),
-      ] })]);
+"Hello!`,
+          }),
+        ],
+      })]);
       replay.endNativeRequest();
       replay.assertComplete({ requests: 3, nativeCalls: 1 });
       expect(replay.observations.workers[0]).toBe(worker);
@@ -1629,7 +1822,11 @@ Sure, here's a sample message for a template:
       },
     ];
     const harness = await createProviderReplayTestRuntime({
-      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', expectedRevision: evidence.identity.resolvedRevision, cacheRevision: evidence.identity.resolvedRevision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+      expectedRevision: evidence.identity.resolvedRevision,
+      cacheRevision: evidence.identity.resolvedRevision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         const next = invocations.shift();
@@ -1658,7 +1855,7 @@ Sure, here's a sample message for a template:
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       captures.push(firstCapture);
@@ -1689,7 +1886,7 @@ Sure, here's a sample message for a template:
           },
           readBinaryObject: undefined,
           debug: undefined,
-          signal: undefined
+          signal: undefined,
         },
       });
       captures.push(secondCapture);
@@ -1751,7 +1948,7 @@ Sure, here's a sample message for a template:
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         captures.push(firstCapture);
@@ -1785,7 +1982,7 @@ Sure, here's a sample message for a template:
             parameters,
             signal,
             readBinaryObject: undefined,
-            debug: undefined
+            debug: undefined,
           },
         });
         captures.push(continuityCapture);
@@ -1809,14 +2006,24 @@ Sure, here's a sample message for a template:
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
     // This exact tokenizer/generation config uses token 2 as its end marker.
     // A fulfilled old callback request without it remains a partial generation.
-    await verifyCapturedFullReplay({ reviewedPublicContract: { singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [],
-      preNativeRejections: [
-        { scenario: 'natural-tool-minimal', reason: 'This text model has no reviewed structured tool adapter.' },
-        { scenario: 'natural-tool-representative', reason: 'Enabling tool definitions is rejected before generation.' },
-        { scenario: 'structured-tool-history', reason: 'The current adapter cannot preserve historical tool associations.' },
-        { scenario: 'image', reason: 'The current text adapter rejects images instead of silently discarding them.' },
-      ],
-    },
-    unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx"] });
+    await verifyCapturedFullReplay({
+      reviewedPublicContract: {
+        singleTextParts: { endTokenIds: ['2'] },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections: [
+          { scenario: 'natural-tool-minimal', reason: 'This text model has no reviewed structured tool adapter.' },
+          { scenario: 'natural-tool-representative', reason: 'Enabling tool definitions is rejected before generation.' },
+          { scenario: 'structured-tool-history', reason: 'The current adapter cannot preserve historical tool associations.' },
+          { scenario: 'image', reason: 'The current text adapter rejects images instead of silently discarding them.' },
+        ],
+      },
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
+      evidence: fullEvidenceJson,
+      imagePlatform: undefined,
+      artifactPaths: ["onnx/model_q4f16.onnx"],
+    });
   }, 30_000);
 });

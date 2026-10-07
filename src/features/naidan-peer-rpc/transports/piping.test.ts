@@ -4,15 +4,23 @@ import { rendezvousRoom, rendezvousRoute } from '@/features/naidan-piping-duplex
 import { encodePeerKey } from '@/features/naidan-peer-rpc/runtime/identity';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
 const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn() }));
-vi.mock('@/features/naidan-piping-duplex', async importOriginal => ({ ...(await importOriginal<typeof import('@/features/naidan-piping-duplex')>()),
-  NaidanPipingDuplexSession: { connect: calls.connect, pair: calls.pair } }));
+vi.mock('@/features/naidan-piping-duplex', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/features/naidan-piping-duplex')>()),
+  NaidanPipingDuplexSession: { connect: calls.connect, pair: calls.pair },
+}));
 afterEach(() => vi.clearAllMocks());
 const settings = { type: 'naidan_piping_duplex' as const, serverUrl: 'https://relay.example', headers: [] };
 const a: NaidanPipingIdentity = { privateKey: {} as CryptoKey, publicKey: new Uint8Array(32).fill(1) };
 const b: NaidanPipingIdentity = { privateKey: {} as CryptoKey, publicKey: new Uint8Array(32).fill(2) };
 it('derives opposite roles and exactly the same strong rendezvous name at both pinned peers', async () => {
-  for (const [local, remote] of [[a, b], [b, a]] as const) await openPipingRpc({ settings, identity: local, peerKey: encodePeerKey({ bytes: remote.publicKey }),
-    code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
+  for (const [local, remote] of [[a, b], [b, a]] as const) await openPipingRpc({
+    settings,
+    identity: local,
+    peerKey: encodePeerKey({ bytes: remote.publicKey }),
+    code: undefined,
+    verifyPeer: undefined,
+    signal: new AbortController().signal,
+  });
   const first = calls.connect.mock.calls[0]![0], second = calls.connect.mock.calls[1]![0];
   expect(first.code).toMatch(/^peer-[0-9a-f]{64}$/); expect(first.code).toBe(second.code); expect(first.role).not.toBe(second.role);
   expect(first.peerPublicKey ?? first.expectedPeer).toEqual(b.publicKey);

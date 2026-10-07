@@ -24,22 +24,26 @@ function scheduleAutomaticCheck(): void {
   cancelAutomaticCheck();
   if (!automaticRegistration || !enabled) return;
   const epoch = automaticEpoch;
-  automaticScheduled = scheduleIdleTask({ timeoutMs: 1000, fallbackDelayMs: 100, task: async () => {
-    automaticScheduled = undefined;
-    const current = () => epoch === automaticEpoch && automaticRegistration !== undefined && enabled;
-    try {
+  automaticScheduled = scheduleIdleTask({
+    timeoutMs: 1000,
+    fallbackDelayMs: 100,
+    task: async () => {
+      automaticScheduled = undefined;
+      const current = () => epoch === automaticEpoch && automaticRegistration !== undefined && enabled;
+      try {
       // A feature flag is not connection intent. An empty/disabled registry
       // does not import runtime, acquire an owner, read keys or create identity.
-      const { access, connections } = await naidanRpcStorage.list();
-      if (!current() || access.persistence !== 'durable' || !connections.some(connection => connection.autoConnect === 'enabled')) return;
-      const manager = await getRpcManager();
-      if (current()) await manager.startAutomaticConnections();
-    } catch {
+        const { access, connections } = await naidanRpcStorage.list();
+        if (!current() || access.persistence !== 'durable' || !connections.some(connection => connection.autoConnect === 'enabled')) return;
+        const manager = await getRpcManager();
+        if (current()) await manager.startAutomaticConnections();
+      } catch {
       // Failed reads/identity checks are not absence and are not retried in a
       // tight loop. The next explicit setting/registry/resume hint may recheck.
-      notifyRpcState();
-    }
-  } });
+        notifyRpcState();
+      }
+    },
+  });
 }
 /** Install only after app-ready. Startup continues without awaiting peers. */
 export function startRpcAutomaticConnections(): () => void {
@@ -62,8 +66,13 @@ function revalidate(): void {
 }
 function controls(): ReturnType<typeof createRpcStopControl> {
   if (control) return control;
-  control = createRpcStopControl({ nextId: () => nanoid(), timeoutMs: 2000,
-    send: ({ message }) => channel?.postMessage(message), changed: notifyRpcState, registryChanged: revalidate });
+  control = createRpcStopControl({
+    nextId: () => nanoid(),
+    timeoutMs: 2000,
+    send: ({ message }) => channel?.postMessage(message),
+    changed: notifyRpcState,
+    registryChanged: revalidate,
+  });
   // Lazy and optional transport: lack of BroadcastChannel cannot be mistaken
   // for a successful remote stop. The finite timer reports unconfirmed.
   try {
@@ -123,9 +132,14 @@ export function configureRpcFeature({ status, settings }: { status: 'enabled' | 
 export async function getRpcManager(): Promise<NaidanPeerManager> {
   if (!enabled) throw new Error('Enable Naidan RPC in Developer settings first');
   if (!loaded) {
-    const initializing = import('./state').then(({ createRpcManager }) => createRpcManager({ settings: () => readSettings(), changed: notifyRpcState, control: controls(), stopping: () => {
-      enabled = false; cancelAutomaticCheck(); notifyRpcState();
-    } }));
+    const initializing = import('./state').then(({ createRpcManager }) => createRpcManager({
+      settings: () => readSettings(),
+      changed: notifyRpcState,
+      control: controls(),
+      stopping: () => {
+        enabled = false; cancelAutomaticCheck(); notifyRpcState();
+      },
+    }));
     loaded = initializing;
     // Share pending/successful initialization, but do not permanently poison
     // explicit use after a failed import or factory. Passive hydration and focus

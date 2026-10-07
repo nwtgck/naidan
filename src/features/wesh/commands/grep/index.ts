@@ -3914,8 +3914,7 @@ export const grepCommandImplementation: WeshCommandImplementation = {
           file === "-"
             ? await searchFile({ file, displayName })
             : await searchEntry({
-              entry:
-                  directEntryRef ??
+              entry: directEntryRef ??
                   (await context.files.resolveEntry({
                     path: resolvePath({ cwd: context.cwd, path: file }),
                     finalSymlinkTreatment: "follow",

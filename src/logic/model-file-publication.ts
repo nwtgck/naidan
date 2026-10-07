@@ -22,11 +22,21 @@ export async function modelFileIsPending({ directory, name }: { directory: FileS
 const safeSize = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const modelFileSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('local') }).strict(),
-  z.object({ kind: z.literal('hugging-face'), repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/),
-    revision: z.string().regex(/^[a-f0-9]{40}$/), path: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  z.object({
+    kind: z.literal('hugging-face'),
+    repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/),
+    revision: z.string().regex(/^[a-f0-9]{40}$/),
+    path: z.string().min(1),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
 ]);
-export const modelFileReceiptSchema = z.object({ version: z.literal(1), kind: z.literal('naidan-model-file'), size: safeSize,
-  lastModified: safeSize, source: modelFileSourceSchema }).strict();
+export const modelFileReceiptSchema = z.object({
+  version: z.literal(1),
+  kind: z.literal('naidan-model-file'),
+  size: safeSize,
+  lastModified: safeSize,
+  source: modelFileSourceSchema,
+}).strict();
 export type ModelFileReceipt = z.infer<typeof modelFileReceiptSchema>;
 export async function readModelMarkerJson({ handle }: { handle: FileSystemFileHandle }): Promise<unknown> {
   const file = await handle.getFile();

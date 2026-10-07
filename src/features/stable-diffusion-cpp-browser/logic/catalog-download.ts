@@ -25,8 +25,21 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
   if (!navigator.locks || (destination?.kind !== 'host' && !navigator.storage?.getDirectory)) throw new Error('Safe model download storage is unavailable');
   const planned = [];
   for (const [index, file] of files.entries()) {
-    notify({ report: onProgress, progress: { phase: 'checking', index, count: files.length, path: file.path, repository: file.repository,
-      completed: 0, total: 0, processed: 0, fileCompleted: 0, fileTotal: 0 } });
+    notify({
+      report: onProgress,
+      progress: {
+        phase: 'checking',
+        index,
+        count: files.length,
+        path: file.path,
+        repository: file.repository,
+        completed: 0,
+        total: 0,
+        processed: 0,
+        fileCompleted: 0,
+        fileTotal: 0,
+      },
+    });
     planned.push(await imageFileIdentity({ file, signal, fetch }));
   }
   const total = planned.reduce((sum, file) => sum + file.size, 0);
@@ -34,16 +47,48 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
   let completed = 0, processed = 0;
   for (const [index, file] of planned.entries()) {
     let reported = -Infinity, fileProcessed = 0;
-    await saveImageCatalogFile({ file, signal, fetch, destination, report: ({ progress }) => {
-      fileProcessed = progress.processed;
-      if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
-      reported = performance.now();
-      notify({ report: onProgress, progress: { phase: progress.phase, index, count: files.length, path: file.path, repository: file.repository,
-        completed: completed + progress.bytes, total, processed: processed + progress.processed, fileCompleted: progress.bytes, fileTotal: file.size } });
-    } });
+    await saveImageCatalogFile({
+      file,
+      signal,
+      fetch,
+      destination,
+      report: ({ progress }) => {
+        fileProcessed = progress.processed;
+        if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
+        reported = performance.now();
+        notify({
+          report: onProgress,
+          progress: {
+            phase: progress.phase,
+            index,
+            count: files.length,
+            path: file.path,
+            repository: file.repository,
+            completed: completed + progress.bytes,
+            total,
+            processed: processed + progress.processed,
+            fileCompleted: progress.bytes,
+            fileTotal: file.size,
+          },
+        });
+      },
+    });
     completed += file.size; processed += fileProcessed;
-    notify({ report: onProgress, progress: { phase: index === planned.length - 1 ? 'complete' : 'verifying', index, count: files.length,
-      path: file.path, repository: file.repository, completed, total, processed, fileCompleted: file.size, fileTotal: file.size } });
+    notify({
+      report: onProgress,
+      progress: {
+        phase: index === planned.length - 1 ? 'complete' : 'verifying',
+        index,
+        count: files.length,
+        path: file.path,
+        repository: file.repository,
+        completed,
+        total,
+        processed,
+        fileCompleted: file.size,
+        fileTotal: file.size,
+      },
+    });
   }
 }
 export const TEST_ONLY = {

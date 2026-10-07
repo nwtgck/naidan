@@ -37,7 +37,8 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     const opened = vi.spyOn(file, 'stream').mockImplementation(() => new ReadableStream({
       pull() {
         return new Promise(() => undefined);
-      }, cancel,
+      },
+      cancel,
     }));
     const stream = createEvidenceArchiveStream({ files: new Map([['slow.txt', file]]) });
     const reader = stream.getReader();

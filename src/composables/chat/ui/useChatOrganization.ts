@@ -91,10 +91,12 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     };
 
     await storageService.updateChatGroup({ id: id, updater: () => newGroup });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      current.items.unshift({ type: 'chat_group', id, chat_ids: [] });
-      return current;
-    } });
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        current.items.unshift({ type: 'chat_group', id, chat_ids: [] });
+        return current;
+      },
+    });
     await loadData();
     return id;
   }
@@ -121,21 +123,23 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
 
     await storageService.deleteChatGroup({ id });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      current.items = current.items.filter((item) => {
-        switch (item.type) {
-        case 'chat_group':
-          return item.id !== id;
-        case 'chat':
-          return true;
-        default: {
-          const _ex: never = item;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
-      return current;
-    } });
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        current.items = current.items.filter((item) => {
+          switch (item.type) {
+          case 'chat_group':
+            return item.id !== id;
+          case 'chat':
+            return true;
+          default: {
+            const _ex: never = item;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+          }
+          }
+        });
+        return current;
+      },
+    });
     await loadData();
   }
 
@@ -161,16 +165,18 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     };
 
     await storageService.updateChatGroup({ id: newId, updater: () => newGroup });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      const originalIndex = current.items.findIndex((item) => item.type === 'chat_group' && item.id === groupId);
-      const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
-      if (originalIndex !== -1) {
-        current.items.splice(originalIndex + 1, 0, newNode);
-      } else {
-        current.items.unshift(newNode);
-      }
-      return current;
-    } });
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        const originalIndex = current.items.findIndex((item) => item.type === 'chat_group' && item.id === groupId);
+        const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
+        if (originalIndex !== -1) {
+          current.items.splice(originalIndex + 1, 0, newNode);
+        } else {
+          current.items.unshift(newNode);
+        }
+        return current;
+      },
+    });
     await loadData();
     return newId;
   }
@@ -187,14 +193,17 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (current === null) {
-        throw new Error('Chat group not found');
-      }
-      current.name = newName;
-      current.updatedAt = Date.now();
-      return current;
-    } });
+    await storageService.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
+        if (current === null) {
+          throw new Error('Chat group not found');
+        }
+        current.name = newName;
+        current.updatedAt = Date.now();
+        return current;
+      },
+    });
     await loadData();
   }
 
@@ -210,12 +219,15 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup({ id: id, updater: ({ current }) => {
-      if (current === null) {
-        throw new Error('Chat group not found');
-      }
-      return { ...current, ...updates, updatedAt: Date.now() };
-    } });
+    await storageService.updateChatGroup({
+      id: id,
+      updater: ({ current }) => {
+        if (current === null) {
+          throw new Error('Chat group not found');
+        }
+        return { ...current, ...updates, updatedAt: Date.now() };
+      },
+    });
     await loadData();
   }
 
@@ -231,55 +243,57 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      let detachedChatId: ChatId | undefined;
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        let detachedChatId: ChatId | undefined;
 
-      current.items = current.items.filter((item) => {
-        switch (item.type) {
-        case 'chat':
-          if (item.id === chatId) {
-            detachedChatId = item.id;
-            return false;
+        current.items = current.items.filter((item) => {
+          switch (item.type) {
+          case 'chat':
+            if (item.id === chatId) {
+              detachedChatId = item.id;
+              return false;
+            }
+            return true;
+          case 'chat_group': {
+            const chatIndex = item.chat_ids.indexOf(chatId);
+            if (chatIndex !== -1) {
+              detachedChatId = item.chat_ids[chatIndex];
+              item.chat_ids.splice(chatIndex, 1);
+            }
+            return true;
           }
-          return true;
-        case 'chat_group': {
-          const chatIndex = item.chat_ids.indexOf(chatId);
-          if (chatIndex !== -1) {
-            detachedChatId = item.chat_ids[chatIndex];
-            item.chat_ids.splice(chatIndex, 1);
+          default: {
+            const _ex: never = item;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
           }
-          return true;
-        }
-        default: {
-          const _ex: never = item;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
-
-      if (detachedChatId === undefined) {
-        return current;
-      }
-
-      if (targetGroupId === null) {
-        insertTopLevelChat({
-          current,
-          node: { type: 'chat', id: detachedChatId },
+          }
         });
-        return current;
-      }
 
-      const targetGroup = current.items.find((item) => item.type === 'chat_group' && item.id === targetGroupId) as HierarchyChatGroupNode | undefined;
-      if (targetGroup !== undefined) {
-        targetGroup.chat_ids.unshift(detachedChatId);
-      } else {
-        insertTopLevelChat({
-          current,
-          node: { type: 'chat', id: detachedChatId },
-        });
-      }
-      return current;
-    } });
+        if (detachedChatId === undefined) {
+          return current;
+        }
+
+        if (targetGroupId === null) {
+          insertTopLevelChat({
+            current,
+            node: { type: 'chat', id: detachedChatId },
+          });
+          return current;
+        }
+
+        const targetGroup = current.items.find((item) => item.type === 'chat_group' && item.id === targetGroupId) as HierarchyChatGroupNode | undefined;
+        if (targetGroup !== undefined) {
+          targetGroup.chat_ids.unshift(detachedChatId);
+        } else {
+          insertTopLevelChat({
+            current,
+            node: { type: 'chat', id: detachedChatId },
+          });
+        }
+        return current;
+      },
+    });
     await loadData();
   }
 
@@ -300,45 +314,47 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      let chatNode: HierarchyNode | undefined;
-      let sourceGroup: HierarchyChatGroupNode | undefined;
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        let chatNode: HierarchyNode | undefined;
+        let sourceGroup: HierarchyChatGroupNode | undefined;
 
-      current.items = current.items.filter((item) => {
-        switch (item.type) {
-        case 'chat':
-          if (item.id === chatId) {
-            chatNode = item;
-            return false;
+        current.items = current.items.filter((item) => {
+          switch (item.type) {
+          case 'chat':
+            if (item.id === chatId) {
+              chatNode = item;
+              return false;
+            }
+            return true;
+          case 'chat_group': {
+            const chatIndex = item.chat_ids.indexOf(chatId);
+            if (chatIndex !== -1) {
+              sourceGroup = item;
+              item.chat_ids.splice(chatIndex, 1);
+            }
+            return true;
           }
-          return true;
-        case 'chat_group': {
-          const chatIndex = item.chat_ids.indexOf(chatId);
-          if (chatIndex !== -1) {
-            sourceGroup = item;
-            item.chat_ids.splice(chatIndex, 1);
+          default: {
+            const _ex: never = item;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
           }
-          return true;
-        }
-        default: {
-          const _ex: never = item;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
+          }
+        });
 
-      if (sourceGroup !== undefined) {
-        sourceGroup.chat_ids.unshift(chatId);
+        if (sourceGroup !== undefined) {
+          sourceGroup.chat_ids.unshift(chatId);
+          return current;
+        }
+
+        const node = chatNode ?? { type: 'chat', id: chatId };
+        insertTopLevelChat({
+          current,
+          node,
+        });
         return current;
-      }
-
-      const node = chatNode ?? { type: 'chat', id: chatId };
-      insertTopLevelChat({
-        current,
-        node,
-      });
-      return current;
-    } });
+      },
+    });
     await loadData();
   }
 

@@ -9,8 +9,11 @@ import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-b
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
 const transport = vi.hoisted(() => ({ remote: { prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
-  releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
+vi.mock('@/utils/worker-transport', () => ({
+  wrapWorkerRemote: () => transport.remote,
+  releaseWorkerRemote: transport.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   terminate = vi.fn();
@@ -98,8 +101,17 @@ describe('hosted Worker lifetime', () => {
 });
 
 function generationInput(): GenerateInput {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'private prompt' }], temperature: 0,
-    topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' } };
+  return {
+    model: 'local.gguf',
+    messages: [{ role: 'user', content: 'private prompt' }],
+    temperature: 0,
+    topP: 1,
+    maxTokens: 5,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+    options: { profile: 'cpu-wasm32' },
+  };
 }
 describe('cooperative generation cancellation', () => {
   it('waits for native cleanup, preserves the Worker, and suppresses cancelled or late events', async () => {

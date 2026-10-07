@@ -6,14 +6,16 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
 const listeners = vi.hoisted(() => new Set<(event: { state: EngineState }) => void>());
-vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
-  getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
-  subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
-    listeners.add(listener); return () => {
-      listeners.delete(listener);
-    };
-  }),
-} }));
+vi.mock('@/features/llama-cpp-browser', () => ({
+  llamaCppBrowserService: {
+    getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
+    subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
+      listeners.add(listener); return () => {
+        listeners.delete(listener);
+      };
+    }),
+  },
+}));
 beforeEach(async () => {
   vi.clearAllMocks(); listeners.clear(); await ensureAllStringsForTest({ locale: 'en' });
 });

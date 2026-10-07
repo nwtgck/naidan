@@ -19,10 +19,18 @@ async function setup() {
   await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
   const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 }); await service.commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
   const tagId = toImageGenerationTagId({ raw: 'tag-aa' });
-  await service.saveImageGenerationCatalog({ store, expectedRevision: 0, catalog: { ...catalog, revision: 1, tags: [
-    { id: tagId, name: '夜景', createdAt: 1, updatedAt: 1, state: 'active' },
-    { id: toImageGenerationTagId({ raw: 'tag-bb' }), name: 'unrelated-private-tag', createdAt: 1, updatedAt: 1, state: 'active' },
-  ] } });
+  await service.saveImageGenerationCatalog({
+    store,
+    expectedRevision: 0,
+    catalog: {
+      ...catalog,
+      revision: 1,
+      tags: [
+        { id: tagId, name: '夜景', createdAt: 1, updatedAt: 1, state: 'active' },
+        { id: toImageGenerationTagId({ raw: 'tag-bb' }), name: 'unrelated-private-tag', createdAt: 1, updatedAt: 1, state: 'active' },
+      ],
+    },
+  });
   await service.setImageGenerationAssetTags({ store, sessionId: session.id, assetId: asset.id, tags: [{ type: 'user', tagId }], assignedAt: 3, expectedRevision: 0 });
   await service.saveImageGenerationDraft({ store, draft: generationDraftFixture({ sessionId: session.id }), expectedRevision: undefined, writeInputs: async () => {} });
   return { store, session, run, asset };

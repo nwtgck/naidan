@@ -10,7 +10,10 @@ export function createDeliveryDecode({ mode, signal, now }: {
 }) {
   let active = false;
   const counters = {
-    mode, pairedSteps: 0, settledPairs: 0, serialSteps: 0,
+    mode,
+    pairedSteps: 0,
+    settledPairs: 0,
+    serialSteps: 0,
     deliveryWaitMs: now ? 0 : undefined,
     decodeWaitMs: now ? 0 : undefined,
     jointWaitMs: now ? 0 : undefined,
@@ -42,7 +45,8 @@ export function createDeliveryDecode({ mode, signal, now }: {
     }
   }
   return {
-    mode, counters,
+    mode,
+    counters,
     async run({ deliver, decode }: { deliver: () => void | Promise<void>, decode: () => Promise<void> }): Promise<void> {
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
       active = true;
@@ -64,15 +68,23 @@ export function createDeliveryDecode({ mode, signal, now }: {
         let deliveryRejected = false;
         // Start delivery first, without a task/timer delay. Attach a rejection
         // handler before starting any native work, including synchronous throws.
-        const delivery = observe({ operation: deliver, kind: 'deliveryWaitMs', onFailure: () => {
-          deliveryRejected = true;
-        } });
+        const delivery = observe({
+          operation: deliver,
+          kind: 'deliveryWaitMs',
+          onFailure: () => {
+            deliveryRejected = true;
+          },
+        });
         void delivery.catch(() => {});
         await Promise.resolve();
-        const decoding = observe({ kind: 'decodeWaitMs', onFailure: undefined, operation: async () => {
-          checkCancelled();
-          if (!deliveryRejected) await decode();
-        } });
+        const decoding = observe({
+          kind: 'decodeWaitMs',
+          onFailure: undefined,
+          operation: async () => {
+            checkCancelled();
+            if (!deliveryRejected) await decode();
+          },
+        });
         // Fail-fast aggregation would release the caller while native code or a
         // remote callback still owns its resources. Never race this with abort.
         const [delivered, decoded] = await Promise.allSettled([delivery, decoding]);

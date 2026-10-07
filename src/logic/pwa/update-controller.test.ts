@@ -24,8 +24,10 @@ function setup({ registerPending = false, firstInstall = false } = {}) {
   const old = new WorkerHandle(); old.state = 'activated';
   const next = new WorkerHandle();
   const reg = Object.assign(new EventTarget(), {
-    scope: 'https://example.test/naidan/', active: firstInstall ? null : old.native(),
-    installing: next.native() as ServiceWorker | null, waiting: null as ServiceWorker | null,
+    scope: 'https://example.test/naidan/',
+    active: firstInstall ? null : old.native(),
+    installing: next.native() as ServiceWorker | null,
+    waiting: null as ServiceWorker | null,
   });
   const container = Object.assign(new EventTarget(), {
     controller: firstInstall ? null : old.native(),

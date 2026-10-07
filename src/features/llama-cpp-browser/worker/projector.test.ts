@@ -9,17 +9,26 @@ vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove
 afterEach(() => vi.restoreAllMocks());
 function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const fields = new Map<string, number | bigint>(); const order: string[] = []; let allocation = 100n;
-  const api = { mtmd_context_params_default: vi.fn(async () => {}), mtmd_init_from_file: vi.fn(async () => 500n), mtmd_free: vi.fn(async () => {
-    order.push('native-free');
-  }) };
+  const api = {
+    mtmd_context_params_default: vi.fn(async () => {}),
+    mtmd_init_from_file: vi.fn(async () => 500n),
+    mtmd_free: vi.fn(async () => {
+      order.push('native-free');
+    }),
+  };
   const addFunction = vi.fn(() => 7); const removeFunction = vi.fn(() => {
     order.push('callback-free');
   });
   const close = vi.fn(); const free = vi.fn();
-  const core = { pointerBytes, api, module: { addFunction, removeFunction },
+  const core = {
+    pointerBytes,
+    api,
+    module: { addFunction, removeFunction },
     fieldLayout: ({ field }: { field: string }) => ({ offset: 0n, size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 10 : 4, kind: field === 'ne' || field === 'src' ? 'array' : 'signed' }),
     enumValues: () => [{ name: 'GGML_OP_ADD', value: 2 }],
-    allocRecord: () => ++allocation, utf8: () => ++allocation, free,
+    allocRecord: () => ++allocation,
+    utf8: () => ++allocation,
+    free,
     setField: ({ field, value }: { field: string, value: number | bigint }) => fields.set(field, value),
   } as unknown as Core;
   const file = { path: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;

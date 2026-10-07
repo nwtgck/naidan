@@ -302,11 +302,13 @@ export async function printLongStatus({ context, status }: {
     }
   }
   if (staged.length > 0) {
-    await text.print({ text: `\
+    await text.print({
+      text: `\
 
 Changes to be committed:
   (use "git restore --staged <file>..." to unstage)
-` });
+`,
+    });
     for (const entry of staged) {
       const path = entry.renameSourcePath !== undefined
         ? `${renderPath({ path: entry.renameSourcePath })} -> ${renderPath({ path: entry.path })}`
@@ -318,11 +320,13 @@ Changes to be committed:
     }
   }
   if (unmerged.length > 0) {
-    await text.print({ text: `\
+    await text.print({
+      text: `\
 
 Unmerged paths:
   (use "git add <file>..." to mark resolution)
-` });
+`,
+    });
     for (const entry of unmerged) {
       await text.print({ text: `\t${unmergedLongStatusLabel({ entry })}${renderPath({ path: entry.path })}\n` });
     }
@@ -338,11 +342,13 @@ Unmerged paths:
     }
   }
   if (untracked.length > 0) {
-    await text.print({ text: `\
+    await text.print({
+      text: `\
 
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
-` });
+`,
+    });
     for (const entry of untracked)
       await text.print({ text: `\t${renderPath({ path: entry.path })}\n` });
   }

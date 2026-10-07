@@ -20,8 +20,12 @@ it('represents a missing directory without creating one', async () => {
   expect(lookup).toHaveBeenCalledTimes(1);
 });
 it('does not hide storage failures as an empty model tree', async () => {
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => {
-    throw new DOMException('denied', 'SecurityError');
-  } } });
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: async () => {
+        throw new DOMException('denied', 'SecurityError');
+      },
+    },
+  });
   await expect(existingUserModelDirectory()).rejects.toMatchObject({ name: 'SecurityError' });
 });

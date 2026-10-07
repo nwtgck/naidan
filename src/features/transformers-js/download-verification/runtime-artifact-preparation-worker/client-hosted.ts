@@ -38,14 +38,18 @@ export function createDownloadVerificationRuntimeArtifactPreparationWorkerClient
 
   return {
     async prepareModelRuntimeArtifacts({ modelId, revision, progressCallback }) {
-      return await session.run({ operation: ({ remote }) => remote.prepareModelRuntimeArtifacts(
-        modelId,
-        revision,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => {
-          if (session.isActive()) return progressCallback({ info });
-        } }),
-      ) });
+      return await session.run({
+        operation: ({ remote }) => remote.prepareModelRuntimeArtifacts(
+          modelId,
+          revision,
+          workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
+            value: (info: ProgressInfo) => {
+              if (session.isActive()) return progressCallback({ info });
+            },
+          }),
+        ),
+      });
     },
     async dispose() {
       session.dispose();

@@ -7,8 +7,10 @@ import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 
 vi.mock('@/utils/stream-download', () => ({ downloadBlob: vi.fn() }));
 vi.mock('@/utils/image-metadata', () => ({
-  detectFormat: vi.fn(), UNSUPPORTED: 'unsupported',
-  embedMetadataInPng: vi.fn(), embedMetadataInWebp: vi.fn(),
+  detectFormat: vi.fn(),
+  UNSUPPORTED: 'unsupported',
+  embedMetadataInPng: vi.fn(),
+  embedMetadataInWebp: vi.fn(),
 }));
 
 beforeEach(() => vi.clearAllMocks());
@@ -22,9 +24,16 @@ describe('image download Blob ownership', () => {
     const getBinaryObject = vi.fn();
     const onError = vi.fn();
     await ImageDownloadHydrator.download({
-      id: toBinaryObjectId({ raw: 'image-test' }), name: 'image.png', memoryBlob: original,
-      prompt: 'scene', steps: undefined, seed: undefined, model: undefined, withMetadata,
-      storageService: { getFile, getBinaryObject } as unknown as StorageService, onError,
+      id: toBinaryObjectId({ raw: 'image-test' }),
+      name: 'image.png',
+      memoryBlob: original,
+      prompt: 'scene',
+      steps: undefined,
+      seed: undefined,
+      model: undefined,
+      withMetadata,
+      storageService: { getFile, getBinaryObject } as unknown as StorageService,
+      onError,
     });
     expect(downloadBlob).toHaveBeenCalledExactlyOnceWith({ blob: withMetadata ? embedded : original, filename: 'scene.png' });
     expect(getFile).not.toHaveBeenCalled();

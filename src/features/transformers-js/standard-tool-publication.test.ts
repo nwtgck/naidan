@@ -14,26 +14,32 @@ import { runProviderTestInferenceOperation } from './provider-inference-test-sco
 
 type Fragment = { type: 'text'; text: string } | { type: 'control'; token: string };
 vi.mock('./index', () => ({ transformersJsService: {} }));
-vi.mock('@huggingface/transformers', () => ({ TextStreamer: class {}, StoppingCriteriaList: class {
-  push(): void {}
-}, Tensor: class {} }));
+vi.mock('@huggingface/transformers', () => ({
+  TextStreamer: class {},
+  StoppingCriteriaList: class {
+    push(): void {}
+  },
+  Tensor: class {},
+}));
 // This fixture selects synthetic text/control events explicitly; real token
 // decoding is covered by each exact-model runtime-output replay, not this mock.
-vi.mock('./models/native-protocol-streamer', () => ({ NativeProtocolStreamer: class {
-  private readonly onText: ({ text }: { text: string }) => void;
-  private readonly onControl: ({ token }: { token: string }) => void;
-  constructor({ onText, onControl }: { onText: ({ text }: { text: string }) => void; onControl: ({ token }: { token: string }) => void }) {
-    this.onText = onText; this.onControl = onControl;
-  }
-  emit({ fragment }: { fragment: Fragment }): void {
-    switch (fragment.type) {
-    case 'text': this.onText({ text: fragment.text }); return;
-    case 'control': this.onControl({ token: fragment.token }); return;
-    default: { const exhaustive: never = fragment; throw new Error(String(exhaustive)); }
+vi.mock('./models/native-protocol-streamer', () => ({
+  NativeProtocolStreamer: class {
+    private readonly onText: ({ text }: { text: string }) => void;
+    private readonly onControl: ({ token }: { token: string }) => void;
+    constructor({ onText, onControl }: { onText: ({ text }: { text: string }) => void; onControl: ({ token }: { token: string }) => void }) {
+      this.onText = onText; this.onControl = onControl;
     }
-  }
-  end(): void {}
-} }));
+    emit({ fragment }: { fragment: Fragment }): void {
+      switch (fragment.type) {
+      case 'text': this.onText({ text: fragment.text }); return;
+      case 'control': this.onControl({ token: fragment.token }); return;
+      default: { const exhaustive: never = fragment; throw new Error(String(exhaustive)); }
+      }
+    }
+    end(): void {}
+  },
+}));
 afterEach(() => vi.restoreAllMocks());
 
 const open: Fragment = { type: 'control', token: '<|tool_call_start|>' };
@@ -74,18 +80,35 @@ function createPublicationFixture({ outputs, historyEncoding }: {
         await selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content-publication' }).generate({
           model: { generate, config: { model_type: 'synthetic' }, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
           tokenizer: {
-            unk_token_id: -1, all_special_ids: [0, 1, 2],
-            encode: (text: string) => [tokens.indexOf(text)], decode: (ids: number[]) => tokens[ids[0]!],
+            unk_token_id: -1,
+            all_special_ids: [0, 1, 2],
+            encode: (text: string) => [tokens.indexOf(text)],
+            decode: (ids: number[]) => tokens[ids[0]!],
             apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } },
           } as never,
-          messages, params, tools, onChunk: () => {
+          messages,
+          params,
+          tools,
+          onChunk: () => {
             throw new Error('Legacy output is not used');
-          }, onRawChunk: () => {}, onToolCalls: () => {
+          },
+          onRawChunk: () => {},
+          onToolCalls: () => {
             throw new Error('Legacy calls are not used');
           },
-          runtimeState: { activeModelId: 'synthetic/content-publication', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null,
-            qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-          stoppingCriteria: { reset: () => {}, interrupt: () => {} }, debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
+          runtimeState: {
+            activeModelId: 'synthetic/content-publication',
+            gemma4Processor: null,
+            qwen3_5Processor: null,
+            gptOssPastKeyValues: null,
+            qwen3_5ConversationState: undefined,
+            generationStateOwner: {},
+            qwen3_5SequenceCache: undefined,
+          },
+          stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+          debugLog: () => {},
+          observationSink: undefined,
+          generationCapture: undefined,
           onGenerationEvent: ({ event }) => {
             if (event.type === 'tool_call') published.push(event.toolCall);
             delivery.enqueue({ event });
@@ -98,15 +121,39 @@ function createPublicationFixture({ outputs, historyEncoding }: {
   };
   const provider = createTransformersJsProvider({ service });
   const executions: unknown[] = [];
-  const history: MessageNode[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-    parts: [{ type: 'text', text: 'Use the weather tool.', completeness: 'complete' }], replies: { items: [] } }];
+  const history: MessageNode[] = [{
+    id: toMessageId({ raw: 'u' }),
+    role: 'user',
+    createdAt: 0,
+    modelId: undefined,
+    lmParameters: undefined,
+    parts: [{ type: 'text', text: 'Use the weather tool.', completeness: 'complete' }],
+    replies: { items: [] },
+  }];
   const controller = new AbortController();
-  return { generate, published, executions, history,
+  return {
+    generate,
+    published,
+    executions,
+    history,
     text: () => history.flatMap(node => node.role === 'assistant' ? node.parts.flatMap(part => part.type === 'text' ? [part.text] : []) : []).join(''),
-    run: () => generateChatTurn({ onToolCallDraftsChange: undefined, provider, model: 'synthetic/content-publication', debug: undefined, parameters: undefined, readBinaryObject: undefined, abortController: controller, approvalContext: undefined,
-      tools: [{ name: 'lookup_weather', description: 'Fixed weather', parametersSchema: z.object({ city: z.string() }), execute: async ({ args }) => {
-        executions.push(structuredClone(args)); return { status: 'success', content: 'Sunny' };
-      } }],
+    run: () => generateChatTurn({
+      onToolCallDraftsChange: undefined,
+      provider,
+      model: 'synthetic/content-publication',
+      debug: undefined,
+      parameters: undefined,
+      readBinaryObject: undefined,
+      abortController: controller,
+      approvalContext: undefined,
+      tools: [{
+        name: 'lookup_weather',
+        description: 'Fixed weather',
+        parametersSchema: z.object({ city: z.string() }),
+        execute: async ({ args }) => {
+          executions.push(structuredClone(args)); return { status: 'success', content: 'Sunny' };
+        },
+      }],
       createAssistantMessage: () => {
         const node: AssistantMessageNode = { id: toMessageId({ raw: `a${history.length}` }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] } };
         history.push(node); return node;
@@ -116,7 +163,10 @@ function createPublicationFixture({ outputs, historyEncoding }: {
         history.push(node); return node;
       },
       buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
-      onChange: () => {}, onToolEvent: () => {}, persistToolContent: async ({ text }) => ({ type: 'text', text }), describeError: ({ error }) => error.message,
+      onChange: () => {},
+      onToolEvent: () => {},
+      persistToolContent: async ({ text }) => ({ type: 'text', text }),
+      describeError: ({ error }) => error.message,
     }),
   };
 }
@@ -159,10 +209,18 @@ describe('content history admission before public tool effects', () => {
     vi.spyOn(standardToolProtocol, 'resolveStandardToolHandling').mockReturnValue({ outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [] });
     const generate = vi.fn(); const apply_chat_template = vi.fn();
     await expect(selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/history' }).generate({
-      model: { generate } as never, tokenizer: { apply_chat_template } as never,
+      model: { generate } as never,
+      tokenizer: { apply_chat_template } as never,
       messages: [{ role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } }] }, { role: 'tool', tool_call_id: toToolCallId({ raw: 'c' }), content: 'done' }],
-      tools: undefined, params: undefined, onGenerationEvent: () => {},
-      onChunk: () => {}, onToolCalls: () => {}, onRawChunk: () => {}, debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
+      tools: undefined,
+      params: undefined,
+      onGenerationEvent: () => {},
+      onChunk: () => {},
+      onToolCalls: () => {},
+      onRawChunk: () => {},
+      debugLog: () => {},
+      observationSink: undefined,
+      generationCapture: undefined,
       runtimeState: { activeModelId: 'synthetic/history', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
       stoppingCriteria: { reset: () => {}, interrupt: () => {} },
     })).rejects.toThrow(/tool history.*adapter/);

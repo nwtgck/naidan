@@ -24,8 +24,12 @@ async function hkdf2({ chaining, input }: {
     Uint8Array
 ]> {
   const key = await crypto.subtle.importKey('raw', new Uint8Array(input), 'HKDF', false, ['deriveBits']);
-  const result = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(chaining),
-    info: new Uint8Array() }, key, 512));
+  const result = new Uint8Array(await crypto.subtle.deriveBits({
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: new Uint8Array(chaining),
+    info: new Uint8Array(),
+  }, key, 512));
   const pair: [
         Uint8Array,
         Uint8Array
@@ -121,8 +125,12 @@ export class NoiseXX {
     requireValue({ condition: publicKey.length === 32 && ephemeralPublic.length === 32, message: 'X25519 key size' });
     const name = ascii({ text: 'Noise_XX_25519_AESGCM_SHA256' });
     const initialHash = name.length <= 32 ? joinBytes({ parts: [name, new Uint8Array(32 - name.length)] }) : await hash({ bytes: name });
-    const state = new NoiseXX({ role, identity: { privateKey: identity.privateKey, publicKey },
-      ephemeral: { privateKey: ephemeral.privateKey, publicKey: ephemeralPublic }, initialHash });
+    const state = new NoiseXX({
+      role,
+      identity: { privateKey: identity.privateKey, publicKey },
+      ephemeral: { privateKey: ephemeral.privateKey, publicKey: ephemeralPublic },
+      initialHash,
+    });
     await state.internalMixHash({ bytes: input });
     return state;
   }
@@ -211,11 +219,15 @@ export class NoiseXX {
         else
           this.internalRemoteStatic = await this.internalField({ operation: 'decrypt', bytes: take({ count: 48 }) });
         const useEphemeral = (this.internalStep === 1) === initiator;
-        await this.internalMixDh({ privateKey: useEphemeral ? ephemeral.privateKey : identity.privateKey,
-          publicKey: useEphemeral ? this.internalRemoteStatic : this.internalRemoteEphemeral });
+        await this.internalMixDh({
+          privateKey: useEphemeral ? ephemeral.privateKey : identity.privateKey,
+          publicKey: useEphemeral ? this.internalRemoteStatic : this.internalRemoteEphemeral,
+        });
       }
-      const payload = await this.internalField({ operation: isWrite({ operation }) ? 'encrypt' : 'decrypt',
-        bytes: isWrite({ operation }) ? input : input.slice(at) });
+      const payload = await this.internalField({
+        operation: isWrite({ operation }) ? 'encrypt' : 'decrypt',
+        bytes: isWrite({ operation }) ? input : input.slice(at),
+      });
       if (this.internalFailed)
         throw new Error('Handshake disposed');
       const message = isWrite({ operation }) ? joinBytes({ parts: [...output, payload] }) : payload;
@@ -246,9 +258,12 @@ export class NoiseXX {
       first.fill(0);
       second.fill(0);
       requireValue({ condition: !this.internalFailed, message: 'Handshake disposed during split' });
-      return { send: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? firstKey : secondKey }),
+      return {
+        send: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? firstKey : secondKey }),
         receive: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? secondKey : firstKey }),
-        binding: this.internalHash.slice(), peerIdentity: this.internalRemoteStatic.slice() };
+        binding: this.internalHash.slice(),
+        peerIdentity: this.internalRemoteStatic.slice(),
+      };
     } finally {
       first?.fill(0);
       second?.fill(0);

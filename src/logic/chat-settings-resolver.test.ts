@@ -184,7 +184,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
   describe('Automatic Title Settings Resolution', () => {
     const globalSettings: ResolvableSettings = {
       endpoint: { type: 'openai', url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'global-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'global-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
 
     it('should resolve global title settings when not overridden', () => {
@@ -284,7 +284,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         globalSettings: {
           endpoint: normalEndpoint,
           defaultModelId: 'normal-model',
-          titleGeneration: { endpoint: titleEndpoint, model: { id: 'title-only-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+          titleGeneration: { endpoint: titleEndpoint, model: { id: 'title-only-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         },
       });
 

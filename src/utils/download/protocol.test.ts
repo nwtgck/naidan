@@ -18,9 +18,11 @@ describe('download protocol', () => {
   });
 
   it('safely encodes Japanese names and quotes without allowing header injection', () => {
-    const headers = createDownloadHeaders({ metadata: {
-      filename: '日本語"' + String.fromCharCode(13, 10) + 'X-Evil: yes.zip',
-    } });
+    const headers = createDownloadHeaders({
+      metadata: {
+        filename: '日本語"' + String.fromCharCode(13, 10) + 'X-Evil: yes.zip',
+      },
+    });
     expect(headers.get('content-disposition')).toContain("filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%22__X-Evil%3A%20yes.zip");
     expect(headers.has('x-evil')).toBe(false);
     expect(headers.get('content-type')).toBe('application/octet-stream');

@@ -6,8 +6,16 @@ import { buildCompactRequestMessages, createCompactChatMessagesFromPrefix, creat
 vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
 
 function assistant(): AssistantMessageNode {
-  return { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 7, modelId: 'model', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'low' } }, interruption: { type: 'error', message: '中断' },
-    parts: [{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>途中', completeness: 'partial' }], replies: { items: [] } };
+  return {
+    id: toMessageId({ raw: 'a' }),
+    role: 'assistant',
+    createdAt: 7,
+    modelId: 'model',
+    lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'low' } },
+    interruption: { type: 'error', message: '中断' },
+    parts: [{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>途中', completeness: 'partial' }],
+    replies: { items: [] },
+  };
 }
 beforeEach(() => vi.clearAllMocks());
 describe('context compaction parts', () => {
@@ -25,10 +33,13 @@ describe('context compaction parts', () => {
     const a = assistant(); const before = structuredClone(a);
     const messages = await createCompactChatMessagesFromPrefix({ prefix: [a], promptMode: 'with_message_ids' });
     expect(messages[0]!.parts[0]).toEqual(a.parts[0]);
-    expect(messages[0]!.parts[1]).toMatchObject({ text: `\
+    expect(messages[0]!.parts[1]).toMatchObject({
+      text: `\
 messageId=a
 
-<think>literal</think>途中`, completeness: 'partial' });
+<think>literal</think>途中`,
+      completeness: 'partial',
+    });
     expect(a).toEqual(before);
   });
   it('inserts a lookup part after reasoning and before calls without changing the source', async () => {
@@ -51,10 +62,17 @@ messageId=a
     a.parts = []; deferred.resolve(new Blob(['  Result  ']));
     const messages = await pending;
     expect(messages[1]!.parts).toHaveLength(2);
-    expect(messages[0]!.parts[0]).toMatchObject({ result: { content: { type: 'text', text: `\
+    expect(messages[0]!.parts[0]).toMatchObject({
+      result: {
+        content: {
+          type: 'text',
+          text: `\
 messageId=tool
 
-  Result  ` } } });
+  Result  `,
+        },
+      },
+    });
     expect(tool.parts[0]).toMatchObject({ result: { content: { type: 'binary_object' } } });
   });
   it('does not substitute a fabricated successful result when binary content is missing', async () => {
@@ -94,11 +112,18 @@ describe('context compaction tool text storage parity', () => {
   }): import('@/01-models/types').ToolMessageNode {
     const toolCallId = toToolCallId({ raw: 'c' });
     return {
-      id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3,
-      modelId: undefined, lmParameters: undefined, replies: { items: [] },
-      parts: [{ type: 'tool_result', result: status === 'success'
-        ? { toolCallId, status, content }
-        : { toolCallId, status, error: { code: 'other', message: content } } }],
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      createdAt: 3,
+      modelId: undefined,
+      lmParameters: undefined,
+      replies: { items: [] },
+      parts: [{
+        type: 'tool_result',
+        result: status === 'success'
+          ? { toolCallId, status, content }
+          : { toolCallId, status, error: { code: 'other', message: content } },
+      }],
     };
   }
   for (const status of ['success', 'error'] as const) {

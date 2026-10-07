@@ -21,13 +21,23 @@ export function copyImageGenerationSnapshot({ snapshot }: { snapshot: ImageGener
   rest satisfies Record<PropertyKey, never>;
   const { parameters, models, loras, imageInputs, preview, runtime, ...requestRest } = request;
   requestRest satisfies Record<PropertyKey, never>;
-  return { id, createdAt, inputFiles: inputFiles.map(file => ({ ...file })), request: {
-    parameters: { ...parameters }, preview: { ...preview }, runtime: copyImageGenerationRuntime({ runtime }),
-    models: models.map(({ file, companions, ...model }) => ({ ...model, file: { ...file }, companions: companions.map(companion => ({ ...companion, file: { ...companion.file } })) })),
-    loras: loras.map(lora => ({ ...lora, file: { ...lora.file } })),
-    imageInputs: { initImage: imageInputs.initImage && { ...imageInputs.initImage }, strength: imageInputs.strength,
-      referenceImages: imageInputs.referenceImages.map(image => ({ ...image })) },
-  } };
+  return {
+    id,
+    createdAt,
+    inputFiles: inputFiles.map(file => ({ ...file })),
+    request: {
+      parameters: { ...parameters },
+      preview: { ...preview },
+      runtime: copyImageGenerationRuntime({ runtime }),
+      models: models.map(({ file, companions, ...model }) => ({ ...model, file: { ...file }, companions: companions.map(companion => ({ ...companion, file: { ...companion.file } })) })),
+      loras: loras.map(lora => ({ ...lora, file: { ...lora.file } })),
+      imageInputs: {
+        initImage: imageInputs.initImage && { ...imageInputs.initImage },
+        strength: imageInputs.strength,
+        referenceImages: imageInputs.referenceImages.map(image => ({ ...image })),
+      },
+    },
+  };
 }
 
 /** Freeze the complete request before generation; mutable form state is never read on completion. */
@@ -48,15 +58,21 @@ export function snapshotImageGeneration({ request, sourceCommit, locateFile, cre
     debug: _debug, runId: _runId, sessionId: _sessionId, baseUrl: _baseUrl, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   return {
-    id: generateId<ImageGenerationId>(), createdAt,
+    id: generateId<ImageGenerationId>(),
+    createdAt,
     request: exactObject<ImageGenerationRecord['request']>()({
       parameters: exactObject<ImageGenerationRecord['request']['parameters']>()({ ...parameters }),
       models: models.map(({ slot, file, path, companions, sourceId: _sourceId, ...rest }) => {
         rest satisfies Record<PropertyKey, never>;
-        return { slot, path: path ?? file.name, file: locateFile({ file }), companions: (companions ?? []).map(({ path, file, ...rest }) => {
+        return {
+          slot,
+          path: path ?? file.name,
+          file: locateFile({ file }),
+          companions: (companions ?? []).map(({ path, file, ...rest }) => {
           rest satisfies Record<PropertyKey, never>;
           return { path, file: locateFile({ file }) };
-        }) };
+          }),
+        };
       }),
       loras: loras.map(({ file, path, strength, ...rest }) => {
         rest satisfies Record<PropertyKey, never>;
@@ -86,7 +102,9 @@ export function finishImageGenerationSnapshot({ snapshot, result, previews, elap
   const files = [...inputFiles, { binaryObjectId: finalId, blob: result.png, name: 'generated-image.png' }];
   return {
     record: {
-      id, createdAt, request,
+      id,
+      createdAt,
+      request,
       result: { binaryObjectId: finalId, width: result.width, height: result.height, modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs },
       previews: previews.map(frame => {
         const binaryObjectId = generateId<BinaryObjectId>();
@@ -105,10 +123,24 @@ export function recoverImageGenerationSnapshot({ snapshot, output, elapsedMs }: 
 }): { record: ImageGenerationRecord, files: HistoryBinaryFile[] } {
   const captured = copyImageGenerationSnapshot({ snapshot });
   const binaryObjectId = generateId<BinaryObjectId>();
-  return { record: { id: captured.id, createdAt: captured.createdAt, request: captured.request,
-    result: { confirmation: 'unconfirmed', binaryObjectId, width: output.width, height: output.height,
-      modelVersion: output.reported?.modelVersion, uniformOutput: output.reported?.uniformOutput, elapsedMs }, previews: [] },
-  files: [...captured.inputFiles, { binaryObjectId, blob: output.png, name: 'recovered-image.png' }] };
+  return {
+    record: {
+      id: captured.id,
+      createdAt: captured.createdAt,
+      request: captured.request,
+      result: {
+        confirmation: 'unconfirmed',
+        binaryObjectId,
+        width: output.width,
+        height: output.height,
+        modelVersion: output.reported?.modelVersion,
+        uniformOutput: output.reported?.uniformOutput,
+        elapsedMs,
+      },
+      previews: [],
+    },
+    files: [...captured.inputFiles, { binaryObjectId, blob: output.png, name: 'recovered-image.png' }],
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -11,8 +11,14 @@ it('coalesces thousands of native 2-KiB reads into three bounded Blob reads', ()
   const reads = MODEL_FILE_PAGE_BYTES * 2 / destination.length + 1;
   for (let index = 0; index < reads; index++) expect(source.read(destination, index * destination.length)).toBe(destination.length);
   expect(fixture.reads).toEqual([0, 1, 2].map(page => ({ offset: page * MODEL_FILE_PAGE_BYTES, length: MODEL_FILE_PAGE_BYTES })));
-  expect(source.metrics()).toMatchObject({ reads, bytes: reads * destination.length, blobReads: 3, blobBytes: 3 * MODEL_FILE_PAGE_BYTES,
-    cacheHits: reads - 3, cacheHitBytes: (reads - 3) * destination.length });
+  expect(source.metrics()).toMatchObject({
+    reads,
+    bytes: reads * destination.length,
+    blobReads: 3,
+    blobBytes: 3 * MODEL_FILE_PAGE_BYTES,
+    cacheHits: reads - 3,
+    cacheHitBytes: (reads - 3) * destination.length,
+  });
   expect(cache.retainedBytes()).toBe(3 * MODEL_FILE_PAGE_BYTES);
 });
 

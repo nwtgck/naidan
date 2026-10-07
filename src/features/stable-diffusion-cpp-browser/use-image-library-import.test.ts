@@ -106,9 +106,17 @@ it('removes a queued transfer during import without starting its download or tou
   const importing = Promise.withResolvers<string>();
   const download = vi.fn(async () => undefined), list = vi.fn(async () => []);
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: {
-    list, scan: scanImageRepositories, import: () => importing.promise, download,
-  } }))!;
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection: vi.fn(),
+    dependencies: {
+      list,
+      scan: scanImageRepositories,
+      import: () => importing.promise,
+      download,
+    },
+  }))!;
   try {
     library.hostDirectories.busy.value = true;
     const transfer = library.downloadRecipe({ recipeId: 'z-image-turbo', selections: {} });

@@ -51,13 +51,17 @@ export const resolveBrowserLocale = () => 'en';
     },
   };
   const result = await build({
-    root, configFile: false, logLevel: 'silent',
+    root,
+    configFile: false,
+    logLevel: 'silent',
     define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: JSON.stringify(mode === 'standalone'), __BUILD_MODE_IS_HOSTED__: JSON.stringify(mode === 'hosted') },
-    resolve: { alias: [
-      ...(mode === 'standalone' ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(root, relative) }) : []),
-      ...(!realStrings ? [{ find: /^@\/strings$/, replacement: 'virtual:image-strings' }] : []),
-      { find: '@', replacement: path.resolve(root, 'src') },
-    ] },
+    resolve: {
+      alias: [
+        ...(mode === 'standalone' ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(root, relative) }) : []),
+        ...(!realStrings ? [{ find: /^@\/strings$/, replacement: 'virtual:image-strings' }] : []),
+        { find: '@', replacement: path.resolve(root, 'src') },
+      ],
+    },
     plugins: [fixture, ...(realStrings ? createBoundaryStringsPlugin() : []), createStableDiffusionCppBrowserBuild({ rootDir: root, mode }),
       createTwClassVitePlugin({ projectRoot: root, sourceRoot: path.resolve(root, 'src'), entryModule: path.resolve(root, 'src/features/image-generation/components/ImageGenerationLab.vue'), tailwindCssPath: path.resolve(root, 'src/style.css'), debugOutputDirectory: undefined, outputMode: 'split', cssPlanning: 'disabled', maxSplitCssGroups: 256 }),
       vue({ template: { compilerOptions: { nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })] } } }),
@@ -66,11 +70,22 @@ export const resolveBrowserLocale = () => 'en';
     // without its resolver here fails only in the hosted graph (CI shard 4).
     // Match production: real locale packs are registered by the UI plugin,
     // not by rescanning the entire catalog separately in every Worker graph.
-    worker: { format: 'es', plugins: () => [fixture, { name: 'image-worker-boundary-trace', generateBundle(_options, bundle) {
-      for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
-    } }] },
-    build: { write: false, minify: false, emptyOutDir: false, reportCompressedSize: false,
-      rollupOptions: { input: 'virtual:image-view', preserveEntrySignatures: 'strict' } },
+    worker: {
+      format: 'es',
+      plugins: () => [fixture, {
+        name: 'image-worker-boundary-trace',
+        generateBundle(_options, bundle) {
+          for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
+        },
+      }],
+    },
+    build: {
+      write: false,
+      minify: false,
+      emptyOutDir: false,
+      reportCompressedSize: false,
+      rollupOptions: { input: 'virtual:image-view', preserveEntrySignatures: 'strict' },
+    },
   });
   const outputs = (Array.isArray(result) ? result : [result]).flatMap(item => {
     if (!('output' in item)) throw new Error('Unexpected watcher');

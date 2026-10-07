@@ -14,8 +14,10 @@ const props = defineProps<{
 }>();
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {

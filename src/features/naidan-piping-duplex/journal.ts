@@ -82,11 +82,19 @@ export class JournalChannel implements NaidanPipingHandshakeChannel {
     if (this.internalFailure)
       throw this.internalFailure;
     const input = ownBytes({ bytes, maxBytes: 16384 });
-    journalEnvelopeSchema.parse({ version: input[0], role: input[1], count: input[66],
-      attemptI: input.slice(2, 34), attemptR: input.slice(34, 66) });
+    journalEnvelopeSchema.parse({
+      version: input[0],
+      role: input[1],
+      count: input[66],
+      attemptI: input.slice(2, 34),
+      attemptR: input.slice(34, 66),
+    });
     requireValue({ condition: input.length >= 67 && input[0] === 1 && input[1] === (isInitiator({ role: this.internalRole }) ? 2 : 1), message: 'Journal role/version' });
-    requireValue({ condition: equalBytes({ left: input.subarray(2, 34), right: this.internalAttemptI }) &&
-                equalBytes({ left: input.subarray(34, 66), right: this.internalAttemptR }), message: 'Journal attempt mismatch' });
+    requireValue({
+      condition: equalBytes({ left: input.subarray(2, 34), right: this.internalAttemptI }) &&
+                equalBytes({ left: input.subarray(34, 66), right: this.internalAttemptR }),
+      message: 'Journal attempt mismatch',
+    });
     const count = input[66];
     if (count === undefined || count > 16)
       throw new Error('Journal count');
@@ -95,8 +103,11 @@ export class JournalChannel implements NaidanPipingHandshakeChannel {
     for (let index = 0; index < count; index++) {
       requireValue({ condition: at + 4 <= input.length, message: 'Journal truncated header' });
       const length = new DataView(input.buffer).getUint16(at + 2, false);
-      requireValue({ condition: input[at] === index && input[at + 1] === (index < (isInitiator({ role: this.internalRole }) ? 1 : 2) ? 1 : 2) &&
-                    length <= 512 && at + 4 + length <= input.length, message: 'Journal entry' });
+      requireValue({
+        condition: input[at] === index && input[at + 1] === (index < (isInitiator({ role: this.internalRole }) ? 1 : 2) ? 1 : 2) &&
+                    length <= 512 && at + 4 + length <= input.length,
+        message: 'Journal entry',
+      });
       const body = input.slice(at + 4, at + 4 + length);
       at += 4 + length;
       const previous = this.internalRemote[index];

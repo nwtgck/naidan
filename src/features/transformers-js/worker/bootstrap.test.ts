@@ -31,10 +31,12 @@ it('installs fail-closed fetch before entry evaluation and emits ready only afte
     await expect(self.fetch('https://huggingface.co/public/model/resolve/main/config.json')).rejects.toThrow('blocked non-runtime');
     entryEntered.resolve();
     await entryFinished.promise;
-    return { initializeProductionWorkerRuntime: async () => {
-      await initialized.promise;
-      return { requestId };
-    } };
+    return {
+      initializeProductionWorkerRuntime: async () => {
+        await initialized.promise;
+        return { requestId };
+      },
+    };
   });
   await import('./bootstrap');
   await entryEntered.promise;

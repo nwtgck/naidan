@@ -54,10 +54,18 @@ it('independent wire oracle agrees across 512 deterministic fragmented shapes', 
       const flags = next() % 4;
       return { id: id * 2, flags, rxNext: BigInt(next()), rxLimit: 1n << 40n, final: flags & 1 ? 1n << 42n : 0n };
     });
-    const snapshot: Snapshot = { ...emptySnapshot(), goaway: !!(next() & 1), states: [...states].reverse(),
-      finished: new Uint8Array([next() & 255]), reset: new Uint8Array([next() & 255]),
-      data: states.slice(0, next() % 3).reverse().map(item => ({ id: item.id, offset: item.rxNext,
-        bytes: pattern({ size: 1 + next() % 64, seed: next() }) })) };
+    const snapshot: Snapshot = {
+      ...emptySnapshot(),
+      goaway: !!(next() & 1),
+      states: [...states].reverse(),
+      finished: new Uint8Array([next() & 255]),
+      reset: new Uint8Array([next() & 255]),
+      data: states.slice(0, next() % 3).reverse().map(item => ({
+        id: item.id,
+        offset: item.rxNext,
+        bytes: pattern({ size: 1 + next() % 64, seed: next() }),
+      })),
+    };
     const encoded = encodeSnapshot({ snapshot });
     expect(encoded, `seeded shape ${trial}`).toEqual(reference({ snapshot }));
     expect(encodeSnapshot({ snapshot: decodeSnapshot({ bytes: encoded }) })).toEqual(encoded);
@@ -66,9 +74,13 @@ it('independent wire oracle agrees across 512 deterministic fragmented shapes', 
 
 it('the maximum legal snapshot fits its independently calculated size', () => {
   const bitmap = new Uint8Array(8192); bitmap[8191] = 128;
-  const snapshot: Snapshot = { ...emptySnapshot(), finished: bitmap, reset: bitmap,
+  const snapshot: Snapshot = {
+    ...emptySnapshot(),
+    finished: bitmap,
+    reset: bitmap,
     states: Array.from({ length: 32 }, (_, id) => state({ id })),
-    data: [0, 1].map(id => ({ id, offset: 0n, bytes: new Uint8Array(16384) })) };
+    data: [0, 1].map(id => ({ id, offset: 0n, bytes: new Uint8Array(16384) })),
+  };
   const encoded = encodeSnapshot({ snapshot });
   expect(encoded.length).toBe(50045);
   expect(encoded.length).toBeLessThan(CAPSULE_BYTES - 25);
@@ -78,8 +90,12 @@ it('the maximum legal snapshot fits its independently calculated size', () => {
 });
 
 it('every truncated prefix and an appended suffix of a mixed snapshot are rejected', () => {
-  const snapshot: Snapshot = { ...emptySnapshot(), finished: new Uint8Array([1]), states: [state({ id: 0 }), state({ id: 1 })],
-    data: [{ id: 0, offset: 0n, bytes: new Uint8Array(71) }, { id: 1, offset: 0n, bytes: new Uint8Array(27) }] };
+  const snapshot: Snapshot = {
+    ...emptySnapshot(),
+    finished: new Uint8Array([1]),
+    states: [state({ id: 0 }), state({ id: 1 })],
+    data: [{ id: 0, offset: 0n, bytes: new Uint8Array(71) }, { id: 1, offset: 0n, bytes: new Uint8Array(27) }],
+  };
   const bytes = encodeSnapshot({ snapshot });
   for (let end = 0; end < bytes.length; end++) expect(() => decodeSnapshot({ bytes: bytes.subarray(0, end) }), `prefix ${end}`).toThrow();
   const appended = new Uint8Array(bytes.length + 1); appended.set(bytes);
@@ -103,8 +119,11 @@ it.each([-1, 65536, 1.5, NaN, Infinity])('stream identifier %s is rejected inste
 });
 
 it('offset boundaries are exact and overflow never wraps', () => {
-  const snapshot: Snapshot = { ...emptySnapshot(), states: [{ id: 65535, flags: 1, rxNext: MAX_OFFSET, rxLimit: MAX_OFFSET, final: MAX_OFFSET }],
-    data: [{ id: 65535, offset: MAX_OFFSET - 1n, bytes: new Uint8Array([1]) }] };
+  const snapshot: Snapshot = {
+    ...emptySnapshot(),
+    states: [{ id: 65535, flags: 1, rxNext: MAX_OFFSET, rxLimit: MAX_OFFSET, final: MAX_OFFSET }],
+    data: [{ id: 65535, offset: MAX_OFFSET - 1n, bytes: new Uint8Array([1]) }],
+  };
   expect(decodeSnapshot({ bytes: encodeSnapshot({ snapshot }) })).toEqual(snapshot);
   for (const offset of [-1n, MAX_OFFSET, MAX_OFFSET + 1n, 1n << 64n]) {
     expect(() => encodeSnapshot({ snapshot: { ...emptySnapshot(), data: [{ id: 0, offset, bytes: new Uint8Array([1]) }] } })).toThrow('range');
@@ -123,8 +142,12 @@ it('duplicate state and DATA identifiers and noncanonical terminal padding have 
 });
 
 it('decoded DATA and bitmaps own their buffers and do not expose another segment', () => {
-  const snapshot: Snapshot = { ...emptySnapshot(), finished: new Uint8Array([8]), reset: new Uint8Array([16]),
-    data: [{ id: 0, offset: 0n, bytes: new Uint8Array([1, 2]) }, { id: 1, offset: 0n, bytes: new Uint8Array([3, 4, 5]) }] };
+  const snapshot: Snapshot = {
+    ...emptySnapshot(),
+    finished: new Uint8Array([8]),
+    reset: new Uint8Array([16]),
+    data: [{ id: 0, offset: 0n, bytes: new Uint8Array([1, 2]) }, { id: 1, offset: 0n, bytes: new Uint8Array([3, 4, 5]) }],
+  };
   const bytes = encodeSnapshot({ snapshot }), decoded = decodeSnapshot({ bytes });
   bytes.fill(0); new Uint8Array(decoded.data[0]!.bytes.buffer).fill(9); decoded.finished.fill(0);
   expect(decoded.data[1]!.bytes).toEqual(new Uint8Array([3, 4, 5]));

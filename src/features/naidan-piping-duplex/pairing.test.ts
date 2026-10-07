@@ -20,13 +20,16 @@ afterEach(() => {
 });
 function channel(): NaidanPipingHandshakeChannel {
   const messages: Uint8Array[] = [], change = new Pulse();
-  return { async send({ bytes }) {
-    messages.push(bytes.slice()); change.fire();
-  }, async receive({ signal }) {
-    for (;;) {
-      const revision = change.revision; signal.throwIfAborted(); const bytes = messages.shift(); if (bytes) return bytes; await change.wait({ revision, signal });
-    }
-  } };
+  return {
+    async send({ bytes }) {
+      messages.push(bytes.slice()); change.fire();
+    },
+    async receive({ signal }) {
+      for (;;) {
+        const revision = change.revision; signal.throwIfAborted(); const bytes = messages.shift(); if (bytes) return bytes; await change.wait({ revision, signal });
+      }
+    },
+  };
 }
 async function start({ verifyA, verifyB, known, corruptStatus }: {
   verifyA: NaidanPipingPeerVerifier | undefined; verifyB: NaidanPipingPeerVerifier | undefined;
@@ -40,22 +43,40 @@ async function start({ verifyA, verifyB, known, corruptStatus }: {
       bytes = bytes.slice(); bytes[bytes.length - 1]! ^= 1;
     } await ba.send({ bytes });
   };
-  const a = establishVerifiedNaidanPipingKeys({ role: 'initiator', identity: identities.a, expectedPeer: known ? identities.b.publicKey : undefined,
-    verifyPeer: verifyA, binding, channel: { send: ab.send, receive: ba.receive }, signal: stop.signal });
-  const b = establishVerifiedNaidanPipingKeys({ role: 'responder', identity: identities.b, expectedPeer: known ? identities.a.publicKey : undefined,
-    verifyPeer: verifyB, binding, channel: { send: bSend, receive: ab.receive }, signal: stop.signal });
+  const a = establishVerifiedNaidanPipingKeys({
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: known ? identities.b.publicKey : undefined,
+    verifyPeer: verifyA,
+    binding,
+    channel: { send: ab.send, receive: ba.receive },
+    signal: stop.signal,
+  });
+  const b = establishVerifiedNaidanPipingKeys({
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: known ? identities.a.publicKey : undefined,
+    verifyPeer: verifyB,
+    binding,
+    channel: { send: bSend, receive: ab.receive },
+    signal: stop.signal,
+  });
   void a.catch(error => stop.abort(error)); void b.catch(error => stop.abort(error));
   return { a, b, identities, stop };
 }
 it('both peers compare the complete binding and neither can export keys before both explicit approvals', async () => {
   const pendingA = Promise.withResolvers<boolean>(), pendingB = Promise.withResolvers<boolean>();
   const reachedA = Promise.withResolvers<Parameters<NaidanPipingPeerVerifier>[0]>(), reachedB = Promise.withResolvers<Parameters<NaidanPipingPeerVerifier>[0]>();
-  const pair = await start({ known: false, corruptStatus: false,
+  const pair = await start({
+    known: false,
+    corruptStatus: false,
     verifyA: data => {
       reachedA.resolve(data); return pendingA.promise;
-    }, verifyB: data => {
+    },
+    verifyB: data => {
       reachedB.resolve(data); return pendingB.promise;
-    } });
+    },
+  });
   const shown = await promiseAllKeyed({ a: reachedA.promise, b: reachedB.promise });
   expect(shown.a.comparison.byteLength).toBe(32); expect(shown.a.comparison).toEqual(shown.b.comparison);
   expect(shown.a.peerIdentity).toEqual(pair.identities.b.publicKey); expect(shown.b.peerIdentity).toEqual(pair.identities.a.publicKey);
@@ -74,9 +95,14 @@ it('rejecting a comparison prevents either peer from returning a usable context'
 });
 it('a late acceptance of an obsolete dialog cannot resume a cancelled key exchange', async () => {
   const gate = Promise.withResolvers<boolean>(), shown = Promise.withResolvers<void>();
-  const pair = await start({ known: false, corruptStatus: false, verifyA: () => {
-    shown.resolve(); return gate.promise;
-  }, verifyB: async () => true });
+  const pair = await start({
+    known: false,
+    corruptStatus: false,
+    verifyA: () => {
+      shown.resolve(); return gate.promise;
+    },
+    verifyB: async () => true,
+  });
   await shown.promise; pair.stop.abort(new Error('Dialog closed'));
   await expect(pair.a).rejects.toThrow('Dialog closed'); gate.resolve(true); await expect(pair.b).rejects.toThrow();
 });
@@ -97,9 +123,14 @@ it('an authenticated-status modification fails before requesting human approval'
 it('different handshake transcripts cannot produce the same displayed full comparison text', async () => {
   const shown: Uint8Array[] = [];
   for (let n = 0; n < 2; n++) {
-    const pair = await start({ known: false, corruptStatus: false, verifyA: async ({ comparison }) => {
-      shown.push(comparison); return true;
-    }, verifyB: async () => true });
+    const pair = await start({
+      known: false,
+      corruptStatus: false,
+      verifyA: async ({ comparison }) => {
+        shown.push(comparison); return true;
+      },
+      verifyB: async () => true,
+    });
     const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); keys.a.dispose(); keys.b.dispose();
   }
   expect(shown[0]).not.toEqual(shown[1]);
@@ -113,8 +144,15 @@ it('two pinned peers do not need to display or approve another comparison', asyn
 });
 it('unknown-peer establishment without a verifier fails closed', async () => {
   const identity = await createNaidanPipingIdentity();
-  await expect(establishVerifiedNaidanPipingKeys({ role: 'initiator', identity, expectedPeer: undefined, verifyPeer: undefined,
-    binding: new Uint8Array(32), channel: channel(), signal: new AbortController().signal })).rejects.toThrow();
+  await expect(establishVerifiedNaidanPipingKeys({
+    role: 'initiator',
+    identity,
+    expectedPeer: undefined,
+    verifyPeer: undefined,
+    binding: new Uint8Array(32),
+    channel: channel(),
+    signal: new AbortController().signal,
+  })).rejects.toThrow();
 });
 it('short numeric rendezvous preserves leading zeros and does not act as the authentication value', async () => {
   const a = await rendezvousRoom({ code: '0042', origin: 'https://relay.invalid' });

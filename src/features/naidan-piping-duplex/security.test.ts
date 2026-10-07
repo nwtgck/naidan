@@ -42,10 +42,22 @@ async function pair({ identities, binding }: {
   const context = binding ?? crypto.getRandomValues(new Uint8Array(32));
   const signal = AbortSignal.timeout(5000);
   return promiseAllKeyed({
-    a: establishNaidanPipingKeys({ role: 'initiator', identity: a, expectedPeer: b.publicKey,
-      binding: context, channel: { send: toB.send, receive: toA.receive }, signal }),
-    b: establishNaidanPipingKeys({ role: 'responder', identity: b, expectedPeer: a.publicKey,
-      binding: context, channel: { send: toA.send, receive: toB.receive }, signal }),
+    a: establishNaidanPipingKeys({
+      role: 'initiator',
+      identity: a,
+      expectedPeer: b.publicKey,
+      binding: context,
+      channel: { send: toB.send, receive: toA.receive },
+      signal,
+    }),
+    b: establishNaidanPipingKeys({
+      role: 'responder',
+      identity: b,
+      expectedPeer: a.publicKey,
+      binding: context,
+      channel: { send: toA.send, receive: toB.receive },
+      signal,
+    }),
   });
 }
 
@@ -53,14 +65,20 @@ function codecs({ keys, label }: { keys: { a: NaidanPipingKeyContext; b: NaidanP
   const context = new Uint8Array();
   const left = keys.a.createDomain({ label, context }), right = keys.b.createDomain({ label, context });
   return {
-    left, right,
+    left,
+    right,
     tx: new Records({ domain: left, context: keys.a.contextId, direction: 1, usage: 'encrypt' }),
     rx: new Records({ domain: right, context: keys.b.contextId, direction: 1, usage: 'decrypt' }),
   };
 }
 function empty({ goaway }: { goaway: boolean }): Uint8Array {
-  return encodeRecordPayload({ payload: { receiptRequest: 'not-requested', receivedRecord: undefined,
-    snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] } } });
+  return encodeRecordPayload({
+    payload: {
+      receiptRequest: 'not-requested',
+      receivedRecord: undefined,
+      snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] },
+    },
+  });
 }
 
 for (const usage of ['encrypt', 'decrypt'] as const) {
@@ -90,9 +108,12 @@ it('duplicate authenticated records apply exactly once to a living receiver', as
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
   let applications = 0;
   for (let index = 0; index < 20; index++) {
-    const outcome = await rx.accept({ capsule, apply: () => {
-      applications++;
-    } });
+    const outcome = await rx.accept({
+      capsule,
+      apply: () => {
+        applications++;
+      },
+    });
     expect(outcome).toBe(index === 0 ? 'accepted' : 'stale');
   }
   expect(applications).toBe(1);
@@ -104,9 +125,12 @@ it('a forged high record number cannot poison the replay watermark', async () =>
   const { tx, rx } = codecs({ keys, label: 'test/high-number' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
   const forged = capsule.slice(); new DataView(forged.buffer).setBigUint64(1, (1n << 48n) - 1n, false);
-  expect(await rx.accept({ capsule: forged, apply: () => {
-    throw new Error('Unauthenticated application');
-  } })).toBe('unauthenticated');
+  expect(await rx.accept({
+    capsule: forged,
+    apply: () => {
+      throw new Error('Unauthenticated application');
+    },
+  })).toBe('unauthenticated');
   expect(rx.high).toBe(-1n);
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
   expect(rx.high).toBe(0n);
@@ -120,9 +144,12 @@ it('old records fail across fresh handshakes even with identical identities and 
   const old = codecs({ keys: first, label: 'test/reconnect' }), fresh = codecs({ keys: second, label: 'test/reconnect' });
   expect(first.a.contextId).not.toEqual(second.a.contextId);
   const capsule = await old.tx.seal({ plaintext: empty({ goaway: false }) });
-  expect(await fresh.rx.accept({ capsule, apply: () => {
-    throw new Error('Cross-session replay');
-  } })).toBe('unauthenticated');
+  expect(await fresh.rx.accept({
+    capsule,
+    apply: () => {
+      throw new Error('Cross-session replay');
+    },
+  })).toBe('unauthenticated');
   expect(fresh.rx.high).toBe(-1n);
   first.a.dispose(); first.b.dispose(); second.a.dispose(); second.b.dispose();
 });
@@ -135,9 +162,12 @@ it('direction reflection and domain substitution are rejected', async () => {
   const swapped = new Records({ domain: other, context: keys.b.contextId, direction: 1, usage: 'decrypt' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
   for (const rx of [reflected, swapped])
-    expect(await rx.accept({ capsule, apply: () => {
-      throw new Error('Wrong scope');
-    } })).toBe('unauthenticated');
+    expect(await rx.accept({
+      capsule,
+      apply: () => {
+        throw new Error('Wrong scope');
+      },
+    })).toBe('unauthenticated');
   keys.a.dispose(); keys.b.dispose();
 });
 
@@ -160,13 +190,19 @@ it('an old decrypt finishing late cannot roll back already committed state', asy
     return realDecrypt(...args);
   });
   const applied: boolean[] = [];
-  const pending = rx.accept({ capsule: old, apply: ({ snapshot }) => {
-    applied.push(snapshot.goaway);
-  } });
+  const pending = rx.accept({
+    capsule: old,
+    apply: ({ snapshot }) => {
+      applied.push(snapshot.goaway);
+    },
+  });
   await started.promise;
-  expect(await rx.accept({ capsule: newer, apply: ({ snapshot }) => {
-    applied.push(snapshot.goaway);
-  } })).toBe('accepted');
+  expect(await rx.accept({
+    capsule: newer,
+    apply: ({ snapshot }) => {
+      applied.push(snapshot.goaway);
+    },
+  })).toBe('accepted');
   release?.();
   expect(await pending).toBe('stale');
   expect(applied).toEqual([true]);
@@ -181,9 +217,12 @@ it('disposal during authentication prevents publishing plaintext state', async (
   vi.spyOn(crypto.subtle, 'decrypt').mockImplementation(async (...args) => {
     const result = await decrypt(...args); keys.b.dispose(); return result;
   });
-  await expect(rx.accept({ capsule, apply: () => {
-    throw new Error('Disposed delivery');
-  } })).rejects.toThrow('disposed');
+  await expect(rx.accept({
+    capsule,
+    apply: () => {
+      throw new Error('Disposed delivery');
+    },
+  })).rejects.toThrow('disposed');
   expect(rx.high).toBe(-1n); keys.a.dispose();
 });
 
@@ -213,15 +252,29 @@ it('authenticated protocol violations reject the runner lifetime instead of look
   const domain = keys.a.createDomain({ label: 'piping-duplex-record/v3', context: keys.a.contextId });
   const sender = new Records({ domain, context: keys.a.contextId, direction: 1, usage: 'encrypt' });
   // A responder-local ID cannot be allocated by an incoming initiator advertisement.
-  const invalid = await sender.seal({ plaintext: encodeRecordPayload({ payload: { receiptRequest: 'not-requested', receivedRecord: undefined, snapshot: {
-    goaway: false, finished: new Uint8Array(), reset: new Uint8Array(),
-    states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 0n, final: 0n }], data: [],
-  } } }) });
+  const invalid = await sender.seal({
+    plaintext: encodeRecordPayload({
+      payload: {
+        receiptRequest: 'not-requested',
+        receivedRecord: undefined,
+        snapshot: {
+          goaway: false,
+          finished: new Uint8Array(),
+          reset: new Uint8Array(),
+          states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 0n, final: 0n }],
+          data: [],
+        },
+      },
+    }),
+  });
   const stop = new AbortController();
   try {
-    await expect(runDuplex({ session, signal: stop.signal,
+    await expect(runDuplex({
+      session,
+      signal: stop.signal,
       endpoint: { origin: 'https://relay.invalid', send: async () => {}, receive: async () => invalid, repair: async () => {} },
-      pacing: { minimumMs: 2, idleResendIntervalMs: 100, retryBaseMs: 10, retryMaximumMs: 100 }, onEvent: () => {},
+      pacing: { minimumMs: 2, idleResendIntervalMs: 100, retryBaseMs: 10, retryMaximumMs: 100 },
+      onEvent: () => {},
     })).rejects.toThrow('Record processing failed');
     expect(session.stopped).toBe(true);
   } finally {

@@ -6,7 +6,9 @@ const fixture = vi.hoisted(() => {
   const worker = {
     generate: vi.fn<LlamaCppWorkerClient['generate']>(),
     probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(),
-    canReuse: vi.fn(() => true), dispose: vi.fn(), subscribeDisposed: vi.fn(() => () => {}),
+    canReuse: vi.fn(() => true),
+    dispose: vi.fn(),
+    subscribeDisposed: vi.fn(() => () => {}),
   };
   return { worker, create: vi.fn(() => worker), resolve: vi.fn(async () => 'cpu-wasm32') };
 });

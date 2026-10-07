@@ -42,14 +42,27 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
   const stop = new AbortController(), lifetime = AbortSignal.any([signal, stop.signal]);
   const runId = ++nextRunId;
   const fileReference = ({ file }: { file: typeof modelSelection.primary.file }) => ({ ...file, expected: file.expected });
-  const wireSelection = { primary: { ...modelSelection.primary, file: fileReference({ file: modelSelection.primary.file }) },
+  const wireSelection = {
+    primary: { ...modelSelection.primary, file: fileReference({ file: modelSelection.primary.file }) },
     components: modelSelection.components.map(item => ({ ...item, file: fileReference({ file: item.file }) })),
-    loras: modelSelection.loras.map(item => ({ ...item, file: fileReference({ file: item.file }) })) };
+    loras: modelSelection.loras.map(item => ({ ...item, file: fileReference({ file: item.file }) })),
+  };
   let lastProgress: PeerProgress | undefined;
-  const call = client.generateImage({ input: { modelSelection: wireSelection, parameters, preview,
-    imageInputs: { initial, references, strength: input.imageInputs.strength } }, on: { progress: ({ value }) => {
-    lastProgress = { ...value }; onProgress({ value });
-  } }, signal: lifetime, timeoutMs: undefined });
+  const call = client.generateImage({
+    input: {
+      modelSelection: wireSelection,
+      parameters,
+      preview,
+      imageInputs: { initial, references, strength: input.imageInputs.strength },
+    },
+    on: {
+      progress: ({ value }) => {
+        lastProgress = { ...value }; onProgress({ value });
+      },
+    },
+    signal: lifetime,
+    timeoutMs: undefined,
+  });
   // Observe early rejection while result streams are still being read.
   const closed = call.closed.then(() => ({ ok: true as const }), (error: unknown) => ({ ok: false as const, error }));
   let firstFailure: { error: unknown; stage: string } | undefined;
@@ -120,8 +133,19 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
             if (!part || part.length !== part.bytes.length) throw new Error('Incomplete preview');
             const { width, height } = peerImageDimensions({ bytes: part.bytes, mimeType: 'image/png' });
             if (width !== part.header.width || height !== part.header.height) throw new Error('Preview dimensions differ');
-            onPreview({ frame: { type: 'naidan-image-preview-v1', runId, revision, step: part.header.step, steps: part.header.steps,
-              width, height, mode: part.header.mode, png: new Blob([part.bytes], { type: 'image/png' }) } });
+            onPreview({
+              frame: {
+                type: 'naidan-image-preview-v1',
+                runId,
+                revision,
+                step: part.header.step,
+                steps: part.header.steps,
+                width,
+                height,
+                mode: part.header.mode,
+                png: new Blob([part.bytes], { type: 'image/png' }),
+              },
+            });
             part = undefined; break;
           }
           case 'completed':
@@ -152,26 +176,44 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
       if (!confirmation.ok) throw confirmation.error;
       lifetime.throwIfAborted();
       if (!pixels || !completed) throw new Error('Missing image confirmation');
-      return { status: 'completed', seed: completed.seed,
-        output: { png: new Blob([pixels], { type: 'image/png' }), width: completed.width, height: completed.height,
-          modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } };
+      return {
+        status: 'completed',
+        seed: completed.seed,
+        output: {
+          png: new Blob([pixels], { type: 'image/png' }),
+          width: completed.width,
+          height: completed.height,
+          modelVersion: completed.modelVersion,
+          uniformOutput: completed.uniformOutput,
+        },
+      };
     } catch (error) {
       call.cancel({ reason: 'Image request ended without confirmed completion' }); cancelReaders();
       const description = ['Image generation or delivery failed', `Caller stage: ${firstFailure?.stage ?? stage}`,
         describeNaidanRpcError({ error: firstFailure?.error ?? error }),
         ...(lastProgress ? [`Last reported progress: ${lastProgress.phase} ${lastProgress.completed}/${lastProgress.total}`] : [])].join('\n');
-      if (pixels) return { status: 'interrupted', recoverable: { png: new Blob([pixels], { type: 'image/png' }),
-        width: parameters.width, height: parameters.height, reported: completed ? { seed: completed.seed, modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } : undefined },
-      message: `Image received, but successful RPC completion was not confirmed\n${description}` };
+      if (pixels) return {
+        status: 'interrupted',
+        recoverable: {
+          png: new Blob([pixels], { type: 'image/png' }),
+          width: parameters.width,
+          height: parameters.height,
+          reported: completed ? { seed: completed.seed, modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } : undefined,
+        },
+        message: `Image received, but successful RPC completion was not confirmed\n${description}`,
+      };
       return lifetime.aborted ? { status: 'cancelled' } : { status: 'failed', message: description };
     } finally {
       lifetime.removeEventListener('abort', cancelled);
       imageReader?.releaseLock(); eventsReader?.releaseLock();
     }
   })();
-  return { result, cancel() {
-    stop.abort();
-  } };
+  return {
+    result,
+    cancel() {
+      stop.abort();
+    },
+  };
 }
 
 export async function listPeerImageModels({ client, signal }: { client: NaidanPeerClient, signal: AbortSignal }) {

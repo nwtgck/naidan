@@ -12,9 +12,11 @@ const emit = defineEmits<{ 'update:modelValue': [value: NaidanRpcConnectionId | 
 const router = useRouter();
 const connections = shallowRef<RpcConnectionView[]>([]), failed = ref(false);
 let disposed = false;
-const unsubscribe = subscribeRpcState({ listener: () => {
-  void refresh();
-} });
+const unsubscribe = subscribeRpcState({
+  listener: () => {
+    void refresh();
+  },
+});
 onScopeDispose(() => {
   disposed = true; unsubscribe();
 });

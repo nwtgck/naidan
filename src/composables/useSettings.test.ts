@@ -137,7 +137,9 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('loads saved title reasoning %s verbatim without a migration', async effort => {
     const saved: Settings = {
-      ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' },
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpoint: { type: 'openai', url: '' },
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } },
     };
     mocks.loadSettings.mockResolvedValue(saved);
@@ -700,11 +702,13 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
       mockListModels.mockClear();
 
-      await fetchModels({ overrides: {
-        url: 'http://override-url',
-        type: 'ollama',
-        httpHeaders: [['X-Test', 'true']],
-      } });
+      await fetchModels({
+        overrides: {
+          url: 'http://override-url',
+          type: 'ollama',
+          httpHeaders: [['X-Test', 'true']],
+        },
+      });
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);

@@ -551,11 +551,14 @@ describe('wesh date', () => {
 
 
   it('supports -f bulk input, continues after invalid lines, and preserves order', async () => {
-    await writeFile({ path: 'dates.txt', data: `\
+    await writeFile({
+      path: 'dates.txt',
+      data: `\
 @0
 not-a-date
 @2
-` });
+`,
+    });
 
     const result = await execute({ script: "date -u -f dates.txt '+%s'" });
 
@@ -570,17 +573,23 @@ not-a-date
   it('supports --file=DATEFILE, stdin, relative lines, empty input, and repeated -f last-wins', async () => {
     await writeFile({ path: 'first.txt', data: '@1\n' });
     await writeFile({ path: 'second.txt', data: '@2\n' });
-    await writeFile({ path: 'relative.txt', data: `\
+    await writeFile({
+      path: 'relative.txt',
+      data: `\
 tomorrow
 2 days ago
-` });
+`,
+    });
     await writeFile({ path: 'empty.txt', data: '' });
 
     const attached = await execute({ script: "date -u --file=second.txt '+%s'" });
-    const stdin = await execute({ script: "date -u -f - '+%s'", stdin: `\
+    const stdin = await execute({
+      script: "date -u -f - '+%s'",
+      stdin: `\
 @3
 @4
-` });
+`,
+    });
     const relative = await execute({ script: "date -u -f relative.txt '+%F %T'" });
     const empty = await execute({ script: "date -u -f empty.txt '+%s'" });
     const repeated = await execute({ script: "date -u -f first.txt -f second.txt '+%s'" });

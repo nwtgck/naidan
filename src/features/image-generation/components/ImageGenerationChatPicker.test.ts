@@ -16,9 +16,19 @@ beforeEach(async () => {
   vi.resetAllMocks(); await ensureAllStringsForTest({ locale: 'en' });
   items.value = [
     { type: 'chat', id: 'chat-bb', chat: { id: toChatId({ raw: 'chat-bb' }), title: 'Photo assistant', updatedAt: 1 } },
-    { type: 'chat_group', id: idToRaw({ id: groupId }), chatGroup: { id: groupId, name: '画像制作', isCollapsed: true, updatedAt: 1, items: [
-      { type: 'chat', id: idToRaw({ id: chatId }), chat: { id: chatId, title: '夜景の英語プロンプト', groupId, updatedAt: 1 } },
-    ] } },
+    {
+      type: 'chat_group',
+      id: idToRaw({ id: groupId }),
+      chatGroup: {
+        id: groupId,
+        name: '画像制作',
+        isCollapsed: true,
+        updatedAt: 1,
+        items: [
+          { type: 'chat', id: idToRaw({ id: chatId }), chat: { id: chatId, title: '夜景の英語プロンプト', groupId, updatedAt: 1 } },
+        ],
+      },
+    },
     { type: 'chat_group', id: 'group-empty', chatGroup: { id: toChatGroupId({ raw: 'group-empty' }), name: 'Empty group', isCollapsed: false, updatedAt: 1, items: [] } },
   ];
 });

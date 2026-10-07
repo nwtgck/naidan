@@ -19,7 +19,8 @@ export function reserveModelLaunchHistory({ history, location, fallback }: { fal
   const state = history.state;
   const previous = reservationSchema.safeParse(state[modelLaunchHistoryKey]);
   if (previous.success && previous.data.location === location) return {
-    chatId: toChatId({ raw: previous.data.chatId }), newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
+    chatId: toChatId({ raw: previous.data.chatId }),
+    newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
   };
   const chatId = fallback?.chatId ?? generateId<ChatId>();
   const newChatGroupId = fallback?.newChatGroupId ?? generateId<ChatGroupId>();

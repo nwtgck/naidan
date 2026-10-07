@@ -72,10 +72,15 @@ describe('usePWAUpdate', () => {
 
   it('does not restore an obsolete action after state changed during failure', async () => {
     const error = new Error('obsolete');
-    setUpdateState({ next: { kind: 'ready', handler: async () => {
-      setUpdateState({ next: { kind: 'preparing' } });
-      throw error;
-    } } });
+    setUpdateState({
+      next: {
+        kind: 'ready',
+        handler: async () => {
+          setUpdateState({ next: { kind: 'preparing' } });
+          throw error;
+        },
+      },
+    });
     await expect(update()).rejects.toBe(error);
     expect(status.value).toBe('preparing');
   });

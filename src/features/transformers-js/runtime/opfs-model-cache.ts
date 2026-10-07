@@ -63,13 +63,25 @@ async function matchOpfsPath({ urlString, allowMutation }: {
   const path = urlToPath({ url: urlString });
   if (!path) return undefined;
   if (!supportsOpfsCoordination()) return await matchOpfsPathUnderLease({ urlString, allowMutation });
-  const found = await withOpfsFileLease({ path, mode: 'shared', availability: allowMutation ? 'wait' : 'immediate', signal: undefined, run: async () =>
-    await matchOpfsPathUnderLease({ urlString, allowMutation: false }) });
+  const found = await withOpfsFileLease({
+    path,
+    mode: 'shared',
+    availability: allowMutation ? 'wait' : 'immediate',
+    signal: undefined,
+    run: async () =>
+      await matchOpfsPathUnderLease({ urlString, allowMutation: false }),
+  });
   if (found !== undefined || !allowMutation) return found;
   // Never upgrade a shared lease. Recheck after acquiring exclusive ownership
   // so cleanup cannot delete a file completed by an intervening writer.
-  return await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () =>
-    await matchOpfsPathUnderLease({ urlString, allowMutation: true }) });
+  return await withOpfsFileLease({
+    path,
+    mode: 'exclusive',
+    availability: 'wait',
+    signal: undefined,
+    run: async () =>
+      await matchOpfsPathUnderLease({ urlString, allowMutation: true }),
+  });
 }
 
 async function matchOpfsPathUnderLease({

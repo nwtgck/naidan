@@ -19,11 +19,16 @@ export function normalizeRendezvousCode({ code }: { code: string }): string {
 }
 export async function rendezvousRoom({ code, origin }: { code: string; origin: string }): Promise<Uint8Array<ArrayBuffer>> {
   const url = new URL(origin);
-  requireValue({ condition: (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password &&
-    !url.search && !url.hash && url.pathname === '/', message: 'An explicit relay origin is required' });
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', fields({ parts: [
-    ascii({ text: 'piping-rendezvous/v2' }), ascii({ text: url.origin }), ascii({ text: normalizeRendezvousCode({ code }) }),
-  ] })));
+  requireValue({
+    condition: (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password &&
+    !url.search && !url.hash && url.pathname === '/',
+    message: 'An explicit relay origin is required',
+  });
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', fields({
+    parts: [
+      ascii({ text: 'piping-rendezvous/v2' }), ascii({ text: url.origin }), ascii({ text: normalizeRendezvousCode({ code }) }),
+    ],
+  })));
 }
 export async function rendezvousRoute({ room, kind, attempts }: {
   room: Uint8Array; kind: 'offer' | 'reply' | 'initiator' | 'responder'; attempts: readonly Uint8Array[];
@@ -53,8 +58,10 @@ export class RendezvousChannel {
     this.challenge = ownBytes({ bytes: challenge, maxBytes: 32 });
     requireValue({ condition: this.challenge.length === 32 && this.challenge.some(Boolean), message: 'Fresh selection challenge required' });
     this.journal = new JournalChannel({ role, attemptI, attemptR });
-    this.digest = crypto.subtle.digest('SHA-256', fields({ parts: [ascii({ text: 'piping-rendezvous-binding/v2' }),
-      room, attemptI, attemptR, this.challenge] })).then(bytes => new Uint8Array(bytes));
+    this.digest = crypto.subtle.digest('SHA-256', fields({
+      parts: [ascii({ text: 'piping-rendezvous-binding/v2' }),
+        room, attemptI, attemptR, this.challenge],
+    })).then(bytes => new Uint8Array(bytes));
     void this.digest.catch(() => {});
   }
   static async create({ role, room, attemptI, attemptR, challenge }: {
@@ -67,8 +74,14 @@ export class RendezvousChannel {
     const ownedChallenge = ownBytes({ bytes: challenge, maxBytes: 32 });
     const initiator = await rendezvousRoute({ room: ownedRoom, kind: 'initiator', attempts: [ownedI, ownedR] });
     const responder = await rendezvousRoute({ room: ownedRoom, kind: 'responder', attempts: [ownedI, ownedR] });
-    return new RendezvousChannel({ role, room: ownedRoom, attemptI: ownedI, attemptR: ownedR, challenge: ownedChallenge,
-      routes: isInitiator({ role }) ? { send: initiator, receive: responder } : { send: responder, receive: initiator } });
+    return new RendezvousChannel({
+      role,
+      room: ownedRoom,
+      attemptI: ownedI,
+      attemptR: ownedR,
+      challenge: ownedChallenge,
+      routes: isInitiator({ role }) ? { send: initiator, receive: responder } : { send: responder, receive: initiator },
+    });
   }
   private checkLive(): void {
     requireValue({ condition: !this.disposed, message: 'Rendezvous disposed' });

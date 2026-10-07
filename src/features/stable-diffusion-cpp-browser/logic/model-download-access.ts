@@ -22,7 +22,8 @@ export async function openModelDownloadAccess({ handle, kind, offset }: {
     }
     const read = access.read.bind(access);
     return {
-      checkpointMode: 'periodic', getSize: () => access.getSize(),
+      checkpointMode: 'periodic',
+      getSize: () => access.getSize(),
       async read({ bytes, at }) {
         return read(bytes, { at });
       },
@@ -64,7 +65,8 @@ export async function openModelDownloadAccess({ handle, kind, offset }: {
       closed = true;
     }
     return {
-      checkpointMode: 'on-close', getSize: () => snapshot.size,
+      checkpointMode: 'on-close',
+      getSize: () => snapshot.size,
       async read({ bytes, at }) {
         const source = new Uint8Array(await snapshot.slice(at, at + bytes.length).arrayBuffer());
         bytes.set(source); return source.length;

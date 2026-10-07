@@ -21,15 +21,20 @@ export const productionWorkerStartupSchema = z.discriminatedUnion('status', [
     message: z.string().max(2000),
   }).strict(),
   z.object({
-    channel: z.literal(PRODUCTION_WORKER_READY.channel), version: z.literal(2),
-    status: z.literal('runtime-module'), requestId: z.uuid(),
-    variant: runtimeModuleVariantSchema, bytes: runtimeModuleBytesSchema,
+    channel: z.literal(PRODUCTION_WORKER_READY.channel),
+    version: z.literal(2),
+    status: z.literal('runtime-module'),
+    requestId: z.uuid(),
+    variant: runtimeModuleVariantSchema,
+    bytes: runtimeModuleBytesSchema,
   }).strict(),
 ]);
 
 export const productionRuntimeModuleReplySchema = z.object({
-  channel: z.literal(PRODUCTION_WORKER_READY.channel), version: z.literal(2),
-  status: z.literal('runtime-module-ready'), requestId: z.uuid(),
+  channel: z.literal(PRODUCTION_WORKER_READY.channel),
+  version: z.literal(2),
+  status: z.literal('runtime-module-ready'),
+  requestId: z.uuid(),
   objectUrl: z.string().max(2048).refine(value => {
     try {
       return new URL(value).protocol === 'blob:';
@@ -87,7 +92,11 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
         endpoint.addEventListener('messageerror', onMessageError);
         try {
           endpoint.postMessage(productionWorkerStartupSchema.parse({
-            ...PRODUCTION_WORKER_READY, status: 'runtime-module', requestId, variant, bytes,
+            ...PRODUCTION_WORKER_READY,
+            status: 'runtime-module',
+            requestId,
+            variant,
+            bytes,
           }));
         } catch (error) {
           cleanup(); reject(error);
@@ -106,12 +115,14 @@ export async function startProductionWorkerRuntime({ loadEntry, postMessage }: {
     const { requestId } = await loadEntry();
     postMessage({ message: { ...PRODUCTION_WORKER_READY, requestId } });
   } catch (error) {
-    postMessage({ message: {
-      channel: PRODUCTION_WORKER_READY.channel,
-      version: PRODUCTION_WORKER_READY.version,
-      status: 'failed',
-      message: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
-    } });
+    postMessage({
+      message: {
+        channel: PRODUCTION_WORKER_READY.channel,
+        version: PRODUCTION_WORKER_READY.version,
+        status: 'failed',
+        message: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
+      },
+    });
     throw error;
   }
 }

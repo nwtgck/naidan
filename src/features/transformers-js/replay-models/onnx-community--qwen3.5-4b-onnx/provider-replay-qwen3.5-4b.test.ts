@@ -76,11 +76,14 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       const contentParts = typeof content === 'string' ? [{ type: 'text' as const, text: content }] : content;
       return exactObject<Extract<ChatMessage, { role: 'user' }>>()({
-        id: messageId, role,
+        id: messageId,
+        role,
         parts: contentParts.map((part) => part.type === 'text'
           ? { type: 'text' as const, text: part.text, completeness: 'complete' as const }
-          : { type: 'attachment' as const,
-            attachment: createReplayImageAttachment({ dataUrl: part.image_url.url }) }),
+          : {
+            type: 'attachment' as const,
+            attachment: createReplayImageAttachment({ dataUrl: part.image_url.url }),
+          }),
       });
     }
     case 'system': {
@@ -88,7 +91,8 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       const text = typeof content === 'string' ? content : content.flatMap(part => part.type === 'text' ? [part.text] : []).join('');
       return exactObject<Extract<ChatMessage, { role: 'system' }>>()({
-        id: messageId, role,
+        id: messageId,
+        role,
         parts: [{ type: 'text', text, completeness: 'complete' }],
       });
     }
@@ -97,13 +101,15 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       unhandled satisfies Record<PropertyKey, never>;
       const text = typeof content === 'string' ? content : content.flatMap(part => part.type === 'text' ? [part.text] : []).join('');
       return exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-        id: messageId, role,
+        id: messageId,
+        role,
         parts: [
           ...(text.length === 0 ? [] : [{ type: 'text' as const, text, completeness: 'complete' as const }]),
           ...(tool_calls ?? []).map((toolCall) => ({
             type: 'tool_call' as const,
             toolCall: {
-              id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id, type: toolCall.type,
+              id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id,
+              type: toolCall.type,
               function: { name: toolCall.function.name, arguments: toolCall.function.arguments },
             },
           })),
@@ -114,11 +120,16 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const { role, content, tool_call_id, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
-        id: messageId, role,
-        parts: [{ type: 'tool_result', result: {
-          toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
-          status: 'success', content: { type: 'text', text: content },
-        } }],
+        id: messageId,
+        role,
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
+            status: 'success',
+            content: { type: 'text', text: content },
+          },
+        }],
       });
     }
     default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
@@ -132,7 +143,9 @@ function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant
 
 function imageMessage({ id, text, dataUrl }: { id: string; text: string; dataUrl: string }): ChatMessage {
   return {
-    id: toMessageId({ raw: id }), role: 'user', parts: [
+    id: toMessageId({ raw: id }),
+    role: 'user',
+    parts: [
       { type: 'text', text, completeness: 'complete' },
       { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
     ],
@@ -161,17 +174,23 @@ function captureProviderChat({ provider, request }: {
     ? request.messages
     : recordedMessages({ messages: request.messages as readonly RecordedMessage[] });
   const tools = request.tools === undefined || request.tools.length === 0 ? undefined : request.tools.map(tool => 'parameters' in tool ? tool : ({
-    name: tool.name, description: tool.description,
+    name: tool.name,
+    description: tool.description,
     parameters: tool.name === 'lookup_temperature'
       ? qwen4StrictTools[0].function.parameters
       : { type: 'object' as const, properties: { city: { type: 'string' as const } }, required: ['city'], additionalProperties: false as const },
   }));
-  const capture = captureStructuredProviderChat({ provider, request: {
-    ...request, messages, tools,
-    readBinaryObject: request.readBinaryObject,
-    debug: request.debug,
-    signal: request.signal,
-  } });
+  const capture = captureStructuredProviderChat({
+    provider,
+    request: {
+      ...request,
+      messages,
+      tools,
+      readBinaryObject: request.readBinaryObject,
+      debug: request.debug,
+      signal: request.signal,
+    },
+  });
   return capture;
 }
 
@@ -243,7 +262,10 @@ function createQwen4Replay({ generate }: { generate: ProviderReplayGenerate }) {
   expect(createHash('sha256').update(metadata.files.get('tokenizer.json')!).digest('hex')).toBe('89da80cc6689bef4d90cc1028249436975ffb0814618f1d93c65310e05801a9b');
   return createProviderReplayTestRuntime({
     imagePlatform: undefined,
-    modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture",
+    modelId,
+    expectedRevision: revision,
+    cacheRevision: revision,
+    metadataCache: "all-fixture",
     // Synthetic native-session boundary only; these bytes do not prove that
     // original multi-GB weights execute successfully or are locally present.
     artifacts: [
@@ -308,34 +330,41 @@ async function createQwen4PublicInputControl({ inputMessages, expectedText, nati
     expect(tokenizer.apply_chat_template(inputMessages, nativeRenderOptions)).toBe(expectedText);
     const expectedIds = tokenizer.encode(expectedText, { add_special_tokens: false });
     expect(tokenizer.apply_chat_template(inputMessages, {
-      ...nativeRenderOptions, tokenize: true, return_dict: false, return_tensor: false,
+      ...nativeRenderOptions,
+      tokenize: true,
+      return_dict: false,
+      return_tensor: false,
     })).toEqual(expectedIds);
-    return { harness, stop, verifyNativeInput() {
-      expect(generate).toHaveBeenCalledOnce();
-      expect(nativeInputs).toHaveLength(1);
-      const actual = nativeInputs[0];
-      expect(actual?.tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
-      expect(actual?.input.isTensor).toBe(true);
-      expect(actual?.mask.isTensor).toBe(true);
-      if (!actual?.input.isTensor || !actual.mask.isTensor) throw new Error('Expected actual Qwen4 processor input/mask');
-      const actualInput = Array.from(actual.input.data, Number);
-      expect(actual.input.type).toBe('int64');
-      expect(actual.input.location).toBe('cpu');
-      expect(actual.input.dims).toEqual([1, actualInput.length]);
-      expect(actual.mask.type).toBe('int64');
-      expect(actual.mask.location).toBe('cpu');
-      expect(actual.mask.dims).toEqual([1, actualInput.length]);
-      expect(Array.from(actual.mask.data, BigInt)).toEqual(actualInput.map(() => 1n));
-      expect(actual.pastIsNull).toBe(true);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Only compare after native control and offline/sentinel checks. Default
-      // parity does not by itself define the application's reasoning policy.
-      expect(actualInput).toEqual(expectedIds);
-    } };
+    return {
+      harness,
+      stop,
+      verifyNativeInput() {
+        expect(generate).toHaveBeenCalledOnce();
+        expect(nativeInputs).toHaveLength(1);
+        const actual = nativeInputs[0];
+        expect(actual?.tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
+        expect(actual?.input.isTensor).toBe(true);
+        expect(actual?.mask.isTensor).toBe(true);
+        if (!actual?.input.isTensor || !actual.mask.isTensor) throw new Error('Expected actual Qwen4 processor input/mask');
+        const actualInput = Array.from(actual.input.data, Number);
+        expect(actual.input.type).toBe('int64');
+        expect(actual.input.location).toBe('cpu');
+        expect(actual.input.dims).toEqual([1, actualInput.length]);
+        expect(actual.mask.type).toBe('int64');
+        expect(actual.mask.location).toBe('cpu');
+        expect(actual.mask.dims).toEqual([1, actualInput.length]);
+        expect(Array.from(actual.mask.data, BigInt)).toEqual(actualInput.map(() => 1n));
+        expect(actual.pastIsNull).toBe(true);
+        expect(harness.observations.inferenceCalls).toHaveLength(1);
+        expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+        expect(harness.observations.localImageFetchCalls).toEqual([]);
+        expect(harness.observations.forbiddenTransport).toEqual([]);
+        expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+        // Only compare after native control and offline/sentinel checks. Default
+        // parity does not by itself define the application's reasoning policy.
+        expect(actualInput).toEqual(expectedIds);
+      },
+    };
   } catch (error) {
     await harness.close();
     throw error;
@@ -345,44 +374,63 @@ async function createQwen4PublicInputControl({ inputMessages, expectedText, nati
 // Entirely synthetic Qwen4 inputs. There was no accepted source generation
 // capture for this model; no prompts/IDs below are labelled recorded evidence.
 const qwen4ToolDefinitionSchema = z.object({
-  type: z.literal('function'), function: z.object({
-    name: z.literal('lookup_temperature'), description: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.literal('lookup_temperature'),
+    description: z.string(),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ place: z.object({ type: z.literal('string') }).strict() }).strict(),
-      required: z.tuple([z.literal('place')]), additionalProperties: z.literal(false),
+      type: z.literal('object'),
+      properties: z.object({ place: z.object({ type: z.literal('string') }).strict() }).strict(),
+      required: z.tuple([z.literal('place')]),
+      additionalProperties: z.literal(false),
     }).strict(),
   }).strict(),
 }).strict();
-const qwen4StrictTools: [z.infer<typeof qwen4ToolDefinitionSchema>] = [{ type: 'function', function: {
-  name: 'lookup_temperature', description: 'Return synthetic fixture temperature.',
-  parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'], additionalProperties: false },
-} }];
+const qwen4StrictTools: [z.infer<typeof qwen4ToolDefinitionSchema>] = [{
+  type: 'function',
+  function: {
+    name: 'lookup_temperature',
+    description: 'Return synthetic fixture temperature.',
+    parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'], additionalProperties: false },
+  },
+}];
 const qwen4BuilderInputSchema = z.object({
   messages: z.array(z.object({
-    role: z.enum(['user', 'assistant', 'tool']), content: z.string(), tool_call_id: z.string().optional(),
+    role: z.enum(['user', 'assistant', 'tool']),
+    content: z.string(),
+    tool_call_id: z.string().optional(),
     tool_calls: z.tuple([z.object({
-      id: z.string(), type: z.literal('function'),
+      id: z.string(),
+      type: z.literal('function'),
       function: z.object({ name: z.literal('lookup_temperature'), arguments: z.string() }).strict(),
     }).strict()]).optional(),
   }).strict()),
-  tools: z.tuple([qwen4ToolDefinitionSchema]), reasoningMode: z.literal('default'),
+  tools: z.tuple([qwen4ToolDefinitionSchema]),
+  reasoningMode: z.literal('default'),
 }).strict();
 const QWEN4_TOOL_BOUNDARY = 'Synthetic Qwen4 tool input only; no output or KV supplied';
 const qwen4ToolUser = { role: 'user' as const, content: 'Read the fixture temperature for Oslo.' };
 const qwen4SuppliedCall = {
-  role: 'assistant' as const, content: 'Checking the supplied place.', tool_calls: [{
-    id: toToolCallId({ raw: 'qwen4_synthetic_call_1' }), type: 'function' as const,
+  role: 'assistant' as const,
+  content: 'Checking the supplied place.',
+  tool_calls: [{
+    id: toToolCallId({ raw: 'qwen4_synthetic_call_1' }),
+    type: 'function' as const,
     function: { name: 'lookup_temperature', arguments: '{"place":"Oslo"}' },
   }],
 };
 const qwen4MappedCall = {
-  role: 'assistant', content: 'Checking the supplied place.', tool_calls: [{
-    id: 'qwen4_synthetic_call_1', type: 'function',
+  role: 'assistant',
+  content: 'Checking the supplied place.',
+  tool_calls: [{
+    id: 'qwen4_synthetic_call_1',
+    type: 'function',
     function: { name: 'lookup_temperature', arguments: { place: 'Oslo' } },
   }],
 };
 const qwen4SuppliedResult = {
-  role: 'tool' as const, content: '{"celsius":7,"source":"synthetic"}',
+  role: 'tool' as const,
+  content: '{"celsius":7,"source":"synthetic"}',
   tool_call_id: toToolCallId({ raw: 'qwen4_synthetic_call_1' }),
 };
 
@@ -487,10 +535,17 @@ async function createQwen4ToolReplay() {
     throw new Error('No natural tool invocation in this fixture');
   });
   const publicTool: Tool = {
-    name: 'lookup_temperature', description: 'Return synthetic fixture temperature.', parametersSchema: z.object({ place: z.string() }), execute,
+    name: 'lookup_temperature',
+    description: 'Return synthetic fixture temperature.',
+    parametersSchema: z.object({ place: z.string() }),
+    execute,
   };
   const harness = await createProviderReplayTestRuntime({
-    modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture", imagePlatform: undefined,
+    modelId,
+    expectedRevision: revision,
+    cacheRevision: revision,
+    metadataCache: "all-fixture",
+    imagePlatform: undefined,
     artifacts: [
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/decoder_model_merged_q4f16.onnx_data_1',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -508,11 +563,21 @@ async function createQwen4ToolReplay() {
     const serializer = await import('@/features/transformers-js/models/qwen3_5');
     const builderSpy = vi.spyOn(serializer, 'buildQwen3_5Prompt');
     const processorSpy = vi.spyOn(processor, '_call');
-    return { harness, generate, nativeInputs, execute, publicTool, tokenizer: processor.tokenizer, builderSpy, processorSpy, async close() {
-      processorSpy.mockRestore();
-      builderSpy.mockRestore();
-      await harness.close();
-    } };
+    return {
+      harness,
+      generate,
+      nativeInputs,
+      execute,
+      publicTool,
+      tokenizer: processor.tokenizer,
+      builderSpy,
+      processorSpy,
+      async close() {
+        processorSpy.mockRestore();
+        builderSpy.mockRestore();
+        await harness.close();
+      },
+    };
   } catch (error) {
     try {
       await harness.close();
@@ -545,7 +610,10 @@ function verifyQwen4ToolInput({ replay, inputMessages, publicTool: _publicTool, 
     switch (message.role) {
     case 'tool': return { role: message.role, content: message.content, tool_calls: undefined, tool_call_id: message.tool_call_id };
     case 'user': case 'system': case 'assistant': return {
-      role: message.role, content: message.content, tool_calls: message.tool_calls, tool_call_id: undefined,
+      role: message.role,
+      content: message.content,
+      tool_calls: message.tool_calls,
+      tool_call_id: undefined,
     };
     default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
     }
@@ -580,18 +648,34 @@ function verifyQwen4ToolInput({ replay, inputMessages, publicTool: _publicTool, 
   expect(replay.harness.observations.forbiddenTransport).toEqual([]);
   expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   expect(replay.harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-    modelId, revision, repositoryPaths: new Set([
+    modelId,
+    revision,
+    repositoryPaths: new Set([
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/decoder_model_merged_q4f16.onnx_data_1',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-    ]), core, options,
+    ]),
+    core,
+    options,
   })).toSorted((a, b) => a.corePath.localeCompare(b.corePath))).toEqual([
-    { modelId, revision, corePath: 'onnx/decoder_model_merged_q4f16.onnx', externalData: [
-      { path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' },
-      { path: 'decoder_model_merged_q4f16.onnx_data_1', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data_1' },
-    ], executionProviders: ['webgpu'] },
-    { modelId, revision, corePath: 'onnx/embed_tokens_q4f16.onnx', externalData: [
-      { path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' },
-    ], executionProviders: ['webgpu'] },
+    {
+      modelId,
+      revision,
+      corePath: 'onnx/decoder_model_merged_q4f16.onnx',
+      externalData: [
+        { path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' },
+        { path: 'decoder_model_merged_q4f16.onnx_data_1', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data_1' },
+      ],
+      executionProviders: ['webgpu'],
+    },
+    {
+      modelId,
+      revision,
+      corePath: 'onnx/embed_tokens_q4f16.onnx',
+      externalData: [
+        { path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' },
+      ],
+      executionProviders: ['webgpu'],
+    },
   ]);
 }
 
@@ -672,8 +756,10 @@ describe('Qwen3.5 4B Provider / history', () => {
   it.each(historyCases)('$name retains the independently specified native input through Provider', async scenario => {
     {
       const control = await createQwen4PublicInputControl({
-        inputMessages: scenario.messages, expectedText: scenario.expectedText,
-        nativeRenderOptions: { tokenize: false, add_generation_prompt: true }, effort: undefined,
+        inputMessages: scenario.messages,
+        expectedText: scenario.expectedText,
+        nativeRenderOptions: { tokenize: false, add_generation_prompt: true },
+        effort: undefined,
       });
       let capture: ProviderChatCapture | undefined;
       try {
@@ -716,38 +802,52 @@ describe('Qwen3.5-4B source-derived history/cache control, not recorded KV', () 
     let ownedSequence: bigint[] = [];
     let consumedTokenCount = 0;
     let cacheLengthReads = 0;
-    const harness = await createQwen4Replay({ generate: async context => {
-      const { options, tokenizer, runtime } = context;
-      inputs.push(captureQwen4NativeInput(context));
-      if (inputs.length !== 1) throw new Error('Fresh Qwen history input observed; no continuation output supplied');
-      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
-      const generated = tokenizer.encode(`\
+    const harness = await createQwen4Replay({
+      generate: async context => {
+        const { options, tokenizer, runtime } = context;
+        inputs.push(captureQwen4NativeInput(context));
+        if (inputs.length !== 1) throw new Error('Fresh Qwen history input observed; no continuation output supplied');
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+        const generated = tokenizer.encode(`\
 Reason</think>
 
 Answer<|im_end|>`, { add_special_tokens: false });
-      const prompt = Array.from(options.input_ids.data, BigInt);
-      options.streamer.put([prompt]);
-      for (const token of generated) options.streamer.put([[BigInt(token)]]);
-      options.streamer.end();
-      ownedSequence = [...prompt, ...generated.map(BigInt)];
-      // Explicit synthetic cache metadata: the last sampled token is not yet
-      // consumed. This exercises ownership/prefix logic, not GPU KV contents.
-      consumedTokenCount = ownedSequence.length - 1;
-      const cache = new runtime.DynamicCache();
-      vi.spyOn(cache, 'get_seq_length').mockImplementation(() => {
-        cacheLengthReads++;
-        return consumedTokenCount;
-      });
-      return { sequences: new runtime.Tensor('int64', BigInt64Array.from(ownedSequence), [1, ownedSequence.length]), past_key_values: cache };
-    } });
+        const prompt = Array.from(options.input_ids.data, BigInt);
+        options.streamer.put([prompt]);
+        for (const token of generated) options.streamer.put([[BigInt(token)]]);
+        options.streamer.end();
+        ownedSequence = [...prompt, ...generated.map(BigInt)];
+        // Explicit synthetic cache metadata: the last sampled token is not yet
+        // consumed. This exercises ownership/prefix logic, not GPU KV contents.
+        consumedTokenCount = ownedSequence.length - 1;
+        const cache = new runtime.DynamicCache();
+        vi.spyOn(cache, 'get_seq_length').mockImplementation(() => {
+          cacheLengthReads++;
+          return consumedTokenCount;
+        });
+        return { sequences: new runtime.Tensor('int64', BigInt64Array.from(ownedSequence), [1, ownedSequence.length]), past_key_values: cache };
+      },
+    });
     try {
-      const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-        frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' as const } };
-      const first = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/Qwen3.5-4B-ONNX',
-        messages: [{ role: 'system', content: 'Keep the system instruction.' }, { role: 'user', content: 'First synthetic request.' }],
-        parameters, tools: [], signal: new AbortController().signal,
-      } });
+      const parameters = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' as const },
+      };
+      const first = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/Qwen3.5-4B-ONNX',
+          messages: [{ role: 'system', content: 'Keep the system instruction.' }, { role: 'user', content: 'First synthetic request.' }],
+          parameters,
+          tools: [],
+          signal: new AbortController().signal,
+        },
+      });
       captures.push(first);
       await first.completion;
       const observed = first.snapshot();
@@ -760,10 +860,16 @@ Answer<|im_end|>`, { add_special_tokens: false });
         { role: 'assistant', content: textualResponses({ snapshot: observed })[1]!.join('') },
         { role: 'user', content: 'Continue.' },
       ];
-      const next = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/Qwen3.5-4B-ONNX', messages: history,
-        parameters, tools: [], signal: new AbortController().signal,
-      } });
+      const next = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/Qwen3.5-4B-ONNX',
+          messages: history,
+          parameters,
+          tools: [],
+          signal: new AbortController().signal,
+        },
+      });
       captures.push(next);
       await next.completion;
       expectDeliveredErrorCapture({ capture: next, message: 'Fresh Qwen history input observed; no continuation output supplied' });
@@ -839,7 +945,8 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
     // produce different reasoning quality or that reasoning reaches completion.
     {
       const control = await createQwen4PublicInputControl({
-        inputMessages: messages, expectedText: scenario.expectedText,
+        inputMessages: messages,
+        expectedText: scenario.expectedText,
         nativeRenderOptions: { tokenize: false, add_generation_prompt: true, enable_thinking: scenario.enableThinking },
         effort: scenario.effort,
       });
@@ -885,23 +992,35 @@ describe('Qwen3.5 4B Provider / tools', () => {
       const inputMessages = [qwen4ToolUser];
       const nativePrompt = qwen4NativeToolSystem + qwen4ToolUserText + qwen4NativeGenerationPrefix;
       expect(replay.tokenizer.apply_chat_template(inputMessages, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt);
       const nativeIds = replay.tokenizer.encode(nativePrompt, { add_special_tokens: false });
       expect(replay.tokenizer.apply_chat_template(inputMessages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toEqual(nativeIds);
       const disabledOptions = { tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools, enable_thinking: false } as const;
       expect(replay.tokenizer.apply_chat_template(inputMessages, disabledOptions))
         .toBe(nativePrompt + '\n</think>\n\n');
       // This explicit open-schema control is synthetic, not a claimed capture.
-      const openTools = [{ type: 'function', function: {
-        name: 'lookup_temperature', description: 'Return synthetic fixture temperature.',
-        parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'] },
-      } }];
+      const openTools = [{
+        type: 'function',
+        function: {
+          name: 'lookup_temperature',
+          description: 'Return synthetic fixture temperature.',
+          parameters: { type: 'object', properties: { place: { type: 'string' } }, required: ['place'] },
+        },
+      }];
       const openPrompt = nativePrompt.replace(', "additionalProperties": false', '');
       expect(replay.tokenizer.apply_chat_template(inputMessages, {
-        tokenize: false, add_generation_prompt: true, tools: openTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: openTools,
       })).toBe(openPrompt);
       expect(replay.tokenizer.encode(openPrompt, { add_special_tokens: false })).not.toEqual(nativeIds);
       const jsonPrompt = qwen4JsonToolSystem + qwen4ToolUserText + qwen4JsonGenerationPrefix;
@@ -934,9 +1053,16 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages, publicTool: replay.publicTool, expectedDefinition: qwen4StrictTools[0], expectedPrompt: nativePrompt,
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages,
+            publicTool: replay.publicTool,
+            expectedDefinition: qwen4StrictTools[0],
+            expectedPrompt: nativePrompt,
+          },
+          before,
+        });
       }
       // Observe an actual second public request with both changes, not only a
       // native render after a serializer that might have dropped the definition.
@@ -945,7 +1071,8 @@ describe('Qwen3.5 4B Provider / tools', () => {
       expect(jsonPrompt.split(replay.publicTool.description)).toHaveLength(2);
       expect(jsonPrompt.split(qwen4ToolUser.content)).toHaveLength(2);
       const changedDefinition = {
-        ...qwen4StrictTools[0], function: { ...qwen4StrictTools[0].function, description: changedDescription },
+        ...qwen4StrictTools[0],
+        function: { ...qwen4StrictTools[0].function, description: changedDescription },
       };
       {
         const before = replay.generate.mock.calls.length;
@@ -975,14 +1102,21 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages: [{ role: 'user', content: changedContent }],
-          publicTool: { ...replay.publicTool, description: changedDescription }, expectedDefinition: changedDefinition,
-          expectedPrompt: nativePrompt.replace(replay.publicTool.description, changedDescription).replace(qwen4ToolUser.content, changedContent),
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages: [{ role: 'user', content: changedContent }],
+            publicTool: { ...replay.publicTool, description: changedDescription },
+            expectedDefinition: changedDefinition,
+            expectedPrompt: nativePrompt.replace(replay.publicTool.description, changedDescription).replace(qwen4ToolUser.content, changedContent),
+          },
+          before,
+        });
       }
       expect(replay.tokenizer.apply_chat_template([{ role: 'user', content: changedContent }], {
-        tokenize: false, add_generation_prompt: true, tools: [changedDefinition],
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: [changedDefinition],
       })).toBe(nativePrompt.replace(replay.publicTool.description, changedDescription).replace(qwen4ToolUser.content, changedContent));
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
@@ -997,20 +1131,30 @@ describe('Qwen3.5 4B Provider / tools', () => {
       // Neither this failure nor its mapped success is taken from a captured
       // invocation; both are current controls against Qwen4's original template.
       expect(() => replay.tokenizer.apply_chat_template(inputMessages, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toThrow('Unknown StringValue filter: items');
       const mappedMessages = [qwen4ToolUser, qwen4MappedCall];
       const nativePrompt = qwen4NativeToolSystem + qwen4ToolUserText + qwen4NativeCallText + qwen4NativeGenerationPrefix;
       expect(replay.tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt);
       expect(replay.tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toEqual(replay.tokenizer.encode(nativePrompt, { add_special_tokens: false }));
       // false omits only the final generation prefix. This is not the public
       // chat setting, and it does not remove the supplied assistant's thinking.
       expect(replay.tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: false, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: false,
+        tools: qwen4StrictTools,
       })).toBe(qwen4NativeToolSystem + qwen4ToolUserText + qwen4NativeCallText);
       const jsonPrompt = qwen4JsonToolSystem + qwen4ToolUserText + qwen4JsonCallText + qwen4JsonGenerationPrefix;
       expect(jsonPrompt).not.toBe(nativePrompt);
@@ -1042,14 +1186,24 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages, publicTool: replay.publicTool, expectedDefinition: qwen4StrictTools[0], expectedPrompt: nativePrompt,
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages,
+            publicTool: replay.publicTool,
+            expectedDefinition: qwen4StrictTools[0],
+            expectedPrompt: nativePrompt,
+          },
+          before,
+        });
       }
       const changedContent = 'Checking a second supplied place.';
       const changedCall = {
-        role: 'assistant' as const, content: changedContent, tool_calls: [{
-          id: toToolCallId({ raw: 'qwen4_synthetic_call_2' }), type: 'function' as const,
+        role: 'assistant' as const,
+        content: changedContent,
+        tool_calls: [{
+          id: toToolCallId({ raw: 'qwen4_synthetic_call_2' }),
+          type: 'function' as const,
           function: { name: 'lookup_temperature', arguments: '{"place":"Bergen"}' },
         }],
       };
@@ -1083,16 +1237,30 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages: [qwen4ToolUser, changedCall], publicTool: replay.publicTool, expectedDefinition: qwen4StrictTools[0],
-          expectedPrompt: nativePrompt.replace(qwen4SuppliedCall.content, changedContent).replace('\nOslo\n', '\nBergen\n'),
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages: [qwen4ToolUser, changedCall],
+            publicTool: replay.publicTool,
+            expectedDefinition: qwen4StrictTools[0],
+            expectedPrompt: nativePrompt.replace(qwen4SuppliedCall.content, changedContent).replace('\nOslo\n', '\nBergen\n'),
+          },
+          before,
+        });
       }
-      const changedMapped = [qwen4ToolUser, { role: 'assistant', content: changedContent, tool_calls: [{
-        id: 'qwen4_synthetic_call_2', type: 'function', function: { name: 'lookup_temperature', arguments: { place: 'Bergen' } },
-      }] }];
+      const changedMapped = [qwen4ToolUser, {
+        role: 'assistant',
+        content: changedContent,
+        tool_calls: [{
+          id: 'qwen4_synthetic_call_2',
+          type: 'function',
+          function: { name: 'lookup_temperature', arguments: { place: 'Bergen' } },
+        }],
+      }];
       expect(replay.tokenizer.apply_chat_template(changedMapped, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt.replace(qwen4SuppliedCall.content, changedContent).replace('\nOslo\n', '\nBergen\n'));
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
@@ -1105,7 +1273,9 @@ describe('Qwen3.5 4B Provider / tools', () => {
     try {
       const inputMessages = [qwen4ToolUser, qwen4SuppliedCall, qwen4SuppliedResult];
       expect(() => replay.tokenizer.apply_chat_template(inputMessages, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toThrow('Unknown StringValue filter: items');
       const nativePrompt = qwen4NativeToolSystem + qwen4ToolUserText + qwen4NativeCallText + `\
 <|im_start|>user
@@ -1115,10 +1285,16 @@ describe('Qwen3.5 4B Provider / tools', () => {
 ` + qwen4NativeGenerationPrefix;
       const mappedMessages = [qwen4ToolUser, qwen4MappedCall, qwen4SuppliedResult];
       expect(replay.tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt);
       expect(replay.tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toEqual(replay.tokenizer.encode(nativePrompt, { add_special_tokens: false }));
       const jsonPrompt = qwen4JsonToolSystem + qwen4ToolUserText + qwen4JsonCallText + `\
 <|im_start|>user
@@ -1156,9 +1332,16 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages, publicTool: replay.publicTool, expectedDefinition: qwen4StrictTools[0], expectedPrompt: nativePrompt,
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages,
+            publicTool: replay.publicTool,
+            expectedDefinition: qwen4StrictTools[0],
+            expectedPrompt: nativePrompt,
+          },
+          before,
+        });
       }
       const changedResult = { ...qwen4SuppliedResult, content: '{"celsius":11,"source":"synthetic-second"}' };
       expect(jsonPrompt.split(qwen4SuppliedResult.content)).toHaveLength(2);
@@ -1190,19 +1373,29 @@ describe('Qwen3.5 4B Provider / tools', () => {
         expectCapturedEventOrder({ snapshot: observed });
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwen4ToolInput({ ...{
-          replay, inputMessages: [qwen4ToolUser, qwen4SuppliedCall, changedResult], publicTool: replay.publicTool,
-          expectedDefinition: qwen4StrictTools[0], expectedPrompt: nativePrompt.replace(qwen4SuppliedResult.content, changedResult.content),
-        }, before });
+        verifyQwen4ToolInput({
+          ...{
+            replay,
+            inputMessages: [qwen4ToolUser, qwen4SuppliedCall, changedResult],
+            publicTool: replay.publicTool,
+            expectedDefinition: qwen4StrictTools[0],
+            expectedPrompt: nativePrompt.replace(qwen4SuppliedResult.content, changedResult.content),
+          },
+          before,
+        });
       }
       expect(replay.tokenizer.apply_chat_template([qwen4ToolUser, qwen4MappedCall, changedResult], {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt.replace(qwen4SuppliedResult.content, changedResult.content));
       // The native template serializes result content, not the association ID.
       // Actual builder argument validation above checks the ID independently;
       // rendered-token equality alone must not masquerade as tool resolution.
       expect(replay.tokenizer.apply_chat_template([qwen4ToolUser, qwen4MappedCall, { role: 'tool', content: qwen4SuppliedResult.content }], {
-        tokenize: false, add_generation_prompt: true, tools: qwen4StrictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: qwen4StrictTools,
       })).toBe(nativePrompt);
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
@@ -1218,40 +1411,74 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
   ])('rejects $name through authoritative Provider validation without executing a null substitute', async ({ schema, raw }) => {
     const executions: unknown[] = [];
     let nativeCalls = 0;
-    const harness = await createQwen4Replay({ generate: async ({ options, tokenizer, runtime }) => {
-      nativeCalls++;
-      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
-      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
-      const text = nativeCalls === 1
-        ? `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>`
-        : 'Synthetic completion after rejected arguments.';
-      const ids = tokenizer.encode(text, { add_special_tokens: false });
-      const input = Array.from(options.input_ids.data, BigInt);
-      options.streamer.put([input]);
-      for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
-      options.streamer.end();
-      return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
-    } });
+    const harness = await createQwen4Replay({
+      generate: async ({ options, tokenizer, runtime }) => {
+        nativeCalls++;
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+        if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+        const text = nativeCalls === 1
+          ? `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>`
+          : 'Synthetic completion after rejected arguments.';
+        const ids = tokenizer.encode(text, { add_special_tokens: false });
+        const input = Array.from(options.input_ids.data, BigInt);
+        options.streamer.put([input]);
+        for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
+        options.streamer.end();
+        return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
+      },
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      const tools: Tool[] = [{ name: 'probe', description: 'Must reject invalid numeric arguments.', parametersSchema: z.object({ value: schema }),
+      const tools: Tool[] = [{
+        name: 'probe',
+        description: 'Must reject invalid numeric arguments.',
+        parametersSchema: z.object({ value: schema }),
         execute: async ({ args }) => {
           executions.push(structuredClone(args)); return { status: 'success', content: 'Must not execute.' };
-        } }];
-      turn = await runProviderReplayTurn({ provider: harness.provider, request: {
-        model: modelId, messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic overflow control.' })],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'none' } },
-        readBinaryObject: undefined, debug: undefined,
-      }, tools, abortController: new AbortController(), onChange: undefined });
+        },
+      }];
+      turn = await runProviderReplayTurn({
+        provider: harness.provider,
+        request: {
+          model: modelId,
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic overflow control.' })],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'none' },
+          },
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated).toHaveLength(3);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [{ type: 'tool_call', toolCall: {
-        function: { name: 'probe', arguments: expect.any(String) },
-      } }] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [{ type: 'tool_result', result: {
-        status: 'error', error: { code: 'invalid_arguments' },
-      } }] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            function: { name: 'probe', arguments: expect.any(String) },
+          },
+        }],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            status: 'error',
+            error: { code: 'invalid_arguments' },
+          },
+        }],
+      });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [{ type: 'text', text: 'Synthetic completion after rejected arguments.', completeness: 'complete' }] });
       expect(executions).toEqual([]);
       expect(nativeCalls).toBe(2);
@@ -1267,43 +1494,76 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
   ])('passes the $name through Provider schema serialization and actual tool execution', async ({ schema, expected }) => {
     const executions: unknown[] = [];
     let nativeCalls = 0;
-    const harness = await createQwen4Replay({ generate: async ({ options, tokenizer, runtime }) => {
-      nativeCalls++;
-      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
-      if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
-      const text = nativeCalls === 1
-        ? '<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>'
-        : 'Synthetic completion.';
-      const ids = tokenizer.encode(text, { add_special_tokens: false });
-      const input = Array.from(options.input_ids.data, BigInt);
-      options.streamer.put([input]);
-      for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
-      options.streamer.end();
-      return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
-    } });
+    const harness = await createQwen4Replay({
+      generate: async ({ options, tokenizer, runtime }) => {
+        nativeCalls++;
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+        if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+        const text = nativeCalls === 1
+          ? '<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>'
+          : 'Synthetic completion.';
+        const ids = tokenizer.encode(text, { add_special_tokens: false });
+        const input = Array.from(options.input_ids.data, BigInt);
+        options.streamer.put([input]);
+        for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
+        options.streamer.end();
+        return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
+      },
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
-      const tools: Tool[] = [{ name: 'write_file', description: 'Synthetic XML schema control.', parametersSchema: z.object({ content: schema }),
+      const tools: Tool[] = [{
+        name: 'write_file',
+        description: 'Synthetic XML schema control.',
+        parametersSchema: z.object({ content: schema }),
         execute: async ({ args }) => {
           executions.push(structuredClone(args));
           return { status: 'success', content: 'Synthetic tool result.' };
-        } }];
-      turn = await runProviderReplayTurn({ provider: harness.provider, request: {
-        model: modelId,
-        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic write_file tool.' })],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'none' } },
-        readBinaryObject: undefined, debug: undefined,
-      }, tools, abortController: new AbortController(), onChange: undefined });
+        },
+      }];
+      turn = await runProviderReplayTurn({
+        provider: harness.provider,
+        request: {
+          model: modelId,
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic write_file tool.' })],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'none' },
+          },
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
+      });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(executions).toEqual([{ content: expected }]);
       expect(turn.generated).toHaveLength(3);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [{ type: 'tool_call', toolCall: {
-        function: { name: 'write_file', arguments: expect.any(String) },
-      } }] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [{ type: 'tool_result', result: {
-        status: 'success', content: { type: 'text', text: 'Synthetic tool result.' },
-      } }] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            function: { name: 'write_file', arguments: expect.any(String) },
+          },
+        }],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            status: 'success',
+            content: { type: 'text', text: 'Synthetic tool result.' },
+          },
+        }],
+      });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [{ type: 'text', text: 'Synthetic completion.', completeness: 'complete' }] });
       expect(nativeCalls).toBe(2);
       expect(harness.observations.inferenceCalls).toHaveLength(2);
@@ -1318,12 +1578,14 @@ describe('Qwen3.5 4B Provider / images', () => {
     {
       name: 'opaque black',
       imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      rgba: Uint8ClampedArray.of(0, 0, 0, 255), rescaled: 0,
+      rgba: Uint8ClampedArray.of(0, 0, 0, 255),
+      rescaled: 0,
     },
     {
       name: 'opaque white',
       imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-      rgba: Uint8ClampedArray.of(255, 255, 255, 255), rescaled: 1,
+      rgba: Uint8ClampedArray.of(255, 255, 255, 255),
+      rescaled: 1,
     },
   ])('$name retains image content through actual processor input', async ({ imageUrl, rgba, rescaled }) => {
     const metadata = readModelFixture({ modelId });
@@ -1332,14 +1594,21 @@ describe('Qwen3.5 4B Provider / images', () => {
       .toBe('14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b');
     expect(createHash('sha256').update(metadata.files.get('preprocessor_config.json')!).digest('hex'))
       .toBe('6a970fd06f30e6943b3e2c14d5d3b42d49b06cf99b99103d56689bef462d90f8');
-    const messages: RecordedMessage[] = [{ role: 'user', content: [
-      { type: 'text', text: 'Describe this synthetic image.' },
-      { type: 'image_url', image_url: { url: imageUrl } },
-    ] }];
+    const messages: RecordedMessage[] = [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Describe this synthetic image.' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ],
+    }];
     const platform = createProviderReplayTestImagePlatform();
     const nativeInputs: ReturnType<typeof captureQwen4NativeInput>[] = [];
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture", imagePlatform: { platform, allowedDataUrls: [imageUrl] },
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: "all-fixture",
+      imagePlatform: { platform, allowedDataUrls: [imageUrl] },
       artifacts: [
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
         'onnx/decoder_model_merged_q4f16.onnx_data_1', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -1387,8 +1656,10 @@ describe('Qwen3.5 4B Provider / images', () => {
       // processor, not a stand-in that fabricates pixels or output tensors.
       const rawImage = await harness.runtime.RawImage.read(imageUrl);
       const tensorSchema = z.object({
-        input_ids: z.instanceof(harness.runtime.Tensor), attention_mask: z.instanceof(harness.runtime.Tensor),
-        pixel_values: z.instanceof(harness.runtime.Tensor), image_grid_thw: z.instanceof(harness.runtime.Tensor),
+        input_ids: z.instanceof(harness.runtime.Tensor),
+        attention_mask: z.instanceof(harness.runtime.Tensor),
+        pixel_values: z.instanceof(harness.runtime.Tensor),
+        image_grid_thw: z.instanceof(harness.runtime.Tensor),
       });
       const native = tensorSchema.parse(await processor(nativePrompt, rawImage));
       // From this model's config: min area 65536 -> 256x256, patch 16,
@@ -1413,7 +1684,8 @@ describe('Qwen3.5 4B Provider / images', () => {
           .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
       }
       expect(platform.observations.decodes).toEqual([{
-        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')), rgba,
+        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+        rgba,
       }]);
       expect(platform.observations.draws).toEqual([
         { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
@@ -1645,8 +1917,12 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
     // Immutable historical evidence contains a literal serializer-era opening.
     // It is verified only as frozen template/tokenizer input, never supplied as
     // a valid current Provider continuation or claimed as runtime/KV success.
-    const replay = await createProviderReplayTestRuntime({ modelId, expectedRevision: revision, cacheRevision: revision,
-      metadataCache: context.localMetadataPaths, imagePlatform: undefined,
+    const replay = await createProviderReplayTestRuntime({
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: context.localMetadataPaths,
+      imagePlatform: undefined,
       artifacts: recordedArtifacts.map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       generate: async context => {
         const { options, runtime, model } = context;
@@ -1698,9 +1974,15 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       if (reasoning?.type !== 'reasoning') throw new Error('Expected actual partial reasoning part');
       const currentMessages: ChatMessage[] = [
         textMessage({ id: 'current_user_0', role: 'user', text: 'Template probe user message.' }),
-        { id: toMessageId({ raw: 'current_assistant_0' }), role: 'assistant', parts: [{
-          type: 'reasoning', text: reasoning.chunks.join(''), completeness: 'partial',
-        }] },
+        {
+          id: toMessageId({ raw: 'current_assistant_0' }),
+          role: 'assistant',
+          parts: [{
+            type: 'reasoning',
+            text: reasoning.chunks.join(''),
+            completeness: 'partial',
+          }],
+        },
         textMessage({ id: 'current_user_1', role: 'user', text: 'Continue the synthetic conversation with a short response.' }),
       ];
       const nextCapture = captureProviderChat({
@@ -1761,10 +2043,13 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       expect(replay.observations.forbiddenTransport).toEqual([]);
       expect(replay.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
     } finally {
-      await closeProviderReplayCaptures({ captures, close: async () => {
-        await replay.close();
-        expect(replay.observations.workers.every(worker => worker.terminated)).toBe(true);
-      } });
+      await closeProviderReplayCaptures({
+        captures,
+        close: async () => {
+          await replay.close();
+          expect(replay.observations.workers.every(worker => worker.terminated)).toBe(true);
+        },
+      });
     }
     expect(historicalOnChunk, 'through awaited Worker disposal').not.toHaveBeenCalled();
     expect(historicalOnToolCalls, 'through awaited Worker disposal').not.toHaveBeenCalled();
@@ -2210,28 +2495,44 @@ Thinking Process:
         request: {
           model: modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the weather tool for Tokyo.' })],
-          parameters, readBinaryObject: undefined, debug: undefined,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
-        tools, abortController, onChange: undefined,
+        tools,
+        abortController,
+        onChange: undefined,
       });
       replay.endNativeRequest();
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated).toMatchObject([
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The user is asking me to use the weather tool for Tokyo. I have a function called "lookup_weather" that takes a city parameter. I should call this function with "Tokyo" as the city parameter.', completeness: 'complete' },
-          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-        ] },
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The user is asking me to use the weather tool for Tokyo. I have a function called "lookup_weather" that takes a city parameter. I should call this function with "Tokyo" as the city parameter.', completeness: 'complete' },
+            { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+          ],
+        },
         { role: 'tool', parts: [{ type: 'tool_result', result: { status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The weather tool has returned data for Tokyo. I can see that the temperature is 20°C and the condition is clear. I should present this information to the user in a clear and helpful way.', completeness: 'complete' },
-          { type: 'text', text: `\
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The weather tool has returned data for Tokyo. I can see that the temperature is 20°C and the condition is clear. I should present this information to the user in a clear and helpful way.', completeness: 'complete' },
+            {
+              type: 'text',
+              text: `\
 The current weather in Tokyo is:
 
 - **Temperature:** 20°C
 - **Condition:** Clear
 
-This looks like a pleasant day in Tokyo! Enjoy the clear weather.`, completeness: 'complete' },
-        ] },
+This looks like a pleasant day in Tokyo! Enjoy the clear weather.`,
+              completeness: 'complete',
+            },
+          ],
+        },
       ]);
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
@@ -2266,22 +2567,34 @@ This looks like a pleasant day in Tokyo! Enjoy the clear weather.`, completeness
         request: {
           model: modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.' })],
-          parameters, readBinaryObject: undefined, debug: undefined,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
-        tools, abortController, onChange: undefined,
+        tools,
+        abortController,
+        onChange: undefined,
       });
       replay.endNativeRequest();
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated).toMatchObject([
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
-          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-        ] },
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
+            { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+          ],
+        },
         { role: 'tool', parts: [{ type: 'tool_result', result: { status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
-          { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
-        ] },
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
+          ],
+        },
       ]);
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(execute).toHaveBeenCalledOnce();
@@ -2326,15 +2639,23 @@ This looks like a pleasant day in Tokyo! Enjoy the clear weather.`, completeness
       replay.endNativeRequest();
       expect(firstTurn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(firstTurn.generated).toMatchObject([
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
-          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-        ] },
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
+            { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+          ],
+        },
         { role: 'tool', parts: [{ type: 'tool_result', result: { status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
-        { role: 'assistant', interruption: undefined, parts: [
-          { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
-          { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
-        ] },
+        {
+          role: 'assistant',
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
+          ],
+        },
       ]);
       expect(firstExecutedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(firstExecute).toHaveBeenCalledOnce();
@@ -2419,7 +2740,10 @@ It looks like a pleasant day in Tokyo right now!`]);
 
   it('preserves recorded image processor inputs and delivers the one-token reasoning part before settlement', async () => {
     const platform = createProviderReplayTestImagePlatform();
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['image'], artifactPaths: recordedArtifacts,
+    const replay = await createProviderRequestReplay({
+      catalog: providerReplayCatalog,
+      caseIds: ['image'],
+      artifactPaths: recordedArtifacts,
       imagePlatform: { platform, allowedDataUrls: [recordedImageUrl] },
     });
     let capture: ProviderChatCapture | undefined;
@@ -2466,80 +2790,180 @@ const qwen4FullStructuredParts = {
     { callOrdinal: 15, terminal: { kind: 'stream-end' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [{
-      type: 'reasoning', text: 'Okay, the user just said "Template probe user message." Hmm, that\'s', completeness: 'partial',
-    }], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'continuity', settlement: 'rejected', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
-    }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'reasoning', text: 'Okay', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{
+          type: 'reasoning',
+          text: 'Okay, the user just said "Template probe user message." Hmm, that\'s',
+          completeness: 'partial',
+        }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'rejected',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'error', errorName: 'Error' },
+      }],
+    },
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'Okay', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
     ...(['system-user', 'supplied-history'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [
-        { type: 'reasoning' as const, text: 'Thinking', completeness: 'partial' as const },
-      ], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [{
+        kind: 'assistant' as const,
+        parts: [
+          { type: 'reasoning' as const, text: 'Thinking', completeness: 'partial' as const },
+        ],
+        terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
+      }],
     })),
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'It', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'It', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
     ...(['reasoning-low', 'reasoning-medium', 'reasoning-high'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [
-        { type: 'reasoning' as const, text: 'Okay', completeness: 'partial' as const },
-      ], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [{
+        kind: 'assistant' as const,
+        parts: [
+          { type: 'reasoning' as const, text: 'Okay', completeness: 'partial' as const },
+        ],
+        terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
+      }],
     })),
-    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The user is asking me to use the weather tool for Tokyo. I have a function called "lookup_weather" that takes a city parameter. I should call this function with "Tokyo" as the city parameter.', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The weather tool has returned data for Tokyo. I can see that the temperature is 20°C and the condition is clear. I should present this information to the user in a clear and helpful way.', completeness: 'complete' },
-        { type: 'text', text: `\
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'fulfilled',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The user is asking me to use the weather tool for Tokyo. I have a function called "lookup_weather" that takes a city parameter. I should call this function with "Tokyo" as the city parameter.', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The weather tool has returned data for Tokyo. I can see that the temperature is 20°C and the condition is clear. I should present this information to the user in a clear and helpful way.', completeness: 'complete' },
+            {
+              type: 'text',
+              text: `\
 The current weather in Tokyo is:
 
 - **Temperature:** 20°C
 - **Condition:** Clear
 
-This looks like a pleasant day in Tokyo! Enjoy the clear weather.`, completeness: 'complete' },
-      ], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
-      ], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'reasoning', text: `\
+This looks like a pleasant day in Tokyo! Enjoy the clear weather.`,
+              completeness: 'complete',
+            },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
+      ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'fulfilled',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The user wants me to use the lookup_weather function for Tokyo and then provide a short answer based on the result. I need to call the function with "Tokyo" as the city parameter.', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The tool returned weather data for Tokyo showing a temperature of 20°C and clear conditions. I should provide a short answer based on this result.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently 20°C with clear conditions.', completeness: 'complete' },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
+      ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          {
+            type: 'reasoning',
+            text: `\
 The user asked me to use the weather tool for Tokyo. I have the result from the tool call. Now I should present this information in a clear and helpful way.
 
 The weather data for Tokyo shows:
 - Temperature: 20°C
 - Condition: clear
 
-I'll present this information clearly to the user.`, completeness: 'complete' },
-      { type: 'text', text: `\
+I'll present this information clearly to the user.`,
+            completeness: 'complete',
+          },
+          {
+            type: 'text',
+            text: `\
 Here is the current weather forecast for Tokyo:
 
 *   **Temperature:** 20°C
 *   **Condition:** Clear
 
-It looks like a pleasant day in Tokyo right now!`, completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
-    { scenario: 'image', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'reasoning', text: 'The', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+It looks like a pleasant day in Tokyo right now!`,
+            completeness: 'complete',
+          },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
+    },
+    {
+      scenario: 'image',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'The', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
   ],
-  legacyInputProjections: [{ scenario: 'continuity', assistant: {
-    role: 'assistant', content: 'Okay, the user just said "Template probe user message." Hmm, that\'s',
-  } }],
+  legacyInputProjections: [{
+    scenario: 'continuity',
+    assistant: {
+      role: 'assistant',
+      content: 'Okay, the user just said "Template probe user message." Hmm, that\'s',
+    },
+  }],
 } satisfies StructuredPartsReplayContract;
 
 describe('Qwen3.5 4B Provider / recorded Full collection', () => {
@@ -2549,11 +2973,14 @@ describe('Qwen3.5 4B Provider / recorded Full collection', () => {
     expect(evidence.metadataRevision).toBe(revision);
     expect(evidence.observedCacheRevision).toBe(revision);
     expect(evidence.loadReceipt).toMatchObject({
-      modelId, autoClass: 'AutoModelForImageTextToText', processor: 'qwen3_5-processor',
+      modelId,
+      autoClass: 'AutoModelForImageTextToText',
+      processor: 'qwen3_5-processor',
       loaderRevisionOption: { status: 'provided', value: revision },
       candidate: { device: 'webgpu', dtype: 'q4f16' },
       completion: 'model-session-and-tokenizer-processor-ready',
-      resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+      resourceHealth: 'healthy-after-close',
+      accessBoundary: 'production-offline-read-only',
     });
     expect(evidence.loadReceipt.plannedRequiredPaths).toEqual([
       'config.json', ...recordedArtifacts, 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json',
@@ -2569,18 +2996,23 @@ describe('Qwen3.5 4B Provider / recorded Full collection', () => {
     // including tool continuations, reports zero past tokens in this model.
     expect(evidence.invocations.map(invocation => invocation.settings.budget.pastTokenCount)).toEqual(Array(15).fill(0));
     const platform = createProviderReplayTestImagePlatform();
-    await verifyCapturedFullReplay({ evidence, artifactPaths: recordedArtifacts,
+    await verifyCapturedFullReplay({
+      evidence,
+      artifactPaths: recordedArtifacts,
       reviewedPublicContract: {
         correctedEvents: [],
         invalidatedOutputs: [],
-        preNativeRejections: [{ scenario: 'continuity',
+        preNativeRejections: [{
+          scenario: 'continuity',
           reason: 'The preceding bounded first turn ends with partial reasoning and cannot be supplied as a complete assistant history message.',
         }],
         correctedFinalizedStreams: undefined,
         structuredParts: qwen4FullStructuredParts,
       },
       imagePlatform: { platform, allowedDataUrls: [recordedImageUrl] },
-      unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined,
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
     });
   }, 30_000);
 });

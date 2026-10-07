@@ -23,15 +23,25 @@ function image(): Blob {
   return new Blob([bytes], { type: 'image/png' });
 }
 function input(): PeerImageInput {
-  return { modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
+  return {
+    modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
     parameters: { prompt: 'Original', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
-    preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 }, imageInputs: { initial: undefined, references: [], strength: 0.5 } };
+    preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 },
+    imageInputs: { initial: undefined, references: [], strength: 0.5 },
+  };
 }
 async function setup() {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
-  const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'connection-1' }), peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Image peer', revision: 0, allowedMethods: [],
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] } };
+  const record: NaidanRpcConnection = {
+    id: toNaidanRpcConnectionId({ raw: 'connection-1' }),
+    peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
+    autoConnect: 'disabled',
+    localPublicKey: encodePeerKey({ bytes: local }),
+    label: 'Image peer',
+    revision: 0,
+    allowedMethods: [],
+    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] },
+  };
   const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), lifetime = new AbortController();
   const closed = Promise.withResolvers<void>();
   const abort = () => {
@@ -46,22 +56,43 @@ async function setup() {
   });
   const resources: ReadOnlyInferenceResources = { generateImage, generateChat: unexpected, listChatModels: unexpected, listImageModels: unexpected };
   const inference = { resources, inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }) };
-  const provider = new NaidanRpcPeer({ transport: pair.b, exports: [expose({ contract: naidanPeerContract,
-    implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference }), allowedMethods: ['generateImage'] })],
-  limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
+  const provider = new NaidanRpcPeer({
+    transport: pair.b,
+    exports: [expose({
+      contract: naidanPeerContract,
+      implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference }),
+      allowedMethods: ['generateImage'],
+    })],
+    limits: { maxCalls: 2, maxCallTimeoutMs: undefined },
+    signal: lifetime.signal,
+  });
   const open = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
     signal.addEventListener('abort', abort, { once: true });
     return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort };
   });
-  const manager = new NaidanPeerManager({ dependencies: {
-    storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
-    identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }), acquireOwner: async () => ({ release() {} }),
-    open, changed() {}, retireResources: async () => {}, inference,
-  } });
+  const manager = new NaidanPeerManager({
+    dependencies: {
+      storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
+      identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
+      acquireOwner: async () => ({ release() {} }),
+      open,
+      changed() {},
+      retireResources: async () => {},
+      inference,
+    },
+  });
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   const plan = preparePeerImageExecution({ binding: manager.bindClient({ id: record.id }), input: input() });
   const args = { seed: '42', signal: new AbortController().signal, onProgress: vi.fn(), onPreview: vi.fn() };
-  return { manager, provider, plan, record, generateImage, unexpected, open, args,
+  return {
+    manager,
+    provider,
+    plan,
+    record,
+    generateImage,
+    unexpected,
+    open,
+    args,
     async close() {
       await manager.setEnabled({ enabled: false }); lifetime.abort(); provider.dispose(); abort();
     },

@@ -90,15 +90,20 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
   loadChats: () => Promise<void>,
   openChat: ({ id }: { id: ChatId }) => Promise<unknown>,
 }) {
-  await storageService.updateChatContent({ id: chat.id, updater: () => ({
-    root: chat.root,
-    currentLeafId: chat.currentLeafId,
-  }) });
+  await storageService.updateChatContent({
+    id: chat.id,
+    updater: () => ({
+      root: chat.root,
+      currentLeafId: chat.currentLeafId,
+    }),
+  });
   await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
-  await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-    curr.items.push({ type: 'chat', id: chat.id });
-    return curr;
-  } });
+  await storageService.updateHierarchy({
+    updater: ({ current: curr }) => {
+      curr.items.push({ type: 'chat', id: chat.id });
+      return curr;
+    },
+  });
 
   await loadChats();
   await openChat({ id: chat.id });
@@ -113,7 +118,9 @@ export function useSampleChat() {
       id: generateId<MessageId>(),
       role: 'assistant',
       parts: [{ type: 'text', text: sampleContent, completeness: 'complete' }],
-      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
       createdAt: now,
       replies: { items: [] },
     };
@@ -122,7 +129,9 @@ export function useSampleChat() {
       id: generateId<MessageId>(),
       role: 'assistant',
       parts: [{ type: 'text', text: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!', completeness: 'complete' }],
-      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
       createdAt: now + 1000,
       replies: { items: [] },
     };
@@ -131,7 +140,8 @@ export function useSampleChat() {
       id: generateId<MessageId>(),
       role: 'user',
       parts: [{ type: 'text', text: 'Show me your tree-based branching and rendering capabilities!', completeness: 'complete' }],
-      modelId: undefined, lmParameters: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
       createdAt: now - 5000,
       replies: { items: [m2, m3] },
     };
@@ -161,7 +171,8 @@ export function useSampleChat() {
       const node = {
         id: generateId<MessageId>(),
         parts: [{ text: longMessageContent({ turnIndex: Math.floor(index / 2), role }), completeness: 'complete' as const, type: 'text' as const }],
-        modelId: undefined, lmParameters: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
         createdAt: now + index * 1000,
         replies: { items: [] },
       };

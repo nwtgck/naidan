@@ -117,10 +117,15 @@ it.each(['waiting-sender', 'waiting-receiver', 'established', 'transient'] as At
     endpoint.send = async () => {
       sends++; if (sends === 1) throw new AttemptError({ kind });
     };
-    const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing,
+    const running = runDuplex({
+      session: a,
+      endpoint,
+      signal: stop.signal,
+      pacing,
       onEvent: ({ event }) => {
         events.push(event.kind); if (event.kind === 'sent') stop.abort();
-      } });
+      },
+    });
     try {
       await running;
     } finally {
@@ -138,10 +143,15 @@ it('invalid ciphertext backs off before a valid authenticated snapshot without a
   endpoint.receive = async () => {
     calls++; return calls === 1 ? new Uint8Array([0]) : capsule;
   };
-  const running = runDuplex({ session: a, endpoint, pacing, signal: stop.signal,
+  const running = runDuplex({
+    session: a,
+    endpoint,
+    pacing,
+    signal: stop.signal,
     onEvent: ({ event }) => {
       events.push(event.kind); if (event.kind === 'received') stop.abort();
-    } });
+    },
+  });
   try {
     await running;
   } finally {
@@ -172,9 +182,15 @@ it('observer exceptions stop the runner, abort outstanding requests, and reach i
   const { a } = await sessionPair(), endpoint = idleEndpoint(), stop = new AbortController();
   endpoint.send = async () => {};
   const failure = new Error('Observer failed');
-  await expect(runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent: () => {
-    throw failure;
-  } })).rejects.toBe(failure);
+  await expect(runDuplex({
+    session: a,
+    endpoint,
+    signal: stop.signal,
+    pacing,
+    onEvent: () => {
+      throw failure;
+    },
+  })).rejects.toBe(failure);
   expect(a.stopped).toBe(true);
 });
 
@@ -256,9 +272,15 @@ it('repeated receipt requests cannot interrupt an unreceived DATA POST or starve
     await waitForAbort({ signal });
   };
   endpoint.receive = toA.receive;
-  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent: ({ event }) => {
-    if (event.kind === 'received' && ++requests === 3) requestsReceived.resolve();
-  } });
+  const running = runDuplex({
+    session: a,
+    endpoint,
+    signal: stop.signal,
+    pacing,
+    onEvent: ({ event }) => {
+      if (event.kind === 'received' && ++requests === 3) requestsReceived.resolve();
+    },
+  });
   try {
     const sending = await entered.promise;
     for (let attempt = 0; attempt < 3; attempt++) await toA.send({ bytes: await offeredCapsule({ session: b }) });

@@ -58,7 +58,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     const onToolCall = vi.fn();
     const onToolResult = vi.fn();
 
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [{ role: 'user', content: 'London weather?' }],
       model: 'llama3',
       onChunk: ({ chunk: chunk }) => {
@@ -112,7 +113,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
     let result = '';
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: ({ chunk: chunk }) => {
@@ -150,7 +152,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
@@ -185,7 +188,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
     const onToolCall = vi.fn();
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
@@ -224,7 +228,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
@@ -262,7 +267,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
     const controller = new AbortController();
 
-    const chatPromise = runProviderConversationForTest({ provider,
+    const chatPromise = runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
@@ -305,7 +311,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
     const onToolCall = vi.fn();
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),

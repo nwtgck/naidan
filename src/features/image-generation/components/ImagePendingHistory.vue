@@ -9,9 +9,11 @@ import ImageHistoryImage from './ImageHistoryImage.vue';
 
 const entries = shallowRef(pendingImageHistory.list()), failure = ref('');
 const { showConfirm } = useConfirm();
-const unsubscribe = pendingImageHistory.subscribe({ listener() {
-  entries.value = pendingImageHistory.list();
-} });
+const unsubscribe = pendingImageHistory.subscribe({
+  listener() {
+    entries.value = pendingImageHistory.list();
+  },
+});
 onScopeDispose(unsubscribe);
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
   return pendingImageHistory.list().flatMap(entry => entry.files).find(file => file.binaryObjectId === binaryObjectId)?.blob;

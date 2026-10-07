@@ -109,11 +109,13 @@ export function createDownloadedModelReadOnlyCache({ modelId, revision, onMatchO
       }
       const aliased = scopedUrl !== undefined && scopedUrl !== urlString;
       // Each invocation owns its original identity across concurrent matches.
-      onMatchObservation?.({ observation: {
-        requestedPath: sanitizedCacheRequestPath({ urlString }),
-        result: response === undefined ? 'miss' : aliased ? 'alias-hit' : 'hit',
-        bytes: response === undefined ? undefined : Number(response.headers.get('Content-Length')) || undefined,
-      } });
+      onMatchObservation?.({
+        observation: {
+          requestedPath: sanitizedCacheRequestPath({ urlString }),
+          result: response === undefined ? 'miss' : aliased ? 'alias-hit' : 'hit',
+          bytes: response === undefined ? undefined : Number(response.headers.get('Content-Length')) || undefined,
+        },
+      });
       if (response !== undefined && aliased) {
         response.headers.set('X-Cache-Revision-Alias', new URL(scopedUrl).pathname);
       }

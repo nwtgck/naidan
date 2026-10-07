@@ -46,8 +46,7 @@ function groupEveryLineMatches({
     const value = decodeLineForPattern({
       input,
       lineIndex: start + offset,
-      stripTrailingCarriageReturn:
-        comparisonOptions.stripTrailingCarriageReturn,
+      stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn,
       characterLocaleMode,
     });
     pattern.lastIndex = 0;
@@ -73,16 +72,14 @@ function shouldIgnoreGroup({
       allBlank &&= isBlankLine({
         input: left,
         lineIndex: group.leftStart + offset,
-        stripTrailingCarriageReturn:
-          settings.comparisonOptions.stripTrailingCarriageReturn,
+        stripTrailingCarriageReturn: settings.comparisonOptions.stripTrailingCarriageReturn,
       });
     }
     for (let offset = 0; offset < group.rightCount; offset++) {
       allBlank &&= isBlankLine({
         input: right,
         lineIndex: group.rightStart + offset,
-        stripTrailingCarriageReturn:
-          settings.comparisonOptions.stripTrailingCarriageReturn,
+        stripTrailingCarriageReturn: settings.comparisonOptions.stripTrailingCarriageReturn,
       });
     }
     if (allBlank) {

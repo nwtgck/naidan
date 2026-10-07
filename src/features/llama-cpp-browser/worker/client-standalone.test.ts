@@ -5,9 +5,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
 import { createLlamaCppWorkerClient } from './client-standalone';
 
-const calls = vi.hoisted(() => ({ factory: vi.fn(), probe: vi.fn(), release: vi.fn(), remote: {
-  prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn(), release: vi.fn(), verifyStorage: vi.fn(),
-} }));
+const calls = vi.hoisted(() => ({
+  factory: vi.fn(),
+  probe: vi.fn(),
+  release: vi.fn(),
+  remote: {
+    prepareModel: vi.fn(),
+    requestAudioPreview: vi.fn(async () => {}),
+    finishAudioGeneration: vi.fn(),
+    generateAudio: vi.fn(),
+    probeProfiles: vi.fn(),
+    listModels: vi.fn(),
+    importModel: vi.fn(),
+    importDirectory: vi.fn(),
+    removeModel: vi.fn(),
+    generate: vi.fn(),
+    cancelGeneration: vi.fn(),
+    release: vi.fn(),
+    verifyStorage: vi.fn(),
+  },
+}));
 vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser', () => ({ createStandaloneWorker: calls.factory }));
 vi.mock('../runtime/shared-storage-probe', () => ({ verifySharedStorage: calls.probe }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => calls.remote, releaseWorkerRemote: calls.release, workerProxy: ({ value }: { value: unknown }) => value }));

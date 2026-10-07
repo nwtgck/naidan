@@ -77,9 +77,14 @@ function normalizeMessageDtoTree({ node }: { node: MessageNodeDto }): MessageNod
 
   // Reuse the ordinary migration for stable part IDs and content rules, but keep
   // the DTO-only experimental envelopes that are not application state.
-  const converted = messageNodeToDto({ domain: messageNodeToDomain({ dto: {
-    ...node, replies: { ...node.replies, items: [] },
-  } }) });
+  const converted = messageNodeToDto({
+    domain: messageNodeToDomain({
+      dto: {
+        ...node,
+        replies: { ...node.replies, items: [] },
+      },
+    }),
+  });
   converted.experimental = node.experimental;
   converted.replies = replies;
   switch (converted.role) {
@@ -151,7 +156,8 @@ function normalizeChatDtoTree({ chatDto }: { chatDto: ChatDto }): ChatDto {
   // Export/append write V2 message trees, without round-tripping existing V2
   // envelopes through application objects that intentionally omit experimental.
   if (chatDto.root && chatDto.root.items.length > 0) return {
-    ...chatDto, messages: undefined,
+    ...chatDto,
+    messages: undefined,
     root: { ...chatDto.root, items: chatDto.root.items.map(node => normalizeMessageDtoTree({ node })) },
   };
   return chatToDto({ domain: chatToDomain({ dto: chatDto }) });
@@ -442,7 +448,9 @@ export class ImportExportService {
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/00-storage/mapper/mappers');
     const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
     const abort = new AbortController();
-    const stream = createAbortableByteStream({ stream: output.stream, signal: abort.signal,
+    const stream = createAbortableByteStream({
+      stream: output.stream,
+      signal: abort.signal,
       onCancel: () => abort.abort(new DOMException('Export cancelled', 'AbortError')),
     });
     const centralDirectoryStore = createMemoryZipCentralDirectoryStore();
@@ -952,53 +960,55 @@ export class ImportExportService {
   }
 
   private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto, strategies: ImportConfig['settings'] }) {
-    await this.storage.updateSettings({ updater: ({ current: currentSettings }) => {
-      const newSettingsDomain = settingsToDomain({ dto: zipSettings });
-      const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
+    await this.storage.updateSettings({
+      updater: ({ current: currentSettings }) => {
+        const newSettingsDomain = settingsToDomain({ dto: zipSettings });
+        const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K }) => {
-        if (strategy === 'replace' && newValue !== undefined) {
-          finalSettings[targetKey] = newValue;
+        const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K }) => {
+          if (strategy === 'replace' && newValue !== undefined) {
+            finalSettings[targetKey] = newValue;
+          }
+        };
+
+        applyField({
+          strategy: strategies.endpoint,
+          newValue: cloneEndpoint({ endpoint: newSettingsDomain.endpoint }),
+          targetKey: 'endpoint',
+        });
+        applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
+        applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleGeneration, targetKey: 'titleGeneration' });
+        applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
+        applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
+
+        // Always merge UI flags if present in the import
+        if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
+          finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
         }
-      };
 
-      applyField({
-        strategy: strategies.endpoint,
-        newValue: cloneEndpoint({ endpoint: newSettingsDomain.endpoint }),
-        targetKey: 'endpoint',
-      });
-      applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
-      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleGeneration, targetKey: 'titleGeneration' });
-      applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
-      applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
-
-      // Always merge UI flags if present in the import
-      if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
-        finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
-      }
-
-      switch (strategies.providerProfiles) {
-      case 'replace':
-        finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
-        break;
-      case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(profile => ({
-          ...profile,
-          id: generateId<ProviderProfileId>(),
-          endpoint: cloneEndpoint({ endpoint: profile.endpoint }),
-        }));
-        finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
-        break;
-      }
-      case 'none':
-        break;
-      default: {
-        const _ex: never = strategies.providerProfiles;
-        throw new Error(`Unhandled providerProfiles strategy: ${_ex}`);
-      }
-      }
-      return finalSettings;
-    } });
+        switch (strategies.providerProfiles) {
+        case 'replace':
+          finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
+          break;
+        case 'append': {
+          const appended = newSettingsDomain.providerProfiles.map(profile => ({
+            ...profile,
+            id: generateId<ProviderProfileId>(),
+            endpoint: cloneEndpoint({ endpoint: profile.endpoint }),
+          }));
+          finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
+          break;
+        }
+        case 'none':
+          break;
+        default: {
+          const _ex: never = strategies.providerProfiles;
+          throw new Error(`Unhandled providerProfiles strategy: ${_ex}`);
+        }
+        }
+        return finalSettings;
+      },
+    });
   }
 
   private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<StorageSnapshot> {
@@ -1250,14 +1260,16 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
-            const dto = normalizeChatDtoTree({ chatDto: {
-              ...meta,
-              ...content,
-              experimental: meta.experimental,
-              // ChatContentSchemaDto materializes missing currentLeafId as undefined.
-              currentLeafId: content.currentLeafId ?? meta.currentLeafId,
-              messages: undefined,
-            } });
+            const dto = normalizeChatDtoTree({
+              chatDto: {
+                ...meta,
+                ...content,
+                experimental: meta.experimental,
+                // ChatContentSchemaDto materializes missing currentLeafId as undefined.
+                currentLeafId: content.currentLeafId ?? meta.currentLeafId,
+                messages: undefined,
+              },
+            });
 
             const messageIdMap = new Map<string, string>();
             const originMessageIds = originMessageIdMaps.get(originalId);

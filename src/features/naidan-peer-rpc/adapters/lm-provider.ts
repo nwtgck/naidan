@@ -38,8 +38,12 @@ export class NaidanRpcLmProvider implements LmProvider {
   private generate({ client }: { client: NaidanPeerClient }): LlamaCppBrowserService['generate'] {
     return async ({ input, signal, onEvent }) => {
       signal?.throwIfAborted();
-      const call = client.generateChat({ input: { model: input.model, ...prepareTranscript({ input }) },
-        on: { progress: undefined }, signal, timeoutMs: undefined });
+      const call = client.generateChat({
+        input: { model: input.model, ...prepareTranscript({ input }) },
+        on: { progress: undefined },
+        signal,
+        timeoutMs: undefined,
+      });
       try {
         const output = await call.result;
         const result = await receiveEvents({ readable: output.events, onEvent, signal: signal ?? new AbortController().signal });

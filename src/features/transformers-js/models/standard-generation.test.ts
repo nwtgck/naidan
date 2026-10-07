@@ -10,9 +10,14 @@ const open = '<|tool_call_start|>';
 const close = '<|tool_call_end|>';
 function setup({ declarations, history }: { declarations: WorkerToolDefinition[] | undefined, history: StandardToolHandling['historyEncoding'] }) {
   const events: InferenceGenerationEvent[] = [];
-  const codec = createStandardGeneration({ emit: ({ event }) => {
-    events.push(event);
-  }, endTokens: ['<eos>'], handling: { ...handling, historyEncoding: history }, tools: declarations });
+  const codec = createStandardGeneration({
+    emit: ({ event }) => {
+      events.push(event);
+    },
+    endTokens: ['<eos>'],
+    handling: { ...handling, historyEncoding: history },
+    tools: declarations,
+  });
   return { codec, events };
 }
 function strings({ events }: { events: InferenceGenerationEvent[] }): string {

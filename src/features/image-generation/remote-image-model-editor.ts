@@ -54,15 +54,19 @@ export function remoteImageSelectionFromEditor({ editor }: { editor: RemoteImage
   unhandled satisfies Record<PropertyKey, never>;
   if (!primary) return undefined;
   const { family: _family, ...selectedPrimary } = primary;
-  return imageModelSelectionSchema.parse({ primary: selectedPrimary, components, loras: loras.flatMap(item => {
-    const { file, strength, enabled, ...unhandledLora } = item;
+  return imageModelSelectionSchema.parse({
+    primary: selectedPrimary,
+    components,
+    loras: loras.flatMap(item => {
+      const { file, strength, enabled, ...unhandledLora } = item;
     unhandledLora satisfies Record<PropertyKey, never>;
     switch (enabled) {
     case 'enabled': return [{ file, strength }];
     case 'disabled': return [];
     default: { const exhaustive: never = enabled; throw new Error(String(exhaustive)); }
     }
-  }) });
+    }),
+  });
 }
 
 export function remoteImageEditorReady({ editor }: { editor: RemoteImageModelEditor }): boolean {
@@ -90,7 +94,8 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
     })();
     if (!roleMatches) return [];
     const status = requirement && item.facts ? componentMatch({
-      candidate: { family: item.facts.family, classes: item.facts.classes, roles: item.roles.filter(role => role !== 'lora'), issue: undefined }, requirement,
+      candidate: { family: item.facts.family, classes: item.facts.classes, roles: item.roles.filter(role => role !== 'lora'), issue: undefined },
+      requirement,
     }) : 'unverified';
     // Keep known incompatible files out of normal choices. The user's saved
     // selection is retained separately, never substituted by a catalog refresh.
@@ -99,8 +104,14 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
     case 'matching': case 'unverified': break;
     default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
     }
-    return [{ id: remoteImageFileKey({ file: item.file }), label: item.label, detail: item.file.location.path,
-      evidence: [], status, issue: undefined }];
+    return [{
+      id: remoteImageFileKey({ file: item.file }),
+      label: item.label,
+      detail: item.file.location.path,
+      evidence: [],
+      status,
+      issue: undefined,
+    }];
   });
 }
 

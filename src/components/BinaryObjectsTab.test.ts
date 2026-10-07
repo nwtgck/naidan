@@ -139,9 +139,20 @@ async function* mockAsyncIterable(items: BinaryObject[]) {
 }
 
 const globalStubs = {
-  File: true, SearchIcon: true, ArrowUp: true, ArrowDownIcon: true, DownloadIcon: true,
-  EyeIcon: true, Calendar: true, HardDriveIcon: true, ChevronRightIcon: true,
-  Trash2Icon: true, RefreshCwIcon: true, LayoutGridIcon: true, ListIcon: true, XIcon: true,
+  File: true,
+  SearchIcon: true,
+  ArrowUp: true,
+  ArrowDownIcon: true,
+  DownloadIcon: true,
+  EyeIcon: true,
+  Calendar: true,
+  HardDriveIcon: true,
+  ChevronRightIcon: true,
+  Trash2Icon: true,
+  RefreshCwIcon: true,
+  LayoutGridIcon: true,
+  ListIcon: true,
+  XIcon: true,
   InfoIcon: true,
 };
 

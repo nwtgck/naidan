@@ -26,7 +26,9 @@ function harness({ pointerBytes, outcome, channels }: {
     _sdc_sd_set_preview_callback: vi.fn((...args) => {
       previewWrites.push(args);
     }),
-    HEAPU8: new Uint8Array(2 * 1024 * 1024), FS: { mkdir: vi.fn() }, _sdc_abi_version: () => 2,
+    HEAPU8: new Uint8Array(2 * 1024 * 1024),
+    FS: { mkdir: vi.fn() },
+    _sdc_abi_version: () => 2,
     addFunction: vi.fn((callback, signature) => {
       events.push('callback:' + signature); const pointer = callbacks.size + 10; callbacks.set(pointer, callback); return pointer;
     }),
@@ -58,7 +60,8 @@ function harness({ pointerBytes, outcome, channels }: {
     }),
     sd_get_default_sample_method: vi.fn(async () => 2),
     sd_get_default_scheduler: vi.fn(async () => 3),
-    str_to_sample_method: vi.fn(async () => 4), str_to_scheduler: vi.fn(async () => 5),
+    str_to_sample_method: vi.fn(async () => 4),
+    str_to_scheduler: vi.fn(async () => 5),
     sd_set_log_callback: vi.fn(async pointer => {
       registrations.log = Number(pointer); if (!pointer) events.push('clear-log');
     }),
@@ -67,7 +70,8 @@ function harness({ pointerBytes, outcome, channels }: {
     }),
     sd_set_preview_callback: vi.fn(async (...args) => {
       registrations.preview = Number(args[0]); previewWrites.push(args);
-    }), sd_list_devices: vi.fn(async () => 0n),
+    }),
+    sd_list_devices: vi.fn(async () => 0n),
     generate_image: vi.fn(async (_ctx, _params, imagesOut, countOut) => {
       if (outcome === 'trap') throw new Error('mocked Wasm trap');
       // Deliberately replace the heap to verify views are acquired after await.
@@ -88,7 +92,10 @@ function harness({ pointerBytes, outcome, channels }: {
     }),
   };
   const core: Core = {
-    module, api, pointerBytes, busy: false,
+    module,
+    api,
+    pointerBytes,
+    busy: false,
     constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : name === 'SD_TYPE_F16' ? 1 : name === 'SD_CANCEL_ALL' ? 0 : name === 'SD_CANCEL_RESET' ? 2 : name === 'PREVIEW_PROJ' ? 1 : name === 'PREVIEW_VAE' ? 3 : name === 'PREVIEW_NONE' ? 0 : 100),
     alloc: vi.fn(bytes => allocate({ bytes })),
     free: vi.fn(() => {
@@ -117,14 +124,19 @@ function harness({ pointerBytes, outcome, channels }: {
     mountReadOnlyFile: vi.fn((_core, path, source, options) => {
       expect(source.size).toBe(24); expect(options.maxChunkBytes).toBe(8 * 1024 * 1024);
       events.push('mount:' + path);
-      return { path, remove: vi.fn(() => {
-        events.push('unmount');
-      }) };
+      return {
+        path,
+        remove: vi.fn(() => {
+          events.push('unmount');
+        }),
+      };
     }),
   };
-  const reader = { readAsArrayBuffer: vi.fn((_blob: Blob) => {
-    const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
-  }) };
+  const reader = {
+    readAsArrayBuffer: vi.fn((_blob: Blob) => {
+      const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
+    }),
+  };
   return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites };
 }
 
@@ -142,9 +154,13 @@ it('observes only an idle loaded session, never native callbacks, closed session
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
   const session = createImageGenerationSession(h), callbacks: Promise<ImageEngineInspection>[] = [];
   expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
-  await session.generate({ request: requestFixture(), onProgress: vi.fn(), onLog() {
-    callbacks.push(session.inspectEngine());
-  } });
+  await session.generate({
+    request: requestFixture(),
+    onProgress: vi.fn(),
+    onLog() {
+      callbacks.push(session.inspectEngine());
+    },
+  });
   for (const pending of callbacks) expect(await pending).toEqual({ status: 'unavailable', reason: 'busy' });
   expect(h.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled(); expect(h.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
   expect(await session.inspectEngine()).toMatchObject({ status: 'ready', snapshot: { modelVersion: 'mock model (no inference)' } });
@@ -199,9 +215,13 @@ it('opens a new graph diagnostic window per retained request and never toggles i
   const callsDuringCallbacks: number[][] = [];
   for (const [index, debug] of (['on', 'on', 'off'] as const).entries()) {
     const observed: number[] = []; callsDuringCallbacks.push(observed);
-    await session.generate({ request: { ...request, runId: index, debug }, onProgress: vi.fn(), onLog() {
-      observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
-    } });
+    await session.generate({
+      request: { ...request, runId: index, debug },
+      onProgress: vi.fn(),
+      onLog() {
+        observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
+      },
+    });
   }
   expect(callsDuringCallbacks.map(calls => [...new Set(calls)])).toEqual([[1], [3], [5]]);
   expect(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls).toEqual([[1], [0], [1], [0], [0], [0]]);
@@ -340,11 +360,16 @@ it.each([4, 8] as const)('uses public records and caller policy with %i-byte poi
 });
 it('uses upstream defaults and safely handles notification exceptions', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 4 });
-  const result = await runImageGeneration({ ...h, request: requestFixture(), onProgress: () => {
-    throw new Error('listener');
-  }, onLog: () => {
-    throw new Error('listener');
-  } });
+  const result = await runImageGeneration({
+    ...h,
+    request: requestFixture(),
+    onProgress: () => {
+      throw new Error('listener');
+    },
+    onLog: () => {
+      throw new Error('listener');
+    },
+  });
   expect(result.pixels[3]).toBe(71); expect(h.api.sd_get_default_sample_method).toHaveBeenCalledOnce(); expect(h.api.sd_get_default_scheduler).toHaveBeenCalledWith(200000n, 2);
 });
 it.each(['load-failure', 'generation-failure'] as const)('releases the context and mounts after %s', async outcome => {
@@ -405,10 +430,20 @@ it.each(['success', 'trap'] as const)('reports final logical and Blob read total
   const operation = runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic });
   if (outcome === 'trap') await expect(operation).rejects.toThrow('mocked Wasm trap');
   else await operation;
-  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'file-read', fields: expect.objectContaining({
-    report: 'final', reads: 9, bytes: 18, blobReads: 1, blobBytes: 24, cacheHits: 8, cacheHitBytes: 16,
-    cacheCapacityBytes: 64 * 1024 * 1024, cacheRetainedBytes: 24,
-  }) }));
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+    event: 'file-read',
+    fields: expect.objectContaining({
+      report: 'final',
+      reads: 9,
+      bytes: 18,
+      blobReads: 1,
+      blobBytes: 24,
+      cacheHits: 8,
+      cacheHitBytes: 16,
+      cacheCapacityBytes: 64 * 1024 * 1024,
+      cacheRetainedBytes: 24,
+    }),
+  }));
 });
 
 it.each([4, 8] as const)('does not re-enter a trapped native graph with %i-byte pointers', async pointerBytes => {
@@ -420,9 +455,16 @@ RuntimeError: memory access out of bounds
   vi.mocked(h.api.generate_image).mockRejectedValueOnce(error);
   const onDiagnostic = vi.fn(), onProgress = vi.fn();
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress, onLog: vi.fn(), onDiagnostic })).rejects.toBe(error);
-  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: 'generation', fields: expect.objectContaining({
-    errorType: 'wasm-trap', nativeCall: 'generate_image', wasmFrames: 'wasm-function[6740]:0xae1009', workerTerminationRequired: true,
-  }) }));
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+    event: 'failed',
+    stage: 'generation',
+    fields: expect.objectContaining({
+      errorType: 'wasm-trap',
+      nativeCall: 'generate_image',
+      wasmFrames: 'wasm-function[6740]:0xae1009',
+      workerTerminationRequired: true,
+    }),
+  }));
   const failure = onDiagnostic.mock.calls.findIndex(([entry]) => entry.event === 'failed');
   const cleanup = onDiagnostic.mock.calls.findIndex(([entry]) => entry.stage === 'cleanup');
   expect(failure).toBeLessThan(cleanup);
@@ -450,9 +492,15 @@ it.each(['load', 'generation'] as const)('treats a rejection from %s as uncertai
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(0);
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
   expect(h.events).not.toContain('unmount');
-  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', stage: stage === 'load' ? 'model-load' : 'generation', fields: expect.objectContaining({
-    errorType: 'error', workerTerminationRequired: true, nativeCall: stage === 'load' ? 'new_sd_ctx' : 'generate_image',
-  }) }));
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+    event: 'failed',
+    stage: stage === 'load' ? 'model-load' : 'generation',
+    fields: expect.objectContaining({
+      errorType: 'error',
+      workerTerminationRequired: true,
+      nativeCall: stage === 'load' ? 'new_sd_ctx' : 'generate_image',
+    }),
+  }));
 });
 it('also skips native cleanup if a short native boundary traps', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
@@ -709,9 +757,14 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
   vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap));
   vi.stubGlobal('OffscreenCanvas', class {
     getContext() {
-      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData() {
-        return { data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) };
-      } };
+      return {
+        fillStyle: '',
+        fillRect() {},
+        drawImage() {},
+        getImageData() {
+          return { data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) };
+        },
+      };
     }
   });
   const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
@@ -772,9 +825,14 @@ it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fi
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 1, close() {} })));
   vi.stubGlobal('OffscreenCanvas', class {
     getContext() {
-      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData() {
-        return { data: new Uint8ClampedArray(8) };
-      } };
+      return {
+        fillStyle: '',
+        fillRect() {},
+        drawImage() {},
+        getImageData() {
+          return { data: new Uint8ClampedArray(8) };
+        },
+      };
     }
   });
   const onProgress = vi.fn(), onPreview = vi.fn(), onPerformance = vi.fn();

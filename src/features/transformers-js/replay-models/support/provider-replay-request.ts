@@ -33,7 +33,9 @@ type RejectedRequestObservation =
   | { status: 'fulfilled'; result: ChatGenerationResult | undefined }
   | { status: 'rejected'; error: unknown };
 const nativeParameterSnapshotSchema = z.object({
-  maxCompletionTokens: z.number().int().positive(), temperature: z.number(), topP: z.number(),
+  maxCompletionTokens: z.number().int().positive(),
+  temperature: z.number(),
+  topP: z.number(),
 });
 export interface ProviderRequestReplay extends ProviderReplayTestRuntime {
   beginNativeRequest({ caseId, parameters }: { caseId: RequestReplayArguments['caseIds'][number]; parameters: PublicParameters }): void;
@@ -73,8 +75,11 @@ async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imag
   let completedNativeCalls = 0;
   let active: { evidence: typeof selected[number]['evidence']; parameters: Readonly<z.infer<typeof nativeParameterSnapshotSchema>>; attempted: number; completed: number } | undefined;
   const harness = await createProviderReplayTestRuntime({
-    modelId: context.modelId, expectedRevision: context.metadataRevision, cacheRevision: context.observedCacheRevision,
-    metadataCache: context.localMetadataPaths, imagePlatform,
+    modelId: context.modelId,
+    expectedRevision: context.metadataRevision,
+    cacheRevision: context.observedCacheRevision,
+    metadataCache: context.localMetadataPaths,
+    imagePlatform,
     artifacts: artifactPaths.map(path => ({ path, bytes: createSyntheticModelBody({ modelId: context.modelId, revision: context.metadataRevision, path }) })),
     generate: async ({ options, runtime, model }) => {
       ++nativeCalls;

@@ -214,21 +214,30 @@ echo hello
   });
 
   it('recognizes a shell script only when the shebang starts the file', async () => {
-    await writeFile({ path: '/direct.sh', data: `\
+    await writeFile({
+      path: '/direct.sh',
+      data: `\
 #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/bom.sh', data: '\uFEFF#!/bin/sh\necho ok\n' });
-    await writeFile({ path: '/space.sh', data: `\
+    await writeFile({
+      path: '/space.sh',
+      data: `\
  #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/tab.sh', data: '\t#!/bin/sh\necho ok\n' });
-    await writeFile({ path: '/newline.sh', data: `\
+    await writeFile({
+      path: '/newline.sh',
+      data: `\
 
 #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/nbsp.sh', data: '\u00A0#!/bin/sh\necho ok\n' });
     await writeFile({ path: '/em-space.sh', data: '\u2003#!/bin/sh\necho ok\n' });
 
@@ -422,9 +431,12 @@ ASCII text, with CR line terminators
 
   it('adds computed text qualifiers to structured documents and executable scripts', async () => {
     await writeFile({ path: '/no-eol.html', data: '<html><body>x</body></html>' });
-    await writeFile({ path: '/crlf.xml', data: `\
+    await writeFile({
+      path: '/crlf.xml',
+      data: `\
 <?xml version="1.0"?>\r
-<root/>` });
+<root/>`,
+    });
     await writeFile({ path: '/escape.svg', data: '<svg>\u001B</svg>\n' });
     await writeFile({ path: '/cr-script.sh', data: '#!/bin/sh\recho ok\r' });
 

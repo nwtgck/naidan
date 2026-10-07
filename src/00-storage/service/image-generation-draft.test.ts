@@ -37,9 +37,11 @@ describe('session draft checkpoints', () => {
   });
   it('preserves user-selected components, explicit none and disabled adapter strength', async () => {
     const h = await setup();
-    h.draft.modelSelection = { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/custom/main.gguf' } },
+    h.draft.modelSelection = {
+      primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/custom/main.gguf' } },
       components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'host-aa' }), path: 'lm.gguf' } } }],
-      loras: [{ enabled: 'disabled', strength: -0.75, location: { kind: 'opfs', path: 'models/custom/adapter.gguf' } }] };
+      loras: [{ enabled: 'disabled', strength: -0.75, location: { kind: 'opfs', path: 'models/custom/adapter.gguf' } }],
+    };
     const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
     const value = dto.modelSelection!;
@@ -67,9 +69,14 @@ describe('session draft checkpoints', () => {
   });
   it('does not publish a checkpoint when input bytes failed', async () => {
     const h = await setup();
-    await expect(service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {
-      throw new Error('quota');
-    } })).rejects.toThrow('quota');
+    await expect(service.saveImageGenerationDraft({
+      store: h.store,
+      draft: h.draft,
+      expectedRevision: undefined,
+      writeInputs: async () => {
+        throw new Error('quota');
+      },
+    })).rejects.toThrow('quota');
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toBeUndefined();
   });
   it.each(['{bad', '{"version":999,"unknown":true}'])('does not overwrite unreadable checkpoints: %s', async text => {

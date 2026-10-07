@@ -26,9 +26,12 @@ it('treats a long string as one node rather than nesting or delimiters', () => {
 });
 it('rejects a non-byte chunk rather than silently dropping it', async () => {
   const cancel = vi.fn();
-  const readable = new ReadableStream<Uint8Array>({ start(controller) {
-    controller.enqueue('not bytes' as unknown as Uint8Array);
-  }, cancel });
+  const readable = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue('not bytes' as unknown as Uint8Array);
+    },
+    cancel,
+  });
   await expect(collectBytes({ readable, limit: 32, signal: new AbortController().signal })).rejects.toThrow('byte');
   expect(cancel).toHaveBeenCalledOnce();
 });
@@ -53,9 +56,26 @@ it('counts the root in the node limit and accepts the exact limit', () => {
 });
 
 it('bounds a local tool schema before recursive Zod validation, including cyclic input', () => {
-  const input = { model: 'local/model', messages: [{ role: 'user' as const, content: 'hello', reasoning_content: undefined,
-    tool_calls: undefined, tool_call_id: undefined, name: undefined }], tools: undefined,
-  temperature: 0.7, topP: 0.9, maxTokens: 10, reasoningEffort: undefined, presencePenalty: 0, frequencyPenalty: 0, stop: [], debug: undefined };
+  const input = {
+    model: 'local/model',
+    messages: [{
+      role: 'user' as const,
+      content: 'hello',
+      reasoning_content: undefined,
+      tool_calls: undefined,
+      tool_call_id: undefined,
+      name: undefined,
+    }],
+    tools: undefined,
+    temperature: 0.7,
+    topP: 0.9,
+    maxTokens: 10,
+    reasoningEffort: undefined,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+    debug: undefined,
+  };
   const parameters: NonNullable<Parameters<typeof prepareTranscript>[0]['input']['tools']>[number]['function']['parameters'] = {}; parameters.child = parameters;
   expect(() => prepareTranscript({ input: { ...input, tools: [{ type: 'function', function: { name: 'tool', description: '', parameters } }] } })).toThrow('depth');
 });

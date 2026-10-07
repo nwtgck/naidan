@@ -13,8 +13,13 @@ export function createImageRunPersistence({ store }: { store: ImageGenerationSto
       imagePendingSessionUses.add({ store: target, sessionId: run.sessionId, runId: run.id });
     },
     commit: ({ asset, files }) => storageService.publishImageGeneration({ store: target, publication: { type: 'asset', asset }, files }),
-    update: ({ run, execution }) => updateImageGenerationRunExecution({ store: target, sessionId: run.sessionId,
-      runId: run.id, execution, expectedRevision: run.revision }),
+    update: ({ run, execution }) => updateImageGenerationRunExecution({
+      store: target,
+      sessionId: run.sessionId,
+      runId: run.id,
+      execution,
+      expectedRevision: run.revision,
+    }),
   };
 }
 export const TEST_ONLY = {

@@ -25,13 +25,19 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
   it('refuses the real 117691126-byte request before allocation, never pretending a tiny body loaded the full model', async () => {
     const target = resources[0]!;
     let targetPulls = 0;
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
-      if (path !== target.path) return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
-      return new Response(new ReadableStream<Uint8Array>({ pull() {
-        targetPulls++; throw new Error('Refused allocation must precede source reads');
-      } }, { highWaterMark: 0 }),
-      { headers: { 'Content-Length': String(target.bytes) } });
-    } });
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
+        if (path !== target.path) return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        return new Response(new ReadableStream<Uint8Array>({
+          pull() {
+            targetPulls++; throw new Error('Refused allocation must precede source reads');
+          },
+        }, { highWaterMark: 0 }),
+        { headers: { 'Content-Length': String(target.bytes) } });
+      },
+    });
     expect(h.archive.summary.revision).toBe('12fd25f77366fa6b3b4b768ec3050bf629380bac');
     h.raw.sessions.mockImplementation(async () => {
       throw new Error('Actual-size refusal must never reach ORT');
@@ -60,7 +66,13 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.missingCache).toMatchObject({ fileCount: 0, load: 'rejected-before-candidate', weightReads: 0, ortEntries: 0, modelDownloads: 0 });
-    const h = await createProviderReplayTestRuntime({ modelId, expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: [], artifacts: [], imagePlatform: undefined,
+    const h = await createProviderReplayTestRuntime({
+      modelId,
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: [],
+      artifacts: [],
+      imagePlatform: undefined,
       generate: async () => {
         throw new Error('An unsaved model must not generate');
       },
@@ -85,22 +97,28 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     const chunks: Uint8Array[][] = [];
     const expected = new Map<string, number[]>();
     const pulls: string[] = [];
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
-      const index = resources.findIndex(item => item.path === path);
-      const parts = [new Uint8Array([index, 11, 22]), new Uint8Array([33, 44, index])];
-      chunks.push(parts); expected.set(path, parts.flatMap(part => [...part]));
-      let ordinal = 0;
-      return new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
-        if (ordinal === 0 && path === resources[0]?.path) {
-          entered.resolve(); await release.promise;
-        }
-        pulls.push(path);
-        const part = parts[ordinal++];
-        if (part === undefined) throw new Error('Unexpected extra source pull');
-        controller.enqueue(part);
-        if (ordinal === parts.length) controller.close();
-      } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
-    } });
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
+        const index = resources.findIndex(item => item.path === path);
+        const parts = [new Uint8Array([index, 11, 22]), new Uint8Array([33, 44, index])];
+        chunks.push(parts); expected.set(path, parts.flatMap(part => [...part]));
+        let ordinal = 0;
+        return new Response(new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            if (ordinal === 0 && path === resources[0]?.path) {
+              entered.resolve(); await release.promise;
+            }
+            pulls.push(path);
+            const part = parts[ordinal++];
+            if (part === undefined) throw new Error('Unexpected extra source pull');
+            controller.enqueue(part);
+            if (ordinal === parts.length) controller.close();
+          },
+        }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
+      },
+    });
     const loading = (async () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();

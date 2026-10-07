@@ -101,8 +101,11 @@ export class NaidanPipingDuplexSession {
     const localIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
     const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 });
     const endpointOptions = {
-      baseUrl: settings.baseUrl, policy: settings.policy,
-      timeoutMs: settings.requestTimeoutMs, repairTimeoutMs: settings.repairTimeoutMs, headers: settings.headers,
+      baseUrl: settings.baseUrl,
+      policy: settings.policy,
+      timeoutMs: settings.requestTimeoutMs,
+      repairTimeoutMs: settings.repairTimeoutMs,
+      headers: settings.headers,
     };
     // The final handshake flight and application traffic have independent POST ownership.
     const bootstrapEndpoint = new FiniteEndpoint(endpointOptions);
@@ -116,8 +119,15 @@ export class NaidanPipingDuplexSession {
     let streams: StreamSession | undefined;
     try {
       bootstrap = await startPinnedConnection({
-        role, identity: localIdentity, expectedPeer: pin, verifyPeer, code, endpoint: bootstrapEndpoint, signal: stop.signal,
-        confirmationTimeoutMs: settings.candidateConfirmationTimeoutMs, completionLeaseMs: settings.handshakeRetentionMs,
+        role,
+        identity: localIdentity,
+        expectedPeer: pin,
+        verifyPeer,
+        code,
+        endpoint: bootstrapEndpoint,
+        signal: stop.signal,
+        confirmationTimeoutMs: settings.candidateConfirmationTimeoutMs,
+        completionLeaseMs: settings.handshakeRetentionMs,
         intervalMs: settings.pacing.minimumMs,
         // A different stream profile must fail authentication, not silently produce two idle routes.
         purpose: ascii({ text: 'naidan-piping-streams/v3' }),
@@ -126,8 +136,16 @@ export class NaidanPipingDuplexSession {
       stop.signal.throwIfAborted();
       streams = await StreamSession.create({ keys });
       stop.signal.throwIfAborted();
-      return new NaidanPipingDuplexSession({ streams, keys, stop, endpoint: trafficEndpoint, pacing: settings.pacing,
-        bootstrap, signal, forward });
+      return new NaidanPipingDuplexSession({
+        streams,
+        keys,
+        stop,
+        endpoint: trafficEndpoint,
+        pacing: settings.pacing,
+        bootstrap,
+        signal,
+        forward,
+      });
     } catch (error) {
       stop.abort(error);
       streams?.abort({ reason: 'Piping connection failed' });

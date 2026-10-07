@@ -20,11 +20,15 @@ export function snapshotChatRequest({ messages, parameters, tools }: Pick<Parame
     unhandledReasoning satisfies Record<PropertyKey, never>;
     settings = exactObject<LmParameters>()({ temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop: stop?.slice(), reasoning: { effort } });
   }
-  return { messages: copy, parameters: settings, tools: tools?.map(tool => {
-    const { name, description, parameters, ...unhandled } = tool;
+  return {
+    messages: copy,
+    parameters: settings,
+    tools: tools?.map(tool => {
+      const { name, description, parameters, ...unhandled } = tool;
     unhandled satisfies Record<PropertyKey, never>;
     return { name, description, parameters: z.record(z.string(), z.json()).parse(parameters) };
-  }) };
+    }),
+  };
 }
 
 export type ApiContentPart = { type: 'text', text: string } | { type: 'image_url', image_url: { url: string } };
@@ -97,13 +101,19 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
         }
       }
       // Without attachments this API has one text field. Keep absence distinct from empty text.
-      result.push({ role, content: content.some(part => part.type === 'image_url') ? content : content.map(part => {
-        switch (part.type) {
-        case 'text': return part.text;
-        case 'image_url': throw new Error('Expected text-only content.');
-        default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
-        }
-      }).join(''), reasoning_content: undefined, tool_calls: undefined, tool_call_id: undefined });
+      result.push({
+        role,
+        content: content.some(part => part.type === 'image_url') ? content : content.map(part => {
+          switch (part.type) {
+          case 'text': return part.text;
+          case 'image_url': throw new Error('Expected text-only content.');
+          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          }
+        }).join(''),
+        reasoning_content: undefined,
+        tool_calls: undefined,
+        tool_call_id: undefined,
+      });
       break;
     }
     case 'assistant': {

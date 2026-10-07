@@ -17,7 +17,10 @@ export async function buildTransformersJsFixesArtifact({ projectRoot }: { projec
   const externalPaths: Record<string, string> = { 'onnxruntime-web/webgpu': ortWebGpuUrl, 'onnxruntime-common': ortCommonUrl };
   let resolvedPluginNames: string[] = [];
   const result = await build({
-    root: projectRoot, configFile: false, publicDir: false, logLevel: 'silent',
+    root: projectRoot,
+    configFile: false,
+    publicDir: false,
+    logLevel: 'silent',
     plugins: [createTransformersJsFixesPlugin({ projectRoot }), {
       name: 'naidan-transformers-js-fixes-build-provenance',
       configResolved(config) {
@@ -25,7 +28,10 @@ export async function buildTransformersJsFixesArtifact({ projectRoot }: { projec
       },
     }],
     build: {
-      write: false, minify: false, sourcemap: true, target: 'esnext',
+      write: false,
+      minify: false,
+      sourcemap: true,
+      target: 'esnext',
       lib: { entry: installed.bundlePath, formats: ['es'], fileName: () => 'transformers-js-fixes.mjs' },
       rolldownOptions: {
         external: Object.keys(externalPaths),

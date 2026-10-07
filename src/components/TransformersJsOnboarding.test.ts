@@ -279,7 +279,8 @@ describe('Transformers.js Onboarding Integration', () => {
     case 'fresh': break;
     case 'unspecified': case 'high':
       mockSettings.value.titleGeneration = {
-        endpoint: 'same_scope', model: { id: 'previous-title-model' },
+        endpoint: 'same_scope',
+        model: { id: 'previous-title-model' },
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: preference === 'high' ? 'high' : undefined } },
       };
       break;
@@ -316,7 +317,9 @@ describe('Transformers.js Onboarding Integration', () => {
         endpoint: { type: 'transformers_js' },
         defaultModelId: 'downloaded-model',
         titleGeneration: originalTitle === 'disabled' ? 'disabled' : {
-          endpoint: 'same_scope', model: 'same_scope', lmParameters: originalTitle.lmParameters,
+          endpoint: 'same_scope',
+          model: 'same_scope',
+          lmParameters: originalTitle.lmParameters,
         },
       }),
       modelRefresh: 'await',

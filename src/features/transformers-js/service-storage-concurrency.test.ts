@@ -13,7 +13,8 @@ it('rechecks the organization after model deletion and preserves a repository cr
   function directory({ path }: { path: string }): FileSystemDirectoryHandle {
     const children = new Map<string, FileSystemDirectoryHandle>();
     return {
-      kind: 'directory', name: path.split('/').at(-1) ?? '',
+      kind: 'directory',
+      name: path.split('/').at(-1) ?? '',
       async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions) {
         let child = children.get(name);
         if (child === undefined && options?.create) {
@@ -42,13 +43,15 @@ it('rechecks the organization after model deletion and preserves a repository cr
   const releaseParent = Promise.withResolvers<void>();
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
-    locks: { request: async (name: string, options: LockOptions, callback: LockGrantedCallback<unknown>) => {
-      if (name === 'naidan:transformers-js:opfs:models' && options.mode === 'exclusive') {
-        parentRequested.resolve();
-        await releaseParent.promise;
-      }
-      return await q.locks.request(name, options, callback);
-    } },
+    locks: {
+      request: async (name: string, options: LockOptions, callback: LockGrantedCallback<unknown>) => {
+        if (name === 'naidan:transformers-js:opfs:models' && options.mode === 'exclusive') {
+          parentRequested.resolve();
+          await releaseParent.promise;
+        }
+        return await q.locks.request(name, options, callback);
+      },
+    },
   });
   const factory = vi.fn(() => {
     throw new Error('Storage deletion must not create a model Worker');
@@ -59,9 +62,15 @@ it('rechecks the organization after model deletion and preserves a repository cr
     await parentRequested.promise;
     expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
     expect(q.held.size).toBe(0);
-    await withOpfsFileLease({ path: 'models/huggingface.co/fixture/new-model/resolve/main/config.json', mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
-      await org.getDirectoryHandle('new-model', { create: true });
-    } });
+    await withOpfsFileLease({
+      path: 'models/huggingface.co/fixture/new-model/resolve/main/config.json',
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
+        await org.getDirectoryHandle('new-model', { create: true });
+      },
+    });
     releaseParent.resolve();
     await deleting;
     const retained = await hf.getDirectoryHandle('fixture', { create: false });

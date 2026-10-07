@@ -30,7 +30,10 @@ describe('acceptDownloadedProductionCandidate', () => {
         entered.resolve(); await release.promise; now = 123_000;
       }),
     });
-    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+    const running = acceptDownloadedProductionCandidate({
+      modelId: 'org/model',
+      resolvedRevision: REVISION,
+      candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
         observations.push(observation);
       },
@@ -52,7 +55,10 @@ describe('acceptDownloadedProductionCandidate', () => {
         throw cleanupFailure;
       }),
     });
-    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+    const running = acceptDownloadedProductionCandidate({
+      modelId: 'org/model',
+      resolvedRevision: REVISION,
+      candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
         observations.push(observation); throw new Error('observer failure');
       },

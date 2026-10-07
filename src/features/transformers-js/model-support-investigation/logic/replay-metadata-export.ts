@@ -28,11 +28,15 @@ export async function addReplayMetadataToEvidenceFiles({ files, summary, sidecar
     if (await replayMetadataSha256({ bytes }) !== file.sha256) throw new Error('Replay metadata sidecar hash mismatch');
     setEvidenceFile({ files, path: `replay-metadata/files/${attachment.path}`, content: bytes });
   }
-  setEvidenceFile({ files, path: 'replay-metadata/index.json', content: JSON.stringify({
-    ...validated,
-    replayScope: 'Allowlisted metadata only; not a completeness certificate for tokenizer/model runtime inputs. No model weights, past network events, or GPU execution state.',
-    files: validated.files.map(file => ({ ...file, archived: paths.has(file.path) })),
-  }, undefined, 2) });
+  setEvidenceFile({
+    files,
+    path: 'replay-metadata/index.json',
+    content: JSON.stringify({
+      ...validated,
+      replayScope: 'Allowlisted metadata only; not a completeness certificate for tokenizer/model runtime inputs. No model weights, past network events, or GPU execution state.',
+      files: validated.files.map(file => ({ ...file, archived: paths.has(file.path) })),
+    }, undefined, 2),
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

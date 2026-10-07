@@ -4,9 +4,12 @@ import { inferenceGenerationEventSchema, type InferenceGenerationEvent } from '@
 
 function setup({ toolCalls }: { toolCalls: 'enabled' | 'disabled' }) {
   const events: InferenceGenerationEvent[] = [];
-  const decoder = createGemma4Generation({ toolCalls, emit: ({ event }) => {
-    events.push(inferenceGenerationEventSchema.parse(event));
-  } });
+  const decoder = createGemma4Generation({
+    toolCalls,
+    emit: ({ event }) => {
+      events.push(inferenceGenerationEventSchema.parse(event));
+    },
+  });
   return { decoder, events };
 }
 function textBodies({ events }: { events: InferenceGenerationEvent[] }) {
@@ -60,10 +63,12 @@ A<channel|><|tool_call>call:f{}<tool_call|>  `;
   });
   it.each(['aborted', 'limit', 'unknown'] as const)('publishes the held newline unchanged on %s', reason => {
     const { decoder, events } = setup({ toolCalls: 'disabled' });
-    decoder.control({ token: '<|channel>' }); decoder.text({ text: `\
+    decoder.control({ token: '<|channel>' }); decoder.text({
+      text: `\
 thought
   R
-` }); decoder.finish({ reason });
+`,
+    }); decoder.finish({ reason });
     expect(textBodies({ events })).toEqual([{ kind: 'reasoning', text: '  R\n', completeness: 'partial' }]);
     expect(events.at(-1)).toEqual({ type: 'result', result: { type: 'interrupted', reason } });
   });
@@ -140,10 +145,12 @@ thought
   });
   it('flushes held reasoning content when an unsupported native control fails', () => {
     const { decoder, events } = setup({ toolCalls: 'disabled' });
-    decoder.control({ token: '<|channel>' }); decoder.text({ text: `\
+    decoder.control({ token: '<|channel>' }); decoder.text({
+      text: `\
 thought
 R
-` });
+`,
+    });
     expect(() => decoder.control({ token: '<|turn>' })).toThrow();
     decoder.finish({ reason: 'unknown' });
     expect(textBodies({ events })).toEqual([{ kind: 'reasoning', text: 'R\n', completeness: 'partial' }]);
@@ -163,9 +170,11 @@ R
   });
   it('rejects unknown channels instead of mislabelling their contents as reasoning', () => {
     const { decoder, events } = setup({ toolCalls: 'disabled' }); decoder.control({ token: '<|channel>' });
-    expect(() => decoder.text({ text: `\
+    expect(() => decoder.text({
+      text: `\
 other
-private` })).toThrow('Unsupported Gemma channel'); expect(events).toEqual([]);
+private`,
+    })).toThrow('Unsupported Gemma channel'); expect(events).toEqual([]);
   });
   it('requires a tool declaration before accepting an executable call', () => {
     const { decoder } = setup({ toolCalls: 'disabled' }); expect(() => call({ decoder, body: 'call:f{}' })).toThrow('without tool declarations');
@@ -173,10 +182,12 @@ private` })).toThrow('Unsupported Gemma channel'); expect(events).toEqual([]);
   it.each(['thought', 'tool'] as const)('a turn boundary does not complete an open %s', kind => {
     const { decoder, events } = setup({ toolCalls: 'enabled' });
     if (kind === 'thought') {
-      decoder.control({ token: '<|channel>' }); decoder.text({ text: `\
+      decoder.control({ token: '<|channel>' }); decoder.text({
+        text: `\
 thought
 R
-` });
+`,
+      });
     } else {
       decoder.control({ token: '<|tool_call>' }); decoder.text({ text: 'call:f{}' });
     }
@@ -199,9 +210,11 @@ R
   it.each(['thought', 'tool'] as const)('keeps an open %s interrupted across redundant end markers', kind => {
     const { decoder, events } = setup({ toolCalls: 'enabled' });
     if (kind === 'thought') {
-      decoder.control({ token: '<|channel>' }); decoder.text({ text: `\
+      decoder.control({ token: '<|channel>' }); decoder.text({
+        text: `\
 thought
-R` });
+R`,
+      });
     } else {
       decoder.control({ token: '<|tool_call>' }); decoder.text({ text: 'call:f{}' });
     }

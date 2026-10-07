@@ -7,33 +7,71 @@ const revision = 'a'.repeat(40);
 const paths = ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'];
 function receipt({ cacheRevision, option }: { cacheRevision: string; option: string | undefined }) {
   return productionLoadReceiptSchema.parse({
-    format: 'production-offline-load-receipt-v1', modelId: 'fixture/model',
+    format: 'production-offline-load-receipt-v1',
+    modelId: 'fixture/model',
     loaderRevisionOption: option === undefined ? { status: 'omitted' } : { status: 'provided', value: option },
-    autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'wasm', dtype: 'q4' },
+    autoClass: 'AutoModelForCausalLM',
+    processor: 'tokenizer',
+    candidate: { device: 'wasm', dtype: 'q4' },
     plannedRequiredPaths: ['config.json', ...paths],
     cacheLookup: { source: 'read-only-opfs-scoped-match', revision: cacheRevision, hitPaths: ['config.json', ...paths] },
-    completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+    completion: 'model-session-and-tokenizer-processor-ready',
+    resourceHealth: 'healthy-after-close',
+    accessBoundary: 'production-offline-read-only',
     limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
   });
 }
 
 function evidence({ loadReceipt }: { loadReceipt: ProductionLoadReceipt | undefined }): DownloadVerificationEvidenceInput {
   return {
-    schemaVersion: 1, runId: 'receipt-identity', mode: 'runtime-complete',
-    run: { modelId: 'fixture/model', normalizedModelId: 'fixture/model', requestedRevision: 'main', resolvedRevision: revision,
-      repositoryFileCount: paths.length, repositoryFiles: paths.map(path => ({ path, size: 16, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined })),
-      transportObservations: [], skippedModelArtifactCount: 0, bytesConsumed: 0, maximumBytes: 1024,
-      startedAt: '2026-09-10T00:00:00.000Z', finishedAt: '2026-09-10T00:00:01.000Z' },
-    modelArtifactObservations: [{ modelId: 'fixture/model', revision, autoClass: 'AutoModelForCausalLM', candidate: { device: 'wasm', dtype: 'q4' },
-      status: 'observed', observationMethod: 'held-model-artifact-fetch-quiescence', quiescenceMs: 500, timeoutMs: 10_000,
-      paths: [...paths], requests: paths.map(path => ({ path, url: `https://huggingface.co/fixture/model/resolve/${revision}/${path}` })), error: undefined }],
-    modelArtifactObservationError: undefined, cacheBefore: undefined, cacheInspectionError: undefined,
-    runtimeCompletion: { schemaVersion: 1, status: 'accepted', source: 'ordinary-provider-load', repositoryResolvedRevision: revision,
+    schemaVersion: 1,
+    runId: 'receipt-identity',
+    mode: 'runtime-complete',
+    run: {
+      modelId: 'fixture/model',
+      normalizedModelId: 'fixture/model',
+      requestedRevision: 'main',
+      resolvedRevision: revision,
+      repositoryFileCount: paths.length,
+      repositoryFiles: paths.map(path => ({ path, size: 16, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined })),
+      transportObservations: [],
+      skippedModelArtifactCount: 0,
+      bytesConsumed: 0,
+      maximumBytes: 1024,
+      startedAt: '2026-09-10T00:00:00.000Z',
+      finishedAt: '2026-09-10T00:00:01.000Z',
+    },
+    modelArtifactObservations: [{
+      modelId: 'fixture/model',
+      revision,
+      autoClass: 'AutoModelForCausalLM',
+      candidate: { device: 'wasm', dtype: 'q4' },
+      status: 'observed',
+      observationMethod: 'held-model-artifact-fetch-quiescence',
+      quiescenceMs: 500,
+      timeoutMs: 10_000,
+      paths: [...paths],
+      requests: paths.map(path => ({ path, url: `https://huggingface.co/fixture/model/resolve/${revision}/${path}` })),
+      error: undefined,
+    }],
+    modelArtifactObservationError: undefined,
+    cacheBefore: undefined,
+    cacheInspectionError: undefined,
+    runtimeCompletion: {
+      schemaVersion: 1,
+      status: 'accepted',
+      source: 'ordinary-provider-load',
+      repositoryResolvedRevision: revision,
       cacheRevision: loadReceipt?.cacheLookup.revision ?? revision,
       loaderRevisionOption: loadReceipt?.loaderRevisionOption.status === 'provided' ? loadReceipt.loaderRevisionOption.value : null,
       selectedCandidate: loadReceipt?.candidate ?? { device: 'wasm', dtype: 'q4' },
-      cacheReuse: undefined, preparation: undefined, cacheAfter: undefined, cacheInspectionError: undefined, error: undefined,
-      receipt: loadReceipt },
+      cacheReuse: undefined,
+      preparation: undefined,
+      cacheAfter: undefined,
+      cacheInspectionError: undefined,
+      error: undefined,
+      receipt: loadReceipt,
+    },
   };
 }
 
@@ -106,16 +144,25 @@ describe('Download runtime acceptance identity', () => {
 
   it('does not erase selected-candidate identity merely because a different candidate failed its probe', () => {
     const input = evidence({ loadReceipt: receipt({ cacheRevision: revision, option: revision }) });
-    input.modelArtifactObservations.push({ ...input.modelArtifactObservations[0]!, candidate: { device: 'webgpu', dtype: 'q4f16' },
-      status: 'failed', paths: [], requests: [], error: { name: 'Error', message: 'Different candidate probe failed' } });
+    input.modelArtifactObservations.push({
+      ...input.modelArtifactObservations[0]!,
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      status: 'failed',
+      paths: [],
+      requests: [],
+      error: { name: 'Error', message: 'Different candidate probe failed' },
+    });
     expect(downloadRuntimeAcceptanceIdentity({ evidence: input })).toBe('exact-resolved-revision');
     expect(input.modelArtifactObservations[1]!.status).toBe('failed');
   });
 
   it.each(['observed', 'failed'] as const)('does not certify duplicate observations for the same identity: %s', status => {
     const input = evidence({ loadReceipt: receipt({ cacheRevision: revision, option: revision }) });
-    input.modelArtifactObservations.push({ ...input.modelArtifactObservations[0]!, status,
-      error: status === 'failed' ? { name: 'Error', message: 'Conflicting same-candidate probe failed' } : undefined });
+    input.modelArtifactObservations.push({
+      ...input.modelArtifactObservations[0]!,
+      status,
+      error: status === 'failed' ? { name: 'Error', message: 'Conflicting same-candidate probe failed' } : undefined,
+    });
     expect(downloadRuntimeAcceptanceIdentity({ evidence: input })).toBe('unverified');
     expect(input.runtimeCompletion?.status).toBe('accepted');
   });

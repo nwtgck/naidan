@@ -227,7 +227,8 @@ describe('transformersJsService worker restart', () => {
       return new Promise<never>(() => undefined);
     });
     vi.mocked(Comlink.wrap).mockImplementation(() => ({
-      loadDownloadedModel: load, generateText: generate,
+      loadDownloadedModel: load,
+      generateText: generate,
       [Comlink.releaseProxy]: vi.fn(),
       [Comlink.createEndpoint]: vi.fn(),
     }));

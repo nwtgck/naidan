@@ -27,14 +27,23 @@ async function recovered() {
   const sessionId = toImageGenerationSessionId({ raw: 'session-aa' });
   const plan = generationRunFixture({ id: 'run-aa', sessionId, count: 1, seed: '42' });
   const commit = vi.fn(async () => {}).mockRejectedValueOnce(new Error('quota'));
-  const owner = imagePendingRuns.create({ store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'store-aa' }) }, sessionId, count: 1, sources: [],
-    persistence: { create: vi.fn(async () => {}), commit, update: vi.fn(async () => {}) } });
+  const owner = imagePendingRuns.create({
+    store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'store-aa' }) },
+    sessionId,
+    count: 1,
+    sources: [],
+    persistence: { create: vi.fn(async () => {}), commit, update: vi.fn(async () => {}) },
+  });
   const snapshot = { id: toImageGenerationId({ raw: 'image-aa' }), createdAt: 1, request: plan.request, inputFiles: [] };
   await owner.submission.accepted({ snapshot, seeds: plan.seeds });
   const output = recoverImageGenerationSnapshot({ snapshot, output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined }, elapsedMs: 1 });
   const id = imageRecoveryStore.reserve({ bytes: 64 }).retain({ ...output, retry: owner.submission.retry });
-  await owner.submission.recovered!({ index: 0, ...output,
-    onPersisted: () => imageRecoveryStore.remove({ id }), onDiscarded: () => imageRecoveryStore.remove({ id }) }).catch(() => {});
+  await owner.submission.recovered!({
+    index: 0,
+    ...output,
+    onPersisted: () => imageRecoveryStore.remove({ id }),
+    onDiscarded: () => imageRecoveryStore.remove({ id }),
+  }).catch(() => {});
   await owner.submission.finished({ completion: { type: 'interrupted' } }); await owner.retire();
   return { owner, commit };
 }
@@ -71,10 +80,19 @@ it('does not reuse a single-image confirmation after a run claims that image', a
   mocks.confirm.mockReturnValueOnce(confirmation.promise);
   const wrapper = mount(ImageRecoveredOutputs); await flushPromises();
   await wrapper.get('[data-testid="recovered-discard"]').trigger('click');
-  const owner = imagePendingRuns.create({ store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'store-loose' }) }, sessionId: loose.sessionId, count: 1, sources: [],
-    persistence: { create: vi.fn(async () => {}), commit: vi.fn(async () => {
-      throw new Error('quota');
-    }), update: vi.fn(async () => {}) } });
+  const owner = imagePendingRuns.create({
+    store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'store-loose' }) },
+    sessionId: loose.sessionId,
+    count: 1,
+    sources: [],
+    persistence: {
+      create: vi.fn(async () => {}),
+      commit: vi.fn(async () => {
+        throw new Error('quota');
+      }),
+      update: vi.fn(async () => {}),
+    },
+  });
   await owner.submission.accepted({ snapshot: loose.snapshot, seeds: loose.plan.seeds });
   await owner.submission.recovered!({ index: 0, ...loose.output, onPersisted: () => imageRecoveryStore.remove({ id: loose.id }), onDiscarded: () => imageRecoveryStore.remove({ id: loose.id }) }).catch(() => {});
   await owner.submission.finished({ completion: { type: 'interrupted' } }); await owner.retire();

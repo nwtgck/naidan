@@ -27,29 +27,36 @@ const INPUT_BOUNDARY = 'LFM230 native input verified; no generation evidence is 
 
 const textMessageSchema = z.object({ role: z.enum(['user', 'system', 'assistant']), content: z.string() }).strict();
 const callSchema = z.object({
-  id: z.literal('call_template_probe_1'), type: z.literal('function'),
+  id: z.literal('call_template_probe_1'),
+  type: z.literal('function'),
   function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
 }).strict();
 const assistantCallSchema = z.object({ role: z.literal('assistant'), content: z.literal(''), tool_calls: z.tuple([callSchema]) }).strict();
 const resultSchema = z.object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.literal('call_template_probe_1') }).strict();
 const toolsSchema = z.tuple([z.object({
-  type: z.literal('function'), function: z.object({
-    name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.literal('lookup_weather'),
+    description: z.literal('Return deterministic weather fixture data.'),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+      type: z.literal('object'),
+      properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
       required: z.tuple([z.literal('city')]),
     }).strict(),
   }).strict(),
 }).strict()]);
 const originalFailureSchema = z.object({
-  status: z.literal('failed'), failureStage: z.literal('render'),
+  status: z.literal('failed'),
+  failureStage: z.literal('render'),
   selectedTemplateSha256: z.literal('6d65c8804847ad74eea912dd7eca3dc1cf7a457b53a77f47d841a14121910963'),
   error: z.object({ name: z.literal('SyntaxError'), message: z.literal('Unknown statement type: generation') }).strict(),
 }).strict();
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('83b2d8884f891fae7de974a20b56d94958bdf02bafac678d4503adf8f302ea42'),
-  modelId: z.literal(MODEL_ID), revision: z.literal(REVISION),
+  modelId: z.literal(MODEL_ID),
+  revision: z.literal(REVISION),
   // These are six failed source invocations, not six successful captures. The
   // strict schema deliberately has no renderedText/inputTokenIds/output fields.
   cases: z.tuple([
@@ -63,9 +70,12 @@ const inputEvidence = z.object({
 }).strict().parse(inputJson);
 
 const observedMessagesSchema = z.array(z.object({
-  role: z.enum(['user', 'system', 'assistant', 'tool']), content: z.string(), tool_call_id: z.string().optional(),
+  role: z.enum(['user', 'system', 'assistant', 'tool']),
+  content: z.string(),
+  tool_call_id: z.string().optional(),
   tool_calls: z.array(z.object({
-    id: z.string(), type: z.literal('function'),
+    id: z.string(),
+    type: z.literal('function'),
     function: z.object({ name: z.string(), arguments: z.object({ city: z.string() }).strict() }).strict(),
   }).strict()).optional(),
 }).strict());
@@ -76,15 +86,19 @@ function semanticMessages({ messages }: { messages: unknown }) {
     return { role, content, tool_calls, tool_call_id };
   });
 }
-const strictTools = [{ type: 'function', function: {
-  name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-  parameters: {
-    type: 'object',
-    properties: { city: { type: 'string' } },
-    required: ['city'],
-    additionalProperties: false
+const strictTools = [{
+  type: 'function',
+  function: {
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+      additionalProperties: false,
+    },
   },
-} }];
+}];
 // Independently written current-template expectations, NOT source render data.
 const strictToolPrelude = `\
 <|startoftext|><|im_start|>system
@@ -118,19 +132,27 @@ async function createLfm230InputReplay() {
     metadataCache: "all-fixture",
     imagePlatform: undefined,
     artifacts: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'].map(path => ({
-      path, bytes: createSyntheticModelBody({ modelId: MODEL_ID, revision: REVISION, path }),
+      path,
+      bytes: createSyntheticModelBody({ modelId: MODEL_ID, revision: REVISION, path }),
     })),
     generate: async ({ options, tokenizer, runtime }) => {
       const input = options.input_ids;
       const mask = options.attention_mask;
       seen.count++;
       seen.inference = {
-        tokenizer, runtime,
+        tokenizer,
+        runtime,
         input: input instanceof runtime.Tensor ? {
-          type: input.type, location: input.location, dims: [...input.dims], data: Array.from(input.data, Number),
+          type: input.type,
+          location: input.location,
+          dims: [...input.dims],
+          data: Array.from(input.data, Number),
         } : undefined,
         mask: mask instanceof runtime.Tensor ? {
-          type: mask.type, location: mask.location, dims: [...mask.dims], data: Array.from(mask.data, BigInt),
+          type: mask.type,
+          location: mask.location,
+          dims: [...mask.dims],
+          data: Array.from(mask.data, BigInt),
         } : undefined,
         past: options.past_key_values,
       };
@@ -139,10 +161,15 @@ async function createLfm230InputReplay() {
     },
   });
   const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-  return { harness, seen, templateSpy, async close() {
-    templateSpy.mockRestore();
-    await harness.close();
-  } };
+  return {
+    harness,
+    seen,
+    templateSpy,
+    async close() {
+      templateSpy.mockRestore();
+      await harness.close();
+    },
+  };
 }
 
 function verifyLfm230NativeInput({ replay, expectedMessages, expectedTemplateOptions, expectedPrompt, priorCalls, priorInferences }: {
@@ -177,10 +204,17 @@ function verifyLfm230NativeInput({ replay, expectedMessages, expectedTemplateOpt
   expect(mask.data).toEqual(ids.map(() => 1n));
   expect(past).toBeNull();
   expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-    modelId: MODEL_ID, revision: REVISION, repositoryPaths: new Set(['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data']), core, options: ortOptions,
+    modelId: MODEL_ID,
+    revision: REVISION,
+    repositoryPaths: new Set(['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data']),
+    core,
+    options: ortOptions,
   }))).toEqual([{
-    modelId: MODEL_ID, revision: REVISION, corePath: 'onnx/model_q4.onnx',
-    externalData: [{ path: 'model_q4.onnx_data', artifactPath: 'onnx/model_q4.onnx_data' }], executionProviders: ['webgpu'],
+    modelId: MODEL_ID,
+    revision: REVISION,
+    corePath: 'onnx/model_q4.onnx',
+    externalData: [{ path: 'model_q4.onnx_data', artifactPath: 'onnx/model_q4.onnx_data' }],
+    executionProviders: ['webgpu'],
   }]);
   expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
   expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
@@ -236,7 +270,8 @@ Template probe user message.<|im_end|>
 
       const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
       })).toBe(expectedPrompt);
       const changed = scenario.messages.map(message => ({ ...message }));
       const last = changed.at(-1);
@@ -338,7 +373,8 @@ Template probe user message.<|im_end|>
 
       const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
       })).toBe(expectedPrompt);
       const changed = scenario.messages.map(message => ({ ...message }));
       const last = changed.at(-1);
@@ -442,7 +478,8 @@ Template probe second user message.<|im_end|>
 
       const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
       })).toBe(expectedPrompt);
       const changed = scenario.messages.map(message => ({ ...message }));
       const last = changed.at(-1);
@@ -501,7 +538,7 @@ Template probe second user message.<|im_end|>
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -563,7 +600,7 @@ describe('LFM2.5 230M Provider / system', () => {
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -633,7 +670,8 @@ describe('LFM2.5 230M Provider / history', () => {
     // settings are consumed. The fixture preserves false for call-history and
     // true for the other five; no source rendering/token IDs are invented.
     expect(inputEvidence.cases.map(scenario => ({
-      caseId: scenario.caseId, addGenerationPrompt: scenario.addGenerationPrompt,
+      caseId: scenario.caseId,
+      addGenerationPrompt: scenario.addGenerationPrompt,
     }))).toEqual([
       { caseId: 'user-generation', addGenerationPrompt: true },
       { caseId: 'system-user-generation', addGenerationPrompt: true },
@@ -748,7 +786,7 @@ Original assistant body.<|im_end|>
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -810,7 +848,7 @@ describe('LFM2.5 230M Provider / independent', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity","independent-next-input"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
@@ -864,7 +902,8 @@ describe('LFM2.5 230M Provider / independent', () => {
         unhandled satisfies Record<PropertyKey, never>;
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          id: toMessageId({ raw: 'message_1' }),
+          role: 'assistant',
           parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
@@ -971,7 +1010,7 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1030,7 +1069,7 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1089,7 +1128,7 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1148,7 +1187,7 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1211,8 +1250,10 @@ describe('LFM2.5 230M Provider / tools', () => {
     const replay = await createLfm230InputReplay();
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const tool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
     try {
       const strictPrompt = strictToolPrelude + assistantPrefix;
@@ -1256,13 +1297,17 @@ describe('LFM2.5 230M Provider / tools', () => {
 
       const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: strictTools,
       })).toBe(strictPrompt);
       // The source used an open schema. Public Zod tools intentionally add the
       // strict property; no old output may be reused across that changed input.
       const openPrompt = strictPrompt.replace(', "additionalProperties": false', '');
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: scenario.tools,
       })).toBe(openPrompt);
       expect(tokenizer.encode(openPrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(strictPrompt, { add_special_tokens: false }));
       const changedTool = { ...tool, description: 'Changed synthetic weather description.' };
@@ -1319,14 +1364,20 @@ describe('LFM2.5 230M Provider / tools', () => {
     const replay = await createLfm230InputReplay();
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const tool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
     const sourceCall = scenario.messages[1].tool_calls[0];
     const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: scenario.messages[0].content, completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: sourceCall.id }), type: 'function', function: { name: sourceCall.function.name, arguments: sourceCall.function.arguments } } }] }];
     const mappedMessages = [scenario.messages[0], {
-      role: 'assistant', content: '', tool_calls: [{
-        id: 'call_template_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call_template_probe_1',
+        type: 'function',
+        function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
       }],
     }];
     try {
@@ -1371,24 +1422,36 @@ describe('LFM2.5 230M Provider / tools', () => {
       // Generation-tag support does not make JSON strings mappings. This is a
       // CURRENT native argument error, distinct from the original parser error.
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: scenario.tools,
       })).toThrow('Cannot call something that is not a function: got UndefinedValue');
       expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: scenario.tools,
       })).toBe(currentFalsePrompt.replace(', "additionalProperties": false', ''));
       expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: false, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: false,
+        tools: strictTools,
       })).toBe(currentFalsePrompt);
       expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictTools,
       })).toBe(currentPublicPrompt);
       expect(tokenizer.encode(currentFalsePrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(currentPublicPrompt, { add_special_tokens: false }));
       // A second PUBLIC request verifies the call argument itself is retained,
       // not merely echoed by a native-only comparison after a dropped call.
       const changedPublic: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: scenario.messages[0].content, completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: sourceCall.id }), type: 'function', function: { name: sourceCall.function.name, arguments: '{"city":"Osaka"}' } } }] }];
       const changedMapped = [scenario.messages[0], {
-        role: 'assistant', content: '', tool_calls: [{
-          id: 'call_template_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
         }],
       }];
 
@@ -1438,15 +1501,21 @@ describe('LFM2.5 230M Provider / tools', () => {
     const replay = await createLfm230InputReplay();
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const tool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
     const sourceCall = scenario.messages[1].tool_calls[0];
     const sourceResult = scenario.messages[2];
     const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: scenario.messages[0].content, completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: sourceCall.id }), type: 'function', function: { name: sourceCall.function.name, arguments: sourceCall.function.arguments } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: sourceResult.tool_call_id }), status: 'success', content: { type: 'text', text: sourceResult.content } } }] }];
     const mappedMessages = [scenario.messages[0], {
-      role: 'assistant', content: '', tool_calls: [{
-        id: 'call_template_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call_template_probe_1',
+        type: 'function',
+        function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
       }],
     }, sourceResult];
     try {
@@ -1492,13 +1561,19 @@ describe('LFM2.5 230M Provider / tools', () => {
 
       const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: mappedMessages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: scenario.tools,
       })).toThrow('Cannot call something that is not a function: got UndefinedValue');
       expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: scenario.addGenerationPrompt, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: scenario.addGenerationPrompt,
+        tools: scenario.tools,
       })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
       expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictTools,
       })).toBe(strictPrompt);
       const changedResult = { ...sourceResult, content: '{"temperatureC":18,"condition":"rain"}' };
       const changedPublic: ChatMessage[] = [publicMessages[0]!, publicMessages[1]!, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: changedResult.tool_call_id }), status: 'success', content: { type: 'text', text: changedResult.content } } }] }];
@@ -1543,7 +1618,9 @@ describe('LFM2.5 230M Provider / tools', () => {
       // The original template renders tool content, not association IDs. The
       // raw tokenizer argument check above separately protects the supplied ID.
       expect(tokenizer.apply_chat_template([mappedMessages[0]!, mappedMessages[1]!, { role: 'tool', content: sourceResult.content }], {
-        tokenize: false, add_generation_prompt: true, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictTools,
       })).toBe(strictPrompt);
       expect(execute).not.toHaveBeenCalled();
     } finally {
@@ -1552,8 +1629,10 @@ describe('LFM2.5 230M Provider / tools', () => {
   }, 30_000);
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-minimal"],
+      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1574,7 +1653,8 @@ describe('LFM2.5 230M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1593,8 +1673,11 @@ describe('LFM2.5 230M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-230M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1633,8 +1716,10 @@ describe('LFM2.5 230M Provider / tools', () => {
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-representative"],
+      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1655,7 +1740,8 @@ describe('LFM2.5 230M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1674,8 +1760,11 @@ describe('LFM2.5 230M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-230M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1714,8 +1803,10 @@ describe('LFM2.5 230M Provider / tools', () => {
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["structured-tool-history"],
+      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1736,7 +1827,8 @@ describe('LFM2.5 230M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1755,8 +1847,11 @@ describe('LFM2.5 230M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-230M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1788,7 +1883,7 @@ describe('LFM2.5 230M Provider / images', () => {
       catalog: providerReplayCatalog,
       caseIds: ["image"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1825,7 +1920,8 @@ describe('LFM2.5 230M Provider / images', () => {
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         expect(observed.parts).toEqual([]);
         expect(observed.result).toMatchObject({
-          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+          type: 'error',
+          error: { message: 'The standard text strategy cannot preserve an image input.' },
         });
         replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
@@ -1837,7 +1933,8 @@ describe('LFM2.5 230M Provider / images', () => {
 });
 
 const lfm230FullStructuredParts = {
-  completionTokenIds: ['7', '11'], endTokenIds: ['7'],
+  completionTokenIds: ['7', '11'],
+  endTokenIds: ['7'],
   invocations: [
     { callOrdinal: 1, terminal: { kind: 'control', tokenId: '7' } },
     { callOrdinal: 2, terminal: { kind: 'stream-end' } },
@@ -1855,49 +1952,141 @@ const lfm230FullStructuredParts = {
     { callOrdinal: 14, terminal: { kind: 'control', tokenId: '7' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: "I'm sorry, but I can't help with that.", completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
-    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: "I'm sorry for any confusion, but I'm unable to continue the conversation with", completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'system-user', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'Here', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'Template', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [
-        { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: "I'm sorry, but I can't help with that.", completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: "I'm sorry for any confusion, but I'm unable to continue the conversation with", completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'system-user',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Here', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'supplied-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Template', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-low',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-medium',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-high',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'fulfilled',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'fulfilled',
+      events: [
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
+    },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
   legacyInputProjections: [{ scenario: 'continuity', assistant: { role: 'assistant', content: "I'm sorry, but I can't help with that." } }],
@@ -1909,7 +2098,7 @@ describe('LFM2.5 230M Provider / sequences', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity"],
       artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
@@ -1963,7 +2152,8 @@ describe('LFM2.5 230M Provider / sequences', () => {
         unhandled satisfies Record<PropertyKey, never>;
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          id: toMessageId({ raw: 'message_1' }),
+          role: 'assistant',
           parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
@@ -2022,10 +2212,20 @@ describe('LFM2.5 230M Provider / sequences', () => {
     expect(fullEvidenceJson.modelId).toBe('LiquidAI/LFM2.5-230M-ONNX');
     expect(fullEvidenceJson.metadataRevision).toBe('c6f46e4e3f885ebcad164d14059a49f90e27eb4d');
     expect(fullEvidenceJson.observedCacheRevision).toBe('c6f46e4e3f885ebcad164d14059a49f90e27eb4d');
-    await verifyCapturedFullReplay({ reviewedPublicContract: {
-      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
-      preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
-      structuredParts: lfm230FullStructuredParts,
-    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"] });
+    await verifyCapturedFullReplay({
+      reviewedPublicContract: {
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
+        structuredParts: lfm230FullStructuredParts,
+      },
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
+      evidence: fullEvidenceJson,
+      imagePlatform: undefined,
+      artifactPaths: ["onnx/model_q4.onnx","onnx/model_q4.onnx_data"],
+    });
   }, 30_000);
 });

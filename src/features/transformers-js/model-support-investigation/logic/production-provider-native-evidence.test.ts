@@ -17,21 +17,44 @@ const identity = { ...context, nativeInvocationOrdinal: 1 };
 
 function providerFixture(): ProductionProviderCaptureSnapshot {
   return {
-    format: 'production-provider-capture-v2', runId: context.runId, modelId: 'fixture/model', plan: 'first-only', run: { status: 'completed' }, lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [{ sequence: 0, kind: 'run-started', activeRequestId: undefined }],
-    requests: [{ runId: context.runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
+    format: 'production-provider-capture-v2',
+    runId: context.runId,
+    modelId: 'fixture/model',
+    plan: 'first-only',
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
+    events: [{ sequence: 0, kind: 'run-started', activeRequestId: undefined }],
+    requests: [{
+      runId: context.runId,
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
       input: { messages: [{ role: 'user', content: 'Template probe user message.' }], parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } }, tools: [] },
       trace: {
-        format: 'production-provider-trace-v2', requestId: context.requestId,
+        format: 'production-provider-trace-v2',
+        requestId: context.requestId,
         limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
-        completeness: 'complete', failure: undefined, events: [], lateEvents: [], retainedCharacters: 0,
+        completeness: 'complete',
+        failure: undefined,
+        events: [],
+        lateEvents: [],
+        retainedCharacters: 0,
         settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
       },
-    }], capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
+    }],
+    capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
 }
 function nativeFixture(): Native {
   return {
-    schemaVersion: 1, runId: context.runId, workerEpoch: 1, byteOrder: 'little-endian',
+    schemaVersion: 1,
+    runId: context.runId,
+    workerEpoch: 1,
+    byteOrder: 'little-endian',
     limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144, maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
     calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } }] }],
     events: [
@@ -41,14 +64,25 @@ function nativeFixture(): Native {
       { kind: 'native-stream', identity, operation: 'put', phase: 'returned', streamCallOrdinal: 1, detail: { kind: 'none' } },
       { kind: 'sequence', identity, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [0], byteLength: 0, bytes: new Uint8Array(0) } },
       { kind: 'native-call', identity, phase: 'fulfilled' },
-    ], incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+    ],
+    incompleteReasons: [],
+    unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
   };
 }
 function collectionFixture({ capture }: { capture: Native }): ProductionProviderNativeCollectionSnapshot {
-  return { format: 'production-provider-native-collection-v1', runId: context.runId, maximumWorkerEpochs: 8, phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [{ workerEpoch: 1,
-    lifetime: { status: 'observed', value: { runId: context.runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }], incompleteReasons: [] } },
-    collection: { status: 'returned', result: { status: 'captured', capture } },
-  }] };
+  return {
+    format: 'production-provider-native-collection-v1',
+    runId: context.runId,
+    maximumWorkerEpochs: 8,
+    phase: 'finished',
+    unrecordedWorkerCreations: 0,
+    incompleteReasons: [],
+    epochs: [{
+      workerEpoch: 1,
+      lifetime: { status: 'observed', value: { runId: context.runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: { status: 'returned', result: { status: 'captured', capture } },
+    }],
+  };
 }
 it('refuses nested revision-selection accessors without executing them during evidence admission', async () => {
   const native = collectionFixture({ capture: nativeFixture() });
@@ -57,23 +91,62 @@ it('refuses nested revision-selection accessors without executing them during ev
   const getter = vi.fn(() => 'discover-cached');
   lifetime.value.loadRequests[0]!.revisionSelection = Object.defineProperty({ kind: 'discover-cached' as const }, 'kind', { enumerable: true, get: getter });
   await expect(createProductionProviderNativeEvidence({
-    maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native, provider: providerFixture(),
+    maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+    native,
+    provider: providerFixture(),
   })).rejects.toThrow(/^Invalid native capture evidence$/u);
   expect(getter).not.toHaveBeenCalled();
 });
 
 function completedSummary(): ProductionProviderInvestigationResult['summary'] {
   return {
-    format: 'production-provider-investigation-v1', policy: createProductionProviderCapturePolicy({ plan: 'first-only' }),
-    completion: 'completed', stopReason: undefined, providerEvidence: 'available',
-    providerProgress: { runId: context.runId, modelId: 'fixture/model', plan: 'first-only', run: { status: 'completed' }, lifetime: 'closed', activeRequest: undefined,
-      totalRequests: 1, selectedRequests: 1, settledRequests: 1, loadStatus: 'ready' },
-    requests: [{ requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined, outcome: 'fulfilled',
-      settledCompleteness: 'complete', completeness: 'complete', limits: { maximumEvents: 1024, maximumCharacters: 65536, maximumFieldCharacters: 16384 }, retainedCharacters: 0, eventCount: 0 }],
-    cutoff: { format: 'production-provider-native-cutoff-v1', runId: context.runId, reason: 'normal-completion', phaseAtCutoff: 'finished', maximumWorkerEpochs: 8,
-      unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [{ workerEpoch: 1,
-        lifetime: { status: 'observed', session: 'active', issuedCallCount: 1, loadRequestCount: 1 }, collectionStatus: 'returned' }] },
-    nativeEvidenceStatus: 'available', cleanup: 'completed', sealOwnership: 'settled', progressCallbackFailures: 0,
+    format: 'production-provider-investigation-v1',
+    policy: createProductionProviderCapturePolicy({ plan: 'first-only' }),
+    completion: 'completed',
+    stopReason: undefined,
+    providerEvidence: 'available',
+    providerProgress: {
+      runId: context.runId,
+      modelId: 'fixture/model',
+      plan: 'first-only',
+      run: { status: 'completed' },
+      lifetime: 'closed',
+      activeRequest: undefined,
+      totalRequests: 1,
+      selectedRequests: 1,
+      settledRequests: 1,
+      loadStatus: 'ready',
+    },
+    requests: [{
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
+      outcome: 'fulfilled',
+      settledCompleteness: 'complete',
+      completeness: 'complete',
+      limits: { maximumEvents: 1024, maximumCharacters: 65536, maximumFieldCharacters: 16384 },
+      retainedCharacters: 0,
+      eventCount: 0,
+    }],
+    cutoff: {
+      format: 'production-provider-native-cutoff-v1',
+      runId: context.runId,
+      reason: 'normal-completion',
+      phaseAtCutoff: 'finished',
+      maximumWorkerEpochs: 8,
+      unrecordedWorkerCreations: 0,
+      incompleteReasons: [],
+      epochs: [{
+        workerEpoch: 1,
+        lifetime: { status: 'observed', session: 'active', issuedCallCount: 1, loadRequestCount: 1 },
+        collectionStatus: 'returned',
+      }],
+    },
+    nativeEvidenceStatus: 'available',
+    cleanup: 'completed',
+    sealOwnership: 'settled',
+    progressCallbackFailures: 0,
   };
 }
 beforeEach(() => {
@@ -81,9 +154,13 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => {
     throw new Error('Network forbidden in native exporter tests');
   }));
-  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(() => {
-    throw new Error('Storage forbidden in native exporter tests');
-  }) } });
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: vi.fn(() => {
+        throw new Error('Storage forbidden in native exporter tests');
+      }),
+    },
+  });
 });
 afterEach(() => {
   expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -117,31 +194,54 @@ describe('native capture post-run export', () => {
     const native = collectionFixture({ capture: nativeFixture() });
     const lifetime = native.epochs[0]!.lifetime;
     if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
-    lifetime.value.loadDiagnostics = createLoadDiagnosticLedger({ owner: {
-      runId: field === 'runId' ? 'foreign-run' : context.runId,
-      workerEpoch: field === 'workerEpoch' ? 2 : context.workerEpoch,
-    } }).snapshot({ expectedLoadCount: 0 });
-    await expect(createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
-      native, provider: providerFixture() })).rejects.toThrow(/^Invalid native capture evidence$/u);
+    lifetime.value.loadDiagnostics = createLoadDiagnosticLedger({
+      owner: {
+        runId: field === 'runId' ? 'foreign-run' : context.runId,
+        workerEpoch: field === 'workerEpoch' ? 2 : context.workerEpoch,
+      },
+    }).snapshot({ expectedLoadCount: 0 });
+    await expect(createProductionProviderNativeEvidence({
+      maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+      native,
+      provider: providerFixture(),
+    })).rejects.toThrow(/^Invalid native capture evidence$/u);
   });
 
   it.each(['captured', 'not-started'] as const)('round-trips an independently owned Load receipt with native status %s', async status => {
     const baseline = collectionFixture({ capture: nativeFixture() });
     const loadObservation: ProductionLoadObservation = {
-      format: 'production-load-observation-v1', owner: { runId: context.runId, workerEpoch: 1 }, loadOrdinal: 1,
-      outcome: { status: 'accepted', receipt: {
-        format: 'production-offline-load-receipt-v1', modelId: 'fixture/model', loaderRevisionOption: { status: 'omitted' },
-        autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'wasm', dtype: 'q4' },
-        plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
-        cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'main', hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
-        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
-        limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
-      } },
+      format: 'production-load-observation-v1',
+      owner: { runId: context.runId, workerEpoch: 1 },
+      loadOrdinal: 1,
+      outcome: {
+        status: 'accepted',
+        receipt: {
+          format: 'production-offline-load-receipt-v1',
+          modelId: 'fixture/model',
+          loaderRevisionOption: { status: 'omitted' },
+          autoClass: 'AutoModelForCausalLM',
+          processor: 'tokenizer',
+          candidate: { device: 'wasm', dtype: 'q4' },
+          plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
+          cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'main', hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
+          completion: 'model-session-and-tokenizer-processor-ready',
+          resourceHealth: 'healthy-after-close',
+          accessBoundary: 'production-offline-read-only',
+          limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+        },
+      },
     };
-    const native: ProductionProviderNativeCollectionSnapshot = { ...baseline, epochs: baseline.epochs.map(epoch => ({ ...epoch,
-      collection: { status: 'returned', result: status === 'captured'
-        ? { status, capture: nativeFixture(), loadObservation } : { status, loadObservation } },
-    })) };
+    const native: ProductionProviderNativeCollectionSnapshot = {
+      ...baseline,
+      epochs: baseline.epochs.map(epoch => ({
+        ...epoch,
+        collection: {
+          status: 'returned',
+          result: status === 'captured'
+            ? { status, capture: nativeFixture(), loadObservation } : { status, loadObservation },
+        },
+      })),
+    };
     const provider = providerFixture();
     const sidecar = await createProductionProviderNativeEvidence({ native, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(readProductionProviderLoadObservations({ json: sidecar.json, provider })).toEqual([loadObservation]);
@@ -212,9 +312,17 @@ describe('native capture post-run export', () => {
   it('classifies entered native records with missing Load and invocation settings as partial', async () => {
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture: nativeFixture() }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(sidecar.summary).toEqual({
-      phase: 'finished', refusedEpochCount: 0, recording: 'partial', capturedCallCount: 1, enteredNativeInvocationCount: 1,
-      issuedNotObservedCallCount: 0, unavailableEpochCount: 0, incompleteEpochCount: 0,
-      unobservedLoadCount: 1, incompleteInvocationCount: 1, unrecordedValueCount: 0,
+      phase: 'finished',
+      refusedEpochCount: 0,
+      recording: 'partial',
+      capturedCallCount: 1,
+      enteredNativeInvocationCount: 1,
+      issuedNotObservedCallCount: 0,
+      unavailableEpochCount: 0,
+      incompleteEpochCount: 0,
+      unobservedLoadCount: 1,
+      incompleteInvocationCount: 1,
+      unrecordedValueCount: 0,
     });
     expect(Object.isFrozen(sidecar.summary)).toBe(true);
     const verified = await verifyProductionProviderNativeEvidenceSidecar({ evidence: structuredClone(sidecar), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
@@ -225,9 +333,17 @@ describe('native capture post-run export', () => {
     const native = collectionFixture({ capture: nativeFixture() });
     const sidecar = await createProductionProviderNativeEvidence({ native: { ...native, epochs: [{ ...native.epochs[0]!, collection: { status: 'returned', result: { status: 'not-started' } } }] }, provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(sidecar.summary).toEqual({
-      phase: 'finished', refusedEpochCount: 0, recording: 'not-recorded', capturedCallCount: 0, enteredNativeInvocationCount: 0,
-      issuedNotObservedCallCount: 1, unavailableEpochCount: 1, incompleteEpochCount: 0,
-      unobservedLoadCount: 0, incompleteInvocationCount: 0, unrecordedValueCount: 0,
+      phase: 'finished',
+      refusedEpochCount: 0,
+      recording: 'not-recorded',
+      capturedCallCount: 0,
+      enteredNativeInvocationCount: 0,
+      issuedNotObservedCallCount: 1,
+      unavailableEpochCount: 1,
+      incompleteEpochCount: 0,
+      unobservedLoadCount: 0,
+      incompleteInvocationCount: 0,
+      unrecordedValueCount: 0,
     });
     expect(sidecar.binaries).toEqual([]);
   });
@@ -423,11 +539,15 @@ describe('native capture post-run export', () => {
   it('decodes undefined only in known positions while preserving omitted budget fields', async () => {
     const provider = providerFixture();
     const capture = nativeFixture();
-    capture.events.push({ kind: 'settings', identity, value: {
-      requested: { maxCompletionTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' } },
-      budget: { source: 'transformers-default', pastTokenCount: 0, maxNewTokens: undefined },
-      kwargs: { keys: { status: 'complete', totalCount: 0, values: [], incompleteReasons: [] }, maxNewTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' }, doSample: { status: 'omitted' }, returnDictInGenerate: { status: 'omitted' } },
-    } });
+    capture.events.push({
+      kind: 'settings',
+      identity,
+      value: {
+        requested: { maxCompletionTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' } },
+        budget: { source: 'transformers-default', pastTokenCount: 0, maxNewTokens: undefined },
+        kwargs: { keys: { status: 'complete', totalCount: 0, values: [], incompleteReasons: [] }, maxNewTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' }, doSample: { status: 'omitted' }, returnDictInGenerate: { status: 'omitted' } },
+      },
+    });
     const exported = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: collectionFixture({ capture }), provider });
     const readBinary = async ({ reference }: { reference: { path: string } }) => new Uint8Array(await exported.binaries.find(binary => binary.path === reference.path)!.blob.arrayBuffer());
     const document = JSON.parse(exported.json);

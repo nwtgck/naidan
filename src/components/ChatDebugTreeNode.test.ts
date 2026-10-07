@@ -15,8 +15,15 @@ function render({ node }: { node: MessageNode }) {
 }
 function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
   const common = { id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }), mimeType: 'image/png', originalName: 'image.png', size: 1, uploadedAt: 0 };
-  return { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] },
-    parts: [{ type: 'attachment', attachment: status === 'memory' ? { ...common, status, blob: new Blob(['image'], { type: 'image/png' }) } : { ...common, status } }] };
+  return {
+    id: toMessageId({ raw: 'u' }),
+    role: 'user',
+    createdAt: 0,
+    modelId: undefined,
+    lmParameters: undefined,
+    replies: { items: [] },
+    parts: [{ type: 'attachment', attachment: status === 'memory' ? { ...common, status, blob: new Blob(['image'], { type: 'image/png' }) } : { ...common, status } }],
+  };
 }
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks();
@@ -29,13 +36,21 @@ afterEach(() => {
   wrappers.splice(0).forEach(w => w.unmount()); vi.restoreAllMocks();
 });
 it('renders raw body and reasoning in part order including explicit empty parts', async () => {
-  const node: MessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined,
-    interruption: { type: 'error', message: '保存済みの日本語エラー' }, replies: { items: [] }, parts: [
+  const node: MessageNode = {
+    id: toMessageId({ raw: 'a' }),
+    role: 'assistant',
+    createdAt: 0,
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: { type: 'error', message: '保存済みの日本語エラー' },
+    replies: { items: [] },
+    parts: [
       { type: 'reasoning', text: '  考える\n', completeness: 'complete' },
       { type: 'text', text: '', completeness: 'complete' },
       { type: 'text', text: '<think>literal</think>  🙂\n', completeness: 'partial' },
       { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
-    ] };
+    ],
+  };
   const snapshot = structuredClone(node); const w = render({ node });
   expect(w.findAll('[data-testid="debug-part"]').map(part => part.attributes('data-part-type'))).toEqual(['reasoning', 'text', 'text', 'tool_call']);
   expect(w.findAll('[data-testid="debug-part-text"]').map(p => p.element.textContent)).toEqual(['  考える\n', '', '<think>literal</think>  🙂\n']);
@@ -46,8 +61,17 @@ it('renders raw body and reasoning in part order including explicit empty parts'
   expect(node).toEqual(snapshot);
 });
 it('renders tool results without flattening them into body text', () => {
-  const w = render({ node: { id: toMessageId({ raw: 't' }), role: 'tool', createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] },
-    parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }] } });
+  const w = render({
+    node: {
+      id: toMessageId({ raw: 't' }),
+      role: 'tool',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+      replies: { items: [] },
+      parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }],
+    },
+  });
   expect(w.get('[data-testid="debug-part"][data-part-type="tool_result"]').text()).toContain('<think>result</think>');
   expect(w.find('[data-testid="copy-content-btn"]').exists()).toBe(false);
 });

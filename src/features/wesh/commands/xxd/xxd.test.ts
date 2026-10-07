@@ -443,13 +443,19 @@ describe('wesh xxd', () => {
       { input: '61z62', expected: [0x61, 0x62] },
       { input: 'a:b:c', expected: [] },
       { input: 'ab cd ef', expected: [0xab, 0xcd, 0xef] },
-      { input: `\
+      {
+        input: `\
 a
-b`, expected: [0xab] },
-      { input: `\
+b`,
+        expected: [0xab],
+      },
+      {
+        input: `\
 zz
 61zz62
-77`, expected: [0x61, 0x77] },
+77`,
+        expected: [0x61, 0x77],
+      },
       { input: '6z1', expected: [] },
       { input: '6 1z62', expected: [0x61, 0x62] },
     ] as const;

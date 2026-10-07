@@ -52,7 +52,9 @@ export function createTransformersJsRuntimeLane() {
       const aborted = new DOMException('Generation aborted', 'AbortError');
       const result = Promise.withResolvers<void>();
       const entry: Entry = {
-        controller, result, operation,
+        controller,
+        result,
+        operation,
         owner: {
           signal: controller.signal,
           isActive() {

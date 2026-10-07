@@ -13,9 +13,15 @@ function observation({ items, controller }: { items: AsyncIterable<ChatGeneratio
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
   const drafts: ToolCallDraft[][] = [];
   const onChange = vi.fn();
-  const result = consumeChatGeneration({ node, items, abortController: controller, onChange, onToolCallDraftsChange: ({ drafts: current }) => {
-    drafts.push(current.map(draft => ({ ...draft })));
-  } });
+  const result = consumeChatGeneration({
+    node,
+    items,
+    abortController: controller,
+    onChange,
+    onToolCallDraftsChange: ({ drafts: current }) => {
+      drafts.push(current.map(draft => ({ ...draft })));
+    },
+  });
   return { node, result, drafts, onChange };
 }
 function source({ generate, controller }: { generate: LlamaCppBrowserService['generate'], controller: AbortController }) {

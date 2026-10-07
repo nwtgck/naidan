@@ -217,7 +217,7 @@ describe('VfsExplorerDirectory.subdir()', () => {
 
   it('returns null when path does not exist', async () => {
     const vfs = makeMockVfs({
-      statResults: {},  // stat will throw
+      statResults: {}, // stat will throw
     });
     const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
 

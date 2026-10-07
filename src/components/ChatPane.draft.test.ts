@@ -273,7 +273,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost'  }}),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
   }),
 }));
 

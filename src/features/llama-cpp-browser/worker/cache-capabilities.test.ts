@@ -18,7 +18,9 @@ function fixture() {
     const result = ++pointer; allocations.add(result); return result;
   };
   const core = {
-    api, alloc: allocate, allocRecord: allocate,
+    api,
+    alloc: allocate,
+    allocRecord: allocate,
     bytes: () => temporaryTokens,
     free: ({ pointer }: { pointer: bigint }) => {
       allocations.delete(pointer);

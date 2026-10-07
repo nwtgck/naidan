@@ -18,7 +18,9 @@ import type { ProviderReplayCatalog } from '@/features/transformers-js/replay-mo
 
 // Explicit request ownership; adding evidence never registers a test implicitly.
 export const providerReplayCatalog = {
-  context, provenance, sequence,
+  context,
+  provenance,
+  sequence,
   cases: {
     'first-turn': request1,
     'continuity': request2,

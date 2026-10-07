@@ -929,8 +929,10 @@ export const zipCommandImplementation: WeshCommandImplementation = {
     const moveMode = parsed.optionValues.moveMode === true;
     if ((selectionMode === 'freshen' || deleteMode) && !archiveAlreadyExists) {
       if (!quiet) {
-        await context.text().print({ text: `	zip warning: ${archiveOperand} not found or empty
-` });
+        await context.text().print({
+          text: `	zip warning: ${archiveOperand} not found or empty
+`,
+        });
       }
       return { exitCode: 12 };
     }

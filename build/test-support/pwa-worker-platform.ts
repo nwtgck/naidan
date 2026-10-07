@@ -115,7 +115,10 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   const location = new URL('sw.js', scope);
   const listeners = new Map<EventListenerOrEventListenerObject, EventListener>();
   const global = {
-    location, registration: { scope }, caches: cacheStorage.native(), clients,
+    location,
+    registration: { scope },
+    caches: cacheStorage.native(),
+    clients,
     addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
       let wrapper = listeners.get(listener);
       if (!wrapper) {
@@ -137,15 +140,34 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     skipWaiting: async () => {},
   };
   vm.runInNewContext(script, {
-    self: global, location, registration: global.registration,
-    navigator: { userAgent: 'Naidan worker test' }, caches: cacheStorage.native(), fetch,
+    self: global,
+    location,
+    registration: global.registration,
+    navigator: { userAgent: 'Naidan worker test' },
+    caches: cacheStorage.native(),
+    fetch,
     // Errors from the host-backed fetch/cache APIs belong to the worker realm
     // in browsers. Share their constructors so Workbox's instanceof checks match.
-    Error, TypeError, DOMException,
-    Request, Response, Headers, URL, URLSearchParams, console,
-    ExtendableEvent: LifetimeEvent, FetchEvent: RequestEvent,
-    setTimeout, clearTimeout, setInterval, clearInterval, performance, Promise,
-    ReadableStream, MessageChannel, MessagePort,
+    Error,
+    TypeError,
+    DOMException,
+    Request,
+    Response,
+    Headers,
+    URL,
+    URLSearchParams,
+    console,
+    ExtendableEvent: LifetimeEvent,
+    FetchEvent: RequestEvent,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    performance,
+    Promise,
+    ReadableStream,
+    MessageChannel,
+    MessagePort,
   }, { filename: 'generated-sw.js' });
 
   function lifecycle(type: 'install' | 'activate'): Promise<void> {
@@ -183,7 +205,10 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
 
   function messageWithPorts({ data, clientId, ports }: { data: unknown; clientId: string; ports: MessagePort[] }): Promise<void> {
     const event = Object.assign(new LifetimeEvent('message'), {
-      data, origin: new URL(scope).origin, source: clients.clients.get(clientId), ports,
+      data,
+      origin: new URL(scope).origin,
+      source: clients.clients.get(clientId),
+      ports,
     });
     target.dispatchEvent(event);
     return event.finished();
@@ -192,10 +217,15 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   async function message({ data, clientId, origin = new URL(scope).origin, replyPort = true }: { data: unknown; clientId: string; origin?: string; replyPort?: boolean }): Promise<unknown> {
     let reply: unknown;
     const event = Object.assign(new LifetimeEvent('message'), {
-      data, origin, source: clients.clients.get(clientId),
-      ports: replyPort ? [{ postMessage(value: unknown) {
-        reply = value;
-      }, close() {} }] : [],
+      data,
+      origin,
+      source: clients.clients.get(clientId),
+      ports: replyPort ? [{
+        postMessage(value: unknown) {
+          reply = value;
+        },
+        close() {},
+      }] : [],
     });
     target.dispatchEvent(event); await event.finished();
     return reply;
@@ -203,4 +233,5 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   return { lifecycle, request, streamRequest, message, messageWithPorts };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

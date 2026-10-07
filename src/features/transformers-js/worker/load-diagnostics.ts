@@ -12,30 +12,43 @@ const incompleteReason = z.enum(['event-limit', 'invalid-event', 'resource-limit
 const resource = z.string().min(1).max(256).regex(/^[A-Za-z0-9_./-]+\.onnx(?:_data(?:_[0-9]+)?)?$/u)
   .refine(value => !value.startsWith('/') && !value.split('/').includes('..'));
 export const loadDiagnosticEventSchema = z.object({
-  loadOrdinal: count.min(1).max(32), sequence: count.max(512), candidateOrdinal: count.max(32),
+  loadOrdinal: count.min(1).max(32),
+  sequence: count.max(512),
+  candidateOrdinal: count.max(32),
   kind: z.enum(['load-start', 'previous-unload-start', 'previous-unload-finished', 'candidate-start',
     'allocation-attempt', 'allocation-succeeded', 'allocation-failed', 'read-start', 'read-returned', 'read-failed',
     'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected',
     'resource-cleanup-start', 'resource-cleanup-finished', 'resource-cleanup-failed', 'candidate-finished', 'load-finished', 'load-failed', 'diagnostic-incomplete']),
-  resource: resource.optional(), readOrdinal: count.max(128).optional(), requestedBytes: count.optional(),
-  errorName: errorName.optional(), errorCategory, device: z.enum(['webgpu', 'wasm']).optional(), dtype: z.string().max(32).optional(),
+  resource: resource.optional(),
+  readOrdinal: count.max(128).optional(),
+  requestedBytes: count.optional(),
+  errorName: errorName.optional(),
+  errorCategory,
+  device: z.enum(['webgpu', 'wasm']).optional(),
+  dtype: z.string().max(32).optional(),
   priorRuntime: z.enum(['present', 'absent']).optional(),
   revision: z.string().max(128).regex(/^(?:[a-f0-9]{40}|main)$/u).optional(),
-  candidateScopeAllocatedBytes: count, returnedReadBufferBytes: count, activeReadCount: count.max(128),
+  candidateScopeAllocatedBytes: count,
+  returnedReadBufferBytes: count,
+  activeReadCount: count.max(128),
   scope: z.enum(['active', 'closed']),
 }).strict();
 export type LoadDiagnosticEvent = z.infer<typeof loadDiagnosticEventSchema>;
-export const loadDiagnosticPacketSchema = z.object({ owner: productionLoadReceiptOwnerSchema, event: loadDiagnosticEventSchema,
+export const loadDiagnosticPacketSchema = z.object({
+  owner: productionLoadReceiptOwnerSchema,
+  event: loadDiagnosticEventSchema,
   incompleteReasons: z.array(incompleteReason).max(6),
 }).strict();
 export type LoadDiagnosticPacket = z.infer<typeof loadDiagnosticPacketSchema>;
 export const LOAD_DIAGNOSTIC_CHANNEL = 'naidan-production-load-diagnostics';
 export const loadDiagnosticMessageSchema = z.object({
-  channel: z.literal(LOAD_DIAGNOSTIC_CHANNEL), packet: loadDiagnosticPacketSchema,
+  channel: z.literal(LOAD_DIAGNOSTIC_CHANNEL),
+  packet: loadDiagnosticPacketSchema,
 }).strict();
 export type LoadDiagnosticMessage = z.infer<typeof loadDiagnosticMessageSchema>;
 export const loadDiagnosticsSchema = z.object({
-  format: z.literal('production-load-diagnostics-v1'), owner: productionLoadReceiptOwnerSchema,
+  format: z.literal('production-load-diagnostics-v1'),
+  owner: productionLoadReceiptOwnerSchema,
   limits: z.object({ maxEvents: z.literal(512), maxResources: z.literal(128) }).strict(),
   byteAccounting: z.literal('successful-allocation-request-sum-not-live-memory-or-gc'),
   coverage: z.literal('transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals'),
@@ -97,10 +110,15 @@ export function createLoadDiagnosticLedger({ owner }: { owner: ProductionLoadRec
         if (!events.some(event => event.loadOrdinal === ordinal)) snapshotReasons.add('unobserved-load');
         else if (!events.some(event => event.loadOrdinal === ordinal && (event.kind === 'load-finished' || event.kind === 'load-failed'))) snapshotReasons.add('load-not-settled');
       }
-      return { format: 'production-load-diagnostics-v1', owner: { ...owner }, limits: { maxEvents: 512, maxResources: 128 },
+      return {
+        format: 'production-load-diagnostics-v1',
+        owner: { ...owner },
+        limits: { maxEvents: 512, maxResources: 128 },
         byteAccounting: 'successful-allocation-request-sum-not-live-memory-or-gc',
         coverage: 'transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals',
-        events: events.map(event => ({ ...event })), incompleteReasons: [...snapshotReasons] };
+        events: events.map(event => ({ ...event })),
+        incompleteReasons: [...snapshotReasons],
+      };
     },
   };
 }
@@ -121,12 +139,25 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
       reasons.add('event-limit'); kind = 'diagnostic-incomplete';
     }
     try {
-      const event = loadDiagnosticEventSchema.safeParse({ loadOrdinal, sequence: ++sequence, candidateOrdinal, kind, ...details,
-        candidateScopeAllocatedBytes: allocated, returnedReadBufferBytes: returned, activeReadCount: activeReads, scope });
+      const event = loadDiagnosticEventSchema.safeParse({
+        loadOrdinal,
+        sequence: ++sequence,
+        candidateOrdinal,
+        kind,
+        ...details,
+        candidateScopeAllocatedBytes: allocated,
+        returnedReadBufferBytes: returned,
+        activeReadCount: activeReads,
+        scope,
+      });
       if (!event.success) return;
-      notify({ sink, packet: { owner, event: event.data, incompleteReasons: [...reasons] }, failed: () => {
-        reasons.add('transport-failed');
-      } });
+      notify({
+        sink,
+        packet: { owner, event: event.data, incompleteReasons: [...reasons] },
+        failed: () => {
+          reasons.add('transport-failed');
+        },
+      });
     } catch { /* Recording cannot alter Load. */ }
   }
   const operation = {
@@ -156,9 +187,14 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
       if (sequence >= 512) return;
       try {
         if (typeof value !== 'object' || value === null) return;
-        const raw = z.object({ token: z.object({}).strict(), kind: z.enum(['read', 'session']), resource: z.string().max(256).optional(),
+        const raw = z.object({
+          token: z.object({}).strict(),
+          kind: z.enum(['read', 'session']),
+          resource: z.string().max(256).optional(),
           phase: z.enum(['allocation-attempt', 'allocation-succeeded', 'allocation-failed', 'read-start', 'read-returned', 'read-failed',
-            'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected']), bytes: count, errorName: z.string().max(64).optional(),
+            'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected']),
+          bytes: count,
+          errorName: z.string().max(64).optional(),
           // Only raw advisory input is projected before emission: an invalid
           // category must not discard the otherwise valid native event.
           errorCategory: errorCategory.catch(undefined),
@@ -208,9 +244,16 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         default: { const _ex: never = phase; throw new Error(`Unhandled diagnostic phase: ${_ex}`); }
         }
         const name = errorName.safeParse(raw.data.errorName);
-        emit({ kind: phase, details: { resource: read.resource, readOrdinal: read.readOrdinal, requestedBytes: bytes,
-          ...categoryDetails,
-          ...(raw.data.errorName === undefined ? {} : { errorName: name.success ? name.data : 'unknown' }) } });
+        emit({
+          kind: phase,
+          details: {
+            resource: read.resource,
+            readOrdinal: read.readOrdinal,
+            requestedBytes: bytes,
+            ...categoryDetails,
+            ...(raw.data.errorName === undefined ? {} : { errorName: name.success ? name.data : 'unknown' }),
+          },
+        });
       } catch { /* A malformed observation must not change the original exception. */ }
     },
   };

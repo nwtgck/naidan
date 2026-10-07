@@ -107,13 +107,20 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
         lease.acknowledged = true;
         // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited startup-only acknowledgement of this session's validated bytes and owned Blob; the Worker validates its strict reply schema before model RPCs exist.
         worker.postMessage({
-          channel: PRODUCTION_WORKER_READY.channel, version: PRODUCTION_WORKER_READY.version,
-          status: 'runtime-module-ready', requestId: lease.requestId, objectUrl: lease.objectUrl,
+          channel: PRODUCTION_WORKER_READY.channel,
+          version: PRODUCTION_WORKER_READY.version,
+          status: 'runtime-module-ready',
+          requestId: lease.requestId,
+          objectUrl: lease.objectUrl,
         });
       }).catch(error => {
-        if (!terminalError) terminate({ error: new ProductionWorkerLifecycleError({
-          reason: 'initialization-failed', message: error instanceof Error ? error.message : String(error),
-        }), releaseIdleRemote: false });
+        if (!terminalError) terminate({
+          error: new ProductionWorkerLifecycleError({
+            reason: 'initialization-failed',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+          releaseIdleRemote: false,
+        });
       });
       return;
     }

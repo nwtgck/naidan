@@ -13,9 +13,11 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
     registerType: 'prompt',
     includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
     manifest: {
-      name: 'Naidan', short_name: 'Naidan',
+      name: 'Naidan',
+      short_name: 'Naidan',
       description: 'A privacy-focused, local-first AI interface',
-      theme_color: '#030712', background_color: '#030712',
+      theme_color: '#030712',
+      background_color: '#030712',
       icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
     },
     injectManifest: {
@@ -31,4 +33,5 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
   return { options };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

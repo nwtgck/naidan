@@ -16,8 +16,13 @@ function stalled(): void {
   }));
 }
 function endpoint({ equalRepair }: { equalRepair: boolean }) {
-  return new FiniteEndpoint({ baseUrl: 'http://localhost:8080', policy: 'allow-loopback-http', timeoutMs: 100,
-    repairTimeoutMs: equalRepair ? 100 : 10, headers: [] });
+  return new FiniteEndpoint({
+    baseUrl: 'http://localhost:8080',
+    policy: 'allow-loopback-http',
+    timeoutMs: 100,
+    repairTimeoutMs: equalRepair ? 100 : 10,
+    headers: [],
+  });
 }
 it('successively slow attempts grow their windows instead of repeatedly expiring at the same arbitrary time', async () => {
   stalled(); const relay = endpoint({ equalRepair: false }); const signal = new AbortController().signal;
@@ -68,9 +73,12 @@ it('browser-owned, injection, duplicate, and oversized headers are rejected befo
   for (const headers of [
     [{ name: 'Host', value: 'elsewhere' }], [{ name: 'Origin', value: 'https://spoof.invalid' }],
     [{ name: 'Content-Length', value: '0' }], [{ name: 'Cookie', value: 'secret' }],
-    [{ name: 'Sec-Test', value: '1' }], [{ name: 'X-Test', value: `\
+    [{ name: 'Sec-Test', value: '1' }], [{
+      name: 'X-Test',
+      value: `\
 ok\\r
-Other: injected` }],
+Other: injected`,
+    }],
     [{ name: 'Authorization', value: 'a' }, { name: 'authorization', value: 'b' }],
   ]) {
     expect(() => new FiniteEndpoint({ baseUrl: 'https://relay.invalid', policy: 'https-only', timeoutMs: 100, repairTimeoutMs: 10, headers })).toThrow();

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { parsePrefetchResult } from './prefetch-result';
 
-const core = { requestedCount: 1, cachedCount: 0, downloadedCount: 1, failedCount: 0, complete: true,
+const core = {
+  requestedCount: 1,
+  cachedCount: 0,
+  downloadedCount: 1,
+  failedCount: 0,
+  complete: true,
   files: [{ status: 'downloaded', url: 'https://fixture.test/a', path: 'models/a', byteLength: 4, expectedByteLength: 4 }],
 };
 describe('prefetch core and advisory validation', () => {

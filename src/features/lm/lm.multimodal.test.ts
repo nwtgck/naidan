@@ -9,13 +9,23 @@ import { consumeProviderGenerationForTest } from './provider-test-support';
 
 function request({ text, model }: { text: string, model: string }): Parameters<LmProvider['chat']>[0] {
   const messages: ChatMessage[] = [{
-    id: toMessageId({ raw: 'u' }), role: 'user', parts: [
+    id: toMessageId({ raw: 'u' }),
+    role: 'user',
+    parts: [
       { type: 'text', text, completeness: 'complete' },
-      { type: 'attachment', attachment: {
-        id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }),
-        originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1,
-        status: 'memory', blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),
-      } },
+      {
+        type: 'attachment',
+        attachment: {
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+          originalName: 'image.png',
+          mimeType: 'image/png',
+          size: 3,
+          uploadedAt: 1,
+          status: 'memory',
+          blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),
+        },
+      },
     ],
   }];
   return { debug: undefined, messages, model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };
@@ -31,9 +41,12 @@ describe('LM Providers - Multimodal Requests', () => {
     const fetcher = vi.fn<LmFetch>().mockResolvedValueOnce(new Response('data: [DONE]\n\n'));
     const provider = new OpenAIProvider({ endpoint: 'http://test.api', fetcher });
     const { result } = await consumeProviderGenerationForTest({ provider, request: request({ text: 'Analyze this:', model: 'gpt-4-vision' }) });
-    expect(body({ fetcher }).messages).toEqual([{ role: 'user', content: [
-      { type: 'text', text: 'Analyze this:' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
-    ] }]);
+    expect(body({ fetcher }).messages).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Analyze this:' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
+      ],
+    }]);
     expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 

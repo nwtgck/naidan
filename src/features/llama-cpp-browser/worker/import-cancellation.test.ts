@@ -10,8 +10,11 @@ import type { LlamaCppWorkerApi } from './types';
 // Worker transport and storage are in-memory: this catches cancellation wiring
 // regressions that a manager test with a mocked importModel() cannot observe.
 const transport = vi.hoisted(() => ({ remote: undefined as WorkerServerApi<LlamaCppWorkerApi> | undefined, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
-  releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
+vi.mock('@/utils/worker-transport', () => ({
+  wrapWorkerRemote: () => transport.remote,
+  releaseWorkerRemote: transport.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ probeRuntimeProfiles: vi.fn() }));
 vi.mock('./session', () => ({ invalidateStoredModel: vi.fn(), releaseSession: vi.fn() }));
 vi.mock('./generation', () => ({ generate: vi.fn() }));
@@ -52,9 +55,11 @@ describe('local import cancellation through service and Worker boundaries', () =
   it.each(['file', 'folder'] as const)('cancels a %s copy, removes partial data, and imports the identical selection again', async kind => {
     const file = modelFile({ name: 'same.gguf' }); const controller = new AbortController();
     const imported = vi.fn(); const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: imported });
-    const unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    } });
+    const unsubscribe = llamaCppBrowserService.subscribe({
+      listener: ({ state }) => {
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
+    });
     const copy = ({ signal }: { signal: AbortSignal | undefined }) => {
       switch (kind) {
       case 'file': return llamaCppBrowserService.importModel({ file, signal });
@@ -85,9 +90,11 @@ describe('local import cancellation through service and Worker boundaries', () =
     vi.spyOn(user, 'removeEntry').mockImplementationOnce(async (name, options) => {
       entered.resolve(); await rollback.promise; await remove(name, options);
     });
-    const unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    } });
+    const unsubscribe = llamaCppBrowserService.subscribe({
+      listener: ({ state }) => {
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
+    });
     try {
       let settled = false;
       const first = llamaCppBrowserService.importModel({ file, signal: controller.signal }).finally(() => {

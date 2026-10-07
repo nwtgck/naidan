@@ -163,11 +163,16 @@ function download(): void {
   const requestedMultimodal = multimodal.value;
   const pinned = job.value?.selection ?? (previewSelection.value);
   previewError.value = false;
-  queue.enqueue({ key: jobKey.value, repository: requestedQuantization.repository, source: 'suggestion', prepare: async ({ signal }) => {
-    if (pinned) return pinned;
-    const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
-    return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
-  } });
+  queue.enqueue({
+    key: jobKey.value,
+    repository: requestedQuantization.repository,
+    source: 'suggestion',
+    prepare: async ({ signal }) => {
+      if (pinned) return pinned;
+      const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
+      return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
+    },
+  });
 }
 onUnmounted(() => {
   disposed = true; inspecting.value?.abort();

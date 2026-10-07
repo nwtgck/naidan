@@ -332,19 +332,25 @@ export async function sendMessageToTargetChat({
     }
 
     const userMessage: UserMessageNode = {
-      id: generateId<MessageId>(), role: 'user', createdAt: Date.now(),
+      id: generateId<MessageId>(),
+      role: 'user',
+      createdAt: Date.now(),
       parts: [
         { type: 'text', text: finalContent, completeness: 'complete' },
         ...processedAttachments.map(attachment => ({ type: 'attachment' as const, attachment })),
       ],
-      replies: { items: [] }, modelId: undefined,
+      replies: { items: [] },
+      modelId: undefined,
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
     };
 
     const assistantMessage: AssistantMessageNode = {
-      id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
+      id: generateId<MessageId>(),
+      role: 'assistant',
+      createdAt: Date.now(),
       parts: imageModeEnabled ? [{ type: 'text', text: createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING, completeness: 'partial' }] : [],
-      modelId: imageModel || resolvedModel, replies: { items: [] },
+      modelId: imageModel || resolvedModel,
+      replies: { items: [] },
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
       interruption: undefined,
     };
@@ -587,7 +593,11 @@ export async function generateResponseForAssistant({
       signalReady();
       const { ensureApproval } = useApproval();
       const result = await generateChatTurn({
-        provider, debug, model: resolvedModel, parameters: finalLmParameters, tools: enabledTools,
+        provider,
+        debug,
+        model: resolvedModel,
+        parameters: finalLmParameters,
+        tools: enabledTools,
         abortController: controller,
         approvalContext: { chatId: mutableChat.id, ensureApproval },
         readBinaryObject: async ({ binaryObjectId, signal }) => {
@@ -605,9 +615,14 @@ export async function generateResponseForAssistant({
             return node;
           }
           const node: AssistantMessageNode = reactive({
-            id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
-            parts: [], modelId: resolvedModel, lmParameters: finalLmParameters,
-            interruption: undefined, replies: { items: [] },
+            id: generateId<MessageId>(),
+            role: 'assistant',
+            createdAt: Date.now(),
+            parts: [],
+            modelId: resolvedModel,
+            lmParameters: finalLmParameters,
+            interruption: undefined,
+            replies: { items: [] },
           });
           ownedLeaf.replies.items.push(node);
           ownedLeaf = node;
@@ -619,8 +634,13 @@ export async function generateResponseForAssistant({
         createToolMessage: ({ assistant }) => {
           if (assistant !== activeAssistant) throw new Error('The active assistant no longer owns this tool execution.');
           const node: ToolMessageNode = reactive({
-            id: generateId<MessageId>(), role: 'tool', createdAt: Date.now(),
-            parts: [], modelId: undefined, lmParameters: undefined, replies: { items: [] },
+            id: generateId<MessageId>(),
+            role: 'tool',
+            createdAt: Date.now(),
+            parts: [],
+            modelId: undefined,
+            lmParameters: undefined,
+            replies: { items: [] },
           });
           assistant.replies.items.push(node);
           ownedTools.push(node);
@@ -640,7 +660,8 @@ export async function generateResponseForAssistant({
         buildMessages: ({ excludedMessageId }) => buildChatGenerationMessages({
           // Branch navigation during generation must not change the run's input path.
           chat: { root: mutableChat.root, currentLeafId: ownedLeaf.id },
-          excludedMessageId, systemPromptMessages: resolved.systemPromptMessages,
+          excludedMessageId,
+          systemPromptMessages: resolved.systemPromptMessages,
         }),
         onChange: reflectChanges,
         onToolCallDraftsChange: ({ messageId, drafts }) => {
@@ -839,9 +860,14 @@ async function regenerateMessageForTarget({
     }
 
     const newAssistantMessage: AssistantMessageNode = {
-      id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
-      parts: [], interruption: undefined, modelId: failedNode.modelId,
-      replies: { items: [] }, lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
+      id: generateId<MessageId>(),
+      role: 'assistant',
+      createdAt: Date.now(),
+      parts: [],
+      interruption: undefined,
+      modelId: failedNode.modelId,
+      replies: { items: [] },
+      lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
     };
     parent.replies.items.push(newAssistantMessage);
     mutableChat.currentLeafId = newAssistantMessage.id;

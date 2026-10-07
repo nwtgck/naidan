@@ -163,14 +163,19 @@ async function generate(): Promise<void> {
     active.signal.throwIfAborted();
     preparingReference.value = false;
     const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({
-      input: { ...input, reference }, cancellationSignal: active.signal, completionSignal: completion.signal,
-      preview: { requests: captures.requests, onPreview: ({ result: incoming, requestVersion }) => {
-        if (disposed || request !== generation || active.signal.aborted) return;
-        const result = audioGenerationPreviewSchema.parse(incoming);
-        validateAudioWav(result);
-        appendHistory({ result, settings });
-        if (requestVersion >= captures.requests.version) previewPending.value = false;
-      } },
+      input: { ...input, reference },
+      cancellationSignal: active.signal,
+      completionSignal: completion.signal,
+      preview: {
+        requests: captures.requests,
+        onPreview: ({ result: incoming, requestVersion }) => {
+          if (disposed || request !== generation || active.signal.aborted) return;
+          const result = audioGenerationPreviewSchema.parse(incoming);
+          validateAudioWav(result);
+          appendHistory({ result, settings });
+          if (requestVersion >= captures.requests.version) previewPending.value = false;
+        },
+      },
     }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
     if (disposed || request !== generation || active.signal.aborted) return;
@@ -201,9 +206,11 @@ function stop(): void {
   stopping.value = true; controller.value.abort();
 }
 onMounted(() => {
-  unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state: next }) => {
-    state.value = next;
-  } });
+  unsubscribe = llamaCppBrowserService.subscribe({
+    listener: ({ state: next }) => {
+      state.value = next;
+    },
+  });
 });
 onUnmounted(() => {
   disposed = true; generation++; recovery.value?.abort(); controller.value?.abort(); unsubscribe?.();

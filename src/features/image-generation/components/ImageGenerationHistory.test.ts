@@ -30,17 +30,37 @@ afterEach(() => {
 function fixture(): { view: ImageGenerationHistoryView, record: ImageGenerationRecord } {
   const form = createImageForm({ profile: 'webgpu-wasm64-jspi' });
   const record: ImageGenerationRecord = {
-    id: toImageGenerationId({ raw: 'generation' }), createdAt: 1000,
+    id: toImageGenerationId({ raw: 'generation' }),
+    createdAt: 1000,
     request: { parameters: { ...form.parameters.value, prompt: 'A quiet garden', seed: '-1' }, models: [], loras: [], imageInputs: { initImage: undefined, strength: 0.75, referenceImages: [] }, preview: { ...form.preview.value }, runtime: { sourceCommit: 'a'.repeat(40), profile: 'webgpu-wasm64-jspi', weightResidency: 'auto', gpuBudgetMiB: undefined } },
     result: { binaryObjectId: toBinaryObjectId({ raw: 'final' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 },
     previews: [{ binaryObjectId: toBinaryObjectId({ raw: 'preview' }), step: 2, steps: 8, mode: 'projection', width: 128, height: 128 }],
   };
   const view: ImageGenerationHistoryView = {
-    warnings: ref([]), warningCount: ref(0), currentPage: ref(1), pageCount: ref(1),
-    available: ref(true), items: shallowRef([{ id: record.id, createdAt: record.createdAt, prompt: record.request.parameters.prompt, modelName: 'fixture', binaryObjectId: record.result.binaryObjectId, width: 256, height: 256, previewCount: 1 }]), total: ref(2), loading: ref(false), error: ref(''), selected: shallowRef(), detailLoading: ref(false), detailError: ref(''), imageInvalidation: ref(),
-    setQuery: vi.fn(), reload: vi.fn(async () => {}), goToPage: vi.fn(async () => {}), select: vi.fn(async () => {
+    warnings: ref([]),
+    warningCount: ref(0),
+    currentPage: ref(1),
+    pageCount: ref(1),
+    available: ref(true),
+    items: shallowRef([{ id: record.id, createdAt: record.createdAt, prompt: record.request.parameters.prompt, modelName: 'fixture', binaryObjectId: record.result.binaryObjectId, width: 256, height: 256, previewCount: 1 }]),
+    total: ref(2),
+    loading: ref(false),
+    error: ref(''),
+    selected: shallowRef(),
+    detailLoading: ref(false),
+    detailError: ref(''),
+    imageInvalidation: ref(),
+    setQuery: vi.fn(),
+    reload: vi.fn(async () => {}),
+    goToPage: vi.fn(async () => {}),
+    select: vi.fn(async () => {
       view.selected.value = record;
-    }), remove: vi.fn(async () => {}), removeImage: vi.fn(async () => {}), getImage: vi.fn(async () => new Blob(['PNG'], { type: 'image/png' })), clearSelection: vi.fn(), dispose: vi.fn(),
+    }),
+    remove: vi.fn(async () => {}),
+    removeImage: vi.fn(async () => {}),
+    getImage: vi.fn(async () => new Blob(['PNG'], { type: 'image/png' })),
+    clearSelection: vi.fn(),
+    dispose: vi.fn(),
   };
   return { view, record };
 }
@@ -222,7 +242,10 @@ it('replaces a bounded page of cards and exposes first, previous, next and last 
   const { view } = fixture();
   const source = view.items.value[0]!;
   const records = Array.from({ length: 1005 }, (_, index) => ({
-    ...source, id: toImageGenerationId({ raw: `generation-${index}` }), binaryObjectId: toBinaryObjectId({ raw: `image-${index}` }), prompt: `Image ${index}`,
+    ...source,
+    id: toImageGenerationId({ raw: `generation-${index}` }),
+    binaryObjectId: toBinaryObjectId({ raw: `image-${index}` }),
+    prompt: `Image ${index}`,
   }));
   view.items.value = records.slice(0, 40);
   view.total.value = records.length;

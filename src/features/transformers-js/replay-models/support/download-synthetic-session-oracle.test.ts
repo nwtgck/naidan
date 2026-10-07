@@ -50,7 +50,9 @@ describe('synthetic model session oracle', () => {
 
   it('validates core and external binding identities and records the actual provider list', () => {
     const observed = inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath, dataPath]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath, dataPath]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: {
         executionProviders: ['webgpu'],
@@ -58,7 +60,9 @@ describe('synthetic model session oracle', () => {
       },
     });
     expect(observed).toEqual({
-      modelId, revision, corePath,
+      modelId,
+      revision,
+      corePath,
       externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: dataPath }],
       executionProviders: ['webgpu'],
     });
@@ -66,7 +70,9 @@ describe('synthetic model session oracle', () => {
 
   it('rejects a core copied from another model', () => {
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath]),
       core: createSyntheticModelBody({ modelId: 'fixture/other', revision, path: corePath }),
       options: { executionProviders: ['webgpu'] },
     })).toThrow('identity mismatch');
@@ -74,7 +80,9 @@ describe('synthetic model session oracle', () => {
 
   it('rejects external bytes copied from a different revision', () => {
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath, dataPath]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath, dataPath]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: {
         executionProviders: ['webgpu'],
@@ -85,7 +93,9 @@ describe('synthetic model session oracle', () => {
 
   it('rejects an external chunk bound to a different filename', () => {
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath, dataPath, `${dataPath}_1`]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath, dataPath, `${dataPath}_1`]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: {
         executionProviders: ['webgpu'],
@@ -97,7 +107,9 @@ describe('synthetic model session oracle', () => {
   it('rejects an external file from a different core even when the binding matches its bytes', () => {
     const otherData = 'onnx/other_q4f16.onnx_data';
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath, otherData]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath, otherData]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: {
         executionProviders: ['webgpu'],
@@ -108,7 +120,9 @@ describe('synthetic model session oracle', () => {
 
   it('rejects a synthetic core not listed in the original repository inventory', () => {
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set(),
+      modelId,
+      revision,
+      repositoryPaths: new Set(),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: { executionProviders: ['webgpu'] },
     })).toThrow('not in the repository inventory');
@@ -116,7 +130,9 @@ describe('synthetic model session oracle', () => {
 
   it('rejects missing provider options instead of silently recording an unverified session', () => {
     expect(() => inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: {},
     })).toThrow();
@@ -124,7 +140,9 @@ describe('synthetic model session oracle', () => {
 
   it('preserves wasm as observed rather than rewriting it to the preferred webgpu provider', () => {
     const observed = inspectSyntheticOrtSession({
-      modelId, revision, repositoryPaths: new Set([corePath]),
+      modelId,
+      revision,
+      repositoryPaths: new Set([corePath]),
       core: createSyntheticModelBody({ modelId, revision, path: corePath }),
       options: { executionProviders: ['wasm'] },
     });

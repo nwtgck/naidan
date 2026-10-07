@@ -6,6 +6,7 @@ import ensureReadyStateAwareAppBootstrap from './eslint-local-rules/ensure-ready
 import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
+import objectLayout from './eslint-local-rules/object-layout.js';
 import requireTestOnlyForComposableReturn from './eslint-local-rules/require-test-only-for-composable-return.js';
 import requireTestOnlyForModuleExport from './eslint-local-rules/require-test-only-for-module-export.js';
 import requireTestOnlyForDefineExpose from './eslint-local-rules/require-test-only-for-define-expose.js';
@@ -178,6 +179,7 @@ export default tseslint.config(
   ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
+  objectLayout,
   requireTestOnlyForComposableReturn,
   requireTestOnlyForModuleExport,
   requireTestOnlyForDefineExpose,

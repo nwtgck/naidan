@@ -10,9 +10,11 @@ afterEach(() => {
 });
 
 function workerWithReply(data: unknown): ServiceWorker {
-  return { postMessage(_request: unknown, ports: MessagePort[]) {
+  return {
+    postMessage(_request: unknown, ports: MessagePort[]) {
     ports[0]!.postMessage(data);
-  } } as unknown as ServiceWorker;
+    },
+  } as unknown as ServiceWorker;
 }
 const signal = new AbortController().signal;
 
@@ -30,9 +32,11 @@ describe('service worker message transport', () => {
 
   it('closes the channel on synchronous postMessage errors', async () => {
     const close = vi.spyOn(MessagePort.prototype, 'close');
-    const worker = { postMessage() {
-      throw new Error('worker terminated');
-    } } as unknown as ServiceWorker;
+    const worker = {
+      postMessage() {
+        throw new Error('worker terminated');
+      },
+    } as unknown as ServiceWorker;
     await expect(requestNetworkUpdate({ worker, signal })).rejects.toThrow('terminated');
     expect(close).toHaveBeenCalledTimes(2);
   });

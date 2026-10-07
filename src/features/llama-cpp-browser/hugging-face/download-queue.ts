@@ -59,9 +59,13 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
       const selection = selectionSchema.parse(await task.prepare({ signal: controller.signal }));
       controller.signal.throwIfAborted();
       replace({ id: queued.id, patch: { status: 'downloading', selection } });
-      await download({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-        if (!controller.signal.aborted) replace({ id: queued.id, patch: { progress } });
-      } });
+      await download({
+        selection,
+        signal: controller.signal,
+        onProgress: ({ progress }) => {
+          if (!controller.signal.aborted) replace({ id: queued.id, patch: { progress } });
+        },
+      });
       // A writer may finish concurrently with a pause. A committed success must
       // not become a phantom paused job with no journal to resume.
       replace({ id: queued.id, patch: { status: 'complete' } });
@@ -122,17 +126,19 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
 
 let queue: ReturnType<typeof createDownloadQueue> | undefined;
 export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
-  queue ??= createDownloadQueue({ download: async ({ selection, signal, onProgress }) => {
-    signal.throwIfAborted();
-    // Two explicitly queued entry points may target the same installed file set.
-    // Local availability follows the same validated-file contract as the UI;
-    // it is not a claim about remote revision/content equality.
-    if (await installedSelection({ selection })) {
-      signal.throwIfAborted(); return;
-    }
-    signal.throwIfAborted();
-    await downloadRepository({ selection, signal, onProgress });
-  } });
+  queue ??= createDownloadQueue({
+    download: async ({ selection, signal, onProgress }) => {
+      signal.throwIfAborted();
+      // Two explicitly queued entry points may target the same installed file set.
+      // Local availability follows the same validated-file contract as the UI;
+      // it is not a claim about remote revision/content equality.
+      if (await installedSelection({ selection })) {
+        signal.throwIfAborted(); return;
+      }
+      signal.throwIfAborted();
+      await downloadRepository({ selection, signal, onProgress });
+    },
+  });
   return queue;
 }
 export const TEST_ONLY = {

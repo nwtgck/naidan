@@ -11,7 +11,9 @@ function fixture() {
     if (start + size > heap.length) throw new RangeError('fixture bounds');
     return heap.subarray(start, start + size);
   });
-  return { core: { alloc, bytes, free }, pointer,
+  return {
+    core: { alloc, bytes, free },
+    pointer,
     replaceHeap({ next }: { next: Uint8Array }): void {
       heap = next;
     },

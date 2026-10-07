@@ -18,9 +18,12 @@ describe('synchronous projector tensor tracing', () => {
       fieldLayout: ({ field }: { field: string }) => ({ kind: field === 'ne' || field === 'src' ? 'array' : 'signed', offset: field === 'op' ? 0n : field === 'type' ? 4n : field === 'ne' ? 8n : 40n, size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 2 : 4 }),
       enumValues: ({ prefix }: { prefix: string }) => prefix === 'GGML_OP_' ? [{ name: 'GGML_OP_ADD', value: 2 }, { name: 'GGML_OP_POOL_COUNT', value: 2 }] : [{ name: 'GGML_TYPE_F16', value: 1 }],
       bytes: ({ pointer, length }: { pointer: bigint, length: number }) => memory.subarray(Number(pointer - tensorPointer), Number(pointer - tensorPointer) + length),
-      module: { addFunction: (fn: typeof callback) => {
-        callback = fn; return 9;
-      }, removeFunction: vi.fn() },
+      module: {
+        addFunction: (fn: typeof callback) => {
+          callback = fn; return 9;
+        },
+        removeFunction: vi.fn(),
+      },
     } as unknown as Core;
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} }); const trace = createProjectorTrace({ core });
     try {
@@ -61,9 +64,11 @@ describe('projector input tensor metadata', () => {
     const removeFunction = vi.fn();
     const core = {
       pointerBytes,
-      fieldLayout: ({ field }: { field: string }) => ({ kind: field === 'ne' || field === 'src' ? 'array' : 'signed',
+      fieldLayout: ({ field }: { field: string }) => ({
+        kind: field === 'ne' || field === 'src' ? 'array' : 'signed',
         offset: field === 'op' ? 0n : field === 'type' ? 4n : field === 'ne' ? 8n : 40n,
-        size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 10 : 4 }),
+        size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 10 : 4,
+      }),
       enumValues: ({ prefix }: { prefix: string }) => prefix === 'GGML_OP_'
         ? [{ name: 'GGML_OP_MUL_MAT', value: 29 }]
         : [{ name: 'GGML_TYPE_F32', value: 0 }, { name: 'GGML_TYPE_BF16', value: 30 }],
@@ -73,9 +78,12 @@ describe('projector input tensor metadata', () => {
         if (offset < 0 || offset + length > memory.length) throw new RangeError('Invalid metadata pointer');
         return memory.subarray(offset, offset + length);
       },
-      module: { addFunction: (fn: typeof callback) => {
-        callback = fn; return 11;
-      }, removeFunction },
+      module: {
+        addFunction: (fn: typeof callback) => {
+          callback = fn; return 11;
+        },
+        removeFunction,
+      },
     } as unknown as Core;
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
     const trace = createProjectorTrace({ core });
@@ -85,7 +93,8 @@ describe('projector input tensor metadata', () => {
       expect(callback(pointer, 0, 0)).toBe(1);
       const diagnostics = readDiagnostics({ calls: debug.mock.calls });
       expect(diagnostics[0]).toMatchObject({
-        nativeTensorType: 0, nativeTensorTypeName: 'GGML_TYPE_F32',
+        nativeTensorType: 0,
+        nativeTensorTypeName: 'GGML_TYPE_F32',
         nativeTensorInputs: [
           { index: 0, type: 30, typeName: 'GGML_TYPE_BF16', shape: [1152, 476, 1, 1] },
           { index: 1, type: 0, typeName: 'GGML_TYPE_F32', shape: [1152, 476, 1, 1] },

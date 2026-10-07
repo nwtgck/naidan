@@ -42,7 +42,8 @@ it('rejects an oversized decoded response before retaining its body as JSON', as
   const repositoryFetch = vi.fn<typeof fetch>(async () => new Response(new ReadableStream({
     start(controller) {
       controller.enqueue(new Uint8Array(256 * 1024 + 1));
-    }, cancel,
+    },
+    cancel,
   })));
   expect(await collectDownloadSizes({ request, repositoryFetch, signal: new AbortController().signal })).toEqual({ sizes: [], quotaLimited: false });
   expect(cancel).toHaveBeenCalledOnce();

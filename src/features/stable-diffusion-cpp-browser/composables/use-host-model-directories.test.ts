@@ -17,15 +17,23 @@ const handles = new Map<string, HostModelDirectoryHandle>();
 const picker = vi.fn();
 const failed = vi.fn(), changed = vi.fn(), stopDownload = vi.fn();
 function handle({ name }: { name: string }): HostModelDirectoryHandle {
-  const result = { kind: 'directory', name, getDirectoryHandle: vi.fn(),
-    queryPermission: vi.fn(async () => 'granted'), requestPermission: vi.fn(async () => 'granted'),
+  const result = {
+    kind: 'directory',
+    name,
+    getDirectoryHandle: vi.fn(),
+    queryPermission: vi.fn(async () => 'granted'),
+    requestPermission: vi.fn(async () => 'granted'),
     isSameEntry: vi.fn(async (entry: unknown) => entry === result),
   };
   return result as unknown as HostModelDirectoryHandle;
 }
 beforeEach(() => {
-  settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' },
-    experimental: { locale: 'ja', hostModelDirectories: [{ id, name: 'models' }] } });
+  settings = ref<Settings>({
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: { locale: 'ja', hostModelDirectories: [{ id, name: 'models' }] },
+  });
   update = vi.fn(async ({ updater }) => {
     settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
   });

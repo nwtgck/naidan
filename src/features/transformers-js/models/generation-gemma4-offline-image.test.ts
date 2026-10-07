@@ -34,15 +34,20 @@ describe('Gemma 4 offline image preparation', () => {
     const offlineFetch = createDownloadedModelWorkerFetch({
       originalFetch: localOnlyFetch,
       workerLocationUrl: 'https://naidan.example/assets/worker.js',
-      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
     });
     vi.stubGlobal('fetch', createHostedTransformersModelFetch({ runtimeFetch: offlineFetch }));
 
     const result = await buildGemma4TemplateInput({
-      messages: [{ role: 'user', content: [
-        { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
-        { type: 'image_url', image_url: { url: imageUrl } },
-      ] }],
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ],
+      }],
     });
 
     expect(result.images).toEqual(['decoded-fixture-image']);

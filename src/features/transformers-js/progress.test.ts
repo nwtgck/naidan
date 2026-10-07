@@ -91,9 +91,11 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe({ listener: ({ progress }) => {
-      lastProgress = progress;
-    } });
+    transformersJsService.subscribe({
+      listener: ({ progress }) => {
+        lastProgress = progress;
+      },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
@@ -121,9 +123,11 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe({ listener: ({ progress }) => {
-      lastProgress = progress;
-    } });
+    transformersJsService.subscribe({
+      listener: ({ progress }) => {
+        lastProgress = progress;
+      },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
@@ -163,9 +167,11 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe({ listener: ({ progress }) => {
-      lastProgress = progress;
-    } });
+    transformersJsService.subscribe({
+      listener: ({ progress }) => {
+        lastProgress = progress;
+      },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
@@ -207,9 +213,11 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     const progressHistory: number[] = [];
-    transformersJsService.subscribe({ listener: ({ progress }) => {
-      progressHistory.push(progress);
-    } });
+    transformersJsService.subscribe({
+      listener: ({ progress }) => {
+        progressHistory.push(progress);
+      },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
@@ -239,11 +247,13 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe({ listener: ({ status, progress }) => {
-      if (status === 'loading') {
-        lastProgress = progress;
-      }
-    } });
+    transformersJsService.subscribe({
+      listener: ({ status, progress }) => {
+        if (status === 'loading') {
+          lastProgress = progress;
+        }
+      },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 

@@ -19,7 +19,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
       const chat = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
@@ -37,7 +38,10 @@ vi.mock('../00-storage/service', () => ({
           id: `chat_group:${node.id}`,
           type: 'chat_group',
           chatGroup: {
-            id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
+            id: node.id,
+            name: 'Group',
+            isCollapsed: false,
+            updatedAt: 0,
             items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } })),
           },
         };
@@ -98,7 +102,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await chatStore.loadChats();
 
     // Move chat c1 to group g1
-    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' })});
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' }) });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -137,7 +141,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g2' })});
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g2' }) });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -180,8 +184,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('appends to the end of top level if no individual chats exist', async () => {
     const group1: ChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
-      updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'Group 1',
+      items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
+      updatedAt: 0,
+      isCollapsed: false,
     };
     mockGetSidebarStructure.mockResolvedValue([{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 }]);
     await chatStore.loadChats();
@@ -195,7 +202,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('updates currentChat.groupId if the moved chat is the current one', async () => {
     const chat: Chat = reactive({
-      id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+      id: 'c1',
+      title: 'C1',
+      groupId: null,
+      root: { items: [] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
     }) as any;
     __testOnlySetCurrentChat({ chat });
 
@@ -205,7 +218,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' })});
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' }) });
 
     expect(chat.groupId).toBe('g1');
     expect(chatStore.currentChat.value?.groupId).toBe('g1');

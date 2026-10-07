@@ -27,34 +27,70 @@ export function benchmarkManifest({ snapshot, includePrompts, includeInputImages
   const { plan, runs, state } = snapshot;
   const bytesIncluded = inputBytesIncluded({ preference: includeInputImages });
   return manifestSchema.parse({
-    schemaVersion: 1, kind: 'naidan-image-benchmark', id: plan.id, appVersion: plan.appVersion, createdAt: plan.createdAt, exportedAt, state,
-    notes: plan.notes, protocol: plan.protocol, inputImages: includeInputImages,
+    schemaVersion: 1,
+    kind: 'naidan-image-benchmark',
+    id: plan.id,
+    appVersion: plan.appVersion,
+    createdAt: plan.createdAt,
+    exportedAt,
+    state,
+    notes: plan.notes,
+    protocol: plan.protocol,
+    inputImages: includeInputImages,
     models: plan.models.map(({ target, request, overrides, preset }, index) => {
       const { prompt, negativePrompt, ...parameters } = request.parameters;
       const inputs = inputFiles({ modelIndex: index, request });
       const initial = inputs.find(input => input.role === 'initial');
-      const describe = ({ file, archivePath }: { file: File, archivePath: string }) => ({ path: file.name.split(/[\\/]/).at(-1) ?? '', bytes: file.size, lastModified: file.lastModified,
-        mime: file.type, ...(bytesIncluded ? { archivePath } : {}),
+      const describe = ({ file, archivePath }: { file: File, archivePath: string }) => ({
+        path: file.name.split(/[\\/]/).at(-1) ?? '',
+        bytes: file.size,
+        lastModified: file.lastModified,
+        mime: file.type,
+        ...(bytesIncluded ? { archivePath } : {}),
       });
-      return { index, id: target.id, label: target.label, detail: target.detail, family: target.facts.family, variant: target.facts.variant,
-        evidence: target.facts.evidence, composition: target.composition, preset, overrideKeys: Object.keys(overrides),
-        request: { artifact: request.artifact, parameters, promptsIncluded: includePrompts,
-          ...(includePrompts ? { prompt, negativePrompt } : {}), preview: request.preview, debug: request.debug,
-          weightResidency: request.weightResidency, gpuBudgetMiB: request.gpuBudgetMiB,
-          models: request.models.map(model => ({ slot: model.slot, localCandidateId: target.components.find(component => component.slot === model.slot)?.selected ?? target.id,
+      return {
+        index,
+        id: target.id,
+        label: target.label,
+        detail: target.detail,
+        family: target.facts.family,
+        variant: target.facts.variant,
+        evidence: target.facts.evidence,
+        composition: target.composition,
+        preset,
+        overrideKeys: Object.keys(overrides),
+        request: {
+          artifact: request.artifact,
+          parameters,
+          promptsIncluded: includePrompts,
+          ...(includePrompts ? { prompt, negativePrompt } : {}),
+          preview: request.preview,
+          debug: request.debug,
+          weightResidency: request.weightResidency,
+          gpuBudgetMiB: request.gpuBudgetMiB,
+          models: request.models.map(model => ({
+            slot: model.slot,
+            localCandidateId: target.components.find(component => component.slot === model.slot)?.selected ?? target.id,
             files: [{ path: model.path ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
-              ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))] })),
-          ...(request.loras.length ? { loras: request.loras.map(({ file, path, strength, ...unhandled }) => {
+              ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))],
+          })),
+          ...(request.loras.length ? {
+            loras: request.loras.map(({ file, path, strength, ...unhandled }) => {
             unhandled satisfies Record<PropertyKey, never>;
             return { file: { path: path ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
-          }) } : {}),
-          ...(inputs.length ? { imageInputs: {
-            initImage: initial ? describe(initial) : undefined,
-            ...(initial ? { strength: request.imageInputs.strength } : {}),
-            referenceImages: inputs.filter(input => input.role === 'reference').map(describe),
-            preprocessing: 'native-resize-white-alpha', bytesIncluded,
-          } } : {}),
-        } };
+            }),
+          } : {}),
+          ...(inputs.length ? {
+            imageInputs: {
+              initImage: initial ? describe(initial) : undefined,
+              ...(initial ? { strength: request.imageInputs.strength } : {}),
+              referenceImages: inputs.filter(input => input.role === 'reference').map(describe),
+              preprocessing: 'native-resize-white-alpha',
+              bytesIncluded,
+            },
+          } : {}),
+        },
+      };
     }),
     runs: runs.map(run => run.record),
     limitations: [
@@ -76,8 +112,13 @@ export function benchmarkAggregate({ snapshot }: { snapshot: BenchmarkSnapshot }
     const warm = modelRuns.filter(({ record }) => record.status === 'succeeded' && record.plannedKind === 'warm' && record.metrics.reuse?.reusedWorker === true);
     const cold = modelRuns.filter(({ record }) => record.status === 'succeeded' && record.plannedKind === 'cold' && record.metrics.reuse?.reusedWorker === false);
     const times = ({ kind }: { kind: typeof warm }) => kind.flatMap(run => run.record.elapsedMs === undefined ? [] : [run.record.elapsedMs]);
-    return { modelIndex, label: target.label, warmSamples: warm.length, coldSamples: cold.length,
-      warmMedianMs: medianMilliseconds({ values: times({ kind: warm }) }), coldMedianMs: medianMilliseconds({ values: times({ kind: cold }) }),
+    return {
+      modelIndex,
+      label: target.label,
+      warmSamples: warm.length,
+      coldSamples: cold.length,
+      warmMedianMs: medianMilliseconds({ values: times({ kind: warm }) }),
+      coldMedianMs: medianMilliseconds({ values: times({ kind: cold }) }),
       succeeded: modelRuns.filter(run => run.record.status === 'succeeded').length,
       failed: modelRuns.filter(run => run.record.status === 'failed').length,
       missingReuseEvidence: modelRuns.filter(run => run.record.status === 'succeeded' && run.record.metrics.reuse === undefined).length,

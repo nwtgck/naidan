@@ -12,7 +12,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    phase: 'load',
+    modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+    revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
     corePath: 'onnx/decoder_model_merged_q4f16.onnx',
     externalData: [
       { path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' },
@@ -20,7 +22,9 @@ const expectedSessions = [
     executionProviders: ['webgpu'],
   },
   {
-    phase: 'load', modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    phase: 'load',
+    modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+    revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
     corePath: 'onnx/embed_tokens_q4f16.onnx',
     externalData: [
       { path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' },
@@ -28,7 +32,9 @@ const expectedSessions = [
     executionProviders: ['webgpu'],
   },
   {
-    phase: 'load', modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    phase: 'load',
+    modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+    revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
     corePath: 'onnx/vision_encoder_q4f16.onnx',
     externalData: [
       { path: 'vision_encoder_q4f16.onnx_data', artifactPath: 'onnx/vision_encoder_q4f16.onnx_data' },

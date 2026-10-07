@@ -18,14 +18,25 @@ const detection = vi.hoisted(() => ({ inspect: vi.fn<typeof inspectStoredAudioMo
 vi.mock('./model-detection', async importOriginal => ({ ...await importOriginal<typeof import('./model-detection')>(), inspectStoredAudioModel: detection.inspect }));
 
 const service = vi.hoisted(() => ({
-  getState: vi.fn<LlamaCppBrowserService['getState']>(), getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(),
-  subscribe: vi.fn<LlamaCppBrowserService['subscribe']>(), generateAudio: vi.fn<LlamaCppBrowserService['generateAudio']>(),
-  restartRuntime: vi.fn<LlamaCppBrowserService['restartRuntime']>(), cancel: vi.fn(), release: vi.fn(), setOptions: vi.fn(), unsubscribe: vi.fn(),
+  getState: vi.fn<LlamaCppBrowserService['getState']>(),
+  getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(),
+  subscribe: vi.fn<LlamaCppBrowserService['subscribe']>(),
+  generateAudio: vi.fn<LlamaCppBrowserService['generateAudio']>(),
+  restartRuntime: vi.fn<LlamaCppBrowserService['restartRuntime']>(),
+  cancel: vi.fn(),
+  release: vi.fn(),
+  setOptions: vi.fn(),
+  unsubscribe: vi.fn(),
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({ default: defineComponent({
-  name: 'LlamaCppBrowserManager', props: ['suggestions'], emits: ['modelsChanged', 'modelSelected', 'runtimeReady'], template: '<div />',
-}) }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
+  default: defineComponent({
+    name: 'LlamaCppBrowserManager',
+    props: ['suggestions'],
+    emits: ['modelsChanged', 'modelSelected', 'runtimeReady'],
+    template: '<div />',
+  }),
+}));
 const urls = { create: vi.fn(), revoke: vi.fn() };
 let wrapper: VueWrapper | undefined;
 beforeEach(async () => {

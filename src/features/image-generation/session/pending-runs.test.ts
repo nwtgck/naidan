@@ -9,15 +9,21 @@ function harness() {
   const sessionId = toImageGenerationSessionId({ raw: 'session-aa' });
   const plan = generationRunFixture({ id: 'run-aa', sessionId, count: 1, seed: '42' });
   const snapshot: ImageGenerationSnapshot = { id: toImageGenerationId({ raw: 'image-aa' }), createdAt: 1, request: plan.request, inputFiles: [] };
-  const persistence = { create: vi.fn<ImageGenerationRunPersistence['create']>().mockResolvedValue(undefined),
+  const persistence = {
+    create: vi.fn<ImageGenerationRunPersistence['create']>().mockResolvedValue(undefined),
     commit: vi.fn<ImageGenerationRunPersistence['commit']>().mockResolvedValue(undefined),
-    update: vi.fn<ImageGenerationRunPersistence['update']>().mockResolvedValue(undefined) };
+    update: vi.fn<ImageGenerationRunPersistence['update']>().mockResolvedValue(undefined),
+  };
   const store = { storageType: 'opfs' as const, storeId: toImageGenerationStoreId({ raw: 'store-aa' }) };
   const registry = createImagePendingRuns({ maxRuns: 2, byteLimit: 1024 });
   const create = () => registry.create({ store, sessionId, count: 1, sources: [], persistence });
   const owner = create();
-  const output = finishImageGenerationSnapshot({ snapshot,
-    result: { png: new Blob(['pixels']), width: 256, height: 256, modelVersion: 'version', uniformOutput: false }, previews: [], elapsedMs: 2 });
+  const output = finishImageGenerationSnapshot({
+    snapshot,
+    result: { png: new Blob(['pixels']), width: 256, height: 256, modelVersion: 'version', uniformOutput: false },
+    previews: [],
+    elapsedMs: 2,
+  });
   return { registry, owner, create, snapshot, output, plan, persistence, store };
 }
 it('keeps confirmed pixels and original identities after the view unsubscribes', async () => {
@@ -51,9 +57,11 @@ it('does not discard or retry a live producer and never evicts another run at ca
   await h.owner.retire(); expect(h.registry.list()).toEqual([]);
 });
 it('a persistence observer exception cannot reclassify a successful storage operation', async () => {
-  const h = harness(); h.registry.subscribe({ listener: () => {
-    throw new Error('detached render');
-  } });
+  const h = harness(); h.registry.subscribe({
+    listener: () => {
+      throw new Error('detached render');
+    },
+  });
   await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   await h.owner.submission.output({ index: 0, ...h.output });
   await h.owner.submission.finished({ completion: { type: 'completed' } }); await h.owner.retire();

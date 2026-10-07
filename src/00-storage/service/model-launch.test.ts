@@ -8,11 +8,15 @@ import { hierarchyToDomain } from '@/00-storage/mapper/mappers';
 function request({ suffix, quant }: { suffix: string, quant: string }): ModelLaunchChatRequest {
   const repository = 'owner/Model-GGUF'; const mainFilePath = `Model-${quant}.gguf`;
   return {
-    chatId: toChatId({ raw: `chat-${suffix}` }), newChatGroupId: toChatGroupId({ raw: `cg-${suffix}` }), chatGroupName: `Model · ${quant}`,
-    input: `hf.co/${repository}`, requestedVariant: undefined,
+    chatId: toChatId({ raw: `chat-${suffix}` }),
+    newChatGroupId: toChatGroupId({ raw: `cg-${suffix}` }),
+    chatGroupName: `Model · ${quant}`,
+    input: `hf.co/${repository}`,
+    requestedVariant: undefined,
     target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: huggingFaceModelId({ repository, modelPath: mainFilePath }) },
     titleGeneration: { endpoint: { type: 'openai', url: 'https://external.example' }, model: { id: 'external' }, lmParameters: { ...EMPTY_LM_PARAMETERS } },
-    mode: 'create-or-resume', expectedTarget: undefined,
+    mode: 'create-or-resume',
+    expectedTarget: undefined,
   };
 }
 describe('recoverable model launch persistence', () => {

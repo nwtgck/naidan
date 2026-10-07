@@ -10,9 +10,14 @@ function harness() {
   const done = Promise.resolve();
   const pop = Promise.resolve({ message: 'allocation error' });
   const device = Object.assign(new EventTarget(), {
-    features: new Set(['shader-f16']), limits: { maxBufferSize: 1024, maxStorageBufferBindingSize: 512, maxComputeWorkgroupsPerDimension: 65535 },
-    lost: new Promise(() => {}), createShaderModule: vi.fn(() => ({})), createBuffer: vi.fn(() => buffer), createComputePipeline: vi.fn(() => pipeline),
-    createComputePipelineAsync: vi.fn(() => Promise.resolve(pipeline)), popErrorScope: vi.fn(() => pop),
+    features: new Set(['shader-f16']),
+    limits: { maxBufferSize: 1024, maxStorageBufferBindingSize: 512, maxComputeWorkgroupsPerDimension: 65535 },
+    lost: new Promise(() => {}),
+    createShaderModule: vi.fn(() => ({})),
+    createBuffer: vi.fn(() => buffer),
+    createComputePipeline: vi.fn(() => pipeline),
+    createComputePipelineAsync: vi.fn(() => Promise.resolve(pipeline)),
+    popErrorScope: vi.fn(() => pop),
     queue: { writeBuffer: vi.fn(), submit: vi.fn(), onSubmittedWorkDone: vi.fn(() => done) },
   });
   const adapter = { requestDevice: vi.fn(async () => device) };
@@ -94,8 +99,18 @@ it('counts caller bytes and physical dispatches without adding device work or ch
   const dispatch = vi.fn(), indirect = vi.fn(), beginPass = vi.fn(() => ({ dispatchWorkgroups: dispatch, dispatchWorkgroupsIndirect: indirect }));
   const copy = vi.fn(), createEncoder = vi.fn(() => ({ copyBufferToBuffer: copy, beginComputePass: beginPass }));
   const q = { writeBuffer: vi.fn(), submit: vi.fn(), onSubmittedWorkDone: vi.fn(() => Promise.resolve()) };
-  const device = Object.assign(new EventTarget(), { features: new Set(['timestamp-query']), limits: { maxBufferSize: 1024, maxStorageBufferBindingSize: 1024, maxComputeWorkgroupsPerDimension: 65535 },
-    lost: new Promise(() => {}), createBuffer: vi.fn(() => source), createShaderModule: vi.fn(), createComputePipeline: vi.fn(), createComputePipelineAsync: vi.fn(async () => ({})), createCommandEncoder: createEncoder, popErrorScope: vi.fn(() => Promise.resolve(null)), queue: q });
+  const device = Object.assign(new EventTarget(), {
+    features: new Set(['timestamp-query']),
+    limits: { maxBufferSize: 1024, maxStorageBufferBindingSize: 1024, maxComputeWorkgroupsPerDimension: 65535 },
+    lost: new Promise(() => {}),
+    createBuffer: vi.fn(() => source),
+    createShaderModule: vi.fn(),
+    createComputePipeline: vi.fn(),
+    createComputePipelineAsync: vi.fn(async () => ({})),
+    createCommandEncoder: createEncoder,
+    popErrorScope: vi.fn(() => Promise.resolve(null)),
+    queue: q,
+  });
   const originalDone = q.onSubmittedWorkDone;
   const adapter = { features: new Set(['timestamp-query']), requestDevice: vi.fn(async () => device) }, gpu = { requestAdapter: vi.fn(async () => adapter) };
   vi.stubGlobal('navigator', { gpu });
@@ -166,12 +181,19 @@ it('reports missing coverage rather than changing an immutable GPU method', asyn
 it('does not re-read a creation descriptor and never replaces a native result with invalid metadata', async () => {
   const h = harness(); h.observation.beginRun({ runId: 1 });
   let reads = 0;
-  const descriptor = { get size() {
-    reads++; return 16;
-  }, usage: 0x80 };
-  const raw = { get size() {
-    throw new Error('observation unavailable');
-  }, usage: 0x80, mapAsync: vi.fn(async () => undefined) };
+  const descriptor = {
+    get size() {
+      reads++; return 16;
+    },
+    usage: 0x80,
+  };
+  const raw = {
+    get size() {
+      throw new Error('observation unavailable');
+    },
+    usage: 0x80,
+    mapAsync: vi.fn(async () => undefined),
+  };
   h.original.buffer.mockImplementation((...args: unknown[]) => {
     void (args[0] as GPUBufferDescriptor).size; return raw as unknown as typeof h.buffer;
   });

@@ -13,7 +13,8 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-llama-cpp-browser' });
   const remote = wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: worker });
   return createLlamaCppWorkerSessionClient({
-    worker, remote,
+    worker,
+    remote,
     disposeTransport() {
       try {
         void Promise.resolve(releaseWorkerRemote({ remote })).catch(() => {});

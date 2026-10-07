@@ -143,10 +143,15 @@ it('a request arriving during encryption retains its wake and is acknowledged by
 it('an authenticated receipt for a prepared but unoffered record cannot apply its accompanying stream state', async () => {
   const { session, sender } = await receiver();
   await session.makeCapsule({ reason: 'idle-resend' });
-  const capsule = await sender.seal({ plaintext: encodeRecordPayload({ payload: {
-    receiptRequest: 'not-requested', receivedRecord: 0n,
-    snapshot: { ...emptySnapshot(), states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
-  } }) });
+  const capsule = await sender.seal({
+    plaintext: encodeRecordPayload({
+      payload: {
+        receiptRequest: 'not-requested',
+        receivedRecord: 0n,
+        snapshot: { ...emptySnapshot(), states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
+      },
+    }),
+  });
   await expect(session.acceptCapsule({ capsule })).rejects.toThrow('unoffered');
   expect(session.debug()).toMatchObject({ retained: 0, receivedRecord: '-1' });
 });
@@ -158,10 +163,15 @@ it('invalid stream semantics cannot confirm an otherwise valid receipt', async (
   const transmission = await session.makeCapsule({ reason: 'idle-resend' });
   const release = transmission.start({ onReceived: received });
   try {
-    const capsule = await sender.seal({ plaintext: encodeRecordPayload({ payload: {
-      receiptRequest: 'requested', receivedRecord: 0n,
-      snapshot: { ...emptySnapshot(), states: [{ id: 0, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
-    } }) });
+    const capsule = await sender.seal({
+      plaintext: encodeRecordPayload({
+        payload: {
+          receiptRequest: 'requested',
+          receivedRecord: 0n,
+          snapshot: { ...emptySnapshot(), states: [{ id: 0, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
+        },
+      }),
+    });
     await expect(session.acceptCapsule({ capsule })).rejects.toThrow('unallocated');
     await rejected;
     expect(received).not.toHaveBeenCalled();

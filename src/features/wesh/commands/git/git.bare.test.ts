@@ -119,23 +119,29 @@ GIT_DIR=/repo.git git rev-parse --is-bare-repository`,
   it('rejects worktree-dependent status and diff without mutating a bare repository', async () => {
     await createBareRepository();
 
-    const status = await execute({ script: `\
+    const status = await execute({
+      script: `\
 cd /repo.git
-git status --short` });
+git status --short`,
+    });
     expect(status.result.exitCode).toBe(128);
     expect(status.stdout.text).toBe('');
     expect(status.stderr.text).toBe('fatal: this operation must be run in a work tree\n');
 
-    const diff = await execute({ script: `\
+    const diff = await execute({
+      script: `\
 cd /repo.git
-git diff` });
+git diff`,
+    });
     expect(diff.result.exitCode).toBe(128);
     expect(diff.stdout.text).toBe('');
     expect(diff.stderr.text).toBe('fatal: this operation must be run in a work tree\n');
 
-    const repositoryOnlyDiff = await execute({ script: `\
+    const repositoryOnlyDiff = await execute({
+      script: `\
 cd /repo.git
-git diff --quiet HEAD HEAD` });
+git diff --quiet HEAD HEAD`,
+    });
     expect(repositoryOnlyDiff.result.exitCode).toBe(0);
     expect(repositoryOnlyDiff.stdout.text).toBe('');
     expect(repositoryOnlyDiff.stderr.text).toBe('');
@@ -143,9 +149,11 @@ git diff --quiet HEAD HEAD` });
 
   it('rejects --show-toplevel in a bare repository', async () => {
     await createBareRepository();
-    const { result, stdout, stderr } = await execute({ script: `\
+    const { result, stdout, stderr } = await execute({
+      script: `\
 cd /repo.git
-git rev-parse --show-toplevel` });
+git rev-parse --show-toplevel`,
+    });
 
     expect(result.exitCode).toBe(128);
     expect(stdout.text).toBe('');

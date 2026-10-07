@@ -83,19 +83,30 @@ it('a declared huge frame is rejected before the payload is read or allocated', 
 it('retains only arrived payload bytes when six peers declare maximum-sized frames and stall', async () => {
   const allocations: number[] = [], Original = Uint8Array;
   const channels: FramedDuplex[] = [], pending: Promise<unknown>[] = [];
-  vi.stubGlobal('Uint8Array', new Proxy(Original, { construct(constructor, args) {
-    if (typeof args[0] === 'number') {
-      allocations.push(args[0]);
-      if (args[0] > 1024) throw new Error('Declared length allocated before body arrival');
-    }
-    return Reflect.construct(constructor, args);
-  } }));
+  vi.stubGlobal('Uint8Array', new Proxy(Original, {
+    construct(constructor, args) {
+      if (typeof args[0] === 'number') {
+        allocations.push(args[0]);
+        if (args[0] > 1024) throw new Error('Declared length allocated before body arrival');
+      }
+      return Reflect.construct(constructor, args);
+    },
+  }));
   try {
     for (let index = 0; index < 6; index++) {
       const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
-      const wire = new FramedDuplex({ duplex: { readable: new ReadableStream({ start(controller) {
-        controller.enqueue(header); controller.enqueue(new Original([1]));
-      } }), writable: new WritableStream(), closed: new Promise(() => {}), abort: () => {} } });
+      const wire = new FramedDuplex({
+        duplex: {
+          readable: new ReadableStream({
+            start(controller) {
+              controller.enqueue(header); controller.enqueue(new Original([1]));
+            },
+          }),
+          writable: new WritableStream(),
+          closed: new Promise(() => {}),
+          abort: () => {},
+        },
+      });
       channels.push(wire); pending.push(wire.read().catch(error => error));
     }
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -144,10 +155,16 @@ it('repeating STOP while a producer cancellation waits cannot create unbounded c
     waiting.resolve(); controller.abort(); transport.close();
   });
   const definition = contract({ name: 'raw-stop', methods: { run: procedure({ input: rpc.byteStream(), result: z.number(), notifications: {} }) } });
-  const call = peer.client({ contract: definition }).run({ input: new ReadableStream<Uint8Array>({ async cancel() {
-    cancellations++; await waiting.promise;
-  } }, { highWaterMark: 0 }),
-  on: {}, signal: undefined, timeoutMs: 1000 });
+  const call = peer.client({ contract: definition }).run({
+    input: new ReadableStream<Uint8Array>({
+      async cancel() {
+        cancellations++; await waiting.promise;
+      },
+    }, { highWaterMark: 0 }),
+    on: {},
+    signal: undefined,
+    timeoutMs: 1000,
+  });
   const incoming = await transport.b.incomingStreams[Symbol.asyncIterator]().next(); if (incoming.done) throw new Error('Missing stream');
   const wire = new FramedDuplex({ duplex: incoming.value }); await wire.read();
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [1] } });
@@ -160,15 +177,24 @@ it.each(['wrong-type', 'reference'] as const)('retires an awaiting callback afte
   const api = contract({ name: 'raw-callback', methods: { run: procedure({ input: rpc.callback({ input: z.number(), result: z.number() }), result: z.number(), notifications: {} }) } });
   const transport = transportPair({ capacity: 1, fragmentBytes: 101 });
   const completed = Promise.withResolvers<void>();
-  const peer = new NaidanRpcPeer({ transport: transport.a, exports: [expose({ contract: api, allowedMethods: ['run'], implementation: {
-    async run({ input }) {
-      try {
-        return await input(3);
-      } finally {
-        completed.resolve();
-      }
-    },
-  } })], limits: { maxCalls: 1, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
+  const peer = new NaidanRpcPeer({
+    transport: transport.a,
+    exports: [expose({
+      contract: api,
+      allowedMethods: ['run'],
+      implementation: {
+        async run({ input }) {
+          try {
+            return await input(3);
+          } finally {
+            completed.resolve();
+          }
+        },
+      },
+    })],
+    limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
+    signal: new AbortController().signal,
+  });
   cleanups.push(() => {
     peer.dispose(); transport.close();
   });
@@ -188,10 +214,18 @@ it('strips finite envelope extensions after inspecting their raw capability refe
   const read = async ({ value }: { value: unknown }) => {
     const payload = encode({ value, limit: FRAME_BYTES }), bytes = new Uint8Array(payload.length + 4);
     new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
-    const wire = new FramedDuplex({ duplex: { readable: new ReadableStream({ start(controller) {
-      controller.enqueue(bytes); controller.close();
-    } }),
-    writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} } });
+    const wire = new FramedDuplex({
+      duplex: {
+        readable: new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes); controller.close();
+          },
+        }),
+        writable: new WritableStream(),
+        closed: Promise.resolve(),
+        abort: () => {},
+      },
+    });
     try {
       return await wire.read();
     } finally {

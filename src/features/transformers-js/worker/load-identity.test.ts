@@ -16,9 +16,16 @@ function route() {
 }
 function ready() {
   return {
-    status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'hf.co/synthetic/model', requestedRevision: { status: 'provided', value: 'synthetic-revision' },
-    cleanModelId: 'synthetic/model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
-    selectedCandidate: { device: 'wasm', dtype: 'q4' }, resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+    status: 'ready',
+    workerLoadOrdinal: 1,
+    requestedModelId: 'hf.co/synthetic/model',
+    requestedRevision: { status: 'provided', value: 'synthetic-revision' },
+    cleanModelId: 'synthetic/model',
+    autoClass: 'AutoModelForCausalLM',
+    processor: 'tokenizer',
+    selectedCandidate: { device: 'wasm', dtype: 'q4' },
+    resolvedRevision: { status: 'not-observed' },
+    sessionExecutionProvider: { status: 'not-observed' },
   };
 }
 

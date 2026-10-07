@@ -52,9 +52,11 @@ function createClient({
     resultState: 'complete',
   });
   const startDirectoryArchive = vi.fn(() => ({
-    stream: new ReadableStream<Uint8Array>({ start(controller) {
-      controller.close();
-    } }),
+    stream: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
     result: archiveResult,
     cancel: cancelArchive,
   }));
@@ -176,7 +178,9 @@ describe('useFileExplorerDirectoryDownload', () => {
     const anchor = document.querySelector('a');
     expect(anchor).toBeNull();
     expect(downloadReadableStream).toHaveBeenCalledWith(expect.objectContaining({
-      stream: expect.any(ReadableStream), size: undefined, signal: expect.any(AbortSignal),
+      stream: expect.any(ReadableStream),
+      size: undefined,
+      signal: expect.any(AbortSignal),
     }));
     expect(controller.state.visibility).toBe('hidden');
   });

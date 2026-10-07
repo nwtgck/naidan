@@ -7,7 +7,11 @@ const filename = 'naidan-rpc-connections.json';
 /** A writable buffers changes until close, as an OPFS replacement does. */
 function opfsFixture() {
   const failures: { directoryLookup: Error | undefined, lookup: Error | undefined, read: Error | undefined, write: Error | undefined, close: Error | undefined } = {
-    directoryLookup: undefined, lookup: undefined, read: undefined, write: undefined, close: undefined,
+    directoryLookup: undefined,
+    lookup: undefined,
+    read: undefined,
+    write: undefined,
+    close: undefined,
   };
   const aborted = vi.fn();
   class MockDirectory {

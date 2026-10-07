@@ -11,19 +11,37 @@ const state = vi.hoisted(() => ({ support: 'unsupported' as 'supported' | 'unsup
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => {
   const original = await importOriginal<typeof import('@/utils/worker-transport')>();
-  return { ...original, wrapWorkerRemote: () => {
-    const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
-      await state.appendGate; return append({ bytes });
-    }; return writer;
-  }, releaseWorkerRemote: () => {}, workerTransfer: ({ value }: { value: object }) => value,
-  workerProxy: ({ value }: { value: object }) => value, workerCapability: vi.fn(({ value }: { value: object }) => value), getReadableStreamTransferSupport: async () => state.support };
+  return {
+    ...original,
+    wrapWorkerRemote: () => {
+      const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
+        await state.appendGate; return append({ bytes });
+      }; return writer;
+    },
+    releaseWorkerRemote: () => {},
+    workerTransfer: ({ value }: { value: object }) => value,
+    workerProxy: ({ value }: { value: object }) => value,
+    workerCapability: vi.fn(({ value }: { value: object }) => value),
+    getReadableStreamTransferSupport: async () => state.support,
+  };
 });
 const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'model.gguf', size: 128 }] };
 function response({ status, offset, bytes }: { status: number, offset: number, bytes: Uint8Array<ArrayBuffer>[] }): Awaited<ReturnType<typeof privacyFetchStream>> {
-  return { status, statusText: '', ok: status < 400, url: '', redirected: false, responseType: 'basic', policyName: 'test', headers: new Headers(status === 206 ? { 'content-range': `bytes ${offset}-127/128` } : {}),
-    body: new ReadableStream<Uint8Array<ArrayBuffer>>({ pull(controller) {
-      const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
-    } }, { highWaterMark: 0 }) };
+  return {
+    status,
+    statusText: '',
+    ok: status < 400,
+    url: '',
+    redirected: false,
+    responseType: 'basic',
+    policyName: 'test',
+    headers: new Headers(status === 206 ? { 'content-range': `bytes ${offset}-127/128` } : {}),
+    body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull(controller) {
+        const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
+      },
+    }, { highWaterMark: 0 }),
+  };
 }
 beforeEach(() => {
   vi.clearAllMocks(); state.support = 'unsupported'; state.appendGate = undefined; const root = memoryDirectory({ name: '' });
@@ -83,9 +101,13 @@ describe('download orchestration', () => {
   it('pauses after acknowledged bytes and resumes a pinned SHA through validated 206', async () => {
     const controller = new AbortController();
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64), ggufBytes().slice(64)] }));
-    await expect(downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-      if (progress.completed === 64) controller.abort();
-    } })).rejects.toThrow();
+    await expect(downloadRepository({
+      selection,
+      signal: controller.signal,
+      onProgress: ({ progress }) => {
+        if (progress.completed === 64) controller.abort();
+      },
+    })).rejects.toThrow();
     expect((await listPendingDownloads())[0]?.bytes).toEqual([64]);
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 206, offset: 64, bytes: [ggufBytes().slice(64)] }));
     const progress: DownloadProgress[] = [];
@@ -120,11 +142,13 @@ describe('download orchestration', () => {
     const gate = Promise.withResolvers<void>(); state.appendGate = gate.promise;
     const entered = Promise.withResolvers<void>(); let pulls = 0;
     const source = response({ status: 200, offset: 0, bytes: [] });
-    source.body = new ReadableStream<Uint8Array<ArrayBuffer>>({ pull(controller) {
-      pulls++; if (pulls === 1) {
-        controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
-      } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
-    } }, { highWaterMark: 0 });
+    source.body = new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull(controller) {
+        pulls++; if (pulls === 1) {
+          controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
+        } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
+      },
+    }, { highWaterMark: 0 });
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(source);
     const download = downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
     await entered.promise; await Promise.resolve(); expect(pulls).toBe(1);
@@ -142,8 +166,12 @@ describe('download orchestration', () => {
 
 it('can cancel when the next file is reported before any network request is made', async () => {
   const controller = new AbortController();
-  await expect(downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-    if (progress.currentFileIndex === 0) controller.abort();
-  } })).rejects.toMatchObject({ name: 'AbortError' });
+  await expect(downloadRepository({
+    selection,
+    signal: controller.signal,
+    onProgress: ({ progress }) => {
+      if (progress.currentFileIndex === 0) controller.abort();
+    },
+  })).rejects.toMatchObject({ name: 'AbortError' });
   expect(privacyFetchStream).not.toHaveBeenCalled();
 });

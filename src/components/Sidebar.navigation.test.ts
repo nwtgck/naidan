@@ -161,7 +161,12 @@ describe('Sidebar Keyboard Navigation', () => {
       if (typeof options.top === 'number') this.scrollTop = options.top;
     });
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
-      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0,
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
     });
 
     mockActiveFocusArea.value = 'sidebar';
@@ -336,7 +341,10 @@ describe('Sidebar Keyboard Navigation', () => {
 
   it('jumps to parent group on ArrowLeft from a grouped chat', async () => {
     const group1: ChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'Group 1',
+      isCollapsed: false,
+      updatedAt: 0,
       items: [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }],
     };
     mockChatGroups.value = [group1];
@@ -377,7 +385,10 @@ describe('Sidebar Keyboard Navigation', () => {
   it('recovers navigation when current item is hidden (e.g. parent collapsed)', async () => {
     mockChatGroups.value = [
       {
-        id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: true, updatedAt: 0,
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'G1',
+        isCollapsed: true,
+        updatedAt: 0,
         items: [{ id: 'chat:hidden', type: 'chat', chat: { id: toChatId({ raw: 'hidden' }), title: 'Hidden', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }],
       },
       { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] },

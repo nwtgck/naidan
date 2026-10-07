@@ -27,56 +27,73 @@ import { createChatMessageSnapshot } from '@/01-models/chat-message';
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const rawHistory = parseProviderReplayTextEvidence({ value: rawHistoryJson });
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('a8217db0966688e510df7388d343187710be5b84bc291acf384586b15166bc32'),
-  modelId: z.literal('LiquidAI/LFM2.5-2.6B-ONNX'), revision: z.literal('66826372fd4fa166f53be0371c9315745c07cace'),
+  modelId: z.literal('LiquidAI/LFM2.5-2.6B-ONNX'),
+  revision: z.literal('66826372fd4fa166f53be0371c9315745c07cace'),
   cases: z.array(z.object({
     caseId: z.enum(['system-user-generation', 'multi-turn-generation']),
     messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
     addGenerationPrompt: z.literal(true),
     selectedTemplateSha256: z.literal('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c'),
-    renderedText: z.string(), inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
+    renderedText: z.string(),
+    inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
   }).strict()).length(2),
 }).strict().parse(inputJson);
 
 const toolUserSchema = z.object({ role: z.literal('user'), content: z.string() }).strict();
 const toolAssistantSchema = z.object({
-  role: z.literal('assistant'), content: z.literal(''),
+  role: z.literal('assistant'),
+  content: z.literal(''),
   tool_calls: z.tuple([z.object({
-    id: z.literal('call_template_probe_1'), type: z.literal('function'),
+    id: z.literal('call_template_probe_1'),
+    type: z.literal('function'),
     function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
   }).strict()]),
 }).strict();
 const toolResultSchema = z.object({
-  role: z.literal('tool'), tool_call_id: z.literal('call_template_probe_1'), content: z.string(),
+  role: z.literal('tool'),
+  tool_call_id: z.literal('call_template_probe_1'),
+  content: z.string(),
 }).strict();
 const nativeToolsSchema = z.tuple([z.object({
   type: z.literal('function'),
   function: z.object({
-    name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+    name: z.literal('lookup_weather'),
+    description: z.literal('Return deterministic weather fixture data.'),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+      type: z.literal('object'),
+      properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
       required: z.tuple([z.literal('city')]),
     }).strict(),
   }).strict(),
 }).strict()]);
 
 const nativeToolCaseSchema = z.object({
-  tools: nativeToolsSchema, addGenerationPrompt: z.literal(true),
+  tools: nativeToolsSchema,
+  addGenerationPrompt: z.literal(true),
   selectedTemplateSha256: z.literal('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c'),
 }).strict();
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('a8217db0966688e510df7388d343187710be5b84bc291acf384586b15166bc32'),
-  modelId: z.literal('LiquidAI/LFM2.5-2.6B-ONNX'), revision: z.literal('66826372fd4fa166f53be0371c9315745c07cace'),
+  modelId: z.literal('LiquidAI/LFM2.5-2.6B-ONNX'),
+  revision: z.literal('66826372fd4fa166f53be0371c9315745c07cace'),
   cases: z.tuple([
     nativeToolCaseSchema.extend({
-      caseId: z.literal('tools-generation'), messages: z.tuple([toolUserSchema]), status: z.literal('passed'),
-      renderedText: z.string(), inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
+      caseId: z.literal('tools-generation'),
+      messages: z.tuple([toolUserSchema]),
+      status: z.literal('passed'),
+      renderedText: z.string(),
+      inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
     }),
     nativeToolCaseSchema.extend({
-      caseId: z.literal('tool-result-continuation'), messages: z.tuple([toolUserSchema, toolAssistantSchema, toolResultSchema]),
-      status: z.literal('failed'), failureStage: z.literal('render'),
+      caseId: z.literal('tool-result-continuation'),
+      messages: z.tuple([toolUserSchema, toolAssistantSchema, toolResultSchema]),
+      status: z.literal('failed'),
+      failureStage: z.literal('render'),
       error: z.object({
         name: z.literal('Error'),
         message: z.literal('Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template'),
@@ -85,23 +102,31 @@ const toolInputEvidence = z.object({
   ]),
 }).strict().parse(toolInputJson);
 const observedToolMessagesSchema = z.array(z.object({
-  role: z.enum(['user', 'assistant', 'tool']), content: z.string(), tool_call_id: z.string().optional(),
+  role: z.enum(['user', 'assistant', 'tool']),
+  content: z.string(),
+  tool_call_id: z.string().optional(),
   tool_calls: z.tuple([z.object({
-    id: z.string(), type: z.literal('function'),
+    id: z.string(),
+    type: z.literal('function'),
     function: z.object({
-      name: z.string(), arguments: z.object({ city: z.string() }).strict(),
+      name: z.string(),
+      arguments: z.object({ city: z.string() }).strict(),
     }).strict(),
   }).strict()]).optional(),
 }).strict());
-const strictLfm26Tools = [{ type: 'function', function: {
-  name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-  parameters: {
-    type: 'object',
-    properties: { city: { type: 'string' } },
-    required: ['city'],
-    additionalProperties: false
+const strictLfm26Tools = [{
+  type: 'function',
+  function: {
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+      additionalProperties: false,
+    },
   },
-} }];
+}];
 const LFM26_TOOL_INPUT_STOP = 'LFM2.6 tool input captured; no inference output supplied';
 
 function textMessages({ messages }: {
@@ -110,7 +135,8 @@ function textMessages({ messages }: {
   return messages.map(({ role, content, ...unhandled }, index) => {
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<ChatMessage>()({
-      id: toMessageId({ raw: `message_${index}` }), role,
+      id: toMessageId({ raw: `message_${index}` }),
+      role,
       parts: [{ type: 'text', text: content, completeness: 'complete' }],
     });
   });
@@ -120,12 +146,15 @@ function captureLfm26Chat({ provider, request }: {
   provider: Parameters<typeof captureProviderChat>[0]['provider'],
   request: Omit<CapturedChatRequest, 'readBinaryObject' | 'debug' | 'signal'> & Partial<Pick<CapturedChatRequest, 'readBinaryObject' | 'debug' | 'signal'>>,
 }): ProviderChatCapture {
-  return captureProviderChat({ provider, request: {
-    ...request,
-    readBinaryObject: request.readBinaryObject,
-    debug: request.debug,
-    signal: request.signal ?? new AbortController().signal,
-  } });
+  return captureProviderChat({
+    provider,
+    request: {
+      ...request,
+      readBinaryObject: request.readBinaryObject,
+      debug: request.debug,
+      signal: request.signal ?? new AbortController().signal,
+    },
+  });
 }
 
 function expectInterruptedReasoning({ observed, text }: {
@@ -134,7 +163,9 @@ function expectInterruptedReasoning({ observed, text }: {
 }): void {
   expect(observed.settlement).toEqual({ status: 'fulfilled' });
   expect(observed.parts).toEqual([expect.objectContaining({
-    type: 'reasoning', index: 0, completeness: 'partial',
+    type: 'reasoning',
+    index: 0,
+    completeness: 'partial',
   })]);
   expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined).toBe(text);
   expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
@@ -167,8 +198,10 @@ async function createLfm26ToolInputReplay() {
   } = { count: 0, inference: undefined };
   const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
   const publicTool: Tool = {
-    name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-    parametersSchema: z.object({ city: z.string() }), execute,
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parametersSchema: z.object({ city: z.string() }),
+    execute,
   };
   const harness = await createProviderReplayTestRuntime({
     modelId: toolInputEvidence.modelId,
@@ -177,20 +210,28 @@ async function createLfm26ToolInputReplay() {
     metadataCache: "all-fixture",
     imagePlatform: undefined,
     artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1'].map(path => ({
-      path, bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
+      path,
+      bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
     })),
     generate: async ({ options, tokenizer, runtime }) => {
       const input = options.input_ids;
       const mask = options.attention_mask;
       seen.count++;
       seen.inference = {
-        tokenizer, runtime,
+        tokenizer,
+        runtime,
         options: {
           input_ids: input instanceof runtime.Tensor ? {
-            type: input.type, location: input.location, dims: [...input.dims], data: Array.from(input.data, BigInt),
+            type: input.type,
+            location: input.location,
+            dims: [...input.dims],
+            data: Array.from(input.data, BigInt),
           } : undefined,
           attention_mask: mask instanceof runtime.Tensor ? {
-            type: mask.type, location: mask.location, dims: [...mask.dims], data: Array.from(mask.data, BigInt),
+            type: mask.type,
+            location: mask.location,
+            dims: [...mask.dims],
+            data: Array.from(mask.data, BigInt),
           } : undefined,
           past_key_values: options.past_key_values,
         },
@@ -201,7 +242,11 @@ async function createLfm26ToolInputReplay() {
   });
   const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
   return {
-    harness, seen, execute, publicTool, templateSpy,
+    harness,
+    seen,
+    execute,
+    publicTool,
+    templateSpy,
     async close() {
       templateSpy.mockRestore();
       await harness.close();
@@ -232,16 +277,22 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       imagePlatform: undefined,
       // Identifiable synthetic bodies replace native weight execution only.
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: 'LiquidAI/LFM2.5-2.6B-ONNX', revision: source.identity.resolvedRevision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: 'LiquidAI/LFM2.5-2.6B-ONNX', revision: source.identity.resolvedRevision, path }),
       })),
       generate: async ({ options, tokenizer, runtime }) => {
         nativeInputs.push({
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: structuredClone(options.input_ids.data) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: structuredClone(options.attention_mask.data) } : undefined,
-          past: options.past_key_values, version: runtime.env.version, tokenizerInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
-          templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), optionKeys: Object.keys(options).sort(),
+          past: options.past_key_values,
+          version: runtime.env.version,
+          tokenizerInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
+          templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          optionKeys: Object.keys(options).sort(),
           config: { maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample },
-          returnDict: options.return_dict_in_generate, streamerInstance: options.streamer instanceof runtime.TextStreamer, stoppingType: typeof options.stopping_criteria,
+          returnDict: options.return_dict_in_generate,
+          streamerInstance: options.streamer instanceof runtime.TextStreamer,
+          stoppingType: typeof options.stopping_criteria,
         });
         // Never call replayRecordedText, streamer.put/end or return sequences.
         // This positive input test remains independent of callback delivery.
@@ -272,7 +323,10 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       await capture.completion;
       expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
       expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(nativeInputs).toHaveLength(1);
       const observed = nativeInputs[0]!;
@@ -319,7 +373,7 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       "modelId": "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
       "resolvedRevision": "66826372fd4fa166f53be0371c9315745c07cace",
       "investigationRunId": "fa058e59-541e-46cf-b1e5-7f2339fb8d19",
-      "transformersJsVersion": "4.2.0"
+      "transformersJsVersion": "4.2.0",
     });
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
@@ -369,7 +423,9 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0,
+      expect(observed.parts).toEqual([expect.objectContaining({
+        type: 'reasoning',
+        index: 0,
         chunks: ['', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', '"Template ', 'probe ', 'user ', 'message." ', 'This ', 'is ', 'a ', 'bit ', 'ambiguous'],
         completeness: 'partial',
       })]);
@@ -384,7 +440,7 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -420,8 +476,12 @@ describe('LFM2.5 2.6B Provider / basic', () => {
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0,
-          chunks: expect.any(Array), completeness: 'partial' })]);
+        expect(observed.parts).toEqual([expect.objectContaining({
+          type: 'reasoning',
+          index: 0,
+          chunks: expect.any(Array),
+          completeness: 'partial',
+        })]);
         expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
           .toBe('The user wants me to "Template probe user message." This is a bit ambiguous');
         expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
@@ -440,7 +500,7 @@ describe('LFM2.5 2.6B Provider / system', () => {
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -525,7 +585,8 @@ describe('LFM2.5 2.6B Provider / history', () => {
       // Provider. Loading and this metadata lookup remain strictly offline.
       await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision, local_files_only: true,
+        revision: inputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
@@ -567,7 +628,10 @@ describe('LFM2.5 2.6B Provider / history', () => {
       expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
       expect(observedInput.past).toBeNull();
       expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -614,7 +678,8 @@ describe('LFM2.5 2.6B Provider / history', () => {
       // Provider. Loading and this metadata lookup remain strictly offline.
       await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision, local_files_only: true,
+        revision: inputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
@@ -656,7 +721,10 @@ describe('LFM2.5 2.6B Provider / history', () => {
       expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
       expect(observedInput.past).toBeNull();
       expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -729,7 +797,10 @@ describe('LFM2.5 2.6B Provider / history', () => {
       // Original normalized chunks. Do not synthesize a reasoning close/final
       // response, or drain callbacks after public settlement to obtain a PASS.
       expect(settledParts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, completeness: 'partial', chunks: [
+        type: 'reasoning',
+        index: 0,
+        completeness: 'partial',
+        chunks: [
           '', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', 'continue ', 'with ',
           'one ', 'short ', 'sentence. ', 'They ', 'previously ', 'asked ', 'for ', 'a',
         ],
@@ -744,7 +815,7 @@ describe('LFM2.5 2.6B Provider / history', () => {
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -781,7 +852,10 @@ describe('LFM2.5 2.6B Provider / history', () => {
         const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
         expect(observed.parts).toEqual([expect.objectContaining({
-          type: 'reasoning', index: 0, chunks: ['', 'The'], completeness: 'partial',
+          type: 'reasoning',
+          index: 0,
+          chunks: ['', 'The'],
+          completeness: 'partial',
         })]);
         expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
         expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
@@ -833,13 +907,23 @@ A separate synthetic LFM conversation.<|im_end|>
         nextInputs.push({
           tokenizer,
           input: input instanceof runtime.Tensor ? {
-            type: input.type, location: input.location, dims: [...input.dims], data: Array.from(input.data, Number),
+            type: input.type,
+            location: input.location,
+            dims: [...input.dims],
+            data: Array.from(input.data, Number),
           } : undefined,
           mask: mask instanceof runtime.Tensor ? {
-            type: mask.type, location: mask.location, dims: [...mask.dims], data: Array.from(mask.data, BigInt),
+            type: mask.type,
+            location: mask.location,
+            dims: [...mask.dims],
+            data: Array.from(mask.data, BigInt),
           } : undefined,
-          past: options.past_key_values, maxNewTokens: options.max_new_tokens, temperature: options.temperature,
-          topP: options.top_p, doSample: options.do_sample, returnDict: options.return_dict_in_generate,
+          past: options.past_key_values,
+          maxNewTokens: options.max_new_tokens,
+          temperature: options.temperature,
+          topP: options.top_p,
+          doSample: options.do_sample,
+          returnDict: options.return_dict_in_generate,
         });
         // This proves isolation of public input with a null native cache, not
         // real GPU KV invalidation or an uncaptured second inference result.
@@ -853,7 +937,8 @@ A separate synthetic LFM conversation.<|im_end|>
       metadataCache: "all-fixture",
       imagePlatform: undefined,
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }),
       })),
       generate: async context => {
         const next = invocations.shift();
@@ -934,7 +1019,10 @@ A separate synthetic LFM conversation.<|im_end|>
 
       expect(firstReleased).toBe(16);
       expect(secondCapture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]!.model).toBe(contexts[0]!.model);
@@ -959,7 +1047,7 @@ A separate synthetic LFM conversation.<|im_end|>
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity","independent-next-input"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstReasoning = '';
@@ -1017,12 +1105,24 @@ A separate synthetic LFM conversation.<|im_end|>
             model: "LiquidAI/LFM2.5-2.6B-ONNX",
             messages: [
               ...textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-                type: 'reasoning', text: firstReasoning, completeness: 'partial',
-              }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{
-                type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
-              }] },
+              {
+                id: toMessageId({ raw: 'message_1' }),
+                role: 'assistant',
+                parts: [{
+                  type: 'reasoning',
+                  text: firstReasoning,
+                  completeness: 'partial',
+                }],
+              },
+              {
+                id: toMessageId({ raw: 'message_2' }),
+                role: 'user',
+                parts: [{
+                  type: 'text',
+                  text: 'Continue the synthetic conversation with a short response.',
+                  completeness: 'complete',
+                }],
+              },
             ],
             parameters,
             tools: [],
@@ -1035,7 +1135,8 @@ A separate synthetic LFM conversation.<|im_end|>
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         expect(observed.parts).toEqual([]);
         expect(observed.result).toMatchObject({
-          type: 'error', error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
+          type: 'error',
+          error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
         });
         replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
@@ -1083,7 +1184,7 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1128,7 +1229,7 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1173,7 +1274,7 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1218,7 +1319,7 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1289,7 +1390,10 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       await capture.completion;
       expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
       expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(replay.execute).not.toHaveBeenCalled();
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
@@ -1315,15 +1419,23 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       expect(replay.seen.count).toBe(1);
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
       const strictPrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictLfm26Tools,
       })).toBe(strictPrompt);
       const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
       expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
@@ -1345,13 +1457,20 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       expect(originalContent).not.toBe('');
       expect(strictPrompt.split(originalContent)).toHaveLength(2);
       expect(tokenizer.apply_chat_template([{ role: 'user', content: 'Changed synthetic user message.' }], {
-        tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictLfm26Tools,
       })).toBe(strictPrompt.replace(originalContent, 'Changed synthetic user message.'));
       expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']), core, options: ortOptions,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
+        core,
+        options: ortOptions,
       }))).toEqual([{
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx',
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        corePath: 'onnx/model_q4f16.onnx',
         externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
         executionProviders: ['webgpu'],
       }]);
@@ -1368,21 +1487,39 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     const scenario = toolInputEvidence.cases[1];
     const replay = await createLfm26ToolInputReplay();
     const publicMessages: ChatMessage[] = [
-      { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-        type: 'text', text: scenario.messages[0].content, completeness: 'complete',
-      }] },
-      { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-        type: 'tool_call', toolCall: {
-          id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        },
-      }] },
-      { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{
-        type: 'tool_result', result: {
-          toolCallId: toToolCallId({ raw: 'call_template_probe_1' }), status: 'success',
-          content: { type: 'text', text: scenario.messages[2].content },
-        },
-      }] },
+      {
+        id: toMessageId({ raw: 'message_0' }),
+        role: 'user',
+        parts: [{
+          type: 'text',
+          text: scenario.messages[0].content,
+          completeness: 'complete',
+        }],
+      },
+      {
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            id: toToolCallId({ raw: 'call_template_probe_1' }),
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          },
+        }],
+      },
+      {
+        id: toMessageId({ raw: 'message_2' }),
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
+            status: 'success',
+            content: { type: 'text', text: scenario.messages[2].content },
+          },
+        }],
+      },
     ];
     try {
       const capture = captureLfm26Chat({
@@ -1408,7 +1545,10 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       await capture.completion;
       expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
       expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning', index: 0, chunks: [''], completeness: 'partial',
+        type: 'reasoning',
+        index: 0,
+        chunks: [''],
+        completeness: 'partial',
       })]);
       expect(replay.execute).not.toHaveBeenCalled();
       expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
@@ -1417,9 +1557,12 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       const nativeMappedMessages = [
         { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
         {
-          role: 'assistant', content: '', tool_call_id: undefined,
+          role: 'assistant',
+          content: '',
+          tool_call_id: undefined,
           tool_calls: [{
-            id: 'call_template_probe_1', type: 'function',
+            id: 'call_template_probe_1',
+            type: 'function',
             function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
           }],
         },
@@ -1443,10 +1586,14 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       // Preserve the original render failure. It had no rendered text, input IDs
       // or generated output; the successful mapped oracle below is CURRENT.
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toThrow(scenario.error.message);
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictLfm26Tools,
       })).toThrow(scenario.error.message);
       const strictPrompt = `\
 <|startoftext|><|im_start|>system
@@ -1460,10 +1607,14 @@ Use the weather tool for Tokyo.<|im_end|>
 <|im_start|>assistant
 <think>`;
       expect(tokenizer.apply_chat_template(nativeMappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictLfm26Tools,
       })).toBe(strictPrompt);
       expect(tokenizer.apply_chat_template(nativeMappedMessages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
       const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
       expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
@@ -1484,14 +1635,21 @@ Use the weather tool for Tokyo.<|im_end|>
       expect(strictPrompt.split("city='Tokyo'")).toHaveLength(2);
       const changedCallMessages = [
         nativeMappedMessages[0],
-        { role: 'assistant', content: '', tool_calls: [{
-          id: 'call_template_probe_1', type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
-        }] },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call_template_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
+          }],
+        },
         nativeMappedMessages[2],
       ];
       expect(tokenizer.apply_chat_template(changedCallMessages, {
-        tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictLfm26Tools,
       })).toBe(strictPrompt.replace("city='Tokyo'", "city='Osaka'"));
       const originalResult = scenario.messages[2].content;
       expect(originalResult).not.toBe('');
@@ -1501,10 +1659,15 @@ Use the weather tool for Tokyo.<|im_end|>
       ], { tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools }))
         .toBe(strictPrompt.replace(originalResult, 'Changed synthetic result.'));
       expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']), core, options: ortOptions,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
+        core,
+        options: ortOptions,
       }))).toEqual([{
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx',
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        corePath: 'onnx/model_q4f16.onnx',
         externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
         executionProviders: ['webgpu'],
       }]);
@@ -1518,8 +1681,10 @@ Use the weather tool for Tokyo.<|im_end|>
   }, 30_000);
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-minimal"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1528,13 +1693,18 @@ Use the weather tool for Tokyo.<|im_end|>
     let turnSettled = false;
     try {
       const parameters = {
-        temperature: 0, topP: 1, maxCompletionTokens: 128,
-        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: undefined },
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1546,7 +1716,9 @@ Use the weather tool for Tokyo.<|im_end|>
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
       turn = await runProviderReplayTurn({
-        provider: replay.provider, tools, abortController,
+        provider: replay.provider,
+        tools,
+        abortController,
         onChange: ({ messages }) => updates.push(messages),
         request: { model: 'LiquidAI/LFM2.5-2.6B-ONNX', messages, parameters, readBinaryObject: undefined, debug: undefined },
       });
@@ -1584,8 +1756,10 @@ Use the weather tool for Tokyo.<|im_end|>
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["natural-tool-representative"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1594,13 +1768,18 @@ Use the weather tool for Tokyo.<|im_end|>
     let turnSettled = false;
     try {
       const parameters = {
-        temperature: 0, topP: 1, maxCompletionTokens: 128,
-        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: undefined },
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1612,7 +1791,9 @@ Use the weather tool for Tokyo.<|im_end|>
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
       turn = await runProviderReplayTurn({
-        provider: replay.provider, tools, abortController,
+        provider: replay.provider,
+        tools,
+        abortController,
         onChange: ({ messages }) => updates.push(messages),
         request: { model: 'LiquidAI/LFM2.5-2.6B-ONNX', messages, parameters, readBinaryObject: undefined, debug: undefined },
       });
@@ -1655,42 +1836,73 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: providerReplayCatalog, caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"], imagePlatform: undefined,
+      catalog: providerReplayCatalog,
+      caseIds: ["structured-tool-history"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
       const parameters = {
-        temperature: 0, topP: 1, maxCompletionTokens: 128,
-        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: undefined },
       };
       const callId = toToolCallId({ raw: 'call_model_support_probe_1' });
       const messages: ChatMessage[] = [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-          type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete',
-        }] },
-        { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-          type: 'tool_call', toolCall: {
-            id: callId, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-          },
-        }] },
-        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{
-          type: 'tool_result', result: {
-            toolCallId: callId, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-          },
-        }] },
+        {
+          id: toMessageId({ raw: 'message_0' }),
+          role: 'user',
+          parts: [{
+            type: 'text',
+            text: 'Use the weather tool for Tokyo.',
+            completeness: 'complete',
+          }],
+        },
+        {
+          id: toMessageId({ raw: 'message_1' }),
+          role: 'assistant',
+          parts: [{
+            type: 'tool_call',
+            toolCall: {
+              id: callId,
+              type: 'function',
+              function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+            },
+          }],
+        },
+        {
+          id: toMessageId({ raw: 'message_2' }),
+          role: 'tool',
+          parts: [{
+            type: 'tool_result',
+            result: {
+              toolCallId: callId,
+              status: 'success',
+              content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+            },
+          }],
+        },
       ];
       const tool: Tool = {
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-        parametersSchema: z.object({ city: z.string() }), execute: vi.fn(),
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
+        parametersSchema: z.object({ city: z.string() }),
+        execute: vi.fn(),
       };
       replay.beginNativeRequest({ caseId: 'structured-tool-history', parameters });
       const capture = captureLfm26Chat({
         provider: replay.provider,
         request: {
-          model: 'LiquidAI/LFM2.5-2.6B-ONNX', messages, parameters,
-          tools: [requestTool({ tool })], signal: new AbortController().signal,
+          model: 'LiquidAI/LFM2.5-2.6B-ONNX',
+          messages,
+          parameters,
+          tools: [requestTool({ tool })],
+          signal: new AbortController().signal,
         },
       });
       captures.push(capture);
@@ -1721,7 +1933,7 @@ describe('LFM2.5 2.6B Provider / images', () => {
       catalog: providerReplayCatalog,
       caseIds: ["image"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1744,10 +1956,14 @@ describe('LFM2.5 2.6B Provider / images', () => {
           provider: replay.provider,
           request: {
             model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
-            ] }],
+            messages: [{
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [
+                { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+              ],
+            }],
             parameters,
             tools: [],
             signal,
@@ -1759,7 +1975,8 @@ describe('LFM2.5 2.6B Provider / images', () => {
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         expect(observed.parts).toEqual([]);
         expect(observed.result).toMatchObject({
-          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+          type: 'error',
+          error: { message: 'The standard text strategy cannot preserve an image input.' },
         });
         replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
@@ -1789,70 +2006,155 @@ const lfm26FullStructuredParts = {
     { callOrdinal: 14, terminal: { kind: 'control', tokenId: '124900' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The user wants me to "Template probe user message." This is a bit ambiguous', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The user wants me to "Template probe user message." This is a bit ambiguous', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
     { scenario: 'continuity', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'system-user', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: `\
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'system-user',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'supplied-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-low',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-medium',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-high',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'fulfilled',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
+      ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'fulfilled',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            {
+              type: 'reasoning',
+              text: `\
 The user wants me to:
 1. Use the lookup_weather tool for Tokyo
 2. Then provide a short answer based on the tool result
 
-Let me first call the lookup_weather function with city "Tokyo".`, completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ], terminal: { type: 'finished', next: 'user' },
-    }] },
+Let me first call the lookup_weather function with city "Tokyo".`,
+              completeness: 'complete',
+            },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
+      ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.', completeness: 'complete' },
+          { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
+    },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
-  legacyInputProjections: [{ scenario: 'continuity', assistant: {
-    role: 'assistant', content: '<think>The user wants me to "Template probe user message." This is a bit ambiguous',
-  } }],
+  legacyInputProjections: [{
+    scenario: 'continuity',
+    assistant: {
+      role: 'assistant',
+      content: '<think>The user wants me to "Template probe user message." This is a bit ambiguous',
+    },
+  }],
 } satisfies StructuredPartsReplayContract;
 
 describe('LFM2.5 2.6B Provider / sequences', () => {
@@ -1861,7 +2163,7 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstReasoning = '';
@@ -1918,15 +2220,33 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
           request: {
             model: "LiquidAI/LFM2.5-2.6B-ONNX",
             messages: [
-              { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{
-                type: 'text', text: 'Template probe user message.', completeness: 'complete',
-              }] },
-              { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{
-                type: 'reasoning', text: firstReasoning, completeness: 'partial',
-              }] },
-              { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{
-                type: 'text', text: 'Continue the synthetic conversation with a short response.', completeness: 'complete',
-              }] },
+              {
+                id: toMessageId({ raw: 'message_0' }),
+                role: 'user',
+                parts: [{
+                  type: 'text',
+                  text: 'Template probe user message.',
+                  completeness: 'complete',
+                }],
+              },
+              {
+                id: toMessageId({ raw: 'message_1' }),
+                role: 'assistant',
+                parts: [{
+                  type: 'reasoning',
+                  text: firstReasoning,
+                  completeness: 'partial',
+                }],
+              },
+              {
+                id: toMessageId({ raw: 'message_2' }),
+                role: 'user',
+                parts: [{
+                  type: 'text',
+                  text: 'Continue the synthetic conversation with a short response.',
+                  completeness: 'complete',
+                }],
+              },
             ],
             parameters,
             tools: [],
@@ -1939,7 +2259,8 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         expect(observed.parts).toEqual([]);
         expect(observed.result).toMatchObject({
-          type: 'error', error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
+          type: 'error',
+          error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
         });
         replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
@@ -1953,13 +2274,23 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
     expect(fullEvidenceJson.modelId).toBe('LiquidAI/LFM2.5-2.6B-ONNX');
     expect(fullEvidenceJson.metadataRevision).toBe('66826372fd4fa166f53be0371c9315745c07cace');
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
-    await verifyCapturedFullReplay({ reviewedPublicContract: {
-      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
-      preNativeRejections: [
-        { scenario: 'continuity', reason: 'LFM2 cannot close partial reasoning without inventing a native delimiter.' },
-        { scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' },
-      ],
-      structuredParts: lfm26FullStructuredParts,
-    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"] });
+    await verifyCapturedFullReplay({
+      reviewedPublicContract: {
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [
+          { scenario: 'continuity', reason: 'LFM2 cannot close partial reasoning without inventing a native delimiter.' },
+          { scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' },
+        ],
+        structuredParts: lfm26FullStructuredParts,
+      },
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
+      evidence: fullEvidenceJson,
+      imagePlatform: undefined,
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1"],
+    });
   }, 30_000);
 });

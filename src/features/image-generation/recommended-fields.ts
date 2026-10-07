@@ -13,8 +13,11 @@ export function imageRecommendedHint({ recommendation, field }: { recommendation
     default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
     }
   })();
-  return { value: recommendation.parameters[field], origin: recommendation.recommendedFields?.includes(field) ? 'recommended' : 'suggested',
-    range };
+  return {
+    value: recommendation.parameters[field],
+    origin: recommendation.recommendedFields?.includes(field) ? 'recommended' : 'suggested',
+    range,
+  };
 }
 export function differsFromImageRecommendation({ current, hint }: { current: unknown, hint: ImageRecommendedHint }): boolean {
   if (hint.range && typeof current === 'number' && Number.isFinite(current)) return current < hint.range.minimum || current > hint.range.maximum;

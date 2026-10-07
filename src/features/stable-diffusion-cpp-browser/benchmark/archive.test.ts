@@ -8,15 +8,24 @@ import { manifestSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
 async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   let calls = 0;
-  const runner = createBenchmarkRunner({ now: () => ++calls, date: () => '2026-09-27T00:00:00.000Z', observeVisibility: () => () => {}, publish() {},
+  const runner = createBenchmarkRunner({
+    now: () => ++calls,
+    date: () => '2026-09-27T00:00:00.000Z',
+    observeVisibility: () => () => {},
+    publish() {},
     createClient: () => {
       let count = 0; return {
         async generate({ request, onDiagnostic }) {
           onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: count++ > 0, reason: 'fixture' } }) });
           return { png: new Blob(['PNG-test'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
-        }, async inspectEngine() {
+        },
+        async inspectEngine() {
           return { status: 'unavailable', reason: 'unsupported' };
-        }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
+        },
+        dispose() {},
+        release() {},
+        cancel() {},
+        updatePreview() {},
       };
     },
   });
@@ -60,9 +69,11 @@ it('keeps legacy diagnostics readable and records requested adapter strengths wi
   expect(before.models[0]!.request).not.toHaveProperty('loras');
   expect(manifestSchema.safeParse(before).success).toBe(true);
   const file = new File(['adapter-data'], 'style.safetensors', { lastModified: 42 });
-  Object.defineProperty(file, 'arrayBuffer', { value: () => {
-    throw new Error('Do not read adapter weights for diagnostics');
-  } });
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => {
+      throw new Error('Do not read adapter weights for diagnostics');
+    },
+  });
   snapshot.plan.models[0]!.request.loras = [{ file, path: 'styles/style.safetensors', strength: 0.75 }];
   const after = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
   expect(after.models[0]!.request.loras).toEqual([{ file: { path: 'styles/style.safetensors', bytes: 12, lastModified: 42 }, strength: 0.75 }]);
@@ -79,12 +90,16 @@ it('aggregates warm and cold separately and excludes missing or mismatched reuse
 it('does not reread or hash any model weights for export', async () => {
   const snapshot = await snapshotFixture();
   for (const model of snapshot.plan.models) for (const member of model.request.models) {
-    Object.defineProperty(member.file, 'arrayBuffer', { value: () => {
-      throw new Error('weight read');
-    } });
-    Object.defineProperty(member.file, 'stream', { value: () => {
-      throw new Error('weight read');
-    } });
+    Object.defineProperty(member.file, 'arrayBuffer', {
+      value: () => {
+        throw new Error('weight read');
+      },
+    });
+    Object.defineProperty(member.file, 'stream', {
+      value: () => {
+        throw new Error('weight read');
+      },
+    });
   }
   await expect(benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z', signal: new AbortController().signal })).resolves.toBeInstanceOf(Blob);
 });

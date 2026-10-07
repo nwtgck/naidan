@@ -85,9 +85,21 @@ export async function withOpfsFileLease<T>({ path, mode, availability, signal, r
   if (!coordinated) return await execute();
   // Local imports use models/user/<model>; remote paths include host/org/repo.
   const model = modelNamespace({ parts });
-  return await request({ name: rootKey, mode: 'shared', availability, signal, run: async () =>
-    await request({ name: `${rootKey}:model:${model}`, mode: 'shared', availability, signal, run: async () =>
-      await request({ name: `${rootKey}:file:${canonical}`, mode, availability, signal, run: execute }) }) });
+  return await request({
+    name: rootKey,
+    mode: 'shared',
+    availability,
+    signal,
+    run: async () =>
+      await request({
+        name: `${rootKey}:model:${model}`,
+        mode: 'shared',
+        availability,
+        signal,
+        run: async () =>
+          await request({ name: `${rootKey}:file:${canonical}`, mode, availability, signal, run: execute }),
+      }),
+  });
 }
 
 export async function withOpfsModelDeletion<T>({ modelPath, run }: {
@@ -99,8 +111,14 @@ export async function withOpfsModelDeletion<T>({ modelPath, run }: {
   const model = modelNamespace({ parts });
   if (model !== parts.join('/')) throw new Error('Model deletion requires its model directory path');
   if (!supportsOpfsCoordination()) return await run();
-  return await request({ name: rootKey, mode: 'shared', availability: 'wait', signal: undefined, run: async () =>
-    await request({ name: `${rootKey}:model:${model}`, mode: 'exclusive', availability: 'wait', signal: undefined, run }) });
+  return await request({
+    name: rootKey,
+    mode: 'shared',
+    availability: 'wait',
+    signal: undefined,
+    run: async () =>
+      await request({ name: `${rootKey}:model:${model}`, mode: 'exclusive', availability: 'wait', signal: undefined, run }),
+  });
 }
 
 /** Pure completion probe. The marker and File snapshot belong to one short

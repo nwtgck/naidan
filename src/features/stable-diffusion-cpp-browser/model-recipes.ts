@@ -25,7 +25,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
   // Recommended marks model families the maintainer has run and found to give
   // good results; it is curated UI copy, not a benchmark or auto-selection.
   {
-    id: 'z-image-turbo', title: 'Z-Image-Turbo',
+    id: 'z-image-turbo',
+    title: 'Z-Image-Turbo',
     recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/z_image.md',
     files: [
@@ -36,7 +37,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'qwen-image-2.1', title: 'Qwen Image 2.1',
+    id: 'qwen-image-2.1',
+    title: 'Qwen Image 2.1',
     recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/qwen_image_2.1.md',
     files: [
@@ -46,7 +48,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'z-image-base', title: 'Z-Image Base',
+    id: 'z-image-base',
+    title: 'Z-Image Base',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/z_image.md',
     files: [
       { role: 'diffusion', repository: 'unsloth/Z-Image-GGUF', revision: 'c9913e69743c5d9dfa7fdac58a0cc5709a17aa08', path: 'z-image-Q4_K_M.gguf', directory: 'Z-Image-GGUF', approximateBytes: 5066995776 },
@@ -55,7 +58,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'sdxl-base-1.0', title: 'SDXL Base 1.0',
+    id: 'sdxl-base-1.0',
+    title: 'SDXL Base 1.0',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/sd.md',
     files: [
       { role: 'model', repository: 'stabilityai/stable-diffusion-xl-base-1.0', revision: 'e4e60c65aa20ee60092c60ba197f541872cf9373', path: 'sd_xl_base_1.0.safetensors', directory: 'stable-diffusion-xl-base-1.0', approximateBytes: 6938078334 },
@@ -65,7 +69,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'flux2-klein-4b', title: 'FLUX.2 [klein] 4B Distilled',
+    id: 'flux2-klein-4b',
+    title: 'FLUX.2 [klein] 4B Distilled',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/flux2.md',
     files: [
       { role: 'diffusion', repository: 'leejet/FLUX.2-klein-4B-GGUF', revision: '4a253eddf43d4a449233a1cbd5fe8e8232110964', path: 'flux-2-klein-4b-Q4_0.gguf', directory: 'FLUX.2-klein-4B-GGUF', approximateBytes: 2460378560 },
@@ -74,7 +79,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'anima-turbo-1.1', title: 'Anima Turbo 1.1',
+    id: 'anima-turbo-1.1',
+    title: 'Anima Turbo 1.1',
     recommendation: 'maintainer-tested',
     source: 'https://huggingface.co/circlestone-labs/Anima',
     files: [
@@ -84,7 +90,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'krea2-turbo', title: 'Krea 2 Turbo',
+    id: 'krea2-turbo',
+    title: 'Krea 2 Turbo',
     recommendation: 'maintainer-tested',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/krea2.md',
     files: [
@@ -96,7 +103,8 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     ],
   },
   {
-    id: 'ernie-image-turbo', title: 'ERNIE-Image-Turbo',
+    id: 'ernie-image-turbo',
+    title: 'ERNIE-Image-Turbo',
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/ernie_image.md',
     files: [
       { role: 'diffusion', repository: 'unsloth/ERNIE-Image-Turbo-GGUF', revision: 'f17197b39ee5f51fff1815a3d245a4b876106230', path: 'ernie-image-turbo-Q4_K_M.gguf', directory: 'ERNIE-Image-Turbo-GGUF', approximateBytes: 5019124416 },
@@ -124,8 +132,15 @@ export const imageModelRecipes: readonly ImageModelRecipe[] = reviewedRecipes.ma
       options.push({ ...file, id: 'q8-0', path: 'z_image_turbo-Q8_0.gguf', approximateBytes: 6580000000 });
     }
     if (recipe.id === 'z-image-turbo' && file.role === 'lm') {
-      options.push({ ...file, id: 'safetensors', repository: 'Comfy-Org/z_image_turbo', revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2',
-        path: 'split_files/text_encoders/qwen_3_4b.safetensors', directory: 'z_image_turbo', approximateBytes: 8040000000 });
+      options.push({
+        ...file,
+        id: 'safetensors',
+        repository: 'Comfy-Org/z_image_turbo',
+        revision: '93fae7d7f6189cc408fdd7cec36c91447b8506a2',
+        path: 'split_files/text_encoders/qwen_3_4b.safetensors',
+        directory: 'z_image_turbo',
+        approximateBytes: 8040000000,
+      });
     }
     if (recipe.id === 'qwen-image-2.1' && file.role === 'lm') {
       options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateBytes: 8710000000 });

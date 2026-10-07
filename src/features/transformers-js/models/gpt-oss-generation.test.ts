@@ -10,9 +10,11 @@ import { prepareInferenceRequest } from '@/features/transformers-js/message-proj
 
 function setup() {
   const events: InferenceGenerationEvent[] = [];
-  const decoder = createGptOssGeneration({ emit: ({ event }) => {
-    events.push(inferenceGenerationEventSchema.parse(event));
-  } });
+  const decoder = createGptOssGeneration({
+    emit: ({ event }) => {
+      events.push(inferenceGenerationEventSchema.parse(event));
+    },
+  });
   return { events, decoder };
 }
 function message({ decoder, channel, recipient, text, ending }: {
@@ -37,24 +39,41 @@ describe('native Harmony generation parts', () => {
     message({ decoder, channel: 'commentary', recipient: 'functions.calculator', text: args, ending: '<|call|>' });
     decoder.finish({ reason: 'unknown' });
     const node: AssistantMessageNode = {
-      id: toMessageId({ raw: 'cache-history' }), role: 'assistant', createdAt: 1,
-      modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] },
+      id: toMessageId({ raw: 'cache-history' }),
+      role: 'assistant',
+      createdAt: 1,
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
+      parts: [],
+      replies: { items: [] },
     };
     const controller = new AbortController();
-    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {},
-      items: createInferenceGeneration({ signal: controller.signal, generate: async ({ onEvent }) => {
-        for (const event of events) await onEvent({ event });
-      } }),
+    const result = await consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController: controller,
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: controller.signal,
+        generate: async ({ onEvent }) => {
+          for (const event of events) await onEvent({ event });
+        },
+      }),
     });
     expect(result).toEqual({ type: 'finished', next: 'tool_results' });
     const call = node.parts.find(part => part.type === 'tool_call');
     if (call?.type !== 'tool_call') throw new Error('Missing delivered call.');
     const projected = await prepareInferenceRequest({
-      messages: [createChatMessageSnapshot({ node })], parameters: undefined, tools: undefined,
-      readBinaryObject: undefined, signal: undefined,
+      messages: [createChatMessageSnapshot({ node })],
+      parameters: undefined,
+      tools: undefined,
+      readBinaryObject: undefined,
+      signal: undefined,
     });
     expect(projected.messages).toEqual([{
-      role: 'assistant', content: text ?? [],
+      role: 'assistant',
+      content: text ?? [],
       tool_calls: [{ id: call.toolCall.id, type: 'function', function: { name: 'calculator', arguments: args } }],
       ...(reasoning === undefined ? {} : { reasoning: { text: reasoning, completeness: 'complete' } }),
     }]);

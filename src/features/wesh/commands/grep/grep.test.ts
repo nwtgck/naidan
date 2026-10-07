@@ -58,8 +58,7 @@ describe("wesh grep", () => {
 
     const result = await wesh.execute({
       source: createTextShellSource({ text: script }),
-      stdin:
-        stdinHandle ?? createTestReadHandleFromText({ text: stdinText ?? "" }),
+      stdin: stdinHandle ?? createTestReadHandleFromText({ text: stdinText ?? "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -391,11 +390,14 @@ gamma
 
   it("preserves UTF-8 byte-order marks in pattern and exclusion files", async () => {
     await writeFile({ path: "patterns.txt", data: "\uFEFFalpha\n" });
-    await writeFile({ path: "input.txt", data: `\
+    await writeFile({
+      path: "input.txt",
+      data: `\
 alpha
 \uFEFFalpha
 beta
-` });
+`,
+    });
     await writeFile({ path: "exclude.txt", data: "\uFEFF*.log\n" });
     await writeFile({ path: "left.log", data: "alpha left\n" });
     await writeFile({ path: "right.txt", data: "alpha right\n" });
@@ -1254,8 +1256,7 @@ notes.txt-3-two
     await writeFile({ path: "page_titles.txt", data: lines });
 
     const { result, stdout, stderr } = await execute({
-      script:
-        'grep -E "^pages/.*\\.xml\\.gz.*内閣総理大臣$" page_titles.txt | head -20',
+      script: 'grep -E "^pages/.*\\.xml\\.gz.*内閣総理大臣$" page_titles.txt | head -20',
     });
 
     expect(stdout.text.trimEnd().split("\n")).toHaveLength(20);
@@ -2581,8 +2582,7 @@ none
 
   it("supports GREP_COLORS line styles, separators, and no-erase mode", async () => {
     const styled = await execute({
-      script:
-        "GREP_COLORS='sl=44:cx=45:ms=33:se=35' grep --color=always -n -A1 foo",
+      script: "GREP_COLORS='sl=44:cx=45:ms=33:se=35' grep --color=always -n -A1 foo",
       stdinText: `\
 foo rest
 after

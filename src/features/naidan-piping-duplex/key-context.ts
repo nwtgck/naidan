@@ -45,9 +45,11 @@ export class NaidanPipingKeyDomain {
         direction: NaidanPipingDirection; usage: 'encrypt' | 'decrypt'; context: Uint8Array;
     }): void {
     this.internalLive();
-    requireValue({ condition: (direction === 1 || direction === 2) &&
+    requireValue({
+      condition: (direction === 1 || direction === 2) &&
             (usage === 'encrypt' || usage === 'decrypt') && equalBytes({ left: context, right: this.internalContext }),
-    message: 'Invalid record ownership scope' });
+      message: 'Invalid record ownership scope',
+    });
     const scope = `${direction}/${usage}`;
     requireValue({ condition: !this.recordOwners.has(scope), message: 'Record ownership already consumed' });
     this.recordOwners.add(scope);
@@ -73,8 +75,12 @@ export class NaidanPipingKeyDomain {
     }): Promise<string> {
     this.internalLive();
     requireValue({ condition: direction === 1 || direction === 2, message: 'Direction' });
-    const key = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: this.internalContext,
-      info: fields({ parts: [this.internalDomain, ascii({ text: 'route-key/v1' })] }) }, this.internalRoot, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']);
+    const key = await crypto.subtle.deriveKey({
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: this.internalContext,
+      info: fields({ parts: [this.internalDomain, ascii({ text: 'route-key/v1' })] }),
+    }, this.internalRoot, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']);
     const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, fields({ parts: [ascii({ text: 'mailbox/v1' }), this.internalContext, new Uint8Array([direction])] })));
     this.internalLive();
     return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
@@ -142,8 +148,12 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
   const local: NaidanPipingIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
   requireValue({ condition: (pin?.length === 32 || (pin === undefined && verifyPeer !== undefined)) && sharedBinding.length === 32, message: 'A trusted pin or explicit comparison and binding are mandatory' });
   signal.throwIfAborted();
-  const state = await NoiseXX.create({ role, identity: local, ephemeral: await createNaidanPipingIdentity(),
-    prologue: fields({ parts: [ascii({ text: 'peer-key-profile/v1' }), sharedBinding, ascii({ text: 'initiator/responder' })] }) });
+  const state = await NoiseXX.create({
+    role,
+    identity: local,
+    ephemeral: await createNaidanPipingIdentity(),
+    prologue: fields({ parts: [ascii({ text: 'peer-key-profile/v1' }), sharedBinding, ascii({ text: 'initiator/responder' })] }),
+  });
   const sensitive: Uint8Array[] = [];
   let noise: Awaited<ReturnType<NoiseXX['split']>> | undefined;
   try {
@@ -187,8 +197,11 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const trustFlag = pin ? 1 : 0;
     await send({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }) });
     const status = await receive();
-    requireValue({ condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
-      equalBytes({ left: status.subarray(2), right: sessionBinding }), message: 'Authentication status mismatch' });
+    requireValue({
+      condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
+      equalBytes({ left: status.subarray(2), right: sessionBinding }),
+      message: 'Authentication status mismatch',
+    });
     if (trustFlag === 0 || status[1] === 0) {
       if (!verifyPeer) throw new Error('This connection needs an explicit peer comparison');
       // The full 256-bit channel binding is compared over an already authenticated external path.
@@ -198,8 +211,10 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       requireValue({ condition: verified === true, message: 'Peer comparison rejected' });
       await send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) });
       const approval = await receive();
-      requireValue({ condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
-        message: 'Peer did not approve this connection' });
+      requireValue({
+        condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
+        message: 'Peer did not approve this connection',
+      });
     }
     const seed = crypto.getRandomValues(new Uint8Array(32));
     sensitive.push(seed);
@@ -210,8 +225,12 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const material = joinBytes({ parts: isInitiator({ role: role }) ? [seed, peerSeed.subarray(1)] : [peerSeed.subarray(1), seed] });
     sensitive.push(material);
     const imported = await rootKey({ bytes: material });
-    const rootBytes = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: sessionBinding,
-      info: fields({ parts: [ascii({ text: 'peer-key-export/v1' })] }) }, imported, 256));
+    const rootBytes = new Uint8Array(await crypto.subtle.deriveBits({
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: sessionBinding,
+      info: fields({ parts: [ascii({ text: 'peer-key-export/v1' })] }),
+    }, imported, 256));
     sensitive.push(rootBytes);
     const contextId = await digest({ bytes: fields({ parts: [ascii({ text: 'peer-key-context/v1' }), sessionBinding, await digest({ bytes: material })] }) });
     seed.fill(0);
@@ -221,8 +240,12 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     rootBytes.fill(0);
     const confirmation = async ({ direction }: {
             direction: NaidanPipingDirection;
-        }) => crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256',
-      salt: sessionBinding, info: fields({ parts: [ascii({ text: 'peer-key-confirm/v1' }), new Uint8Array([direction])] }) }, root, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign', 'verify']);
+        }) => crypto.subtle.deriveKey({
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: sessionBinding,
+      info: fields({ parts: [ascii({ text: 'peer-key-confirm/v1' }), new Uint8Array([direction])] }),
+    }, root, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign', 'verify']);
     const sendKey = await confirmation({ direction: isInitiator({ role: role }) ? 1 : 2 });
     const receiveKey = await confirmation({ direction: isInitiator({ role: role }) ? 2 : 1 });
     const confirmInput = fields({ parts: [sessionBinding, contextId] });

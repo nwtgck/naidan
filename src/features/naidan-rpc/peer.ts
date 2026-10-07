@@ -33,8 +33,11 @@ export class NaidanRpcPeer {
     check({ condition: !owned.has(transport), code: 'INVALID_ARGUMENT' });
     for (const exposure of exports) {
       check({ condition: !this.methods.has(exposure.name), code: 'INVALID_ARGUMENT' });
-      this.methods.set(exposure.name, { contract: exposure.contract, methods: new Map(exposure.methods),
-        allowed: checkAllowedMethods({ contract: exposure.contract, allowedMethods: [...exposure.allowedMethods] }) });
+      this.methods.set(exposure.name, {
+        contract: exposure.contract,
+        methods: new Map(exposure.methods),
+        allowed: checkAllowedMethods({ contract: exposure.contract, allowedMethods: [...exposure.allowedMethods] }),
+      });
     }
     signal.throwIfAborted(); owned.add(transport); this.transport = transport; this.limits = { maxCalls, maxCallTimeoutMs };
     const forward = () => this.dispose(); signal.addEventListener('abort', forward, { once: true });
@@ -178,9 +181,13 @@ export class NaidanRpcPeer {
         stop.signal.throwIfAborted();
         check({ condition: this.calls.size + this.opening < this.limits.maxCalls, code: 'RESOURCE_EXHAUSTED' });
         let next = 1;
-        const packed = pack({ plan: prepared.input, value: input, allocate: () => {
-          const id = next; next += 2; return id;
-        } });
+        const packed = pack({
+          plan: prepared.input,
+          value: input,
+          allocate: () => {
+            const id = next; next += 2; return id;
+          },
+        });
         this.opening++; reserved = true;
         const duplex = await this.transport.openStream({ signal: stop.signal });
         unadopted = duplex;
@@ -205,9 +212,13 @@ export class NaidanRpcPeer {
       }
     };
     void task();
-    return { result: result.promise, closed: closed.promise, cancel: ({ reason }: { reason: string }) => {
-      void reason; terminate({ code: 'CANCELLED' });
-    } };
+    return {
+      result: result.promise,
+      closed: closed.promise,
+      cancel: ({ reason }: { reason: string }) => {
+        void reason; terminate({ code: 'CANCELLED' });
+      },
+    };
   }
   /** Abort is a protocol state, not proof that native work has stopped. The
    * connection owner awaits this barrier before releasing shared ownership. */

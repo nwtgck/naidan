@@ -16,7 +16,10 @@ const visionArtifacts = ['onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_
 
 function createRouteRuntime({ paths, generate }: { paths: string[], generate: ProviderReplayGenerate }) {
   return createProviderReplayTestRuntime({
-    modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: 'all-fixture',
+    modelId,
+    expectedRevision: revision,
+    cacheRevision: revision,
+    metadataCache: 'all-fixture',
     imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [imageUrl] },
     artifacts: paths.map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
     generate,
@@ -30,13 +33,29 @@ function assertReadOnly({ harness }: { harness: Awaited<ReturnType<typeof create
 
 describe('Qwen image generation session ownership', () => {
   it('does not certify frozen vision acceptance from an actual SHA-addressed text fallback Load receipt', async () => {
-    const harness = await createRouteRuntime({ paths: textArtifacts, generate: async () => {
-      throw new Error('No generation needed for receipt');
-    } });
+    const harness = await createRouteRuntime({
+      paths: textArtifacts,
+      generate: async () => {
+        throw new Error('No generation needed for receipt');
+      },
+    });
     const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
-    const capture = createTransformersJsGenerationCaptureClient({ runId: 'qwen-text-fallback', workerEpoch: 1, getActiveRequest: () => undefined,
-      limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192, maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
-        maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 } });
+    const capture = createTransformersJsGenerationCaptureClient({
+      runId: 'qwen-text-fallback',
+      workerEpoch: 1,
+      getActiveRequest: () => undefined,
+      limits: {
+        maxCalls: 8,
+        maxInvocationsPerCall: 4,
+        maxEvents: 256,
+        maxTextBytes: 8192,
+        maxTensorBytes: 8192,
+        maxTotalTensorBytes: 65536,
+        maxTokensPerStreamEvent: 4096,
+        maxTotalStreamTokens: 16384,
+        maxTotalStreamTokenBytes: 262144,
+      },
+    });
     try {
       await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
       const result = await capture.takeGenerationCapture();
@@ -64,7 +83,10 @@ describe('Qwen image generation session ownership', () => {
     const stages: string[] = [];
     let nativeFailure: unknown;
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: 'all-fixture',
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: 'all-fixture',
       imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [imageUrl] },
       artifacts: [
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -114,11 +136,17 @@ describe('Qwen image generation session ownership', () => {
         abortController: new AbortController(),
         onChange: undefined,
         request: {
-          model: modelId, debug: undefined, readBinaryObject: undefined,
-          messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-          ] }],
+          model: modelId,
+          debug: undefined,
+          readBinaryObject: undefined,
+          messages: [{
+            id: toMessageId({ raw: 'image-user' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ],
+          }],
           parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
       });
@@ -145,7 +173,9 @@ describe('Qwen image generation session ownership', () => {
     try {
       const onChange = vi.fn<NonNullable<Parameters<typeof runProviderReplayTurn>[0]['onChange']>>();
       const request = {
-        model: modelId, debug: undefined, readBinaryObject: undefined,
+        model: modelId,
+        debug: undefined,
+        readBinaryObject: undefined,
         parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
       };
       const text = await runProviderReplayTurn({
@@ -154,7 +184,8 @@ describe('Qwen image generation session ownership', () => {
         abortController: new AbortController(),
         onChange,
         request: {
-          ...request, messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ type: 'text', text: 'Hello.', completeness: 'complete' }] }],
+          ...request,
+          messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ type: 'text', text: 'Hello.', completeness: 'complete' }] }],
         },
       });
       expect(generate).toHaveBeenCalledTimes(1);
@@ -172,10 +203,15 @@ describe('Qwen image generation session ownership', () => {
         abortController: new AbortController(),
         onChange: undefined,
         request: {
-          ...request, messages: [{ id: toMessageId({ raw: 'image-user' }), role: 'user', parts: [
-            { type: 'text', text: 'Describe this image.', completeness: 'complete' },
-            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-          ] }],
+          ...request,
+          messages: [{
+            id: toMessageId({ raw: 'image-user' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Describe this image.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ],
+          }],
         },
       });
       expect(image.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('text-only local candidate') } });

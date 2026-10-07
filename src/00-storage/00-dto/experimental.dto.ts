@@ -156,7 +156,8 @@ export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndef
     family: missingAsUndefined(z.string().min(1).max(64)),
   }))),
   components: z.array(z.object({
-    slot: z.enum(['vae', 'clipL', 'clipG', 't5', 'lm']), file: ExperimentalRemoteImageModelFileSchemaDto,
+    slot: z.enum(['vae', 'clipL', 'clipG', 't5', 'lm']),
+    file: ExperimentalRemoteImageModelFileSchemaDto,
   })).max(5).refine(items => new Set(items.map(item => item.slot)).size === items.length),
   loras: z.array(z.object({
     file: ExperimentalRemoteImageModelFileSchemaDto,
@@ -176,7 +177,9 @@ export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.discrimin
 export type ExperimentalImageInferenceLocationPreferenceDto = z.infer<typeof ExperimentalImageInferenceLocationPreferenceSchemaDto>;
 
 export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = z.array(z.object({
-  connectionId: connectionIdSchema, peerId: peerIdSchema, editor: ExperimentalRemoteImageModelEditorSchemaDto,
+  connectionId: connectionIdSchema,
+  peerId: peerIdSchema,
+  editor: ExperimentalRemoteImageModelEditorSchemaDto,
 })).max(32).refine(items => new Set(items.map(item => `${item.connectionId}:${item.peerId}`)).size === items.length);
 export type ExperimentalRemoteImageModelEditorPreferenceDto = z.infer<typeof ExperimentalRemoteImageModelEditorPreferencesSchemaDto>[number];
 

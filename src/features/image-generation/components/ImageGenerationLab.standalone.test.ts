@@ -53,9 +53,11 @@ it('keeps local inference unavailable but enables the common remote editor witho
 
 it('restores a pending session location before local availability would disable the form', async () => {
   let view!: ImageGenerationView;
-  const host = mount(defineComponent({ setup() {
-    view = useImageGeneration(); return () => h('div');
-  } }));
+  const host = mount(defineComponent({
+    setup() {
+      view = useImageGeneration(); return () => h('div');
+    },
+  }));
   try {
     await flushPromises();
     const local = view.captureDraft!()!; expect(local.inferenceLocation).toEqual({ kind: 'local' }); expect(local.request.runtime).toBeUndefined();

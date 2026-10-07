@@ -12,16 +12,23 @@ function locateFile({ file }: { file: File }): ImageGenerationModelFile {
 function source() {
   const request = requestFixture();
   request.parameters = { ...request.parameters, prompt: '癒しの猫', seed: '-1' };
-  request.imageInputs = { initImage: new File(['init'], 'init.png', { type: 'image/png' }), strength: 0.5,
-    referenceImages: [new File(['first'], 'first.png', { type: 'image/png' }), new File(['second'], 'second.png', { type: 'image/png' })] };
+  request.imageInputs = {
+    initImage: new File(['init'], 'init.png', { type: 'image/png' }),
+    strength: 0.5,
+    referenceImages: [new File(['first'], 'first.png', { type: 'image/png' }), new File(['second'], 'second.png', { type: 'image/png' })],
+  };
   request.loras = [{ file: ggufFile(), path: 'disabled.gguf', strength: 0 }, { file: ggufFile(), path: 'enabled.gguf', strength: 0.8 }];
   return request;
 }
 function completed() {
   const request = source();
   const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });
-  const saved = finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false },
-    previews: [{ type: 'naidan-image-preview-v1', runId: 1, revision: 2, step: 4, steps: 20, width: 128, height: 128, mode: 'projection', png: new Blob(['preview'], { type: 'image/png' }) }], elapsedMs: 500 });
+  const saved = finishImageGenerationSnapshot({
+    snapshot,
+    result: { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false },
+    previews: [{ type: 'naidan-image-preview-v1', runId: 1, revision: 2, step: 4, steps: 20, width: 128, height: 128, mode: 'projection', png: new Blob(['preview'], { type: 'image/png' }) }],
+    elapsedMs: 500,
+  });
   return { request, snapshot, ...saved };
 }
 
@@ -67,9 +74,11 @@ describe('image history request snapshots', () => {
   it('keeps a complete base model when only its enabled adapter is missing', async () => {
     const { record, files, request } = completed();
     const missingAdapter = record.request.loras[1]!.file;
-    const restored = await prepareImageHistoryReuse({ record,
+    const restored = await prepareImageHistoryReuse({
+      record,
       findFile: ({ location }) => location === missingAdapter ? undefined : request.models[0]!.file,
-      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
+      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
+    });
     expect(restored.models.map(model => model.slot)).toEqual(request.models.map(model => model.slot));
     expect(restored.loras.map(lora => [lora.path, lora.strength, lora.enabled])).toEqual([['disabled.gguf', 0, false]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
@@ -82,9 +91,11 @@ describe('image history request snapshots', () => {
       { path: 'last.gguf', file: locateFile({ file: ggufFile() }), strength: 0.9 },
     ];
     const missingAdapter = record.request.loras[1]!.file;
-    const restored = await prepareImageHistoryReuse({ record,
+    const restored = await prepareImageHistoryReuse({
+      record,
       findFile: ({ location }) => location === missingAdapter ? undefined : request.models[0]!.file,
-      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
+      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
+    });
     expect(restored.models).toHaveLength(request.models.length);
     expect(restored.loras.map(lora => [lora.path, lora.strength])).toEqual([['first.gguf', 0.6], ['last.gguf', 0.9]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
@@ -92,9 +103,11 @@ describe('image history request snapshots', () => {
   it('reports a missing disabled adapter without making it a generation requirement', async () => {
     const { record, files, request } = completed();
     const disabledAdapter = record.request.loras[0]!.file;
-    const restored = await prepareImageHistoryReuse({ record,
+    const restored = await prepareImageHistoryReuse({
+      record,
       findFile: ({ location }) => location === disabledAdapter ? undefined : request.models[0]!.file,
-      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
+      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
+    });
     expect(restored.models).toHaveLength(request.models.length);
     expect(restored.loras.map(lora => [lora.path, lora.strength])).toEqual([['enabled.gguf', 0.8]]);
     expect(restored.missing).toEqual([]);
@@ -105,9 +118,11 @@ describe('image history request snapshots', () => {
     const file = new File([], 'empty.gguf');
     const location = locateFile({ file });
     record.request.loras = [{ path: file.name, file: location, strength: 0 }];
-    const restored = await prepareImageHistoryReuse({ record,
+    const restored = await prepareImageHistoryReuse({
+      record,
       findFile: ({ location: candidate }) => candidate === location ? file : request.models[0]!.file,
-      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
+      getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
+    });
     expect(restored.loras).toEqual([{ file, path: file.name, strength: 0, enabled: false, sourceLabel: file.name }]);
     expect(restored.missing).toEqual([]);
   });
@@ -137,8 +152,11 @@ it('embeds Unicode request settings and actual preview dimensions only into the 
 it('keeps recovered output facts unknown without inventing a successful model report', () => {
   const { snapshot } = completed();
   const png = new Blob(['recoverable-pixels'], { type: 'image/png' });
-  const recovered = recoverImageGenerationSnapshot({ snapshot, elapsedMs: 2,
-    output: { png, width: 256, height: 256, reported: undefined } });
+  const recovered = recoverImageGenerationSnapshot({
+    snapshot,
+    elapsedMs: 2,
+    output: { png, width: 256, height: 256, reported: undefined },
+  });
   expect(recovered.record.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined });
   expect(recovered.record.request).toEqual(snapshot.request);
   expect(recovered.files.find(file => file.binaryObjectId === recovered.record.result.binaryObjectId)?.blob).toBe(png);

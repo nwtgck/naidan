@@ -77,11 +77,20 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
   const jobs = [guarded({ task: send }), guarded({ task: receive })];
   try {
     const discoveryBinding = await channel.binding({ signal: activeSignal });
-    const binding = new Uint8Array(await crypto.subtle.digest('SHA-256', fields({ parts: [
-      ascii({ text: 'naidan-piping-purpose/v1' }), discoveryBinding, purpose,
-    ] })));
-    const keys = await establishVerifiedNaidanPipingKeys({ role: channel.role, identity, expectedPeer, verifyPeer,
-      binding, channel, signal: activeSignal });
+    const binding = new Uint8Array(await crypto.subtle.digest('SHA-256', fields({
+      parts: [
+        ascii({ text: 'naidan-piping-purpose/v1' }), discoveryBinding, purpose,
+      ],
+    })));
+    const keys = await establishVerifiedNaidanPipingKeys({
+      role: channel.role,
+      identity,
+      expectedPeer,
+      verifyPeer,
+      binding,
+      channel,
+      signal: activeSignal,
+    });
     if (activeSignal.aborted) {
       keys.dispose(); activeSignal.throwIfAborted();
     }
@@ -130,10 +139,28 @@ export async function startPinnedConnection({ role, identity, expectedPeer, code
       for (;;) {
         signal.throwIfAborted();
         try {
-          const { channel, confirmation } = await discoverCandidate({ role, room, endpoint, owner, signal,
-            confirmationTimeoutMs, intervalMs });
-          await runCandidate({ channel, confirmation, identity: localIdentity, expectedPeer: pin, verifyPeer, purpose: purposeBytes,
-            endpoint, signal, completionLeaseMs, intervalMs, onReady: ({ keys }) => ready.resolve(keys) });
+          const { channel, confirmation } = await discoverCandidate({
+            role,
+            room,
+            endpoint,
+            owner,
+            signal,
+            confirmationTimeoutMs,
+            intervalMs,
+          });
+          await runCandidate({
+            channel,
+            confirmation,
+            identity: localIdentity,
+            expectedPeer: pin,
+            verifyPeer,
+            purpose: purposeBytes,
+            endpoint,
+            signal,
+            completionLeaseMs,
+            intervalMs,
+            onReady: ({ keys }) => ready.resolve(keys),
+          });
           return;
         } catch (error) {
           signal.throwIfAborted();

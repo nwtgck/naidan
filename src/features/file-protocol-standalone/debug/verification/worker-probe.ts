@@ -309,26 +309,28 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
     }));
     const started = await wesh.startExecution(
       { script: 'ls -1 /' },
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the external Comlink positional callback boundary.
-      workerProxy({ value: (event: WeshWorkerRemoteExecutionEvent) => {
-        switch (event.type) {
-        case 'started':
-        case 'exit':
-          return;
-        case 'stdout':
-          stdout.push(decoder.decode(event.buffer));
-          return;
-        case 'stderr':
-          stderr.push(decoder.decode(event.buffer));
-          return;
-        case 'error':
-          throw new Error(event.message);
-        default: {
-          const _exhaustive: never = event;
-          throw new Error(`Unhandled Wesh verification event: ${String(_exhaustive)}`);
-        }
-        }
-      } }),
+      workerProxy({
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the external Comlink positional callback boundary.
+        value: (event: WeshWorkerRemoteExecutionEvent) => {
+          switch (event.type) {
+          case 'started':
+          case 'exit':
+            return;
+          case 'stdout':
+            stdout.push(decoder.decode(event.buffer));
+            return;
+          case 'stderr':
+            stderr.push(decoder.decode(event.buffer));
+            return;
+          case 'error':
+            throw new Error(event.message);
+          default: {
+            const _exhaustive: never = event;
+            throw new Error(`Unhandled Wesh verification event: ${String(_exhaustive)}`);
+          }
+          }
+        },
+      }),
     );
     executionId = started.executionId;
     const summary = await wesh.awaitExecution({ request: { executionId } });

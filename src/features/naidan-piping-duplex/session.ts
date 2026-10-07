@@ -68,9 +68,13 @@ export class StreamSession {
     const domain = keys.createDomain({ label: 'piping-duplex-record/v3', context: keys.contextId });
     const tx = isInitiator({ role: keys.role }) ? 1 : 2, rx = isInitiator({ role: keys.role }) ? 2 : 1;
     const sendRoute = await domain.route({ direction: tx }), receiveRoute = await domain.route({ direction: rx });
-    return new StreamSession({ machine: new Machine({ role: keys.role }), contextId: keys.contextId, routes: { send: sendRoute, receive: receiveRoute },
+    return new StreamSession({
+      machine: new Machine({ role: keys.role }),
+      contextId: keys.contextId,
+      routes: { send: sendRoute, receive: receiveRoute },
       send: new Records({ domain, context: keys.contextId, direction: tx, usage: 'encrypt' }),
-      receive: new Records({ domain, context: keys.contextId, direction: rx, usage: 'decrypt' }) });
+      receive: new Records({ domain, context: keys.contextId, direction: rx, usage: 'decrypt' }),
+    });
   }
   get contextId(): Uint8Array {
     return this.internalContextId.slice();
@@ -150,42 +154,44 @@ export class StreamSession {
     }
   }
   get incomingStreams(): AsyncIterable<NaidanPipingDuplexStream> {
-    return { [Symbol.asyncIterator]: () => {
-      requireValue({ condition: !this.internalIncomingOwned, message: 'Only one incoming iterator' });
-      this.internalIncomingOwned = true;
-      return {
-        next: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
-          requireValue({ condition: !this.internalNextPending, message: 'Only one pending incoming next' });
-          this.internalNextPending = true;
-          try {
-            while (true) {
-              const revision = this.internalPulse.revision;
-              if (this.internalIncomingEnded)
-                return { done: true, value: undefined };
-              this.internalCheckSession();
-              const id = this.internalMachine.takeIncoming();
-              if (id !== undefined) {
-                this.internalNotify();
-                return { done: false, value: this.internalFacade({ id }) };
+    return {
+      [Symbol.asyncIterator]: () => {
+        requireValue({ condition: !this.internalIncomingOwned, message: 'Only one incoming iterator' });
+        this.internalIncomingOwned = true;
+        return {
+          next: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
+            requireValue({ condition: !this.internalNextPending, message: 'Only one pending incoming next' });
+            this.internalNextPending = true;
+            try {
+              while (true) {
+                const revision = this.internalPulse.revision;
+                if (this.internalIncomingEnded)
+                  return { done: true, value: undefined };
+                this.internalCheckSession();
+                const id = this.internalMachine.takeIncoming();
+                if (id !== undefined) {
+                  this.internalNotify();
+                  return { done: false, value: this.internalFacade({ id }) };
+                }
+                if (this.internalMachine.incomingClosed()) {
+                  this.internalIncomingEnded = true;
+                  return { done: true, value: undefined };
+                }
+                await this.internalPulse.wait({ revision, signal: undefined });
               }
-              if (this.internalMachine.incomingClosed()) {
-                this.internalIncomingEnded = true;
-                return { done: true, value: undefined };
-              }
-              await this.internalPulse.wait({ revision, signal: undefined });
+            } finally {
+              this.internalNextPending = false;
             }
-          } finally {
-            this.internalNextPending = false;
-          }
-        },
-        return: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
-          this.internalIncomingEnded = true;
-          this.internalMachine.stopIncoming();
-          this.internalNotify();
-          return { done: true, value: undefined };
-        },
-      };
-    } };
+          },
+          return: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
+            this.internalIncomingEnded = true;
+            this.internalMachine.stopIncoming();
+            this.internalNotify();
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
   }
   private internalFacade({ id }: {
         id: number;
@@ -259,8 +265,10 @@ export class StreamSession {
       write: async (chunk) => {
         try {
           this.internalCheckStream({ id });
-          requireValue({ condition: chunk instanceof Uint8Array && chunk.buffer instanceof ArrayBuffer,
-            message: 'A non-shared Uint8Array is required' });
+          requireValue({
+            condition: chunk instanceof Uint8Array && chunk.buffer instanceof ArrayBuffer,
+            message: 'A non-shared Uint8Array is required',
+          });
           // A fixed-length view validates detachment without copying an arbitrarily large caller buffer.
           const input = chunk.subarray(0, chunk.byteLength), length = input.byteLength;
           this.internalMachine.checkWrite({ id, length });
@@ -336,7 +344,8 @@ export class StreamSession {
       }
     };
     const confirmation: ResponseConfirmation = {
-      threshold: this.internalSend.next, record: undefined,
+      threshold: this.internalSend.next,
+      record: undefined,
       started: () => {
         try {
           onRequestStarted();
@@ -378,28 +387,34 @@ export class StreamSession {
       const bytes = await this.internalSend.seal({ plaintext: encodeRecordPayload({ payload: { snapshot, receiptRequest, receivedRecord } }) });
       this.internalCheckSession();
       let started = false;
-      return { kind: fullSnapshot ? 'snapshot' : 'receipt-only', bytes, start: ({ onReceived }) => {
-        this.internalCheckSession();
-        requireValue({ condition: !started && this.internalTransmission === undefined && number > this.internalHighestOffered,
-          message: 'Transmission already offered or owned' });
-        started = true;
-        const owner = { number, receipt: 'waiting' as const, onReceived };
-        this.internalTransmission = owner;
-        this.internalHighestOffered = number;
-        this.internalMachine.markOffered({ snapshot });
-        if (fullSnapshot) this.internalLastSnapshotRevision = revision;
-        if (receiptRequested({ request: receiptRequest })) {
-          for (const confirmation of [...this.internalConfirmations]) {
-            if (this.internalConfirmations.has(confirmation) && confirmation.record === undefined && confirmation.threshold <= number) {
-              confirmation.record = number;
-              confirmation.started();
+      return {
+        kind: fullSnapshot ? 'snapshot' : 'receipt-only',
+        bytes,
+        start: ({ onReceived }) => {
+          this.internalCheckSession();
+          requireValue({
+            condition: !started && this.internalTransmission === undefined && number > this.internalHighestOffered,
+            message: 'Transmission already offered or owned',
+          });
+          started = true;
+          const owner = { number, receipt: 'waiting' as const, onReceived };
+          this.internalTransmission = owner;
+          this.internalHighestOffered = number;
+          this.internalMachine.markOffered({ snapshot });
+          if (fullSnapshot) this.internalLastSnapshotRevision = revision;
+          if (receiptRequested({ request: receiptRequest })) {
+            for (const confirmation of [...this.internalConfirmations]) {
+              if (this.internalConfirmations.has(confirmation) && confirmation.record === undefined && confirmation.threshold <= number) {
+                confirmation.record = number;
+                confirmation.started();
+              }
             }
           }
-        }
-        return () => {
-          if (this.internalTransmission === owner) this.internalTransmission = undefined;
-        };
-      } };
+          return () => {
+            if (this.internalTransmission === owner) this.internalTransmission = undefined;
+          };
+        },
+      };
     } finally {
       this.internalSnapshotBusy = false;
     }
@@ -410,15 +425,18 @@ export class StreamSession {
     this.internalCheckSession();
     try {
       let changed = false, reply = false;
-      const outcome = await this.internalReceive.accept({ capsule, apply: ({ snapshot, receiptRequest, receivedRecord }) => {
-        this.internalCheckSession();
-        // Validate before Machine commits; malformed stream state and receipts
-        // must never partially confirm a response or advance offsets.
-        requireValue({ condition: receivedRecord === undefined || receivedRecord <= this.internalHighestOffered, message: 'Receipt for an unoffered record' });
-        changed = this.internalMachine.accept({ snapshot });
-        if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
-        reply = receiptRequested({ request: receiptRequest });
-      } });
+      const outcome = await this.internalReceive.accept({
+        capsule,
+        apply: ({ snapshot, receiptRequest, receivedRecord }) => {
+          this.internalCheckSession();
+          // Validate before Machine commits; malformed stream state and receipts
+          // must never partially confirm a response or advance offsets.
+          requireValue({ condition: receivedRecord === undefined || receivedRecord <= this.internalHighestOffered, message: 'Receipt for an unoffered record' });
+          changed = this.internalMachine.accept({ snapshot });
+          if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
+          reply = receiptRequested({ request: receiptRequest });
+        },
+      });
       switch (outcome) {
       case 'accepted': {
         if (changed) this.internalNotify(); else if (reply) this.internalTransportPulse.fire();

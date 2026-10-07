@@ -125,20 +125,22 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         }
       }
 
-      await storageService.updateHierarchy({ updater: ({ current }) => {
-        if (groupId !== undefined) {
-          const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;
-          if (group !== undefined) {
-            group.chat_ids.unshift(chatId);
-            return current;
+      await storageService.updateHierarchy({
+        updater: ({ current }) => {
+          if (groupId !== undefined) {
+            const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;
+            if (group !== undefined) {
+              group.chat_ids.unshift(chatId);
+              return current;
+            }
           }
-        }
 
-        const firstChatIndex = current.items.findIndex((item) => item.type === 'chat');
-        const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
-        current.items.splice(insertIndex, 0, { type: 'chat', id: chatId });
-        return current;
-      } });
+          const firstChatIndex = current.items.findIndex((item) => item.type === 'chat');
+          const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
+          current.items.splice(insertIndex, 0, { type: 'chat', id: chatId });
+          return current;
+        },
+      });
 
       if (activate) {
         setCurrentChatId({ chatId });
@@ -173,22 +175,24 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       return;
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
-      current.items = current.items.filter((item) => {
-        switch (item.type) {
-        case 'chat':
-          return item.id !== id;
-        case 'chat_group':
-          item.chat_ids = item.chat_ids.filter((chatId) => chatId !== id);
-          return true;
-        default: {
-          const _ex: never = item;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
-      return current;
-    } });
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
+        current.items = current.items.filter((item) => {
+          switch (item.type) {
+          case 'chat':
+            return item.id !== id;
+          case 'chat_group':
+            item.chat_ids = item.chat_ids.filter((chatId) => chatId !== id);
+            return true;
+          default: {
+            const _ex: never = item;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+          }
+          }
+        });
+        return current;
+      },
+    });
 
     if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === id) {
       currentChatRef.value = null;
@@ -215,29 +219,31 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       actionLabel: await ensureStrings.useChatLifecycle__undo(),
       onAction: async () => {
         const originalGroupId = chat.groupId;
-        await storageService.updateHierarchy({ updater: ({ current }) => {
-          if (originalGroupId !== null) {
-            const group = current.items.find((item) => {
-              switch (item.type) {
-              case 'chat_group':
-                return item.id === originalGroupId;
-              case 'chat':
-                return false;
-              default: {
-                const _ex: never = item;
-                throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        await storageService.updateHierarchy({
+          updater: ({ current }) => {
+            if (originalGroupId !== null) {
+              const group = current.items.find((item) => {
+                switch (item.type) {
+                case 'chat_group':
+                  return item.id === originalGroupId;
+                case 'chat':
+                  return false;
+                default: {
+                  const _ex: never = item;
+                  throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+                }
+                }
+              }) as HierarchyChatGroupNode | undefined;
+              if (group !== undefined) {
+                group.chat_ids.push(chat.id);
+                return current;
               }
-              }
-            }) as HierarchyChatGroupNode | undefined;
-            if (group !== undefined) {
-              group.chat_ids.push(chat.id);
-              return current;
             }
-          }
 
-          current.items.push({ type: 'chat', id: chat.id });
-          return current;
-        } });
+            current.items.push({ type: 'chat', id: chat.id });
+            return current;
+          },
+        });
         await loadData();
         await chatNavigation.openChat({
           chatId: chat.id,

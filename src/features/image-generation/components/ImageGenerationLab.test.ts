@@ -11,12 +11,18 @@ import { benchmarkManifest } from '@/features/stable-diffusion-cpp-browser/bench
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn() }));
-vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({ createImageClient: () => {
-  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel: mocks.cancel, updatePreview: mocks.updatePreview };
-} }));
-vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
-  kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
-} }));
+vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
+  createImageClient: () => {
+    mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel: mocks.cancel, updatePreview: mocks.updatePreview };
+  },
+}));
+vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
+  default: {
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+  },
+}));
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 beforeEach(async () => {
@@ -368,16 +374,45 @@ it('shows the debug toggle only for generation and locks it while generating', a
 });
 
 function benchmarkInventory(): ModelInventory {
-  return { candidates: ['one','two'].map(name => {
-    const file = ggufFile();
-    return { id: `user/${name}`, repositoryId: `user/${name}`, path: 'model.gguf', files: [{ path: 'model.gguf', file }], size: file.size, format: 'gguf',
-      family: 'sd-checkpoint', classes: [], roles: ['model'], evidence: ['synthetic test'], variant: 'unknown', turboHint: false, issue: undefined };
-  }), issues: [] };
+  return {
+    candidates: ['one','two'].map(name => {
+      const file = ggufFile();
+      return {
+        id: `user/${name}`,
+        repositoryId: `user/${name}`,
+        path: 'model.gguf',
+        files: [{ path: 'model.gguf', file }],
+        size: file.size,
+        format: 'gguf',
+        family: 'sd-checkpoint',
+        classes: [],
+        roles: ['model'],
+        evidence: ['synthetic test'],
+        variant: 'unknown',
+        turboHint: false,
+        issue: undefined,
+      };
+    }),
+    issues: [],
+  };
 }
 it('uses saved adapters explicitly in normal generation and independently in one diagnostics target', async () => {
   const inventory = benchmarkInventory(), file = new File(['adapter fixture'], 'style.safetensors');
-  inventory.candidates.push({ id: 'saved-style', repositoryId: 'user/adapters', path: 'style.safetensors', files: [{ path: 'style.safetensors', file }],
-    size: file.size, format: 'safetensors', family: 'unknown', classes: ['lora'], roles: [], evidence: [], issue: undefined, turboHint: false, variant: 'unknown' });
+  inventory.candidates.push({
+    id: 'saved-style',
+    repositoryId: 'user/adapters',
+    path: 'style.safetensors',
+    files: [{ path: 'style.safetensors', file }],
+    size: file.size,
+    format: 'safetensors',
+    family: 'unknown',
+    classes: ['lora'],
+    roles: [],
+    evidence: [],
+    issue: undefined,
+    turboHint: false,
+    variant: 'unknown',
+  });
   mocks.inspect.mockResolvedValue(inventory);
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG']), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
   wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -438,13 +473,37 @@ it('defaults to two fresh runs with retained PNGs and clears opened result image
 });
 function componentInventory(): ModelInventory {
   const candidates: ModelInventory['candidates'] = ['one', 'two'].map(name => ({
-    id: `user/${name}`, repositoryId: `user/${name}`, path: 'diffusion.gguf', files: [{ path: 'diffusion.gguf', file: ggufFile() }], size: 512,
-    format: 'gguf', family: 'z-image', classes: [], roles: ['diffusion'], evidence: [], variant: 'turbo', turboHint: true, issue: undefined,
+    id: `user/${name}`,
+    repositoryId: `user/${name}`,
+    path: 'diffusion.gguf',
+    files: [{ path: 'diffusion.gguf', file: ggufFile() }],
+    size: 512,
+    format: 'gguf',
+    family: 'z-image',
+    classes: [],
+    roles: ['diffusion'],
+    evidence: [],
+    variant: 'turbo',
+    turboHint: true,
+    issue: undefined,
   }));
   for (const name of ['vae-a', 'vae-b', 'text']) {
     const slot = name === 'text' ? 'lm' : 'vae';
-    candidates.push({ id: `user/${name}`, repositoryId: `user/${name}`, path: 'shared.gguf', files: [{ path: 'shared.gguf', file: ggufFile() }], size: 512,
-      format: 'gguf', family: 'unknown', classes: [slot === 'lm' ? 'lm-qwen3-4b' : 'vae-flux16'], roles: [slot], evidence: [], variant: 'unknown', turboHint: false, issue: undefined });
+    candidates.push({
+      id: `user/${name}`,
+      repositoryId: `user/${name}`,
+      path: 'shared.gguf',
+      files: [{ path: 'shared.gguf', file: ggufFile() }],
+      size: 512,
+      format: 'gguf',
+      family: 'unknown',
+      classes: [slot === 'lm' ? 'lm-qwen3-4b' : 'vae-flux16'],
+      roles: [slot],
+      evidence: [],
+      variant: 'unknown',
+      turboHint: false,
+      issue: undefined,
+    });
   }
   return { candidates, issues: [] };
 }

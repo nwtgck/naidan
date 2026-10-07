@@ -234,10 +234,13 @@ export async function runPartialModelSupportInvestigation({
       // Model Load. Full must preserve the same replay inputs before attempting
       // any expensive runtime work that may fail or be interrupted.
       if (collectReplayMetadata !== undefined) {
-        await collectReplayMetadata({ run, onSummary: ({ summary }) => {
-          run.replayMetadata = summary;
-          onRunUpdate({ run: structuredClone(run) });
-        } });
+        await collectReplayMetadata({
+          run,
+          onSummary: ({ summary }) => {
+            run.replayMetadata = summary;
+            onRunUpdate({ run: structuredClone(run) });
+          },
+        });
       }
     } catch (error) {
       const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
@@ -333,10 +336,13 @@ export async function runPartialModelSupportInvestigation({
 
   // Replay collection also records an unverified/missing offline identity without remote fallback.
   if (executionPlan.repositoryDownload && run.replayMetadata === undefined && collectReplayMetadata !== undefined) {
-    await collectReplayMetadata({ run, onSummary: ({ summary }) => {
-      run.replayMetadata = summary;
-      onRunUpdate({ run: structuredClone(run) });
-    } });
+    await collectReplayMetadata({
+      run,
+      onSummary: ({ summary }) => {
+        run.replayMetadata = summary;
+        onRunUpdate({ run: structuredClone(run) });
+      },
+    });
   }
 
   if (run.runtimeTarget === undefined) {

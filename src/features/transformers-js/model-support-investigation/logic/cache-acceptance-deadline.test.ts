@@ -9,7 +9,9 @@ describe('cache acceptance deadline', () => {
     const stopped = vi.fn();
     controller.signal.addEventListener('abort', stopped);
     const result = withCacheAcceptanceDeadline({
-      start: () => new Promise<never>(() => undefined), controller, timeoutMs: 100,
+      start: () => new Promise<never>(() => undefined),
+      controller,
+      timeoutMs: 100,
     }).catch(error => error);
     await vi.advanceTimersByTimeAsync(100);
     expect(await result).toBeInstanceOf(CacheAcceptanceTimeoutError);

@@ -163,15 +163,17 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   });
   const hasPendingSave = computed(() => runState.value?.needsRetry ?? false);
   let seenReceived = 0;
-  const unsubscribeRuns = imagePendingRuns.subscribe({ listener() {
-    if (disposed) return;
-    runRevision.value++;
-    const received = owner?.snapshot().received ?? 0;
-    if (received > 0) hasGeneratedImages.value = true;
-    if (received !== seenReceived && store.value?.storeId === ownerStore?.storeId) {
-      seenReceived = received; void refresh({ append: false });
-    }
-  } });
+  const unsubscribeRuns = imagePendingRuns.subscribe({
+    listener() {
+      if (disposed) return;
+      runRevision.value++;
+      const received = owner?.snapshot().received ?? 0;
+      if (received > 0) hasGeneratedImages.value = true;
+      if (received !== seenReceived && store.value?.storeId === ownerStore?.storeId) {
+        seenReceived = received; void refresh({ append: false });
+      }
+    },
+  });
   const reusing = ref(false);
   const busy = computed(() => starting.value || switching.value || mutation.value || reusing.value);
   const userTags = computed(() => catalog.value?.tags.filter(tag => tag.state === 'active') ?? []);
@@ -284,8 +286,11 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
               attempts.set(sessionId, attempt);
             }
             if (!disposed && sessionId === editingSessionId.value) draftStatus.value = 'saving';
-            await storageService.publishImageGeneration({ store: target,
-              publication: { type: 'draft', draft: attempt.checkpoint, expectedRevision: attempt.source.revision }, files: attempt.source.value.files });
+            await storageService.publishImageGeneration({
+              store: target,
+              publication: { type: 'draft', draft: attempt.checkpoint, expectedRevision: attempt.source.revision },
+              files: attempt.source.value.files,
+            });
             if (token !== epoch) return;
             const latest = drafts.get(sessionId);
             if (latest) {
@@ -384,8 +389,12 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       if (disposed || token !== epoch) return undefined;
       sessions.value = [session, ...sessions.value]; selectedSessionId.value = session.id;
       if (previous) {
-        const value = preserveDraft ? previous : { ...previous, seedMode: 'random' as const,
-          request: { ...previous.request, parameters: { ...previous.request.parameters, prompt: '', negativePrompt: '' }, imageInputs: { initImage: undefined, strength: previous.request.imageInputs.strength, referenceImages: [] } }, files: [] };
+        const value = preserveDraft ? previous : {
+          ...previous,
+          seedMode: 'random' as const,
+          request: { ...previous.request, parameters: { ...previous.request.parameters, prompt: '', negativePrompt: '' }, imageInputs: { initImage: undefined, strength: previous.request.imageInputs.strength, referenceImages: [] } },
+          files: [],
+        };
         drafts.set(session.id, { value, count: preserveDraft ? count.value : 1, revision: undefined, dirty: true });
       }
       if (preserveDraft) editingSessionId.value = session.id;
@@ -600,8 +609,14 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
               default: { const exhaustive: never = action.assignment; throw new Error(String(exhaustive)); }
               }
             })();
-            await persistence.setImageGenerationAssetTags({ store: target, sessionId, assetId: tile.id, tags,
-              assignedAt: Date.now(), expectedRevision: tile.annotations.revision });
+            await persistence.setImageGenerationAssetTags({
+              store: target,
+              sessionId,
+              assetId: tile.id,
+              tags,
+              assignedAt: Date.now(),
+              expectedRevision: tile.annotations.revision,
+            });
             break;
           }
           default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
@@ -684,7 +699,11 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     const lineage = (sources.get(destination) ?? []).filter(source => source.source.role === 'settings' || source.binaryObjectId && inputIds.has(source.binaryObjectId)).map(source => source.source);
     ownerStore = target;
     try {
-      owner = imagePendingRuns.create({ store: target, sessionId: destination, count: count.value, sources: lineage,
+      owner = imagePendingRuns.create({
+        store: target,
+        sessionId: destination,
+        count: count.value,
+        sources: lineage,
         persistence: createImageRunPersistence({ store: target }),
       });
     } catch (error) {
@@ -693,14 +712,17 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     const acceptedOwner = owner;
     sessionPresentation.begin({ key: JSON.stringify([target.storeId, destination]) });
     try {
-      await generation.generate({ submission: { ...acceptedOwner.submission,
-        async accepted({ snapshot, seeds }) {
-          await acceptedOwner.submission.accepted({ snapshot, seeds });
-          if (disposed || store.value?.storeId !== target.storeId) return;
-          // An ordering write is not a native failure or a second submission.
-          await retrySessionUse();
+      await generation.generate({
+        submission: {
+          ...acceptedOwner.submission,
+          async accepted({ snapshot, seeds }) {
+            await acceptedOwner.submission.accepted({ snapshot, seeds });
+            if (disposed || store.value?.storeId !== target.storeId) return;
+            // An ordering write is not a native failure or a second submission.
+            await retrySessionUse();
+          },
         },
-      } });
+      });
     } catch (error) {
       if (!disposed) failure.value = errorText({ error });
     } finally {
@@ -734,9 +756,13 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     try {
       if (tagId && !previous.tags.some(tag => tag.id === tagId)) throw new Error('The tag no longer exists. Refresh before renaming.');
       const label = imageGenerationTagNameSchema.parse(name), now = Date.now();
-      const next = { ...previous, revision: previous.revision + 1, tags: tagId
-        ? previous.tags.map(tag => tag.id === tagId ? { ...tag, name: label, updatedAt: now } : tag)
-        : [...previous.tags, { id: generateId<ImageGenerationTagId>(), name: label, state: 'active' as const, createdAt: now, updatedAt: now }] };
+      const next = {
+        ...previous,
+        revision: previous.revision + 1,
+        tags: tagId
+          ? previous.tags.map(tag => tag.id === tagId ? { ...tag, name: label, updatedAt: now } : tag)
+          : [...previous.tags, { id: generateId<ImageGenerationTagId>(), name: label, state: 'active' as const, createdAt: now, updatedAt: now }],
+      };
       await persistence.saveImageGenerationCatalog({ store: target, catalog: next, expectedRevision: previous.revision });
       if (store.value?.storeId === target.storeId) catalog.value = next;
     } catch (error) {
@@ -817,9 +843,19 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       case 'settings': {
         const current = generation.captureDraft?.();
         if (!current || !generation.restoreDraft) return 'unavailable';
-        await generation.restoreDraft({ draft: { ...current, request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } }, seedMode: 'fixed', files: [], modelSelection: undefined, remoteModelEditor: undefined, inferenceLocation: undefined,
-          layout: selected.run.request.models.some(model => model.slot === 'model') ? 'checkpoint' : 'components',
-          loraStates: selected.run.request.loras.map(lora => ({ enabled: lora.strength !== 0, strength: lora.strength })) } });
+        await generation.restoreDraft({
+          draft: {
+            ...current,
+            request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
+            seedMode: 'fixed',
+            files: [],
+            modelSelection: undefined,
+            remoteModelEditor: undefined,
+            inferenceLocation: undefined,
+            layout: selected.run.request.models.some(model => model.slot === 'model') ? 'checkpoint' : 'components',
+            loraStates: selected.run.request.loras.map(lora => ({ enabled: lora.strength !== 0, strength: lora.strength })),
+          },
+        });
         break;
       }
       case 'initial': case 'reference': await generation.useHistoryImage({ binaryObjectId: selected.asset.result.binaryObjectId, role: kind }); break;
@@ -836,7 +872,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       })();
       const previous = sources.get(sessionId) ?? [];
       sources.set(sessionId, [...previous.filter(entry => entry.source.role !== role || role === 'reference-image'), {
-        source: { role, sessionId: selected.asset.sessionId, assetId: selected.asset.id }, binaryObjectId: selected.asset.result.binaryObjectId,
+        source: { role, sessionId: selected.asset.sessionId, assetId: selected.asset.id },
+        binaryObjectId: selected.asset.result.binaryObjectId,
       }]);
       rememberDraft(); void saveDraft();
       return 'applied';
@@ -857,7 +894,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     }
     return true;
   }
-  const editor: ImageGenerationView = { ...generation, generate,
+  const editor: ImageGenerationView = {
+    ...generation,
+    generate,
     formDisabled: computed(() => generation.formDisabled.value || busy.value || available.value && !editorReady.value || hasPendingSave.value),
     draftDisabled: computed(() => generation.draftDisabled.value || busy.value || available.value && !editorReady.value),
   };
@@ -883,23 +922,25 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   watch(() => generation.draftRestoreDisabled?.value ?? generation.formDisabled.value, value => {
     if (!value) void restoreActiveDraft();
   });
-  const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
-    switch (event.type) {
-    case 'migration': break;
-    case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
-    }
-    initialized.value = false;
-    epoch++; queryEpoch++; detailEpoch++; storageRevision.value++; touchDraft();
-    void queries.dispose(); queries = createImageGenerationQueryClient(); clearTimeout(searchTimer);
-    store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
-    pendingDeletions.value = []; deletedAssetIds.value = []; operationProgress.value = undefined; visibility.value = 'active';
-    hasGeneratedImages.value = false;
-    monitorIntent.value = undefined; monitorRevision++; monitorFailure.value = '';
-    sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
-    drafts.clear(); attempts.clear(); sources.clear(); tiles.value = []; runs.value = []; runsWithAssets.value = []; selection.value = []; closeDetails();
-    clearTimeout(timer); void reload();
-  } });
+  const unsubscribe = storageService.subscribeToChanges({
+    listener: ({ event }) => {
+      switch (event.type) {
+      case 'migration': break;
+      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
+      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+      }
+      initialized.value = false;
+      epoch++; queryEpoch++; detailEpoch++; storageRevision.value++; touchDraft();
+      void queries.dispose(); queries = createImageGenerationQueryClient(); clearTimeout(searchTimer);
+      store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
+      pendingDeletions.value = []; deletedAssetIds.value = []; operationProgress.value = undefined; visibility.value = 'active';
+      hasGeneratedImages.value = false;
+      monitorIntent.value = undefined; monitorRevision++; monitorFailure.value = '';
+      sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
+      drafts.clear(); attempts.clear(); sources.clear(); tiles.value = []; runs.value = []; runsWithAssets.value = []; selection.value = []; closeDetails();
+      clearTimeout(timer); void reload();
+    },
+  });
   onMounted(() => {
     void reload();
   });
@@ -907,15 +948,96 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     translationMemory.clear();
     rememberDraft(); void saveDraft(); disposed = true; queryEpoch++; detailEpoch++; clearTimeout(timer); clearTimeout(searchTimer); void queries.dispose(); unsubscribe(); unsubscribeRuns();
   });
-  return { sessionUseFailure, sessionUseSaving, retrySessionUse, monitorPresentation, monitorSaving, monitorFailure, setMonitorPresentation, sessionPresentation, translationMemory, initialized, persistenceMode, storageUnavailable, useTemporary, assistantVisibility, deleteSession, updateSessionTranslation, assistantLayout, experimentalNoticeVisible, updatePreferences, available, catalog, store, sessions, currentSession, selectedSessionId, editorReady, editorDeferred, count, loading, switching, starting, mutation, busy,
-    failure, warnings, text, visibility, pendingDeletions, deletedAssetIds, operationProgress, curate, retryDeletions, runAssets, connectChat, onlyFavorite, filterTagId, userTags, mode, runs, runsWithAssets, tiles, nextCursor, total, selection, details, draftStatus, draftFailure, draftRevision,
-    inspectedTile, inspectLoading, inspectFailure, runState, hasPendingSave, editor, reload, refresh, selectSession, newSession, renameSession, generate, retrySave, editTag, getImage, hasTag, toggleTag, toggleSelection, inspect, closeDetails, setPromptDraft, reuse, saveDraft, flushDraft,
+  return {
+    sessionUseFailure,
+    sessionUseSaving,
+    retrySessionUse,
+    monitorPresentation,
+    monitorSaving,
+    monitorFailure,
+    setMonitorPresentation,
+    sessionPresentation,
+    translationMemory,
+    initialized,
+    persistenceMode,
+    storageUnavailable,
+    useTemporary,
+    assistantVisibility,
+    deleteSession,
+    updateSessionTranslation,
+    assistantLayout,
+    experimentalNoticeVisible,
+    updatePreferences,
+    available,
+    catalog,
+    store,
+    sessions,
+    currentSession,
+    selectedSessionId,
+    editorReady,
+    editorDeferred,
+    count,
+    loading,
+    switching,
+    starting,
+    mutation,
+    busy,
+    failure,
+    warnings,
+    text,
+    visibility,
+    pendingDeletions,
+    deletedAssetIds,
+    operationProgress,
+    curate,
+    retryDeletions,
+    runAssets,
+    connectChat,
+    onlyFavorite,
+    filterTagId,
+    userTags,
+    mode,
+    runs,
+    runsWithAssets,
+    tiles,
+    nextCursor,
+    total,
+    selection,
+    details,
+    draftStatus,
+    draftFailure,
+    draftRevision,
+    inspectedTile,
+    inspectLoading,
+    inspectFailure,
+    runState,
+    hasPendingSave,
+    editor,
+    reload,
+    refresh,
+    selectSession,
+    newSession,
+    renameSession,
+    generate,
+    retrySave,
+    editTag,
+    getImage,
+    hasTag,
+    toggleTag,
+    toggleSelection,
+    inspect,
+    closeDetails,
+    setPromptDraft,
+    reuse,
+    saveDraft,
+    flushDraft,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.
         // ESLint-required for useXxx return objects.
       },
-    }) || {}), };
+    }) || {}),
+  };
 }
 export type ImageGenerationWorkspaceView = ReturnType<typeof useImageGenerationWorkspace>;
 export const TEST_ONLY = {

@@ -21,7 +21,10 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
   });
   const busy = computed(() => form.state.value === 'running');
   const targets = computed(() => generation.library.benchmarkTargets({ selections: form.componentSelections.value }));
-  const runner = createBenchmarkRunner({ createClient: () => createImageEngineClient({ onReleased: undefined }), now: () => performance.now(), date: () => new Date().toISOString(),
+  const runner = createBenchmarkRunner({
+    createClient: () => createImageEngineClient({ onReleased: undefined }),
+    now: () => performance.now(),
+    date: () => new Date().toISOString(),
     observeVisibility({ changed }) {
       changed({ hidden: document.visibilityState === 'hidden' });
       const listener = () => changed({ hidden: document.visibilityState === 'hidden' });
@@ -55,10 +58,23 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     if (!artifact) throw new Error('Image runtime is unavailable');
     const chosen = targets.value.filter(t => form.selected.value.includes(t.id));
     if (chosen.length !== form.selected.value.length) throw new Error('Selected model inventory changed');
-    return createBenchmarkPlan({ id: '', createdAt: '', appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown',
-      notes: form.notes.value, protocol: form.protocol.value, targets: chosen, common: form.common.value, overrides: form.overrides.value, loras: form.loras.value, imageInputs: form.imageInputs.value,
-      strategy: form.strategy.value, artifact, baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
-      preview: form.preview.value, weightResidency: generation.weightResidency.value, gpuBudgetMiB: generation.gpuBudgetMiB.value === '' ? undefined : generation.gpuBudgetMiB.value,
+    return createBenchmarkPlan({
+      id: '',
+      createdAt: '',
+      appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown',
+      notes: form.notes.value,
+      protocol: form.protocol.value,
+      targets: chosen,
+      common: form.common.value,
+      overrides: form.overrides.value,
+      loras: form.loras.value,
+      imageInputs: form.imageInputs.value,
+      strategy: form.strategy.value,
+      artifact,
+      baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
+      preview: form.preview.value,
+      weightResidency: generation.weightResidency.value,
+      gpuBudgetMiB: generation.gpuBudgetMiB.value === '' ? undefined : generation.gpuBudgetMiB.value,
     });
   }
   const valid = computed(() => {
@@ -114,7 +130,16 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
   onScopeDispose(() => {
     disposed = true; exportControl?.abort(); runner.dispose(); generation.releaseBenchmark();
   });
-  return { ...form, available, targets, busy, canStart, plannedRuns, start, stop: () => runner.stop(), download,
+  return {
+    ...form,
+    available,
+    targets,
+    busy,
+    canStart,
+    plannedRuns,
+    start,
+    stop: () => runner.stop(),
+    download,
     clear() {
       if (busy.value || form.exporting.value) return; runner.clear(); form.runs.value = []; form.plan.value = undefined; form.state.value = 'idle'; form.error.value = ''; form.feedback.value = '';
     },

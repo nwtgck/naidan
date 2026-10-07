@@ -22,17 +22,22 @@ function harness({ behavior }: { behavior: (({ request, ordinal }: { request: Re
         disposed = true; activeCount--;
       }
     }); clients.push(client);
-    return { async inspectEngine() {
-      return { status: 'unavailable', reason: 'unsupported' };
-    }, release: vi.fn(), dispose: client.dispose, cancel: vi.fn(), updatePreview: vi.fn(),
-    async generate(args) {
-      const reused = client.calls++ > 0; requests.push(args.request); callbacks.push(args);
-      args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: reused, reason: reused ? 'compatible' : 'first-request' } }) });
-      args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'run-wall', fields: { milliseconds: 50, sampling: 40, 'model-load': reused ? 0 : 10 } }) });
-      args.onProgress({ event: { phase: 'sampling', step: 1, steps: args.request.parameters.steps } });
-      if (behavior) return behavior({ request: args.request, ordinal: requests.length });
-      return { png: new Blob(['png'], { type: 'image/png' }), width: args.request.parameters.width, height: args.request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
-    },
+    return {
+      async inspectEngine() {
+        return { status: 'unavailable', reason: 'unsupported' };
+      },
+      release: vi.fn(),
+      dispose: client.dispose,
+      cancel: vi.fn(),
+      updatePreview: vi.fn(),
+      async generate(args) {
+        const reused = client.calls++ > 0; requests.push(args.request); callbacks.push(args);
+        args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: reused, reason: reused ? 'compatible' : 'first-request' } }) });
+        args.onDiagnostic?.({ diagnostic: metricFixture({ metric: 'run-wall', fields: { milliseconds: 50, sampling: 40, 'model-load': reused ? 0 : 10 } }) });
+        args.onProgress({ event: { phase: 'sampling', step: 1, steps: args.request.parameters.steps } });
+        if (behavior) return behavior({ request: args.request, ordinal: requests.length });
+        return { png: new Blob(['png'], { type: 'image/png' }), width: args.request.parameters.width, height: args.request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
+      },
     };
   });
   const observeVisibility = vi.fn<Parameters<typeof createBenchmarkRunner>[0]['observeVisibility']>(({ changed }) => {
@@ -75,10 +80,12 @@ it('fresh-each never reuses a client and preserves every run in the same model g
   expect(h.runner.snapshot()!.runs.map(r => r.record.modelIndex)).toEqual([0,0,1,1]);
 });
 it('does not retry or relabel cold after a failure; skips warm runs and continues the next model', async () => {
-  const h = harness({ behavior: async ({ request, ordinal }) => {
-    if (ordinal === 1) throw new WebAssembly.RuntimeError('memory access out of bounds');
-    return { png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
-  } });
+  const h = harness({
+    behavior: async ({ request, ordinal }) => {
+      if (ordinal === 1) throw new WebAssembly.RuntimeError('memory access out of bounds');
+      return { png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
+    },
+  });
   await h.runner.start({ plan: planFixture({ mode: 'cold-warm', repeats: 3 }) });
   expect(h.runner.snapshot()!.runs.map(r => r.record.status)).toEqual(['failed','skipped','skipped','succeeded','succeeded','succeeded']);
   expect(h.requests).toHaveLength(4); expect(h.createClient).toHaveBeenCalledTimes(2);
@@ -115,9 +122,15 @@ it('a synchronous Stop from the running notification does not launch a generatio
   expect(h.requests).toHaveLength(0); expect(h.activeCount()).toBe(0);
 });
 it('timeout retires the bad model and skips its warm runs; no timer leaks remain', async () => {
-  vi.useFakeTimers(); const h = harness({ behavior: async ({ request, ordinal }) => ordinal === 1 ? new Promise(() => undefined) : {
-    png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false,
-  } });
+  vi.useFakeTimers(); const h = harness({
+    behavior: async ({ request, ordinal }) => ordinal === 1 ? new Promise(() => undefined) : {
+      png: new Blob(['png'], { type: 'image/png' }),
+      width: request.parameters.width,
+      height: request.parameters.height,
+      modelVersion: 'fixture',
+      uniformOutput: false,
+    },
+  });
   const plan = planFixture({ mode: 'cold-warm', repeats: 2 }); plan.protocol.timeoutSeconds = 1;
   const task = h.runner.start({ plan }); await vi.advanceTimersByTimeAsync(1001); await task;
   expect(h.runner.snapshot()!.runs.map(r => r.record.status)).toEqual(['failed','skipped','succeeded','succeeded']);
