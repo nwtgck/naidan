@@ -27,6 +27,7 @@ import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
+import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -88,7 +89,8 @@ import enforceDependencyDirections from './eslint-local-rules/enforce-dependency
 export default tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
+    // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -200,6 +202,7 @@ export default tseslint.config(
   noXssProneBrowserApis,
   preferRootAliasImports,
   enforceDependencyDirections,
+  testStructureSpacing,
   {
     files: ['**/*.test.ts'],
     languageOptions: {
