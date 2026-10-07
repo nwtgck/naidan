@@ -59,16 +59,16 @@ function database() {
           add(value: unknown, key: string) {
             requests.push(`${name}:add`); return task({
               run: () => {
-              if (entries.has(key)) throw new Error('ConstraintError'); entries.set(key, structuredClone(value)); return key;
-            },
+                if (entries.has(key)) throw new Error('ConstraintError'); entries.set(key, structuredClone(value)); return key;
+              },
               write: true,
             });
           },
           put(value: unknown, key: string) {
             requests.push(`${name}:put`); return task({
               run: () => {
-              entries.set(key, structuredClone(value)); return key;
-            },
+                entries.set(key, structuredClone(value)); return key;
+              },
               write: true,
             });
           },
@@ -82,11 +82,11 @@ function database() {
   }
   vi.stubGlobal('indexedDB', {
     open(name: string) {
-    names.push(name);
-    const result = { transaction, close: closes, onversionchange: undefined };
-    const request = { result, onsuccess: undefined as (() => void) | undefined };
-    queueMicrotask(() => request.onsuccess?.()); return request;
-  },
+      names.push(name);
+      const result = { transaction, close: closes, onversionchange: undefined };
+      const request = { result, onsuccess: undefined as (() => void) | undefined };
+      queueMicrotask(() => request.onsuccess?.()); return request;
+    },
   });
   return {
     stores,
@@ -95,8 +95,8 @@ function database() {
     scopes,
     names,
     failNextCommit() {
-    rejectCommit = true;
-  },
+      rejectCommit = true;
+    },
   };
 }
 let identity: NaidanRpcIdentity;
@@ -115,10 +115,10 @@ beforeEach(async () => {
   let previous = Promise.resolve();
   vi.stubGlobal('navigator', {
     locks: {
-    request: vi.fn((_name: string, run: () => Promise<unknown>) => {
-    const result = previous.then(run); previous = result.then(() => {}, () => {}); return result;
-  }),
-  },
+      request: vi.fn((_name: string, run: () => Promise<unknown>) => {
+        const result = previous.then(run); previous = result.then(() => {}, () => {}); return result;
+      }),
+    },
   });
   await storageService.init({ type: 'local' });
   const key = await crypto.subtle.generateKey({ name: 'X25519' }, false, ['deriveBits']);
@@ -256,8 +256,8 @@ it('notifies registry observers in the writing page without making their errors 
   database(); const observed = vi.fn();
   const unsubscribeThrower = storageService.subscribeNaidanRpcRegistryChanges({
     listener: () => {
-    throw new Error('Observer failure');
-  },
+      throw new Error('Observer failure');
+    },
   });
   const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: observed });
   try {

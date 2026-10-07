@@ -592,13 +592,13 @@ describe('SmolLM2 1.7B Provider / history', () => {
               id: toMessageId({ raw: 'message_1' }),
               role: 'assistant',
               parts: [{
-              type: 'text',
-              text: `\
+                type: 'text',
+                text: `\
 Sure, here's a sample message for a template:
 
 "Hello!`,
-              completeness: 'complete',
-            }],
+                completeness: 'complete',
+              }],
             },
             { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue with one short sentence.", completeness: 'complete' }] }
           ],
@@ -1290,17 +1290,17 @@ describe('SmolLM2 1.7B Provider / tools', () => {
             id: toMessageId({ raw: 'message_1' }),
             role: 'assistant',
             parts: [{ type: 'text', text: "", completeness: 'complete' },
-            {
-              type: 'tool_call',
-              toolCall: {
-              id: toToolCallId({ raw: "call_template_probe_1" }),
-              type: "function",
-              function: {
-                name: "lookup_weather",
-                arguments: "{\"city\":\"Tokyo\"}",
-              },
-            },
-            }],
+              {
+                type: 'tool_call',
+                toolCall: {
+                  id: toToolCallId({ raw: "call_template_probe_1" }),
+                  type: "function",
+                  function: {
+                    name: "lookup_weather",
+                    arguments: "{\"city\":\"Tokyo\"}",
+                  },
+                },
+              }],
           },
           { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
         ],
@@ -1440,8 +1440,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
         model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
         messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
-      ],
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }
+        ],
         parameters,
         debug: undefined,
         readBinaryObject: undefined,
@@ -1499,8 +1499,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
         model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
         messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
-      ],
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use lookup_weather for Tokyo, then give a short answer based on the tool result.", completeness: 'complete' }] }
+        ],
         parameters,
         debug: undefined,
         readBinaryObject: undefined,
@@ -1558,15 +1558,15 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
         model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
         messages: [
-        { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
-        {
-          id: toMessageId({ raw: 'message_1' }),
-          role: 'assistant',
-          parts: [{ type: 'text', text: "", completeness: 'complete' },
-          { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }],
-        },
-        { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
-      ],
+          { id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] },
+          {
+            id: toMessageId({ raw: 'message_1' }),
+            role: 'assistant',
+            parts: [{ type: 'text', text: "", completeness: 'complete' },
+              { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }],
+          },
+          { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }
+        ],
         parameters,
         debug: undefined,
         readBinaryObject: undefined,
@@ -1622,7 +1622,7 @@ describe('SmolLM2 1.7B Provider / images', () => {
               id: toMessageId({ raw: 'message_0' }),
               role: 'user',
               parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }],
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }],
             }
           ],
           parameters,
@@ -1681,8 +1681,8 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
           id: toMessageId({ raw: 'tool-user' }),
           role: 'user',
           parts: [
-          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-        ],
+            { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          ],
         }],
         debug: undefined,
         readBinaryObject: undefined,
@@ -1714,9 +1714,9 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
           id: toMessageId({ raw: 'image-user' }),
           role: 'user',
           parts: [
-          { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-          { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
-        ],
+            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+          ],
         }],
         debug: undefined,
         readBinaryObject: undefined,
@@ -1753,8 +1753,8 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
             id: toMessageId({ raw: 'plain-user' }),
             role: 'user',
             parts: [
-            { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
-          ],
+              { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+            ],
           }],
           debug: undefined,
           readBinaryObject: undefined,
@@ -1766,15 +1766,15 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
         role: 'assistant',
         interruption: undefined,
         parts: [
-        expect.objectContaining({
-          type: 'text',
-          completeness: 'partial',
-          text: `\
+          expect.objectContaining({
+            type: 'text',
+            completeness: 'partial',
+            text: `\
 Sure, here's a sample message for a template:
 
 "Hello!`,
-        }),
-      ],
+          }),
+        ],
       })]);
       replay.endNativeRequest();
       replay.assertComplete({ requests: 3, nativeCalls: 1 });
@@ -2008,17 +2008,17 @@ Sure, here's a sample message for a template:
     // A fulfilled old callback request without it remains a partial generation.
     await verifyCapturedFullReplay({
       reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] },
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      preNativeRejections: [
-        { scenario: 'natural-tool-minimal', reason: 'This text model has no reviewed structured tool adapter.' },
-        { scenario: 'natural-tool-representative', reason: 'Enabling tool definitions is rejected before generation.' },
-        { scenario: 'structured-tool-history', reason: 'The current adapter cannot preserve historical tool associations.' },
-        { scenario: 'image', reason: 'The current text adapter rejects images instead of silently discarding them.' },
-      ],
-    },
-    unavailableOutputs: [],
+        singleTextParts: { endTokenIds: ['2'] },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections: [
+          { scenario: 'natural-tool-minimal', reason: 'This text model has no reviewed structured tool adapter.' },
+          { scenario: 'natural-tool-representative', reason: 'Enabling tool definitions is rejected before generation.' },
+          { scenario: 'structured-tool-history', reason: 'The current adapter cannot preserve historical tool associations.' },
+          { scenario: 'image', reason: 'The current text adapter rejects images instead of silently discarding them.' },
+        ],
+      },
+      unavailableOutputs: [],
       completeResult: undefined,
       expectedLoadReceipt: undefined,
       evidence: fullEvidenceJson,

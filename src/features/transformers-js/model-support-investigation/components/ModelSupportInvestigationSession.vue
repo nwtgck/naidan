@@ -88,17 +88,17 @@ const sessionView = props.sessionView;
 const ordinaryDownloadTiming = parseDownloadTiming({
   schema: downloadTimingSnapshotSchema,
   value: toRaw((() => {
-  const snapshot = sessionView.initialSnapshot;
-  if (snapshot === undefined) return props.ordinaryDownloadTiming;
-  switch (snapshot.view) {
-  case 'setup': return props.ordinaryDownloadTiming;
-  case 'results': return snapshot.ordinaryDownloadTiming;
-  default: {
-    const exhaustive: never = snapshot;
-    return exhaustive;
-  }
-  }
-})()),
+    const snapshot = sessionView.initialSnapshot;
+    if (snapshot === undefined) return props.ordinaryDownloadTiming;
+    switch (snapshot.view) {
+    case 'setup': return props.ordinaryDownloadTiming;
+    case 'results': return snapshot.ordinaryDownloadTiming;
+    default: {
+      const exhaustive: never = snapshot;
+      return exhaustive;
+    }
+    }
+  })()),
 });
 const retainedTimingAvailable = (ordinaryDownloadTiming?.records.length ?? 0) > 0;
 const retainedTimingTruncated = ordinaryDownloadTiming !== undefined && (ordinaryDownloadTiming.droppedOperations > 0 || ordinaryDownloadTiming.records.some(record => record.truncated));
@@ -1468,9 +1468,9 @@ async function startInvestigation(): Promise<void> {
             const nativeEvidence = nativeEvidenceByTarget.get(target);
             reservation.release({
               retained: measureInvestigationProviderRetention({
-              runs: observedRun === undefined ? new Map() : new Map([[target, observedRun]]),
-              nativeEvidence: nativeEvidence === undefined ? new Map() : new Map([[target, nativeEvidence]]),
-            }),
+                runs: observedRun === undefined ? new Map() : new Map([[target, observedRun]]),
+                nativeEvidence: nativeEvidence === undefined ? new Map() : new Map([[target, nativeEvidence]]),
+              }),
             });
             providerRetention.value = providerBudget.snapshot();
           }
@@ -1515,11 +1515,11 @@ function rememberCurrentSession(): void {
   if (!started.value) {
     sessionView.remember({
       snapshot: {
-      view: 'setup',
-      batchId: batchRunId.value,
-      targets: [...committedTargets.value],
-      configuration: structuredClone(toRaw(investigationConfiguration.value)),
-    },
+        view: 'setup',
+        batchId: batchRunId.value,
+        targets: [...committedTargets.value],
+        configuration: structuredClone(toRaw(investigationConfiguration.value)),
+      },
     });
     return;
   }
@@ -1560,19 +1560,19 @@ function rememberCurrentSession(): void {
   }
   sessionView.remember({
     snapshot: {
-    view: 'results',
-    batchId: batchRunId.value,
-    targets: targetExecutions.value.map(execution => execution.target),
-    configuration: structuredClone(batchConfiguration ?? toRaw(investigationConfiguration.value)),
-    executions,
-    runs: [...rememberedRuns.entries()],
-    recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
-    replayMetadata: [...replayMetadataByTarget.entries()],
-    nativeEvidence: [...nativeEvidenceByTarget.entries()],
-    ordinaryDownloadTiming,
-    reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
-    selectedTarget: selectedTarget.value,
-  },
+      view: 'results',
+      batchId: batchRunId.value,
+      targets: targetExecutions.value.map(execution => execution.target),
+      configuration: structuredClone(batchConfiguration ?? toRaw(investigationConfiguration.value)),
+      executions,
+      runs: [...rememberedRuns.entries()],
+      recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
+      replayMetadata: [...replayMetadataByTarget.entries()],
+      nativeEvidence: [...nativeEvidenceByTarget.entries()],
+      ordinaryDownloadTiming,
+      reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
+      selectedTarget: selectedTarget.value,
+    },
   });
 }
 
@@ -1687,13 +1687,13 @@ async function downloadPartialEvidence(): Promise<void> {
           });
           return await evidenceClient.openEvidenceStream({
             input: {
-            kind: "partial",
-            run: exportedRun,
-            recovery: sourceSnapshot.recovery,
-            replayMetadata: sourceSnapshot.replayMetadata,
-            nativeEvidence: sourceSnapshot.nativeEvidence,
-            ordinaryDownloadTiming,
-          },
+              kind: "partial",
+              run: exportedRun,
+              recovery: sourceSnapshot.recovery,
+              replayMetadata: sourceSnapshot.replayMetadata,
+              nativeEvidence: sourceSnapshot.nativeEvidence,
+              ordinaryDownloadTiming,
+            },
           });
         }
 
@@ -1712,11 +1712,11 @@ async function downloadPartialEvidence(): Promise<void> {
         });
         return await evidenceClient.openEvidenceStream({
           input: {
-          kind: "batch",
-          batchId,
-          items,
-          ordinaryDownloadTiming,
-        },
+            kind: "batch",
+            batchId,
+            items,
+            ordinaryDownloadTiming,
+          },
         });
       })();
       if (!sessionView.isActive()) {
@@ -1755,10 +1755,10 @@ async function downloadRetainedTiming(): Promise<void> {
     try {
       const { stream, fileName } = await client.openEvidenceStream({
         input: {
-        kind: 'retained-timing',
-        snapshot: ordinaryDownloadTiming,
-        exportId: crypto.randomUUID(),
-      },
+          kind: 'retained-timing',
+          snapshot: ordinaryDownloadTiming,
+          exportId: crypto.randomUUID(),
+        },
       });
       if (!sessionView.isActive()) {
         void stream.cancel(new DOMException('Investigation view closed', 'AbortError')).catch(() => undefined);

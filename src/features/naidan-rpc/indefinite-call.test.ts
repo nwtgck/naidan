@@ -21,8 +21,8 @@ it('an explicitly unbounded call does not expire after arbitrary hours of slow c
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
   const { a, transport } = peers({
     run: () => {
-    started.resolve(); return gate.promise;
-  },
+      started.resolve(); return gate.promise;
+    },
     maximum: undefined,
   });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
@@ -38,8 +38,8 @@ it('an unbounded call still responds to explicit caller cancellation without wai
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>(), cancel = new AbortController();
   const { a } = peers({
     run: () => {
-    started.resolve(); return gate.promise;
-  },
+      started.resolve(); return gate.promise;
+    },
     maximum: undefined,
   });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: cancel.signal, timeoutMs: undefined });
@@ -50,8 +50,8 @@ it('a caller that explicitly chooses a deadline still gets bounded failure', asy
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
   const { a } = peers({
     run: () => {
-    started.resolve(); return gate.promise;
-  },
+      started.resolve(); return gate.promise;
+    },
     maximum: undefined,
   });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: 100 });
@@ -62,8 +62,8 @@ it('a locally configured peer maximum still applies when the caller requests no 
   vi.useFakeTimers(); const gate = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
   const { a } = peers({
     run: () => {
-    started.resolve(); return gate.promise;
-  },
+      started.resolve(); return gate.promise;
+    },
     maximum: 100,
   });
   const call = a.client({ contract: definition }).compute({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });

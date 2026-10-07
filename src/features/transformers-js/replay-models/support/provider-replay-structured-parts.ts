@@ -186,10 +186,10 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       assistant.parts.set(partId, {
         index,
         value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'reasoning' | 'text' }>>()({
-        type: partType,
-        text,
-        completeness,
-      }),
+          type: partType,
+          text,
+          completeness,
+        }),
       });
       break;
     }
@@ -205,10 +205,10 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       assistant.parts.set(partId, {
         index,
         value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'tool_call' }>>()({
-        type: 'tool_call',
-        name: toolName,
-        arguments: modelVisibleArguments,
-      }),
+          type: 'tool_call',
+          name: toolName,
+          arguments: modelVisibleArguments,
+        }),
       });
       break;
     }
@@ -320,10 +320,10 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
         id: event.partId,
         type: 'tool_call',
         toolCall: {
-        id: event.toolCallId,
-        type: 'function',
-        function: { name: event.toolName, arguments: event.modelVisibleArguments },
-      },
+          id: event.toolCallId,
+          type: 'function',
+          function: { name: event.toolName, arguments: event.modelVisibleArguments },
+        },
       }),
       });
       break;

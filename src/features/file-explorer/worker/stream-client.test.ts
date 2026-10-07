@@ -60,8 +60,8 @@ describe('File Explorer stream client lifecycle', () => {
     const { remote, client } = fixture();
     const opened = vi.fn(async () => new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-    },
+        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+      },
     }));
     remote.streamFile.mockImplementation(({ port }: { port: MessagePort }) => {
       return serveByteStream({ port, openStream: opened, signal: undefined }).completed;

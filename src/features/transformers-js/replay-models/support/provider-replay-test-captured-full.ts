@@ -23,10 +23,10 @@ const tensorSchema = z.object({
 const inputSchema = z.object({
   name: z.string(),
   value: z.discriminatedUnion('kind', [
-  tensorSchema.extend({ kind: z.literal('tensor') }),
-  z.object({ kind: z.literal('scalar'), value: z.array(z.number()) }).strict(),
-  z.object({ kind: z.literal('image-sizes'), value: z.array(z.tuple([z.number(), z.number()])) }).strict(),
-]),
+    tensorSchema.extend({ kind: z.literal('tensor') }),
+    z.object({ kind: z.literal('scalar'), value: z.array(z.number()) }).strict(),
+    z.object({ kind: z.literal('image-sizes'), value: z.array(z.tuple([z.number(), z.number()])) }).strict(),
+  ]),
 }).strict();
 const property = z.object({ status: z.literal('value'), value: z.union([z.number(), z.boolean()]) }).strict();
 const settingsSchema = z.object({
@@ -212,10 +212,10 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     label: `${label}/requested parameters`,
     actual: checked.settings.requested,
     expected: {
-    maxCompletionTokens: { status: 'value', value: requested.maxCompletionTokens },
-    temperature: { status: 'value', value: requested.temperature },
-    topP: { status: 'value', value: requested.topP },
-  },
+      maxCompletionTokens: { status: 'value', value: requested.maxCompletionTokens },
+      temperature: { status: 'value', value: requested.temperature },
+      topP: { status: 'value', value: requested.topP },
+    },
   });
   const config = z.object({ is_encoder_decoder: z.boolean().optional(), max_position_embeddings: z.number().int().positive().optional(), text_config: z.object({ max_position_embeddings: z.number().int().positive().optional() }).optional() }).parse(modelConfig);
   if (config.is_encoder_decoder === true) throw new Error('Encoder-decoder replay requires an explicit budget lane');
@@ -228,13 +228,13 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     expected: {
       // Actual full input already contains the previous sequence. Adding cache
       // length again would double-count context; it is not a suffix-only input.
-    source: 'explicit',
-    pastTokenCount,
-    maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount),
-    contextLimit,
-    promptTokenCount,
-    usedContextTokenCount: promptTokenCount,
-  },
+      source: 'explicit',
+      pastTokenCount,
+      maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount),
+      contextLimit,
+      promptTokenCount,
+      usedContextTokenCount: promptTokenCount,
+    },
   });
   exact({ label: `${label}/sampling derivation`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample], expected: [checked.settings.budget.maxNewTokens, requested.temperature, requested.topP, requested.temperature > 0] });
   const first = checked.stream[0];
@@ -746,9 +746,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     expect(load.outcome.receipt, `actual bounded Load receipt: ${JSON.stringify(load.outcome.receipt)}`).toEqual({
       ...expectedReceipt,
       cacheLookup: {
-      ...expectedReceipt.cacheLookup,
-      hitPaths: expectedReceipt.cacheLookup.hitPaths.filter(path => availablePaths.has(path)),
-    },
+        ...expectedReceipt.cacheLookup,
+        hitPaths: expectedReceipt.cacheLookup.hitPaths.filter(path => availablePaths.has(path)),
+      },
     });
     expect(capture.incompleteReasons).toEqual([]);
     expect(capture.calls).toHaveLength(expectedCallCount + preNativeRejections.size);

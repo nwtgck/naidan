@@ -65,13 +65,13 @@ describe('model choices for an embedded ChatPane', () => {
     let adapter: ChatModelsAdapter | undefined;
     const child = defineComponent({
       setup() {
-      adapter = useChatModels(); return () => h('div');
-    },
+        adapter = useChatModels(); return () => h('div');
+      },
     });
     const parent = defineComponent({
       setup() {
-      provideChatViewScope({ chatId: ref(chatB) }); return () => h(child);
-    },
+        provideChatViewScope({ chatId: ref(chatB) }); return () => h(child);
+      },
     });
     wrappers.push(mount(parent)); mocks.chat.mockResolvedValueOnce(['embedded']);
     await adapter!.fetchForChat({ chatId: chatB });

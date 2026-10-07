@@ -529,13 +529,13 @@ export class Wesh {
     this.registerInternalCommand({
       name: 'jobs',
       fn: async ({ context }) => {
-      const jobs = context.getJobs();
-      const { print } = context.text();
-      for (const job of jobs) {
-        await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
-      }
-      return { exitCode: 0 };
-    },
+        const jobs = context.getJobs();
+        const { print } = context.text();
+        for (const job of jobs) {
+          await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
+        }
+        return { exitCode: 0 };
+      },
     });
   }
 
@@ -4253,34 +4253,34 @@ usage: ${name} [-c command] [file [argument...]]
     case 'read':
       return this.createSharedFileHandle({
         handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
-        mode: 0o644,
-      }),
+          path: fullTarget,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+          mode: 0o644,
+        }),
       });
     case 'write':
       return this.createSharedFileHandle({
         handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
-        mode: 0o644,
-      }),
+          path: fullTarget,
+          flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+          mode: 0o644,
+        }),
       });
     case 'append':
       return this.createSharedFileHandle({
         handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
-        mode: 0o644,
-      }),
+          path: fullTarget,
+          flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
+          mode: 0o644,
+        }),
       });
     case 'read_write':
       return this.createSharedFileHandle({
         handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
-        mode: 0o644,
-      }),
+          path: fullTarget,
+          flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
+          mode: 0o644,
+        }),
       });
     default: {
       const _ex: never = redirection.type;

@@ -173,11 +173,11 @@ export function createGemma4Generation({ emit, toolCalls }: {
       flushNewline(); close({ completeness: 'partial' });
       emit({
         event: {
-        type: 'result',
-        result: terminal === undefined || terminal === 'incomplete'
-        ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal },
-      },
+          type: 'result',
+          result: terminal === undefined || terminal === 'incomplete'
+            ? { type: 'interrupted', reason }
+            : { type: 'finished', next: terminal },
+        },
       });
     },
   };

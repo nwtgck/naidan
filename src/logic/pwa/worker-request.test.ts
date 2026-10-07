@@ -13,7 +13,7 @@ function workerWithReply(data: unknown): ServiceWorker {
   return {
     postMessage(_request: unknown, ports: MessagePort[]) {
     ports[0]!.postMessage(data);
-  },
+    },
   } as unknown as ServiceWorker;
 }
 const signal = new AbortController().signal;
@@ -34,8 +34,8 @@ describe('service worker message transport', () => {
     const close = vi.spyOn(MessagePort.prototype, 'close');
     const worker = {
       postMessage() {
-      throw new Error('worker terminated');
-    },
+        throw new Error('worker terminated');
+      },
     } as unknown as ServiceWorker;
     await expect(requestNetworkUpdate({ worker, signal })).rejects.toThrow('terminated');
     expect(close).toHaveBeenCalledTimes(2);

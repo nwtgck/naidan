@@ -281,8 +281,8 @@ describe("local GGUF model store", () => {
     const data = new Uint8Array(await file.arrayBuffer());
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       start(controller) {
-      controller.enqueue(data);
-    },
+        controller.enqueue(data);
+      },
       cancel,
     });
     vi.spyOn(file, "stream").mockReturnValue(stream);
@@ -315,11 +315,11 @@ describe('directory model imports', () => {
     const model = await importModelDirectory({
       signal: undefined,
       directory: {
-      name: 'LiquidAI:LFM2.5-VL:GGUF',
-      files: [
-      { path: 'weights:original/model.gguf', file: fixture({ name: 'model.gguf' }) },
-    ],
-    },
+        name: 'LiquidAI:LFM2.5-VL:GGUF',
+        files: [
+          { path: 'weights:original/model.gguf', file: fixture({ name: 'model.gguf' }) },
+        ],
+      },
       onProgress: () => {},
     });
     expect(model.id).toBe('user/LiquidAI_LFM2.5-VL_GGUF'); expect(model.name).toBe('LiquidAI_LFM2.5-VL_GGUF');
@@ -333,11 +333,11 @@ describe('directory model imports', () => {
     await expect(importModelDirectory({
       signal: undefined,
       directory: {
-      name: 'owner:model',
-      files: [
-      { path: 'model.gguf', file: fixture({ name: 'model.gguf' }) },
-    ],
-    },
+        name: 'owner:model',
+        files: [
+          { path: 'model.gguf', file: fixture({ name: 'model.gguf' }) },
+        ],
+      },
       onProgress: () => {},
     })).rejects.toThrow('duplicate-model');
     expect(existing.children.get('notes.txt')).toBe(preserved);
@@ -362,13 +362,13 @@ describe('directory model imports', () => {
     const model = await importModelDirectory({
       signal: undefined,
       directory: {
-      name: 'my-Qwen-VL-GGUF',
-      files: [
-      { path: 'weights/Qwen.gguf', file: fixture({ name: 'Qwen.gguf' }) },
-      { path: 'vision/mmproj-BF16.gguf', file: fixture({ name: 'mmproj-BF16.gguf' }) },
-      { path: 'README.md', file: new NodeFile(['Model notes'], 'README.md') as unknown as File },
-    ],
-    },
+        name: 'my-Qwen-VL-GGUF',
+        files: [
+          { path: 'weights/Qwen.gguf', file: fixture({ name: 'Qwen.gguf' }) },
+          { path: 'vision/mmproj-BF16.gguf', file: fixture({ name: 'mmproj-BF16.gguf' }) },
+          { path: 'README.md', file: new NodeFile(['Model notes'], 'README.md') as unknown as File },
+        ],
+      },
       onProgress: () => {},
     });
     expect(model.id).toBe('user/my-Qwen-VL-GGUF'); expect(model.name).toBe('my-Qwen-VL-GGUF'); expect(model.size).toBe(512);
@@ -387,12 +387,12 @@ describe('directory model imports', () => {
     const model = await importModelDirectory({
       signal: undefined,
       directory: {
-      name,
-      files: [
-      { path: modelPath, file: fixture({ name: modelPath }) },
-      { path: projectorPath, file: fixture({ name: projectorPath }) },
-    ],
-    },
+        name,
+        files: [
+          { path: modelPath, file: fixture({ name: modelPath }) },
+          { path: projectorPath, file: fixture({ name: projectorPath }) },
+        ],
+      },
       onProgress: () => {},
     });
     expect(model.name).toBe(name); expect(model.size).toBe(512);
@@ -441,12 +441,12 @@ describe('directory model imports', () => {
     const model = await importModelDirectory({
       signal: undefined,
       directory: {
-      name: 'models',
-      files: [
-      { path: 'weights/model-00001-of-00002.gguf', file: fixture({ name: 'model-00001-of-00002.gguf' }) },
-      { path: 'weights/model-00002-of-00002.gguf', file: fixture({ name: 'model-00002-of-00002.gguf' }) },
-    ],
-    },
+        name: 'models',
+        files: [
+          { path: 'weights/model-00001-of-00002.gguf', file: fixture({ name: 'model-00001-of-00002.gguf' }) },
+          { path: 'weights/model-00002-of-00002.gguf', file: fixture({ name: 'model-00002-of-00002.gguf' }) },
+        ],
+      },
       onProgress: () => {},
     });
     expect(model.id).toBe('user/models');
@@ -466,9 +466,9 @@ describe('directory model imports', () => {
       signal: undefined,
       directory: { name: 'Imported', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] },
       onProgress: () => {
-      const folder = user.children.get('Imported');
-      observedPending = folder?.kind === 'directory' && folder.children.has('.llama-cpp-import-pending');
-    },
+        const folder = user.children.get('Imported');
+        observedPending = folder?.kind === 'directory' && folder.children.has('.llama-cpp-import-pending');
+      },
     });
     expect(observedPending).toBe(true);
     failWrite = true;
@@ -515,8 +515,8 @@ describe('cancelled local imports and explicit retries', () => {
     const entered = Promise.withResolvers<void>(); const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull() {
-      entered.resolve();
-    },
+        entered.resolve();
+      },
       cancel,
     }, { highWaterMark: 0 });
     const source = vi.spyOn(file, 'stream').mockReturnValue(stream);
@@ -532,17 +532,17 @@ describe('cancelled local imports and explicit retries', () => {
     const directory = {
       name: 'Cancelled folder',
       files: [
-      { path: 'weights/model.gguf', file: fixture({ name: 'model.gguf' }) },
-      { path: 'vision/mmproj.gguf', file: fixture({ name: 'mmproj.gguf' }) },
-    ],
+        { path: 'weights/model.gguf', file: fixture({ name: 'model.gguf' }) },
+        { path: 'vision/mmproj.gguf', file: fixture({ name: 'mmproj.gguf' }) },
+      ],
     };
     const controller = new AbortController();
     await expect(importModelDirectory({
       directory,
       signal: controller.signal,
       onProgress: ({ progress }) => {
-      if (progress.completed > 256) controller.abort();
-    },
+        if (progress.completed > 256) controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(committed).toEqual(['model.gguf']);
     expect((await userFolder()).children.has(directory.name)).toBe(false);

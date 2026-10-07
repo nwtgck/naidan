@@ -20,8 +20,8 @@ describe('synchronous projector tensor tracing', () => {
       bytes: ({ pointer, length }: { pointer: bigint, length: number }) => memory.subarray(Number(pointer - tensorPointer), Number(pointer - tensorPointer) + length),
       module: {
         addFunction: (fn: typeof callback) => {
-        callback = fn; return 9;
-      },
+          callback = fn; return 9;
+        },
         removeFunction: vi.fn(),
       },
     } as unknown as Core;
@@ -80,8 +80,8 @@ describe('projector input tensor metadata', () => {
       },
       module: {
         addFunction: (fn: typeof callback) => {
-        callback = fn; return 11;
-      },
+          callback = fn; return 11;
+        },
         removeFunction,
       },
     } as unknown as Core;

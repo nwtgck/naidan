@@ -19,8 +19,8 @@ describe('abortable byte stream ownership', () => {
     const cancel = vi.fn(() => cleanup.promise);
     const source = new ReadableStream<Uint8Array>({
       pull() {
-      return new Promise(() => undefined);
-    },
+        return new Promise(() => undefined);
+      },
       cancel,
     }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
@@ -42,8 +42,8 @@ describe('abortable byte stream ownership', () => {
     const cancel = vi.fn(() => cleanup.promise);
     const source = new ReadableStream<Uint8Array>({
       pull(controller) {
-      controller.enqueue(new Uint8Array([1]));
-    },
+        controller.enqueue(new Uint8Array([1]));
+      },
       cancel,
     }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
@@ -51,10 +51,10 @@ describe('abortable byte stream ownership', () => {
     try {
       await expect(promptly({
         operation: stream.pipeTo(new WritableStream({
-        write() {
-        throw failure;
-      },
-      })),
+          write() {
+            throw failure;
+          },
+        })),
       })).rejects.toBe(failure);
       expect(source.locked).toBe(false);
       expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
@@ -69,16 +69,16 @@ describe('abortable byte stream ownership', () => {
     });
     const source = new ReadableStream<Uint8Array>({
       pull(controller) {
-      controller.enqueue(new Uint8Array([1]));
-    },
+        controller.enqueue(new Uint8Array([1]));
+      },
       cancel,
     }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const failure = new Error('Invalid output size');
     await expect(stream.pipeTo(new WritableStream({
       write() {
-      throw failure;
-    },
+        throw failure;
+      },
     }))).rejects.toBe(failure);
     expect(source.locked).toBe(false);
     expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
@@ -92,8 +92,8 @@ describe('abortable byte stream ownership', () => {
       stream: source,
       signal: new AbortController().signal,
       onCancel: () => {
-      throw failure;
-    },
+        throw failure;
+      },
     });
     await expect(stream.cancel('stop')).rejects.toBe(failure);
     expect(cancel).toHaveBeenCalledExactlyOnceWith('stop');
@@ -125,8 +125,8 @@ describe('abortable byte stream ownership', () => {
     const abort = new AbortController();
     const source = new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.close();
-    },
+        controller.close();
+      },
       cancel,
     });
     const stream = createAbortableByteStream({ stream: source, signal: abort.signal, onCancel: notification });

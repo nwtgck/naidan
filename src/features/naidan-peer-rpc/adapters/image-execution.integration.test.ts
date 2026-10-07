@@ -59,11 +59,11 @@ async function setup() {
   const provider = new NaidanRpcPeer({
     transport: pair.b,
     exports: [expose({
-    contract: naidanPeerContract,
-    implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference }),
-    allowedMethods: ['generateImage'],
-  })],
-  limits: { maxCalls: 2, maxCallTimeoutMs: undefined },
+      contract: naidanPeerContract,
+      implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference }),
+      allowedMethods: ['generateImage'],
+    })],
+    limits: { maxCalls: 2, maxCallTimeoutMs: undefined },
     signal: lifetime.signal,
   });
   const open = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
@@ -72,14 +72,14 @@ async function setup() {
   });
   const manager = new NaidanPeerManager({
     dependencies: {
-    storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
-    identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
-    acquireOwner: async () => ({ release() {} }),
-    open,
-    changed() {},
-    retireResources: async () => {},
-    inference,
-  },
+      storage: { list: async () => ({ access: registryAccess, connections: [record] }), readIdentity: async () => undefined, remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
+      identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
+      acquireOwner: async () => ({ release() {} }),
+      open,
+      changed() {},
+      retireResources: async () => {},
+      inference,
+    },
   });
   await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
   const plan = preparePeerImageExecution({ binding: manager.bindClient({ id: record.id }), input: input() });

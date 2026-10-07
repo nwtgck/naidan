@@ -349,19 +349,19 @@ describe('LFM2.5 350M Download replay', () => {
 
         const outcome = await h.freshLoad({
           progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
-          // The real bundle's getModelFile dispatches initiate before getCache and
-          // loadResourceFile. Production has already completed candidate planning;
-          // no ONNX File snapshot/body has been consumed for this runtime load yet.
-          const activity = h.fs.activity.slice(activityBoundary);
-          removals.push({
-            status: info.status,
-            file: info.file,
-            removed: h.fs.files.delete(missingBody),
-            modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
-            modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
-          });
-        },
+            if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+            // The real bundle's getModelFile dispatches initiate before getCache and
+            // loadResourceFile. Production has already completed candidate planning;
+            // no ONNX File snapshot/body has been consumed for this runtime load yet.
+            const activity = h.fs.activity.slice(activityBoundary);
+            removals.push({
+              status: info.status,
+              file: info.file,
+              removed: h.fs.files.delete(missingBody),
+              modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
+              modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
+            });
+          },
         }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
         expect(removals).toHaveLength(1);

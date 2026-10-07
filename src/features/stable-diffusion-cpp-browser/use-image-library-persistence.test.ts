@@ -23,11 +23,11 @@ function library() {
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }),
-    list: listImageRepositories,
-    scan: scanImageRepositories,
-    import: importImageRepository,
-  },
+      download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }),
+      list: listImageRepositories,
+      scan: scanImageRepositories,
+      import: importImageRepository,
+    },
   }))!;
 }
 beforeEach(() => {
@@ -35,10 +35,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
     locks: {
-    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-    options.signal?.throwIfAborted(); return run();
-  },
-  },
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); return run();
+      },
+    },
   });
 });
 afterEach(() => {
@@ -63,8 +63,8 @@ async function serve({ layers, failLast }: { layers: number, failLast: boolean }
       policyName: 'huggingface_models',
       body: new ReadableStream({
         start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
+          controller.enqueue(bytes); controller.close();
+        },
       }),
     };
   });

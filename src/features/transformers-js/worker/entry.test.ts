@@ -364,9 +364,9 @@ describe('transformers-js.worker', () => {
     const entry = await import('./entry');
     await expect(entry.initializeProductionWorkerRuntime({
       requestRuntimeModule: async () => ({
-      requestId: '00000000-0000-4000-8000-000000000001',
-      objectUrl: 'blob:https://foreign.invalid/00000000-0000-4000-8000-000000000001',
-    }),
+        requestId: '00000000-0000-4000-8000-000000000001',
+        objectUrl: 'blob:https://foreign.invalid/00000000-0000-4000-8000-000000000001',
+      }),
     })).rejects.toThrow('origin');
     expect(importProductionRuntimeModule).not.toHaveBeenCalled();
     expect(comlink.expose).not.toHaveBeenCalled();
@@ -490,9 +490,9 @@ describe('transformers-js.worker', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     await entered.promise;
     const config = {
@@ -549,9 +549,9 @@ describe('transformers-js.worker', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     const dispose = vi.fn(async (): Promise<unknown[]> => []);
     const returned = vi.fn();
@@ -751,10 +751,10 @@ describe('transformers-js.worker', () => {
     mockRoot.getDirectoryHandle.mockResolvedValue(createMockDir({
       'huggingface.co': createMockDir({
         org: createMockDir({
-        repo: createMockDir({
-        resolve: createMockDir({ [revision]: createMockDir({ onnx }) }),
-      }),
-      }),
+          repo: createMockDir({
+            resolve: createMockDir({ [revision]: createMockDir({ onnx }) }),
+          }),
+        }),
       }),
     }));
     const dispose = vi.fn().mockRejectedValue(new Error('Secondary model disposal failed'));
@@ -3280,8 +3280,8 @@ describe('transformers-js.worker', () => {
         loadIdentity: standardLoadIdentity,
         outcome: 'fulfilled',
         invocations: [
-        { nativeInvocationOrdinal: 1, stream: { status: 'unavailable', reason: 'method-descriptor' } },
-      ],
+          { nativeInvocationOrdinal: 1, stream: { status: 'unavailable', reason: 'method-descriptor' } },
+        ],
       }]);
       expect(result.capture.events.filter(event => event.kind === 'native-call').map(event => event.phase)).toEqual(['entering', 'fulfilled']);
       expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
@@ -3764,12 +3764,12 @@ Use shell tools.<|im_end|>
       const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({
         kind,
         generate: async ({ onGenerationEvent }) => {
-        if (onGenerationEvent === undefined) throw new Error('Expected structured event sink');
-        onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
-        onGenerationEvent({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
-        onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
-        onGenerationEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
-      },
+          if (onGenerationEvent === undefined) throw new Error('Expected structured event sink');
+          onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
+          onGenerationEvent({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
+          onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
+          onGenerationEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+        },
       });
       const chunk = vi.fn(); const calls = vi.fn(); let settled = false;
       try {
@@ -3795,9 +3795,9 @@ Use shell tools.<|im_end|>
       const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({
         kind,
         generate: async ({ onGenerationEvent }) => {
-        onGenerationEvent?.({ event: { type: 'part_start', index: 0, kind: 'text' } });
-        onGenerationEvent?.({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
-      },
+          onGenerationEvent?.({ event: { type: 'part_start', index: 0, kind: 'text' } });
+          onGenerationEvent?.({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+        },
       });
       const sink = vi.fn(async () => {
         throw fault;
@@ -3843,28 +3843,28 @@ Use shell tools.<|im_end|>
         return {
           ...strategy,
           generate: context => {
-          state = context.runtimeState;
-          return strategy.generate(context);
-        },
+            state = context.runtimeState;
+            return strategy.generate(context);
+          },
         };
       });
       return {
         getState() {
-        if (state === undefined) throw new Error('Expected actual strategy runtime state');
-        return state;
-      },
+          if (state === undefined) throw new Error('Expected actual strategy runtime state');
+          return state;
+        },
         restore() {
-        spy.mockRestore();
-      },
+          spy.mockRestore();
+        },
       };
     }
     // Use the actual pinned browser Jinja, whose version differs from the
     // separately installed package, and each model's unchanged native grammar.
     const NativeTemplate = bundledJinjaTemplate({
       code: applyTransformersJsFixes({
-      code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'),
-      version: '4.2.0',
-    }).code,
+        code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'),
+        version: '4.2.0',
+      }).code,
     });
     const nativeTemplates = {
       '2B': new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--qwen3.5-2b-onnx/model-chat_template.jinja', 'utf8')),
@@ -4483,8 +4483,8 @@ Use shell tools.<|im_end|>
         expect.objectContaining({
           role: 'assistant',
           tool_calls: [expect.objectContaining({
-          function: { name: 'shell_execute', arguments: { shell_script: 'ls -la', stdout_limit: 100 } },
-        })],
+            function: { name: 'shell_execute', arguments: { shell_script: 'ls -la', stdout_limit: 100 } },
+          })],
         }),
       ]));
       expect(processor.mock.calls[0]?.[0]).toContain(`<function=shell_execute>\n<parameter=shell_script>\nls -la\n</parameter>\n<parameter=stdout_limit>\n100\n</parameter>`);

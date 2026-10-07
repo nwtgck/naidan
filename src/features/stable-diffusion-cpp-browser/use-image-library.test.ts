@@ -32,11 +32,11 @@ function harness({ entries, scan }: { entries: LocalImageRepository[], scan: typ
     onSelection,
     scope,
     block() {
-    blocked = true;
-  },
+      blocked = true;
+    },
     entries({ next }: { next: LocalImageRepository[] }) {
-    current = next;
-  },
+      current = next;
+    },
   };
 }
 it('resolves required components across repositories and keeps the original file paths', async () => {
@@ -137,8 +137,8 @@ it('stops scanning on dispose and does not publish results while generation is l
   const h = harness({
     entries,
     scan: () => new Promise<ModelInventory>(resolve => {
-    finish = resolve;
-  }),
+      finish = resolve;
+    }),
   });
   const pending = h.library.refresh(); for (let i = 0; i < 12; i++) await Promise.resolve(); h.block();
   finish?.(actual); await pending; expect(h.library.models.value).toEqual([]);
@@ -190,8 +190,8 @@ it('cancels an unresponsive injected read immediately and ignores its late rejec
   const h = harness({
     entries: [],
     scan: async () => {
-    entered.resolve(); return gate.promise;
-  },
+      entered.resolve(); return gate.promise;
+    },
   });
   const first = h.library.refresh(); await entered.promise;
   h.library.cancelScan(); await first;
@@ -204,8 +204,8 @@ it('finishes all waiters when disposed during a stalled read', async () => {
   const h = harness({
     entries: [],
     scan: async () => {
-    entered.resolve(); return new Promise<ModelInventory>(() => undefined);
-  },
+      entered.resolve(); return new Promise<ModelInventory>(() => undefined);
+    },
   });
   const first = h.library.refresh(); await entered.promise;
   const second = h.library.refresh(); h.scope.stop();

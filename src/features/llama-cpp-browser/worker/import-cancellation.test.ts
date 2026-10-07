@@ -57,8 +57,8 @@ describe('local import cancellation through service and Worker boundaries', () =
     const imported = vi.fn(); const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: imported });
     const unsubscribe = llamaCppBrowserService.subscribe({
       listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    },
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
     });
     const copy = ({ signal }: { signal: AbortSignal | undefined }) => {
       switch (kind) {
@@ -92,8 +92,8 @@ describe('local import cancellation through service and Worker boundaries', () =
     });
     const unsubscribe = llamaCppBrowserService.subscribe({
       listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    },
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
     });
     try {
       let settled = false;

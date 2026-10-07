@@ -124,12 +124,12 @@ async function run<T>({ signal, operation, kind, owner }: {
         const created = createLlamaCppWorkerClient(); client = created;
         created.subscribeDisposed({
           listener: () => {
-          if (client === created) {
-            const checking = profileState.status === 'checking';
-            client = undefined; invalidateProfiles();
-            if (checking) publishProfiles({ next: { status: 'error', code: 'worker-failed' } });
-          }
-        },
+            if (client === created) {
+              const checking = profileState.status === 'checking';
+              client = undefined; invalidateProfiles();
+              if (checking) publishProfiles({ next: { status: 'error', code: 'worker-failed' } });
+            }
+          },
         });
       }
       switch (kind) {
@@ -202,22 +202,22 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       owner: undefined,
       signal,
       operation: async ({ worker, signal }) => {
-      let acceptingProgress = true;
-      const report: typeof progress = ({ progress: value }) => {
-        if (signal.aborted || !acceptingProgress) return;
-        progress({ progress: value });
-        onProgress?.({ progress: value });
-      };
-      try {
-        report({ progress: { phase: 'initializing', completed: 0, total: 0 } });
-        const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        await worker.prepareModel({ request: { model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
-        return 'ready' as const;
-      } finally {
-        acceptingProgress = false;
-      }
-    },
+        let acceptingProgress = true;
+        const report: typeof progress = ({ progress: value }) => {
+          if (signal.aborted || !acceptingProgress) return;
+          progress({ progress: value });
+          onProgress?.({ progress: value });
+        };
+        try {
+          report({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+          const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
+          if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+          await worker.prepareModel({ request: { model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
+          return 'ready' as const;
+        } finally {
+          acceptingProgress = false;
+        }
+      },
     });
   },
   getProfileState: () => profileState,
@@ -264,16 +264,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       owner: undefined,
       signal,
       operation: async ({ worker, signal }) => {
-      progress({ progress: { phase: 'importing', completed: 0, total: file.size } });
-      await worker.importModel({ file, onProgress: progress, signal });
-      for (const listener of modelListeners) {
-        try {
-          listener();
-        } catch {
-          logDiagnostic({ diagnostic: { event: 'failed' } });
+        progress({ progress: { phase: 'importing', completed: 0, total: file.size } });
+        await worker.importModel({ file, onProgress: progress, signal });
+        for (const listener of modelListeners) {
+          try {
+            listener();
+          } catch {
+            logDiagnostic({ diagnostic: { event: 'failed' } });
+          }
         }
-      }
-    },
+      },
     });
   },
   importDirectory({ directory, signal }) {
@@ -282,16 +282,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       owner: undefined,
       signal,
       operation: async ({ worker, signal }) => {
-      progress({ progress: { phase: 'importing', completed: 0, total: directory.files.reduce((total, entry) => total + entry.file.size, 0) } });
-      await worker.importDirectory({ directory, onProgress: progress, signal });
-      for (const listener of modelListeners) {
-        try {
-          listener();
-        } catch {
-          logDiagnostic({ diagnostic: { event: 'failed' } });
+        progress({ progress: { phase: 'importing', completed: 0, total: directory.files.reduce((total, entry) => total + entry.file.size, 0) } });
+        await worker.importDirectory({ directory, onProgress: progress, signal });
+        for (const listener of modelListeners) {
+          try {
+            listener();
+          } catch {
+            logDiagnostic({ diagnostic: { event: 'failed' } });
+          }
         }
-      }
-    },
+      },
     });
   },
   async removeModel({ plan, signal }) {
@@ -301,8 +301,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     signal?.throwIfAborted();
     const result = await withModelMutationLock({
       operation: () => {
-      signal?.throwIfAborted(); return removeStoredModel({ plan });
-    },
+        signal?.throwIfAborted(); return removeStoredModel({ plan });
+      },
     });
     for (const listener of modelListeners) {
       try {
@@ -322,11 +322,11 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       signal,
       operation: async ({ worker, signal }) => {
       // Only the Worker knows whether weights/context actually need preparation.
-      progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-      const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
-      if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-      return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
-    },
+        progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
+      },
     });
   },
   generateAudio({ input, cancellationSignal, completionSignal, preview }) {
@@ -336,11 +336,11 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       owner: undefined,
       signal: cancellationSignal,
       operation: async ({ worker, signal }) => {
-      progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
-      const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
-      if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-      return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
-    },
+        progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
+        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
+      },
     });
   },
   async runGenerationOperation({ signal, operation, onProgress }) {
@@ -359,78 +359,78 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         owner: undefined,
         signal,
         operation: async ({ worker, signal }) => {
-        const controller = new AbortController();
-        const abort = () => controller.abort(signal.reason);
-        signal.addEventListener('abort', abort, { once: true });
-        if (signal.aborted) abort();
-        let phase: 'open' | 'closed' = 'open';
-        let pending: Promise<GenerationResult> | undefined;
-        const generate: LlamaCppBrowserService['generate'] = ({ input, onEvent, signal }) => {
-          switch (phase) {
-          case 'open': break;
-          case 'closed': throw new Error('The generation operation is closed.');
-          default: { const exhaustive: never = phase; throw new Error(`Unknown operation phase: ${exhaustive}`); }
-          }
-          if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
-          if (observedFailure) throw observedFailure.error;
-          if (controller.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-          const request = generateInputSchema.parse({ ...input, options: acceptedOptions });
-          const local = new AbortController();
-          const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
-          const removers = sources.map(source => {
-            const forward = () => local.abort(source.reason);
-            source.addEventListener('abort', forward, { once: true });
-            if (source.aborted) forward();
-            return () => source.removeEventListener('abort', forward);
-          });
-          pending = Promise.resolve().then(async () => {
-            let acceptingProgress = true;
-            const report = ({ progress: value }: { progress: Progress }): void => {
-              if (!acceptingProgress || local.signal.aborted) return;
-              reportOperation({ progress: value });
-            };
-            try {
-              if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-              report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-              const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
-              if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-              return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: report, signal: local.signal });
-            } catch (error) {
+          const controller = new AbortController();
+          const abort = () => controller.abort(signal.reason);
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+          let phase: 'open' | 'closed' = 'open';
+          let pending: Promise<GenerationResult> | undefined;
+          const generate: LlamaCppBrowserService['generate'] = ({ input, onEvent, signal }) => {
+            switch (phase) {
+            case 'open': break;
+            case 'closed': throw new Error('The generation operation is closed.');
+            default: { const exhaustive: never = phase; throw new Error(`Unknown operation phase: ${exhaustive}`); }
+            }
+            if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
+            if (observedFailure) throw observedFailure.error;
+            if (controller.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+            const request = generateInputSchema.parse({ ...input, options: acceptedOptions });
+            const local = new AbortController();
+            const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
+            const removers = sources.map(source => {
+              const forward = () => local.abort(source.reason);
+              source.addEventListener('abort', forward, { once: true });
+              if (source.aborted) forward();
+              return () => source.removeEventListener('abort', forward);
+            });
+            pending = Promise.resolve().then(async () => {
+              let acceptingProgress = true;
+              const report = ({ progress: value }: { progress: Progress }): void => {
+                if (!acceptingProgress || local.signal.aborted) return;
+                reportOperation({ progress: value });
+              };
+              try {
+                if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+                report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
+                const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
+                if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+                return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: report, signal: local.signal });
+              } catch (error) {
               // A failed model request is not a user cancellation. Keep its error
               // visible to the consumer instead of aborting the delivery signal.
-              observedFailure = { error };
-              throw error;
-            } finally {
-              acceptingProgress = false;
-              for (const remove of removers) remove();
-              pending = undefined;
+                observedFailure = { error };
+                throw error;
+              } finally {
+                acceptingProgress = false;
+                for (const remove of removers) remove();
+                pending = undefined;
+              }
+            });
+            // Own rejection even if a buggy operation returns before awaiting the request.
+            void pending.catch(() => {});
+            return pending;
+          };
+          let callbackFailure: { error: unknown } | undefined;
+          try {
+            await operation({ scope: { signal: controller.signal, generate } });
+          } catch (error) {
+            callbackFailure = { error };
+          } finally {
+            phase = 'closed';
+            const running = pending;
+            if (running) {
+              controller.abort();
+              await running.catch(() => {});
+              callbackFailure ??= { error: new Error('The generation operation ended with a pending request.') };
             }
-          });
-          // Own rejection even if a buggy operation returns before awaiting the request.
-          void pending.catch(() => {});
-          return pending;
-        };
-        let callbackFailure: { error: unknown } | undefined;
-        try {
-          await operation({ scope: { signal: controller.signal, generate } });
-        } catch (error) {
-          callbackFailure = { error };
-        } finally {
-          phase = 'closed';
-          const running = pending;
-          if (running) {
-            controller.abort();
-            await running.catch(() => {});
-            callbackFailure ??= { error: new Error('The generation operation ended with a pending request.') };
+            signal.removeEventListener('abort', abort);
           }
-          signal.removeEventListener('abort', abort);
-        }
-        if (callbackFailure) throw callbackFailure.error;
-        callbackCompleted = true;
-        // The common consumer may have recorded a model failure as a result.
-        // Let run retire the failed runtime, without replacing that recorded result.
-        if (observedFailure) throw observedFailure.error;
-      },
+          if (callbackFailure) throw callbackFailure.error;
+          callbackCompleted = true;
+          // The common consumer may have recorded a model failure as a result.
+          // Let run retire the failed runtime, without replacing that recorded result.
+          if (observedFailure) throw observedFailure.error;
+        },
       });
     } catch (error) {
       if (!callbackCompleted || observedFailure === undefined) throw error;
@@ -469,19 +469,19 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
     owner,
     signal,
     operation: async ({ worker, signal }) => {
-    progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
-    const profile = await resolveRuntimeProfile({ profile: accepted.options.profile });
-    signal.throwIfAborted();
-    return worker.generate({
-      request: { ...accepted, options: { ...accepted.options, profile } },
-      onEvent,
-      onProgress: ({ progress: value }) => {
-      if (signal.aborted) return;
-      progress({ progress: value }); onProgress({ progress: value });
+      progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+      const profile = await resolveRuntimeProfile({ profile: accepted.options.profile });
+      signal.throwIfAborted();
+      return worker.generate({
+        request: { ...accepted, options: { ...accepted.options, profile } },
+        onEvent,
+        onProgress: ({ progress: value }) => {
+          if (signal.aborted) return;
+          progress({ progress: value }); onProgress({ progress: value });
+        },
+        signal,
+      });
     },
-      signal,
-    });
-  },
   });
 }
 

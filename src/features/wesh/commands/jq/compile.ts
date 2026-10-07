@@ -466,8 +466,8 @@ function evaluateJqCompileTimeConstant({
       if (typeof left.value === 'number' && typeof right.value === 'number') {
         return {
           value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) + toJqArithmeticNumber({ value: right.value }),
-        }),
+            value: toJqArithmeticNumber({ value: left.value }) + toJqArithmeticNumber({ value: right.value }),
+          }),
         };
       }
       if (typeof left.value === 'string' && typeof right.value === 'string') {
@@ -484,32 +484,32 @@ function evaluateJqCompileTimeConstant({
       return typeof left.value === 'number' && typeof right.value === 'number'
         ? {
           value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) - toJqArithmeticNumber({ value: right.value }),
-        }),
+            value: toJqArithmeticNumber({ value: left.value }) - toJqArithmeticNumber({ value: right.value }),
+          }),
         }
         : undefined;
     case 'mul':
       return typeof left.value === 'number' && typeof right.value === 'number'
         ? {
           value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) * toJqArithmeticNumber({ value: right.value }),
-        }),
+            value: toJqArithmeticNumber({ value: left.value }) * toJqArithmeticNumber({ value: right.value }),
+          }),
         }
         : undefined;
     case 'div':
       return typeof left.value === 'number' && typeof right.value === 'number' && right.value !== 0
         ? {
           value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) / toJqArithmeticNumber({ value: right.value }),
-        }),
+            value: toJqArithmeticNumber({ value: left.value }) / toJqArithmeticNumber({ value: right.value }),
+          }),
         }
         : undefined;
     case 'mod':
       return typeof left.value === 'number' && typeof right.value === 'number' && right.value !== 0
         ? {
           value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) % toJqArithmeticNumber({ value: right.value }),
-        }),
+            value: toJqArithmeticNumber({ value: left.value }) % toJqArithmeticNumber({ value: right.value }),
+          }),
         }
         : undefined;
     default: {

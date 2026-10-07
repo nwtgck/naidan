@@ -164,9 +164,9 @@ describe('StorageSynchronizer', () => {
 
       expect(listener).toHaveBeenCalledWith({
         event: expect.objectContaining({
-        type: 'chat_content',
-        id: '456',
-      }),
+          type: 'chat_content',
+          id: '456',
+        }),
       });
     });
 

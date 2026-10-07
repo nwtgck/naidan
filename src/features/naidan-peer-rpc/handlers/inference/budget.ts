@@ -14,12 +14,12 @@ export function createInferenceBudget({ capacity }: { capacity: number }) {
       let owned = true;
       return {
         release() {
-        if (!owned) return;
-        owned = false; reserved -= bytes;
-        if (reserved === 0) {
-          const completed = idle; idle = undefined; completed?.resolve();
-        }
-      },
+          if (!owned) return;
+          owned = false; reserved -= bytes;
+          if (reserved === 0) {
+            const completed = idle; idle = undefined; completed?.resolve();
+          }
+        },
       };
     },
     get reserved(): number {

@@ -59,8 +59,8 @@ it('does not discard or retry a live producer and never evicts another run at ca
 it('a persistence observer exception cannot reclassify a successful storage operation', async () => {
   const h = harness(); h.registry.subscribe({
     listener: () => {
-    throw new Error('detached render');
-  },
+      throw new Error('detached render');
+    },
   });
   await h.owner.submission.accepted({ snapshot: h.snapshot, seeds: h.plan.seeds });
   await h.owner.submission.output({ index: 0, ...h.output });

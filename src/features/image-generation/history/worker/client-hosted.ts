@@ -28,9 +28,9 @@ export function createImageHistoryClient(): ImageHistoryClient {
       pending: new Set(),
       closed: false,
       failed: event => {
-      const message = event instanceof ErrorEvent && event.message ? event.message : 'Image history Worker communication failed';
-      retire({ target, cause: new Error(message) });
-    },
+        const message = event instanceof ErrorEvent && event.message ? event.message : 'Image history Worker communication failed';
+        retire({ target, cause: new Error(message) });
+      },
     };
     worker.addEventListener('error', target.failed);
     worker.addEventListener('messageerror', target.failed);

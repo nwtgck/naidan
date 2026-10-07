@@ -94,12 +94,12 @@ export async function receiveTranscript({ transcript, images, model, signal }: {
         tool_call_id,
         name,
         content: typeof content === 'string' ? content : content.map(part => {
-        switch (part.type) {
-        case 'text': return { type: 'text' as const, text: part.text };
-        case 'image': { const blob = blobs[part.attachment]; if (!blob) throw new Error('Missing remote attachment'); return { type: 'image' as const, blob }; }
-        default: { const unreachable: never = part; throw new Error(String(unreachable)); }
-        }
-      }),
+          switch (part.type) {
+          case 'text': return { type: 'text' as const, text: part.text };
+          case 'image': { const blob = blobs[part.attachment]; if (!blob) throw new Error('Missing remote attachment'); return { type: 'image' as const, blob }; }
+          default: { const unreachable: never = part; throw new Error(String(unreachable)); }
+          }
+        }),
       };
     }),
   };

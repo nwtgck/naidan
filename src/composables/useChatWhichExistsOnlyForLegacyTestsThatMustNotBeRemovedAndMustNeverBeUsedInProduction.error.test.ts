@@ -64,14 +64,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'https://api.openai.com' },
-      defaultModelId: 'gpt-4',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: true,
-    },
+        endpoint: { type: 'openai', url: 'https://api.openai.com' },
+        defaultModelId: 'gpt-4',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        heavyContentAlertDismissed: true,
+      },
     });
   });
 
@@ -84,8 +84,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockChat.mockImplementation(({ signal }) => createChatGenerationStream({
       signal,
       run: async () => {
-      throw new Error('API Error');
-    },
+        throw new Error('API Error');
+      },
     }));
 
     await sendMessage({ content: 'Hello' });
@@ -107,8 +107,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async () => {
-      throw new Error('First Fail');
-    },
+        throw new Error('First Fail');
+      },
     }));
 
     await sendMessage({ content: 'Hello' });
@@ -121,9 +121,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockChat.mockImplementation(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Success' });
-      return { type: 'finished', next: 'user' };
-    },
+        await writer.text({ type: 'text', text: 'Success' });
+        return { type: 'finished', next: 'user' };
+      },
     }));
 
     await regenerateMessage({ failedMessageId: idToRaw({ id: failedMsg!.id }) });

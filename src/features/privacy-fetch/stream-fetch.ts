@@ -72,8 +72,8 @@ export async function fetchPrivacyStream({ request }: { request: PrivacyFetchReq
     policyName: validation.policyName,
     body: response.body === null ? new ReadableStream<Uint8Array<ArrayBuffer>>({
       start(controller) {
-      controller.close();
-    },
+        controller.close();
+      },
     }) : sanitizeBodyErrors({ body: response.body, signal }),
   };
 }

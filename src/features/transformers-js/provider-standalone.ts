@@ -20,8 +20,8 @@ export class TransformersJsProvider implements LmProvider {
     return createChatGenerationStream({
       signal,
       run: async () => {
-      throw createUnsupportedError();
-    },
+        throw createUnsupportedError();
+      },
     });
   }
 

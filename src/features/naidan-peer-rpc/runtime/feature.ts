@@ -28,21 +28,21 @@ function scheduleAutomaticCheck(): void {
     timeoutMs: 1000,
     fallbackDelayMs: 100,
     task: async () => {
-    automaticScheduled = undefined;
-    const current = () => epoch === automaticEpoch && automaticRegistration !== undefined && enabled;
-    try {
+      automaticScheduled = undefined;
+      const current = () => epoch === automaticEpoch && automaticRegistration !== undefined && enabled;
+      try {
       // A feature flag is not connection intent. An empty/disabled registry
       // does not import runtime, acquire an owner, read keys or create identity.
-      const { access, connections } = await naidanRpcStorage.list();
-      if (!current() || access.persistence !== 'durable' || !connections.some(connection => connection.autoConnect === 'enabled')) return;
-      const manager = await getRpcManager();
-      if (current()) await manager.startAutomaticConnections();
-    } catch {
+        const { access, connections } = await naidanRpcStorage.list();
+        if (!current() || access.persistence !== 'durable' || !connections.some(connection => connection.autoConnect === 'enabled')) return;
+        const manager = await getRpcManager();
+        if (current()) await manager.startAutomaticConnections();
+      } catch {
       // Failed reads/identity checks are not absence and are not retried in a
       // tight loop. The next explicit setting/registry/resume hint may recheck.
-      notifyRpcState();
-    }
-  },
+        notifyRpcState();
+      }
+    },
   });
 }
 /** Install only after app-ready. Startup continues without awaiting peers. */
@@ -137,8 +137,8 @@ export async function getRpcManager(): Promise<NaidanPeerManager> {
       changed: notifyRpcState,
       control: controls(),
       stopping: () => {
-      enabled = false; cancelAutomaticCheck(); notifyRpcState();
-    },
+        enabled = false; cancelAutomaticCheck(); notifyRpcState();
+      },
     }));
     loaded = initializing;
     // Share pending/successful initialization, but do not permanently poison

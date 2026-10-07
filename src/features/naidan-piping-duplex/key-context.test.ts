@@ -24,8 +24,8 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
     channel: {
       receive: toA.receive,
       send: async ({ bytes }) => {
-      sendsFromInitiator++; await toB.send({ bytes });
-    },
+        sendsFromInitiator++; await toB.send({ bytes });
+      },
     },
   });
   const right = establishNaidanPipingKeys({
@@ -37,11 +37,11 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
     channel: {
       receive: toB.receive,
       send: async ({ bytes }) => {
-      responderFlights++;
-      const owned = bytes.slice();
-      if (failure === 'final' && responderFlights === 4) owned[owned.length - 1]! ^= 1;
-      await toA.send({ bytes: owned });
-    },
+        responderFlights++;
+        const owned = bytes.slice();
+        if (failure === 'final' && responderFlights === 4) owned[owned.length - 1]! ^= 1;
+        await toA.send({ bytes: owned });
+      },
     },
   });
   // The failing side wakes the other; no test waits for an unrelated timeout to pass.

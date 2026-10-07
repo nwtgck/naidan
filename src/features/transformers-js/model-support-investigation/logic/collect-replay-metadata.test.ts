@@ -76,8 +76,8 @@ describe('bounded replay metadata collection', () => {
     const broken = await collectReplayMetadata({
       ...options({ remoteFetch: undefined }),
       localRead: async () => {
-      throw new DOMException('secret path', 'NotReadableError');
-    },
+        throw new DOMException('secret path', 'NotReadableError');
+      },
     });
     expect(broken.summary.files[0]!.status).toBe('read-failure');
     const localRead = vi.fn();
@@ -152,8 +152,8 @@ describe('bounded replay metadata collection', () => {
     const cancel = vi.fn();
     const remoteFetch = vi.fn<typeof fetch>(async () => new Response(new ReadableStream({
       start(controller) {
-      controller.enqueue(new Uint8Array(11));
-    },
+        controller.enqueue(new Uint8Array(11));
+      },
       cancel,
     })));
     const result = await collectReplayMetadata({ ...options({ remoteFetch }), budgetBytes: 10, files: [{ path: 'config.json', size: undefined }, { path: 'tokenizer.json', size: undefined }] });
@@ -174,8 +174,8 @@ describe('bounded replay metadata collection', () => {
       fileTimeoutMs: 10,
       files: [{ path: 'config.json', size: bytes.length }, { path: 'tokenizer.json', size: undefined }],
       onSnapshot: ({ snapshot }) => {
-      if (snapshot.sidecars.length === 1) collected.resolve();
-    },
+        if (snapshot.sidecars.length === 1) collected.resolve();
+      },
     });
     await collected.promise;
     await vi.advanceTimersByTimeAsync(30);

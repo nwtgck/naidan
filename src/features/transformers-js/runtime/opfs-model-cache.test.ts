@@ -63,29 +63,29 @@ function opfsRoot({ resolvedRevision, exactBytes, mainBytes }: {
   });
   return directoryHandle({
     directories: {
-    models: directoryHandle({
-      directories: {
-      'huggingface.co': directoryHandle({
+      models: directoryHandle({
         directories: {
-        org: directoryHandle({
-          directories: {
-          repo: directoryHandle({
+          'huggingface.co': directoryHandle({
             directories: {
-            resolve: directoryHandle({
-              directories: {
-              [resolvedRevision]: revisionDirectory({ bytes: exactBytes }),
-              main: revisionDirectory({ bytes: mainBytes }),
+              org: directoryHandle({
+                directories: {
+                  repo: directoryHandle({
+                    directories: {
+                      resolve: directoryHandle({
+                        directories: {
+                          [resolvedRevision]: revisionDirectory({ bytes: exactBytes }),
+                          main: revisionDirectory({ bytes: mainBytes }),
+                        },
+                      }),
+                    },
+                  }),
+                },
+              }),
             },
-            }),
-          },
           }),
         },
-        }),
-      },
       }),
     },
-    }),
-  },
   });
 }
 
@@ -152,19 +152,19 @@ describe('createOpfsModelCache production compatibility', () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(opfsRoot({
-        resolvedRevision,
-        exactBytes: 'exact',
-        mainBytes: 'main',
-      })),
+          resolvedRevision,
+          exactBytes: 'exact',
+          mainBytes: 'main',
+        })),
       },
     });
     const cache = createOpfsModelCache({
       revisionAliases: [{
-      modelId: 'org/repo',
-      resolvedRevision,
-      sourceRevision: 'main',
-      repositoryPaths: ['onnx/model_q4.onnx'],
-    }],
+        modelId: 'org/repo',
+        resolvedRevision,
+        sourceRevision: 'main',
+        repositoryPaths: ['onnx/model_q4.onnx'],
+      }],
     });
 
     const response = await cache.match(`https://huggingface.co/org/repo/resolve/${resolvedRevision}/onnx/model_q4.onnx`);
@@ -177,18 +177,18 @@ describe('createOpfsModelCache production compatibility', () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(opfsRoot({
-        resolvedRevision,
-        mainBytes: 'main',
-      })),
+          resolvedRevision,
+          mainBytes: 'main',
+        })),
       },
     });
     const cache = createOpfsModelCache({
       revisionAliases: [{
-      modelId: 'org/repo',
-      resolvedRevision,
-      sourceRevision: 'main',
-      repositoryPaths: ['onnx/model_q4.onnx'],
-    }],
+        modelId: 'org/repo',
+        resolvedRevision,
+        sourceRevision: 'main',
+        repositoryPaths: ['onnx/model_q4.onnx'],
+      }],
     });
 
     const response = await cache.match(`https://huggingface.co/org/repo/resolve/${resolvedRevision}/onnx/model_q4.onnx`);
@@ -201,18 +201,18 @@ describe('createOpfsModelCache production compatibility', () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(opfsRoot({
-        resolvedRevision,
-        mainBytes: 'main',
-      })),
+          resolvedRevision,
+          mainBytes: 'main',
+        })),
       },
     });
     const cache = createOpfsModelCache({
       revisionAliases: [{
-      modelId: 'org/repo',
-      resolvedRevision,
-      sourceRevision: 'main',
-      repositoryPaths: ['config.json'],
-    }],
+        modelId: 'org/repo',
+        resolvedRevision,
+        sourceRevision: 'main',
+        repositoryPaths: ['config.json'],
+      }],
     });
 
     await expect(cache.match(`https://huggingface.co/org/repo/resolve/${resolvedRevision}/onnx/model_q4.onnx`)).resolves.toBeUndefined();
@@ -242,10 +242,10 @@ describe('createOpfsModelCache production compatibility', () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(opfsRoot({
-        resolvedRevision,
-        exactBytes: 'exact',
-        mainBytes: 'main',
-      })),
+          resolvedRevision,
+          exactBytes: 'exact',
+          mainBytes: 'main',
+        })),
       },
     });
     const observations: Array<{ requestedPath: string, result: string, bytes: number | undefined }> = [];
@@ -291,28 +291,28 @@ describe('createOpfsModelCache production compatibility', () => {
     });
     const root = directoryHandle({
       directories: {
-      models: directoryHandle({
-        directories: {
-        'huggingface.co': directoryHandle({
+        models: directoryHandle({
           directories: {
-          org: directoryHandle({
-            directories: {
-            repo: directoryHandle({
+            'huggingface.co': directoryHandle({
               directories: {
-              resolve: directoryHandle({
-                directories: {
-                main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+                org: directoryHandle({
+                  directories: {
+                    repo: directoryHandle({
+                      directories: {
+                        resolve: directoryHandle({
+                          directories: {
+                            main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+                          },
+                        }),
+                      },
+                    }),
+                  },
+                }),
               },
-              }),
-            },
             }),
           },
-          }),
-        },
         }),
       },
-      }),
-    },
     });
     vi.stubGlobal('navigator', {
       storage: { getDirectory: vi.fn().mockResolvedValue(root) },
@@ -335,28 +335,28 @@ describe('createOpfsModelCache production compatibility', () => {
     });
     const root = directoryHandle({
       directories: {
-      models: directoryHandle({
-        directories: {
-        'huggingface.co': directoryHandle({
+        models: directoryHandle({
           directories: {
-          openai: directoryHandle({
-            directories: {
-            'gpt-oss-20b': directoryHandle({
+            'huggingface.co': directoryHandle({
               directories: {
-              resolve: directoryHandle({
-                directories: {
-                main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+                openai: directoryHandle({
+                  directories: {
+                    'gpt-oss-20b': directoryHandle({
+                      directories: {
+                        resolve: directoryHandle({
+                          directories: {
+                            main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+                          },
+                        }),
+                      },
+                    }),
+                  },
+                }),
               },
-              }),
-            },
             }),
           },
-          }),
-        },
         }),
       },
-      }),
-    },
     });
     vi.stubGlobal('navigator', {
       storage: { getDirectory: vi.fn().mockResolvedValue(root) },

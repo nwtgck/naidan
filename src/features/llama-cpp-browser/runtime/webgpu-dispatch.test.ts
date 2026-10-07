@@ -39,8 +39,8 @@ function fixture({ limit }: { limit: number }) {
   };
   const encoder = {
     beginComputePass() {
-    return pass as unknown as GPUComputePassEncoder;
-  },
+      return pass as unknown as GPUComputePassEncoder;
+    },
     finish: vi.fn(() => ({ marker: 'command-buffer' })),
   };
   const raw = {
@@ -54,12 +54,12 @@ function fixture({ limit }: { limit: number }) {
       const pipeline: GPUComputePipeline = {
         label: descriptor.label ?? '',
         getBindGroupLayout(index: number) {
-        let layout = layouts.get(index);
-        if (!layout) {
-          layout = { owner: pipeline, index } as unknown as GPUBindGroupLayout; layouts.set(index, layout);
-        }
-        return layout;
-      },
+          let layout = layouts.get(index);
+          if (!layout) {
+            layout = { owner: pipeline, index } as unknown as GPUBindGroupLayout; layouts.set(index, layout);
+          }
+          return layout;
+        },
       } as GPUComputePipeline;
       pipelineDescriptors.set(pipeline, descriptor); return pipeline;
     },
@@ -78,8 +78,8 @@ function fixture({ limit }: { limit: number }) {
   const device = TEST_ONLY.wrapDevice({
     device: raw as unknown as GPUDevice,
     report(detail) {
-    reports.push(detail);
-  },
+      reports.push(detail);
+    },
   });
   function prepare({ code }: { code: string }) {
     const shader = device.createShaderModule({ code });
@@ -211,8 +211,8 @@ describe('scoped WebGPU compatibility facade', () => {
     const failure = new Error('device creation failure');
     const adapter = {
       requestDevice: vi.fn(async () => {
-      throw failure;
-    }),
+        throw failure;
+      }),
     } as unknown as GPUAdapter;
     const gpu = { requestAdapter: vi.fn(async () => adapter) } as unknown as GPU;
     const wrapped = createCoreWebGpuNavigator({ navigator: { gpu }, report() {} })!;
@@ -224,8 +224,8 @@ describe('scoped WebGPU compatibility facade', () => {
     const device = TEST_ONLY.wrapDevice({
       device: f.raw as unknown as GPUDevice,
       report() {
-      throw new Error('logging');
-    },
+        throw new Error('logging');
+      },
     });
     const module = device.createShaderModule({ code: source });
     const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module } });
@@ -243,8 +243,8 @@ describe('scoped WebGPU compatibility facade', () => {
     const target = {
       value: 3,
       method() {
-      expect(this).toBe(target); return this.value;
-    },
+        expect(this).toBe(target); return this.value;
+      },
     };
     const wrapped = TEST_ONLY.facade({ target, overrides: {} });
     expect(wrapped.method()).toBe(3); expect(wrapped.method).toBe(wrapped.method);

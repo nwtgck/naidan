@@ -95,10 +95,10 @@ describe('transformers-js-qwen3_5', () => {
   it('preserves a JSON argument named __proto__ while normalizing native dictionaries', () => {
     const normalized = normalizeQwen3_5ToolCallsForTemplate({
       toolCalls: [{
-      id: toToolCallId({ raw: 'synthetic-proto' }),
-      type: 'function',
-      function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
-    }],
+        id: toToolCallId({ raw: 'synthetic-proto' }),
+        type: 'function',
+        function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
+      }],
     });
     expect(JSON.stringify(normalized[0]!.function.arguments)).toBe('{"__proto__":{"city":"Tokyo"}}');
     expect(Object.getPrototypeOf(normalized[0]!.function.arguments)).toBe(Object.prototype);

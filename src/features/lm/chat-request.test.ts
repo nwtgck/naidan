@@ -60,13 +60,13 @@ describe('persisted tool text decoding', () => {
       id,
       role: 'tool',
       parts: [{
-      type: 'tool_result',
-      result: {
-      toolCallId,
-      status: 'success',
-      content: bytesReference ? { type: 'binary_object', id: binaryObjectId } : { type: 'text', text: '\uFEFF  結果🙂\r\n' },
-    },
-    }],
+        type: 'tool_result',
+        result: {
+          toolCallId,
+          status: 'success',
+          content: bytesReference ? { type: 'binary_object', id: binaryObjectId } : { type: 'text', text: '\uFEFF  結果🙂\r\n' },
+        },
+      }],
     };
   }
   it('keeps the leading BOM as tool content instead of treating it as file framing', async () => {

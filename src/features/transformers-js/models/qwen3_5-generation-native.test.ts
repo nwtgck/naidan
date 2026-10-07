@@ -29,10 +29,10 @@ describe('Qwen native tool termination framing', () => {
       tools: [{
         type: 'function',
         function: {
-        name: 'lookup_weather',
-        description: '',
-        parameters: { type: 'object', properties: { city: { type: 'string' } } },
-      },
+          name: 'lookup_weather',
+          description: '',
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        },
       }],
       emit: ({ event }) => events.push(event),
     });
@@ -60,10 +60,10 @@ describe('Qwen native tool termination framing', () => {
         type: 'tool_call',
         index: 0,
         toolCall: {
-        id: expect.any(String),
-        type: 'function',
-        function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      },
+          id: expect.any(String),
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        },
       },
       { type: 'result', result: { type: 'finished', next: 'tool_results' } },
     ]);

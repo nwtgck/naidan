@@ -19,10 +19,10 @@ it('opens the independent audio workspace from Quick Access and closes the menu'
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-    { path: '/', component: { template: '<div />' } },
-    { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation', component: { template: '<div />' } },
-  ],
+      { path: '/', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+    ],
   });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
@@ -36,10 +36,10 @@ it('opens the independent image workspace from Quick Access and closes the menu'
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-    { path: '/', component: { template: '<div />' } },
-    { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation', component: { template: '<div />' } },
-  ],
+      { path: '/', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+    ],
   });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });

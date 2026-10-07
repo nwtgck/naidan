@@ -66,19 +66,19 @@ function fixture({ runId }: { runId: string }) {
       collection: {
         status: 'returned',
         result: {
-        status: 'captured',
-        capture: {
-        schemaVersion: 1,
-        runId,
-        workerEpoch: 1,
-        byteOrder: 'little-endian',
-        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
-        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [],
-        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      },
-      },
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId,
+            workerEpoch: 1,
+            byteOrder: 'little-endian',
+            limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+            calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+            events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        },
       },
     }],
   };
@@ -118,10 +118,10 @@ beforeEach(() => {
   }));
   vi.stubGlobal('navigator', {
     storage: {
-    getDirectory: vi.fn(() => {
-    throw new Error('Evidence transport must not access OPFS');
-  }),
-  },
+      getDirectory: vi.fn(() => {
+        throw new Error('Evidence transport must not access OPFS');
+      }),
+    },
   });
 });
 
@@ -179,9 +179,9 @@ describe('Provider and native Evidence Worker transport', () => {
       const received = receiveByteStream({ port: output.port1 });
       const metadata = await remote.streamEvidence(workerTransfer({
         value: {
-        input: { kind: 'partial', ...repeatedInput },
-        port: output.port2,
-      },
+          input: { kind: 'partial', ...repeatedInput },
+          port: output.port2,
+        },
         transferables: [output.port2],
       }));
       // Buffer only in this verification sink to run an independent ZIP reader.

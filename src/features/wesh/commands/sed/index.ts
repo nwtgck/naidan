@@ -674,11 +674,11 @@ async function executeSedLine({
       actions.push({
         kind: "output",
         output: newlineIndex < 0
-              ? { ...patternSpace }
-              : {
-                text: patternSpace.text.slice(0, newlineIndex),
-                hadNewline: true,
-              },
+          ? { ...patternSpace }
+          : {
+            text: patternSpace.text.slice(0, newlineIndex),
+            hadNewline: true,
+          },
       });
       break;
     }
@@ -842,11 +842,11 @@ async function executeSedLine({
         kind: "writeFile",
         path: runtimeCommand.command.path,
         output: newlineIndex < 0
-              ? { ...patternSpace }
-              : {
-                text: patternSpace.text.slice(0, newlineIndex),
-                hadNewline: true,
-              },
+          ? { ...patternSpace }
+          : {
+            text: patternSpace.text.slice(0, newlineIndex),
+            hadNewline: true,
+          },
       });
       break;
     }

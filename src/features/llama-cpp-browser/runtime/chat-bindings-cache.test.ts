@@ -6,8 +6,8 @@ function disposableVector<T>(values: T[]) {
   return {
     ...values,
     [Symbol.iterator]: function* () {
-    yield* values;
-  },
+      yield* values;
+    },
     delete: vi.fn(),
   };
 }

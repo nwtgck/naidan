@@ -11,10 +11,10 @@ describe('bounded native event acknowledgement', () => {
     const owner = createInferenceEventDelivery({
       onFailure: vi.fn(),
       onEvent: async ({ event }) => {
-      seen.push(event); if (seen.length === 1) {
-        started.resolve(); await release.promise;
-      }
-    },
+        seen.push(event); if (seen.length === 1) {
+          started.resolve(); await release.promise;
+        }
+      },
     });
     const event = delta({ text: ' A ' });
     owner.enqueue({ event }); if (event.type === 'text_delta') event.text = 'MUTATED';
@@ -31,8 +31,8 @@ describe('bounded native event acknowledgement', () => {
     const owner = createInferenceEventDelivery({
       onFailure,
       onEvent: ({ event }) => {
-      if (event.type === 'text_delta') seen.push(event.text);
-    },
+        if (event.type === 'text_delta') seen.push(event.text);
+      },
     });
     for (let i = 0; i < TEST_ONLY.limits.events; i++) owner.enqueue({ event: delta({ text: String(i) }) });
     expect(() => owner.enqueue({ event: delta({ text: 'unaccepted' }) })).toThrow('limit');

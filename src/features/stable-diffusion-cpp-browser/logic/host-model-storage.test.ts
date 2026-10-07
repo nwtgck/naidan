@@ -42,8 +42,8 @@ function serve({ offset }: { offset: number }): void {
     headers: new Headers(offset ? { 'Content-Range': `bytes ${offset}-31/32` } : {}),
     body: new ReadableStream({
       start(controller) {
-      controller.enqueue(bytes.slice(offset)); controller.close();
-    },
+        controller.enqueue(bytes.slice(offset)); controller.close();
+      },
     }),
   });
 }
@@ -54,10 +54,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => opfs },
     locks: {
-    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-      options.signal?.throwIfAborted(); await run();
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); await run();
+      },
     },
-  },
   });
 });
 afterEach(() => {
@@ -124,8 +124,8 @@ describe('host image model storage', () => {
       headers: new Headers(),
       body: new ReadableStream({
         start(stream) {
-        stream.enqueue(bytes.slice(0, 16)); stream.enqueue(bytes.slice(16)); stream.close();
-      },
+          stream.enqueue(bytes.slice(0, 16)); stream.enqueue(bytes.slice(16)); stream.close();
+        },
       }),
     });
     await expect(saveImageCatalogFile({
@@ -134,8 +134,8 @@ describe('host image model storage', () => {
       fetch,
       signal: controller.signal,
       report({ progress }) {
-      if (progress.phase === 'transferring' && progress.bytes === 16) controller.abort();
-    },
+        if (progress.phase === 'transferring' && progress.bytes === 16) controller.abort();
+      },
     })).rejects.toThrow();
     const folder = await directory();
     expect((await folder.getFileHandle('model.gguf')).data).toEqual(bytes.slice(0, 16));

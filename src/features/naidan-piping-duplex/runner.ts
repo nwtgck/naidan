@@ -39,7 +39,7 @@ export function validatePacing({ pacing }: {
     requireValue({
       condition: [minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs].every(value => Number.isInteger(value) && value > 0 && value <= 2147483647) &&
             idleResendIntervalMs >= minimumMs && retryBaseMs >= Math.max(2, minimumMs) && retryMaximumMs >= retryBaseMs,
-    message: 'Pacing parameters',
+      message: 'Pacing parameters',
     });
 }
 export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: {
@@ -62,7 +62,7 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
         failures: number;
     }) => sleep({
     milliseconds: retryDelay({ failures, baseMs: settings.retryBaseMs, maximumMs: settings.retryMaximumMs, randomUnit: jitter() }),
-      signal: local.signal,
+    signal: local.signal,
   });
   const send = async () => {
     let failures = 0;

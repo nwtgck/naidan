@@ -37,8 +37,8 @@ export function startPWAUpdateRuntime(): void {
   });
   runtime = {
     dispose() {
-    disposed = true; controller.dispose();
-  },
+      disposed = true; controller.dispose();
+    },
   };
 }
 

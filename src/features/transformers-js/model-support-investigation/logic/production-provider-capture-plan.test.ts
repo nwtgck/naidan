@@ -26,9 +26,9 @@ describe('versioned fixed Provider capture inputs', () => {
         id: 'capture_input_1',
         role: 'assistant',
         parts: [
-        { type: 'text', text: '', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ],
+          { type: 'text', text: '', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
       },
       { id: 'capture_input_2', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
     ]);
@@ -45,9 +45,9 @@ describe('versioned fixed Provider capture inputs', () => {
     expect(input.messages).toEqual([{
       role: 'user',
       content: [
-      { type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt },
-      { type: 'image_url', image_url: { url: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl } },
-    ],
+        { type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt },
+        { type: 'image_url', image_url: { url: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl } },
+      ],
     }]);
     expect(input.parameters.maxCompletionTokens).toBe(1);
     const messages = captureProviderMessages({ input });

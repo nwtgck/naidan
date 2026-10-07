@@ -78,10 +78,10 @@ function collectionFixture({ capture }: { capture: Native }): ProductionProvider
     unrecordedWorkerCreations: 0,
     incompleteReasons: [],
     epochs: [{
-    workerEpoch: 1,
-    lifetime: { status: 'observed', value: { runId: context.runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }], incompleteReasons: [] } },
-    collection: { status: 'returned', result: { status: 'captured', capture } },
-  }],
+      workerEpoch: 1,
+      lifetime: { status: 'observed', value: { runId: context.runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: { status: 'returned', result: { status: 'captured', capture } },
+    }],
   };
 }
 it('refuses nested revision-selection accessors without executing them during evidence admission', async () => {
@@ -156,10 +156,10 @@ beforeEach(() => {
   }));
   vi.stubGlobal('navigator', {
     storage: {
-    getDirectory: vi.fn(() => {
-    throw new Error('Storage forbidden in native exporter tests');
-  }),
-  },
+      getDirectory: vi.fn(() => {
+        throw new Error('Storage forbidden in native exporter tests');
+      }),
+    },
   });
 });
 afterEach(() => {
@@ -196,9 +196,9 @@ describe('native capture post-run export', () => {
     if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
     lifetime.value.loadDiagnostics = createLoadDiagnosticLedger({
       owner: {
-      runId: field === 'runId' ? 'foreign-run' : context.runId,
-      workerEpoch: field === 'workerEpoch' ? 2 : context.workerEpoch,
-    },
+        runId: field === 'runId' ? 'foreign-run' : context.runId,
+        workerEpoch: field === 'workerEpoch' ? 2 : context.workerEpoch,
+      },
     }).snapshot({ expectedLoadCount: 0 });
     await expect(createProductionProviderNativeEvidence({
       maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
@@ -216,31 +216,31 @@ describe('native capture post-run export', () => {
       outcome: {
         status: 'accepted',
         receipt: {
-        format: 'production-offline-load-receipt-v1',
-        modelId: 'fixture/model',
-        loaderRevisionOption: { status: 'omitted' },
-        autoClass: 'AutoModelForCausalLM',
-        processor: 'tokenizer',
-        candidate: { device: 'wasm', dtype: 'q4' },
-        plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
-        cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'main', hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
-        completion: 'model-session-and-tokenizer-processor-ready',
-        resourceHealth: 'healthy-after-close',
-        accessBoundary: 'production-offline-read-only',
-        limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
-      },
+          format: 'production-offline-load-receipt-v1',
+          modelId: 'fixture/model',
+          loaderRevisionOption: { status: 'omitted' },
+          autoClass: 'AutoModelForCausalLM',
+          processor: 'tokenizer',
+          candidate: { device: 'wasm', dtype: 'q4' },
+          plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
+          cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'main', hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
+          completion: 'model-session-and-tokenizer-processor-ready',
+          resourceHealth: 'healthy-after-close',
+          accessBoundary: 'production-offline-read-only',
+          limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+        },
       },
     };
     const native: ProductionProviderNativeCollectionSnapshot = {
       ...baseline,
       epochs: baseline.epochs.map(epoch => ({
-      ...epoch,
-      collection: {
-        status: 'returned',
-        result: status === 'captured'
-        ? { status, capture: nativeFixture(), loadObservation } : { status, loadObservation },
-      },
-    })),
+        ...epoch,
+        collection: {
+          status: 'returned',
+          result: status === 'captured'
+            ? { status, capture: nativeFixture(), loadObservation } : { status, loadObservation },
+        },
+      })),
     };
     const provider = providerFixture();
     const sidecar = await createProductionProviderNativeEvidence({ native, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
@@ -543,10 +543,10 @@ describe('native capture post-run export', () => {
       kind: 'settings',
       identity,
       value: {
-      requested: { maxCompletionTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' } },
-      budget: { source: 'transformers-default', pastTokenCount: 0, maxNewTokens: undefined },
-      kwargs: { keys: { status: 'complete', totalCount: 0, values: [], incompleteReasons: [] }, maxNewTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' }, doSample: { status: 'omitted' }, returnDictInGenerate: { status: 'omitted' } },
-    },
+        requested: { maxCompletionTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' } },
+        budget: { source: 'transformers-default', pastTokenCount: 0, maxNewTokens: undefined },
+        kwargs: { keys: { status: 'complete', totalCount: 0, values: [], incompleteReasons: [] }, maxNewTokens: { status: 'omitted' }, temperature: { status: 'undefined' }, topP: { status: 'omitted' }, doSample: { status: 'omitted' }, returnDictInGenerate: { status: 'omitted' } },
+      },
     });
     const exported = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: collectionFixture({ capture }), provider });
     const readBinary = async ({ reference }: { reference: { path: string } }) => new Uint8Array(await exported.binaries.find(binary => binary.path === reference.path)!.blob.arrayBuffer());

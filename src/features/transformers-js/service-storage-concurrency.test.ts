@@ -45,12 +45,12 @@ it('rechecks the organization after model deletion and preserves a repository cr
     storage: { getDirectory: async () => root },
     locks: {
       request: async (name: string, options: LockOptions, callback: LockGrantedCallback<unknown>) => {
-      if (name === 'naidan:transformers-js:opfs:models' && options.mode === 'exclusive') {
-        parentRequested.resolve();
-        await releaseParent.promise;
-      }
-      return await q.locks.request(name, options, callback);
-    },
+        if (name === 'naidan:transformers-js:opfs:models' && options.mode === 'exclusive') {
+          parentRequested.resolve();
+          await releaseParent.promise;
+        }
+        return await q.locks.request(name, options, callback);
+      },
     },
   });
   const factory = vi.fn(() => {
@@ -68,8 +68,8 @@ it('rechecks the organization after model deletion and preserves a repository cr
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      await org.getDirectoryHandle('new-model', { create: true });
-    },
+        await org.getDirectoryHandle('new-model', { create: true });
+      },
     });
     releaseParent.resolve();
     await deleting;

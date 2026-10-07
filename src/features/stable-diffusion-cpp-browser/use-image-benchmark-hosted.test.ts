@@ -13,18 +13,18 @@ const mocks = vi.hoisted(() => ({ create: vi.fn<() => ImageClient>() }));
 vi.mock('./worker/client', () => ({ createImageClient: () => mocks.create() }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
   default: {
-  kind: 'available',
-  sourceCommit: 'a'.repeat(40),
-  artifacts: [{
-    profile: 'webgpu-wasm32-asyncify',
-    modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
-    wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
-    helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
-    schemaSha256: '1'.repeat(64),
-    wasmBytes: 8,
-    wasmSha256: '0'.repeat(64),
-  }],
-},
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifacts: [{
+      profile: 'webgpu-wasm32-asyncify',
+      modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
+      wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
+      helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
+      schemaSha256: '1'.repeat(64),
+      wasmBytes: 8,
+      wasmSha256: '0'.repeat(64),
+    }],
+  },
 }));
 
 let scope: ReturnType<typeof effectScope> | undefined;

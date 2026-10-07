@@ -17,28 +17,28 @@ vi.mock('./index', () => ({ transformersJsService: {} }));
 vi.mock('@huggingface/transformers', () => ({
   TextStreamer: class {},
   StoppingCriteriaList: class {
-  push(): void {}
-},
+    push(): void {}
+  },
   Tensor: class {},
 }));
 // This fixture selects synthetic text/control events explicitly; real token
 // decoding is covered by each exact-model runtime-output replay, not this mock.
 vi.mock('./models/native-protocol-streamer', () => ({
   NativeProtocolStreamer: class {
-  private readonly onText: ({ text }: { text: string }) => void;
-  private readonly onControl: ({ token }: { token: string }) => void;
-  constructor({ onText, onControl }: { onText: ({ text }: { text: string }) => void; onControl: ({ token }: { token: string }) => void }) {
-    this.onText = onText; this.onControl = onControl;
-  }
-  emit({ fragment }: { fragment: Fragment }): void {
-    switch (fragment.type) {
-    case 'text': this.onText({ text: fragment.text }); return;
-    case 'control': this.onControl({ token: fragment.token }); return;
-    default: { const exhaustive: never = fragment; throw new Error(String(exhaustive)); }
+    private readonly onText: ({ text }: { text: string }) => void;
+    private readonly onControl: ({ token }: { token: string }) => void;
+    constructor({ onText, onControl }: { onText: ({ text }: { text: string }) => void; onControl: ({ token }: { token: string }) => void }) {
+      this.onText = onText; this.onControl = onControl;
     }
-  }
-  end(): void {}
-},
+    emit({ fragment }: { fragment: Fragment }): void {
+      switch (fragment.type) {
+      case 'text': this.onText({ text: fragment.text }); return;
+      case 'control': this.onControl({ token: fragment.token }); return;
+      default: { const exhaustive: never = fragment; throw new Error(String(exhaustive)); }
+      }
+    }
+    end(): void {}
+  },
 }));
 afterEach(() => vi.restoreAllMocks());
 
@@ -151,8 +151,8 @@ function createPublicationFixture({ outputs, historyEncoding }: {
         description: 'Fixed weather',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args }) => {
-        executions.push(structuredClone(args)); return { status: 'success', content: 'Sunny' };
-      },
+          executions.push(structuredClone(args)); return { status: 'success', content: 'Sunny' };
+        },
       }],
       createAssistantMessage: () => {
         const node: AssistantMessageNode = { id: toMessageId({ raw: `a${history.length}` }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] } };

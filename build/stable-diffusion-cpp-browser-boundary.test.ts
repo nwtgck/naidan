@@ -57,10 +57,10 @@ export const resolveBrowserLocale = () => 'en';
     define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: JSON.stringify(mode === 'standalone'), __BUILD_MODE_IS_HOSTED__: JSON.stringify(mode === 'hosted') },
     resolve: {
       alias: [
-      ...(mode === 'standalone' ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(root, relative) }) : []),
-      ...(!realStrings ? [{ find: /^@\/strings$/, replacement: 'virtual:image-strings' }] : []),
-      { find: '@', replacement: path.resolve(root, 'src') },
-    ],
+        ...(mode === 'standalone' ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(root, relative) }) : []),
+        ...(!realStrings ? [{ find: /^@\/strings$/, replacement: 'virtual:image-strings' }] : []),
+        { find: '@', replacement: path.resolve(root, 'src') },
+      ],
     },
     plugins: [fixture, ...(realStrings ? createBoundaryStringsPlugin() : []), createStableDiffusionCppBrowserBuild({ rootDir: root, mode }),
       createTwClassVitePlugin({ projectRoot: root, sourceRoot: path.resolve(root, 'src'), entryModule: path.resolve(root, 'src/features/image-generation/components/ImageGenerationLab.vue'), tailwindCssPath: path.resolve(root, 'src/style.css'), debugOutputDirectory: undefined, outputMode: 'split', cssPlanning: 'disabled', maxSplitCssGroups: 256 }),
@@ -73,11 +73,11 @@ export const resolveBrowserLocale = () => 'en';
     worker: {
       format: 'es',
       plugins: () => [fixture, {
-      name: 'image-worker-boundary-trace',
-      generateBundle(_options, bundle) {
-      for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
-    },
-    }],
+        name: 'image-worker-boundary-trace',
+        generateBundle(_options, bundle) {
+          for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
+        },
+      }],
     },
     build: {
       write: false,

@@ -178,8 +178,8 @@ export async function generate({ request, onEvent, onProgress, signal }: {
         promptBytes: promptLength,
         contextTokens: capacity,
         onTokenize: () => {
-        measurements.counters.tokenizeCalls++;
-      },
+          measurements.counters.tokenizeCalls++;
+        },
       });
       tokens = tokenized.pointer;
       // The helper transfers ownership only after native tokenization has settled.
@@ -282,19 +282,19 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     measurements.counters.reusedTokens = reusedTokens;
     logDiagnostic({
       diagnostic: {
-      event: 'cache-reuse',
-      reusedTokens,
-      evaluatedTokens: tokenCount - reusedTokens,
-      tokens: tokenCount,
-      cachedTokens,
-      commonPrefixTokens,
-      cacheComparison,
-      nativeMemoryKind,
-      nativePositionMin,
-      nativePositionMax,
-      nativeRollbackTokens,
-      reason,
-    },
+        event: 'cache-reuse',
+        reusedTokens,
+        evaluatedTokens: tokenCount - reusedTokens,
+        tokens: tokenCount,
+        cachedTokens,
+        commonPrefixTokens,
+        cacheComparison,
+        nativeMemoryKind,
+        nativePositionMin,
+        nativePositionMax,
+        nativeRollbackTokens,
+        reason,
+      },
     });
     if (reusedTokens === 0) {
       cache.tokens = [];
@@ -460,11 +460,11 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < pendingCalls) {
         logDiagnostic({
           diagnostic: {
-          event: 'failed',
-          stage,
-          tokens: generated,
-          reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning',
-        },
+            event: 'failed',
+            stage,
+            tokens: generated,
+            reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning',
+          },
         });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }

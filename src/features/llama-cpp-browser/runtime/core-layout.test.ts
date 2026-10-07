@@ -13,10 +13,10 @@ describe('module-local native ABI layouts', () => {
       profile: 'cpu-wasm32',
       baseURL,
       moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
-      print() {},
-      printErr() {},
-    },
+        wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+        print() {},
+        printErr() {},
+      },
     });
   });
   afterEach(() => vi.restoreAllMocks());
@@ -25,18 +25,18 @@ describe('module-local native ABI layouts', () => {
     const counts = new Map<string, number>();
     const module: CoreModule = new Proxy(core.module, {
       get(target, property) {
-      if (typeof property === 'string' && Object.hasOwn(overrides, property)) return overrides[property];
-      const value: unknown = Reflect.get(target, property, target);
-      if (typeof property === 'string' && ['_lcb_sizeof_record', '_lcb_offsetof_field', '_lcb_sizeof_field'].includes(property)) {
-        if (typeof value !== 'function') throw new Error('Missing fixture native layout export');
-        // Instrument native scalar ABI without changing the call shape.
-        return (...args: (number | bigint)[]) => {
-          counts.set(property, (counts.get(property) ?? 0) + 1);
-          return Reflect.apply(value, target, args);
-        };
-      }
-      return value;
-    },
+        if (typeof property === 'string' && Object.hasOwn(overrides, property)) return overrides[property];
+        const value: unknown = Reflect.get(target, property, target);
+        if (typeof property === 'string' && ['_lcb_sizeof_record', '_lcb_offsetof_field', '_lcb_sizeof_field'].includes(property)) {
+          if (typeof value !== 'function') throw new Error('Missing fixture native layout export');
+          // Instrument native scalar ABI without changing the call shape.
+          return (...args: (number | bigint)[]) => {
+            counts.set(property, (counts.get(property) ?? 0) + 1);
+            return Reflect.apply(value, target, args);
+          };
+        }
+        return value;
+      },
     });
     return { module, counts };
   }
@@ -72,8 +72,8 @@ describe('module-local native ABI layouts', () => {
     const { module: source } = instrument({ overrides: {} });
     const module = new Proxy(source, {
       get(target, property) {
-      return property === 'HEAPU8' ? heap : Reflect.get(target, property, target);
-    },
+        return property === 'HEAPU8' ? heap : Reflect.get(target, property, target);
+      },
     });
     const bound = attachCore({ module, callMode: 'direct' });
     const pointer = bound.allocRecord({ name: 'llama_batch' });
@@ -102,11 +102,11 @@ describe('module-local native ABI layouts', () => {
     // Synthetic metadata only; this does not execute a wasm64 runtime.
     const { module: wideModule } = instrument({
       overrides: {
-      _lcb_pointer_bytes: () => 8,
-      _lcb_offsetof_field: () => layout.offset + 8n,
-      _lcb_sizeof_field: () => 8,
-      _lcb_sizeof_record: () => 128,
-    },
+        _lcb_pointer_bytes: () => 8,
+        _lcb_offsetof_field: () => layout.offset + 8n,
+        _lcb_sizeof_field: () => 8,
+        _lcb_sizeof_record: () => 128,
+      },
     });
     const wide = attachCore({ module: wideModule, callMode: 'direct' });
     expect(wide.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual({ kind: 'pointer', offset: layout.offset + 8n, size: 8 });
@@ -117,9 +117,9 @@ describe('module-local native ABI layouts', () => {
     const gate = Promise.withResolvers<bigint>();
     const { module } = instrument({
       overrides: {
-      _lcb_ggml_backend_dev_count: () => gate.promise,
-      ccall: () => gate.promise,
-    },
+        _lcb_ggml_backend_dev_count: () => gate.promise,
+        ccall: () => gate.promise,
+      },
     });
     const bound = attachCore({ module, callMode });
     bound.recordSize({ name: 'llama_batch' });

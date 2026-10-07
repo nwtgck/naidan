@@ -169,12 +169,12 @@ async function generate(): Promise<void> {
       preview: {
         requests: captures.requests,
         onPreview: ({ result: incoming, requestVersion }) => {
-        if (disposed || request !== generation || active.signal.aborted) return;
-        const result = audioGenerationPreviewSchema.parse(incoming);
-        validateAudioWav(result);
-        appendHistory({ result, settings });
-        if (requestVersion >= captures.requests.version) previewPending.value = false;
-      },
+          if (disposed || request !== generation || active.signal.aborted) return;
+          const result = audioGenerationPreviewSchema.parse(incoming);
+          validateAudioWav(result);
+          appendHistory({ result, settings });
+          if (requestVersion >= captures.requests.version) previewPending.value = false;
+        },
       },
     }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
@@ -208,8 +208,8 @@ function stop(): void {
 onMounted(() => {
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {
-    state.value = next;
-  },
+      state.value = next;
+    },
   });
 });
 onUnmounted(() => {

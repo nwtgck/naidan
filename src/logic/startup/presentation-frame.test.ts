@@ -36,12 +36,12 @@ describe('waitForPresentationPaint', () => {
     let calls = 0;
     const completed = waitForPresentationPaint({
       window: {
-      requestAnimationFrame(callback) {
-        if (++calls === failingFrame) throw error;
-        callbacks.push(callback);
-        return calls;
+        requestAnimationFrame(callback) {
+          if (++calls === failingFrame) throw error;
+          callbacks.push(callback);
+          return calls;
+        },
       },
-    },
     });
     const rejected = expect(completed).rejects.toBe(error);
     callbacks.shift()?.(0);

@@ -704,10 +704,10 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       await fetchModels({
         overrides: {
-        url: 'http://override-url',
-        type: 'ollama',
-        httpHeaders: [['X-Test', 'true']],
-      },
+          url: 'http://override-url',
+          type: 'ollama',
+          httpHeaders: [['X-Test', 'true']],
+        },
       });
 
       expect(mockListModels).toHaveBeenCalledWith({});

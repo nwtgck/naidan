@@ -21,9 +21,9 @@ it('records the real large allocation request before refusing it without allocat
   const allocations: unknown[] = [];
   const allocator = new Proxy(Uint8Array, {
     construct(_target, argumentsList) {
-    allocations.push(argumentsList[0]);
-    throw failure;
-  },
+      allocations.push(argumentsList[0]);
+      throw failure;
+    },
   });
   const response = new Response(new ReadableStream({}, { highWaterMark: 0 }), { headers: { 'Content-Length': String(requestedBytes) } });
   const getReader = vi.spyOn(response.body!, 'getReader');
@@ -41,8 +41,8 @@ it.each(['absent', 'throwing', 'rejecting'] as const)('preserves bytes and alloc
   const values: number[] = [];
   const allocator = new Proxy(Uint8Array, {
     construct(target, args) {
-    values.push(args[0] as number); return Reflect.construct(target, args);
-  },
+      values.push(args[0] as number); return Reflect.construct(target, args);
+    },
   });
   const observer = mode === 'absent' ? undefined : () => {
     if (mode === 'throwing') throw new Error('Observer throw');
@@ -58,14 +58,14 @@ it('keeps a failed allocation exception identical even if its observer throws', 
   const failure = new RangeError('Allocation refusal');
   const allocator = new Proxy(Uint8Array, {
     construct() {
-    throw failure;
-  },
+      throw failure;
+    },
   });
   const response = new Response(new ReadableStream({}, { highWaterMark: 0 }), { headers: { 'Content-Length': '7' } });
   await expect(reader({
     observer: () => {
-    throw new Error('Observer failure');
-  },
+      throw new Error('Observer failure');
+    },
     allocator,
   })(response, () => {}, undefined, 'onnx/model.onnx')).rejects.toBe(failure);
   await response.body!.cancel();

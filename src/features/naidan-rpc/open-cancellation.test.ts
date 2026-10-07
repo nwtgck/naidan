@@ -7,8 +7,8 @@ import type { NaidanRpcDuplex, NaidanRpcTransport } from './transport';
 const definition = contract({
   name: 'test.open-cancellation',
   methods: {
-  run: procedure({ input: z.strictObject({}), result: z.number(), notifications: {} }),
-},
+    run: procedure({ input: z.strictObject({}), result: z.number(), notifications: {} }),
+  },
 });
 afterEach(() => vi.useRealTimers());
 
@@ -21,14 +21,14 @@ function pendingTransport() {
     closed: new Promise(() => {}),
     incomingStreams: {
       [Symbol.asyncIterator]() {
-      return {
-        next: () => incoming.promise,
-        async return() {
-        incoming.resolve({ done: true, value: undefined });
-        return { done: true as const, value: undefined };
+        return {
+          next: () => incoming.promise,
+          async return() {
+            incoming.resolve({ done: true, value: undefined });
+            return { done: true as const, value: undefined };
+          },
+        };
       },
-      };
-    },
     },
   };
   return { transport, opening, openStream };

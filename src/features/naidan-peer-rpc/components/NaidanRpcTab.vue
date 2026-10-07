@@ -162,8 +162,8 @@ async function toggleAutoConnect({ event }: { event: Event }): Promise<void> {
   input.checked = current.value?.connection.autoConnect === 'enabled';
   await action({
     run: async () => {
-    if (current.value) await manager.value?.setAutoConnect({ id: current.value.connection.id, autoConnect });
-  },
+      if (current.value) await manager.value?.setAutoConnect({ id: current.value.connection.id, autoConnect });
+    },
   });
 }
 function phaseLabel({ phase }: { phase: RpcConnectionPhase }): string | undefined {

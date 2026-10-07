@@ -28,17 +28,17 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
     notify({
       report: onProgress,
       progress: {
-      phase: 'checking',
-      index,
-      count: files.length,
-      path: file.path,
-      repository: file.repository,
-      completed: 0,
-      total: 0,
-      processed: 0,
-      fileCompleted: 0,
-      fileTotal: 0,
-    },
+        phase: 'checking',
+        index,
+        count: files.length,
+        path: file.path,
+        repository: file.repository,
+        completed: 0,
+        total: 0,
+        processed: 0,
+        fileCompleted: 0,
+        fileTotal: 0,
+      },
     });
     planned.push(await imageFileIdentity({ file, signal, fetch }));
   }
@@ -53,41 +53,41 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
       fetch,
       destination,
       report: ({ progress }) => {
-      fileProcessed = progress.processed;
-      if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
-      reported = performance.now();
-      notify({
-        report: onProgress,
-        progress: {
-        phase: progress.phase,
-        index,
-        count: files.length,
-        path: file.path,
-        repository: file.repository,
-        completed: completed + progress.bytes,
-        total,
-        processed: processed + progress.processed,
-        fileCompleted: progress.bytes,
-        fileTotal: file.size,
+        fileProcessed = progress.processed;
+        if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
+        reported = performance.now();
+        notify({
+          report: onProgress,
+          progress: {
+            phase: progress.phase,
+            index,
+            count: files.length,
+            path: file.path,
+            repository: file.repository,
+            completed: completed + progress.bytes,
+            total,
+            processed: processed + progress.processed,
+            fileCompleted: progress.bytes,
+            fileTotal: file.size,
+          },
+        });
       },
-      });
-    },
     });
     completed += file.size; processed += fileProcessed;
     notify({
       report: onProgress,
       progress: {
-      phase: index === planned.length - 1 ? 'complete' : 'verifying',
-      index,
-      count: files.length,
-      path: file.path,
-      repository: file.repository,
-      completed,
-      total,
-      processed,
-      fileCompleted: file.size,
-      fileTotal: file.size,
-    },
+        phase: index === planned.length - 1 ? 'complete' : 'verifying',
+        index,
+        count: files.length,
+        path: file.path,
+        repository: file.repository,
+        completed,
+        total,
+        processed,
+        fileCompleted: file.size,
+        fileTotal: file.size,
+      },
     });
   }
 }

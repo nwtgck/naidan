@@ -22,9 +22,9 @@ it('does not replace a saved resource with a partial HTTP response', async () =>
   await expect(memory.storage.write({
     url: 'fixture',
     response: new Response(new ReadableStream({ cancel }), {
-    status: 206,
-    headers: { 'Content-Range': 'bytes 0-0/100' },
-  }),
+      status: 206,
+      headers: { 'Content-Range': 'bytes 0-0/100' },
+    }),
   })).rejects.toThrow('206');
   expect(cancel).toHaveBeenCalledOnce();
   expect(await memory.snapshot().get('fixture')?.text()).toBe('{}');
@@ -46,8 +46,8 @@ it('does not publish a short full-status response as complete metadata', async (
   await expect(memory.storage.write({
     url: 'short',
     response: new Response('{}', {
-    headers: { 'Content-Length': '3' },
-  }),
+      headers: { 'Content-Length': '3' },
+    }),
   })).rejects.toThrow('byte length mismatch');
   expect(memory.snapshot().size).toBe(0);
   await memory.dispose();
@@ -78,14 +78,14 @@ it('reserves memory for a pending writer before admitting a concurrent writer', 
   const first = memory.storage.write({
     url: 'first',
     response: new Response(new ReadableStream<Uint8Array>({
-    start(controller) {
-      source = controller;
-      controller.enqueue(Uint8Array.of(1, 2));
-    },
-    pull() {
-      waiting.resolve();
-    },
-  }, { highWaterMark: 0 })),
+      start(controller) {
+        source = controller;
+        controller.enqueue(Uint8Array.of(1, 2));
+      },
+      pull() {
+        waiting.resolve();
+      },
+    }, { highWaterMark: 0 })),
   });
   await waiting.promise;
   try {

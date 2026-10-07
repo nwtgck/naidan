@@ -155,10 +155,10 @@ describe('SmolLM2 135M Download replay', () => {
           return new Response(bytes.slice(0, 1), {
             status: 206,
             headers: {
-            'Content-Length': '1',
-            'Content-Range': `bytes 0-0/${bytes.byteLength}`,
-            'Content-Type': 'application/json',
-          },
+              'Content-Length': '1',
+              'Content-Range': `bytes 0-0/${bytes.byteLength}`,
+              'Content-Type': 'application/json',
+            },
           });
         }
         response.headers.delete('Content-Length');
@@ -555,19 +555,19 @@ describe('SmolLM2 135M Download replay', () => {
 
         const outcome = await h.freshLoad({
           progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
-          // The real bundle's getModelFile dispatches initiate before getCache and
-          // loadResourceFile. Production has already completed candidate planning;
-          // no ONNX File snapshot/body has been consumed for this runtime load yet.
-          const activity = h.fs.activity.slice(activityBoundary);
-          removals.push({
-            status: info.status,
-            file: info.file,
-            removed: h.fs.files.delete(missingBody),
-            modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
-            modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
-          });
-        },
+            if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+            // The real bundle's getModelFile dispatches initiate before getCache and
+            // loadResourceFile. Production has already completed candidate planning;
+            // no ONNX File snapshot/body has been consumed for this runtime load yet.
+            const activity = h.fs.activity.slice(activityBoundary);
+            removals.push({
+              status: info.status,
+              file: info.file,
+              removed: h.fs.files.delete(missingBody),
+              modelStats: activity.filter(item => item.operation === 'stat' && item.path.includes('/onnx/')).map(item => item.path),
+              modelBodyReads: activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/')).map(item => item.path),
+            });
+          },
         }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
         expect(removals).toHaveLength(1);
@@ -617,14 +617,14 @@ describe('SmolLM2 135M Download replay', () => {
         let configRequestsAfterPlanning = 0;
         const outcome = await h.freshLoad({
           progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== 'config.json') return;
-          const activity = h.fs.activity.slice(activityBoundary);
-          // The model-file stat proves that this is a later AutoModel config read,
-          // not the initial AutoConfig preparation. Inject at an event, never a delay.
-          if (!activity.some(item => item.operation === 'stat' && item.path === fallbackBody)) return;
-          configRequestsAfterPlanning += 1;
-          if (!removed) removed = h.fs.files.delete(configBody);
-        },
+            if (info.status !== 'initiate' || info.file !== 'config.json') return;
+            const activity = h.fs.activity.slice(activityBoundary);
+            // The model-file stat proves that this is a later AutoModel config read,
+            // not the initial AutoConfig preparation. Inject at an event, never a delay.
+            if (!activity.some(item => item.operation === 'stat' && item.path === fallbackBody)) return;
+            configRequestsAfterPlanning += 1;
+            if (!removed) removed = h.fs.files.delete(configBody);
+          },
         }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
         expect(removed).toBe(true);
@@ -642,9 +642,9 @@ describe('SmolLM2 135M Download replay', () => {
         expect(outcome).toMatchObject({
           status: 'failed',
           error: {
-          name: 'RequiredDownloadedModelResourceError',
-          message: expect.stringContaining('config.json'),
-        },
+            name: 'RequiredDownloadedModelResourceError',
+            message: expect.stringContaining('config.json'),
+          },
         });
       } finally {
         await h.close();
@@ -683,11 +683,11 @@ describe('SmolLM2 135M Download replay', () => {
         let changed = false;
         const outcome = await h.freshLoad({
           progressCallback: ({ info }) => {
-          if (changed || info.status !== 'initiate' || info.file !== 'config.json') return;
-          if (!h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === coreBody)) return;
-          h.fs.files.set(configBody, changedConfigBytes);
-          changed = true;
-        },
+            if (changed || info.status !== 'initiate' || info.file !== 'config.json') return;
+            if (!h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === coreBody)) return;
+            h.fs.files.set(configBody, changedConfigBytes);
+            changed = true;
+          },
         }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
         expect(changed).toBe(true);
@@ -738,15 +738,15 @@ describe('SmolLM2 135M Download replay', () => {
         const removals: Array<{ removed: boolean, exactPresenceWasChecked: boolean, modelSessions: number }> = [];
         const failure = await h.freshLoad({
           progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
-          // The revisionless ModelRegistry presence probe has already resolved to
-          // exact OPFS metadata. Remove only the later required tokenizer input.
-          removals.push({
-            removed: h.fs.files.delete(missingBody),
-            exactPresenceWasChecked: h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === missingBody),
-            modelSessions: h.sessions.length - sessionBoundary,
-          });
-        },
+            if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+            // The revisionless ModelRegistry presence probe has already resolved to
+            // exact OPFS metadata. Remove only the later required tokenizer input.
+            removals.push({
+              removed: h.fs.files.delete(missingBody),
+              exactPresenceWasChecked: h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === missingBody),
+              modelSessions: h.sessions.length - sessionBoundary,
+            });
+          },
         }).then(() => undefined, (error: unknown) => error);
         expect(removals).toEqual([{ removed: true, exactPresenceWasChecked: true, modelSessions: 1 }]);
         expect(failure).toMatchObject({

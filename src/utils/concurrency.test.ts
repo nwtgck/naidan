@@ -129,13 +129,13 @@ describe('Semaphore', () => {
     const tasks = Array.from({ length: totalTasks }).map((_, i) => {
       return semaphore.run({
         task: async () => {
-        activeCount++;
-        maxActive = Math.max(maxActive, activeCount);
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
-        activeCount--;
-        totalCompleted++;
-        return i;
-      },
+          activeCount++;
+          maxActive = Math.max(maxActive, activeCount);
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+          activeCount--;
+          totalCompleted++;
+          return i;
+        },
       });
     });
 
@@ -153,9 +153,9 @@ describe('Semaphore', () => {
 
     const task = (id: number) => semaphore.run({
       task: async () => {
-      await new Promise(resolve => setTimeout(resolve, 10));
-      order.push(id);
-    },
+        await new Promise(resolve => setTimeout(resolve, 10));
+        order.push(id);
+      },
     });
 
     // Start one

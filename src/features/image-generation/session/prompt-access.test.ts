@@ -30,8 +30,8 @@ function harness() {
     approval,
     controller,
     setCurrent({ value }: { value: ImageGenerationPromptTarget | undefined }) {
-    current = value;
-  },
+      current = value;
+    },
   };
 }
 
@@ -85,11 +85,11 @@ describe('scoped Image Generation prompt access', () => {
     const h = harness(); const operation = applyImageGenerationPromptEdit(h.options);
     h.setCurrent({
       value: {
-      ...h.target,
-      revision: toImageGenerationDraftRevisionId({ raw: 'new-revision' }),
-      prompt: cause === 'changed prompt' ? 'edited manually' : h.target.prompt,
-      negativePrompt: cause === 'changed negative prompt' ? 'new negative' : h.target.negativePrompt,
-    },
+        ...h.target,
+        revision: toImageGenerationDraftRevisionId({ raw: 'new-revision' }),
+        prompt: cause === 'changed prompt' ? 'edited manually' : h.target.prompt,
+        negativePrompt: cause === 'changed negative prompt' ? 'new negative' : h.target.negativePrompt,
+      },
     });
     h.approval.resolve({ status: 'approved' });
     expect(await operation).toEqual({ status: 'stale' }); expect(h.commit).not.toHaveBeenCalled();

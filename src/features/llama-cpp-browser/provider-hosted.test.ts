@@ -59,17 +59,17 @@ describe('local model provider', () => {
       id: toMessageId({ raw: 'u' }),
       role: 'user',
       parts: [{
-      type: 'attachment',
-      attachment: {
-      id: toAttachmentId({ raw: 'a' }),
-      binaryObjectId: toBinaryObjectId({ raw: 'https://private.invalid/image.png' }),
-      originalName: 'x',
-      size: 1,
-      uploadedAt: 1,
-      mimeType: 'image/png',
-      status: 'missing',
-    },
-    }],
+        type: 'attachment',
+        attachment: {
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'https://private.invalid/image.png' }),
+          originalName: 'x',
+          size: 1,
+          uploadedAt: 1,
+          mimeType: 'image/png',
+          status: 'missing',
+        },
+      }],
     }];
     expect((await read({ request })).result.type).toBe('error'); expect(service.generate).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled();fetcher.mockRestore();
   });
@@ -79,10 +79,10 @@ describe('local model provider', () => {
       id: toMessageId({ raw: 'u' }),
       role: 'user',
       parts: [
-      { type: 'text', text: 'before', completeness: 'complete' },
-      { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x', size: blob.size, uploadedAt: 1, mimeType: blob.type, status: 'memory', blob } },
-      { type: 'text', text: 'after', completeness: 'complete' },
-    ],
+        { type: 'text', text: 'before', completeness: 'complete' },
+        { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x', size: blob.size, uploadedAt: 1, mimeType: blob.type, status: 'memory', blob } },
+        { type: 'text', text: 'after', completeness: 'complete' },
+      ],
     }];
     await read({ request });
     expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'before' }, { type: 'image', blob }, { type: 'text', text: 'after' }] }]);
@@ -153,13 +153,13 @@ it('ignores tool events emitted after that execution has settled', async () => {
     provider: new LlamaCppBrowserProvider(),
     request: chatRequest(),
     tools: [{
-    name: 'lookup',
-    description: '',
-    parametersSchema: z.object({}),
-    execute: async ({ onEvent }) => {
-    send = onEvent;await onEvent?.({ event: { type: 'started' } });return { status: 'success', content: 'done' };
-  },
-  }],
+      name: 'lookup',
+      description: '',
+      parametersSchema: z.object({}),
+      execute: async ({ onEvent }) => {
+        send = onEvent;await onEvent?.({ event: { type: 'started' } });return { status: 'success', content: 'done' };
+      },
+    }],
     controller: new AbortController(),
     onToolEvent,
   });
@@ -173,13 +173,13 @@ it('executes multiple completed calls serially through the same host tool contra
     provider: new LlamaCppBrowserProvider(),
     request: chatRequest(),
     tools: [{
-    name: 'lookup',
-    description: '',
-    parametersSchema: z.object({ value: z.string() }),
-    execute: async ({ args }) => {
-    const { value } = z.object({ value: z.string() }).parse(args);events.push(`start:${value}`);await Promise.resolve();events.push(`finish:${value}`);return { status: 'success', content: value };
-  },
-  }],
+      name: 'lookup',
+      description: '',
+      parametersSchema: z.object({ value: z.string() }),
+      execute: async ({ args }) => {
+        const { value } = z.object({ value: z.string() }).parse(args);events.push(`start:${value}`);await Promise.resolve();events.push(`finish:${value}`);return { status: 'success', content: value };
+      },
+    }],
     controller: new AbortController(),
     onToolEvent: () => {},
   });

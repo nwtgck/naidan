@@ -251,13 +251,13 @@ export async function runCompactCurrentBranchForChat({
         contextCompactRuntime.setProgress({
           chatId: mutableChat.id,
           progress: {
-          phase: 'receiving_compact',
-          compactedMessageCount: split.prefix.length,
-          suffixMessageCount: split.suffix.length,
-          outputChars: compactContent.length,
-          requestPreview,
-          outputPreview: compactContent,
-        },
+            phase: 'receiving_compact',
+            compactedMessageCount: split.prefix.length,
+            suffixMessageCount: split.suffix.length,
+            outputChars: compactContent.length,
+            requestPreview,
+            outputPreview: compactContent,
+          },
         });
       },
     });

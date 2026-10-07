@@ -427,9 +427,9 @@ async function attachCopyAsVolume({ entries, name }: {
     if ((e as Error).name !== 'AbortError') {
       addToast({
         message: await ensureStrings.ChatInput__failed_to_copy({
-        name,
-        errorMessage: (e as Error).message,
-      }),
+          name,
+          errorMessage: (e as Error).message,
+        }),
       });
     }
   } finally {
@@ -450,8 +450,8 @@ async function attachLinkAsVolume() {
     if ((e as Error).name !== 'AbortError') {
       addToast({
         message: await ensureStrings.ChatInput__failed_to_link_folder({
-        errorMessage: (e as Error).message,
-      }),
+          errorMessage: (e as Error).message,
+        }),
       });
     }
   } finally {
@@ -616,12 +616,12 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 
   openFileExplorer({
     options: {
-    kind: 'wesh-mounts',
-    title: await ensureStrings.fileExplorer__files(),
-    rootName: await ensureStrings.fileExplorer__files(),
-    mounts: workerMounts,
-    initialPath,
-  },
+      kind: 'wesh-mounts',
+      title: await ensureStrings.fileExplorer__files(),
+      rootName: await ensureStrings.fileExplorer__files(),
+      mounts: workerMounts,
+      initialPath,
+    },
   });
 }
 
@@ -992,10 +992,10 @@ watch(
       chatDraft.saveDraft({
         chatId: oldId,
         draft: {
-        input: input.value,
-        attachments: attachments.value,
-        attachmentUrls: attachmentUrls.value,
-      },
+          input: input.value,
+          attachments: attachments.value,
+          attachmentUrls: attachmentUrls.value,
+        },
       });
     }
 
@@ -1072,10 +1072,10 @@ onUnmounted(() => {
   chatDraft.saveDraft({
     chatId: props.chatId,
     draft: {
-    input: input.value,
-    attachments: attachments.value,
-    attachmentUrls: attachmentUrls.value,
-  },
+      input: input.value,
+      attachments: attachments.value,
+      attachmentUrls: attachmentUrls.value,
+    },
   });
 
   // Revoke all created URLs across all drafts to prevent leaks

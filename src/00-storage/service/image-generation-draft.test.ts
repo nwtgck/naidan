@@ -74,8 +74,8 @@ describe('session draft checkpoints', () => {
       draft: h.draft,
       expectedRevision: undefined,
       writeInputs: async () => {
-      throw new Error('quota');
-    },
+        throw new Error('quota');
+      },
     })).rejects.toThrow('quota');
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toBeUndefined();
   });

@@ -294,15 +294,15 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       file,
       destinationId,
       match: ({ candidate }) => {
-      switch (file.role) {
-      case 'model': case 'diffusion': return candidate.family === family;
-      case 'vae': case 'lm': {
-        const requirement = requirements.find(item => item.slot === file.role);
-        return requirement !== undefined && componentMatch({ candidate, requirement }) === 'matching';
-      }
-      default: { const exhaustive: never = file.role; throw new Error(String(exhaustive)); }
-      }
-    },
+        switch (file.role) {
+        case 'model': case 'diffusion': return candidate.family === family;
+        case 'vae': case 'lm': {
+          const requirement = requirements.find(item => item.slot === file.role);
+          return requirement !== undefined && componentMatch({ candidate, requirement }) === 'matching';
+        }
+        default: { const exhaustive: never = file.role; throw new Error(String(exhaustive)); }
+        }
+      },
     }));
     return {
       available: candidates.filter(candidate => candidate !== undefined).length,
@@ -458,8 +458,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         destination: authorization.destination,
         signal: controller.signal,
         onProgress: ({ progress }) => {
-        if (!disposed && !controller.signal.aborted) downloadProgress.value = progress;
-      },
+          if (!disposed && !controller.signal.aborted) downloadProgress.value = progress;
+        },
       });
       controller.signal.throwIfAborted(); transferred = true;
     } catch (error) {
@@ -632,10 +632,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         const next = await awaitInspection({
           signal: scan.signal,
           task: dependencies ? (async () => {
-          const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds }), signal: scan.signal });
-          scan.signal.throwIfAborted();
-          return dependencies.scan({ repositories: repositoryIds ? repositories.filter(repository => repositoryIds.includes(repository.id)) : repositories, signal: scan.signal, onProgress });
-        })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds }),
+            const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds }), signal: scan.signal });
+            scan.signal.throwIfAborted();
+            return dependencies.scan({ repositories: repositoryIds ? repositories.filter(repository => repositoryIds.includes(repository.id)) : repositories, signal: scan.signal, onProgress });
+          })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds }),
         });
         if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport) return 'failed';
         if (blocked() && !preparingHistoryFiles && !preserveSelection) return 'blocked';
@@ -695,8 +695,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           input,
           signal: controller.signal,
           onProgress: ({ progress }) => {
-          if (!disposed) importProgress.value = progress;
-        },
+            if (!disposed) importProgress.value = progress;
+          },
         });
         publishedRepositories.push(repositoryId);
       }

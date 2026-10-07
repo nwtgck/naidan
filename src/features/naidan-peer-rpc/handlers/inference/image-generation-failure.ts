@@ -48,14 +48,14 @@ export function createImageGenerationFailure({ error, stage, reason, profile, gp
   return new NaidanRpcPublicError({
     code: error instanceof NaidanRpcError ? error.code : 'HANDLER_FAILED',
     details: {
-    kind,
-    stage: publicStage,
-    reason: publicReason,
-    errorType,
-    ...(publicProfile === undefined ? {} : { profile: publicProfile }),
-    ...(wasmFrames === undefined ? {} : { wasmFrames }),
-    ...(nativeCall === undefined ? {} : { nativeCall }),
-  },
+      kind,
+      stage: publicStage,
+      reason: publicReason,
+      errorType,
+      ...(publicProfile === undefined ? {} : { profile: publicProfile }),
+      ...(wasmFrames === undefined ? {} : { wasmFrames }),
+      ...(nativeCall === undefined ? {} : { nativeCall }),
+    },
   });
 }
 

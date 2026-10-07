@@ -112,8 +112,8 @@ async function setWeshAccessScope({
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
-  TEST_ONLY: {},
-}) || {}),
+    TEST_ONLY: {},
+  }) || {}),
 });
 
 </script>

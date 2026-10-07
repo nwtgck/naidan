@@ -56,9 +56,9 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async imp
   return {
     ...original,
     useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
-    const state = original.useModelLaunchChat(args);
-    return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
-  },
+      const state = original.useModelLaunchChat(args);
+      return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
+    },
   };
 });
 // Disk inspection/cancellation is exercised in useMissingLlamaCppBrowserModel.
@@ -70,14 +70,14 @@ vi.mock('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel
   return {
     ...original,
     useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
-    const state = original.useMissingLlamaCppBrowserModel(args);
-    return {
-      ...state,
-      availability: recoveryAvailability,
-      visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
-      maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
-    };
-  },
+      const state = original.useMissingLlamaCppBrowserModel(args);
+      return {
+        ...state,
+        availability: recoveryAvailability,
+        visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
+        maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
+      };
+    },
   };
 });
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -1713,11 +1713,11 @@ Question`,
   it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
     wrapper = mountChatPane({
       global: {
-      plugins: [router],
-      stubs: {
-      ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
-    },
-    },
+        plugins: [router],
+        stubs: {
+          ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
+        },
+      },
     });
     await flushPromises();
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');

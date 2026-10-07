@@ -137,8 +137,8 @@ describe('native streamer instance call-through', () => {
     const streamer = new runtime.TextStreamer({ all_special_ids: [], decode: () => 'remaining' } as never, {
       skip_prompt: true,
       callback_function: () => {
-      throw failure;
-    },
+        throw failure;
+      },
     });
     streamer.put([[1n]]);
     streamer.put([[2n]]);
@@ -256,9 +256,9 @@ describe('native streamer instance call-through', () => {
     const fixture = syntheticStreamer(); const capture = recorder();
     const streamer = new Proxy(fixture.streamer, {
       defineProperty(target, key, descriptor) {
-      if (key === 'on_finalized_text') throw new Error('Synthetic install failure');
-      return Reflect.defineProperty(target, key, descriptor);
-    },
+        if (key === 'on_finalized_text') throw new Error('Synthetic install failure');
+        return Reflect.defineProperty(target, key, descriptor);
+      },
     });
     observeNativeStreamer({ streamer, streamerPrototype: fixture.prototype, capture }).restore();
     expect(Object.getOwnPropertyDescriptors(fixture.streamer)).toEqual({});
@@ -269,8 +269,8 @@ describe('native streamer instance call-through', () => {
     const fixture = syntheticStreamer(); const capture = recorder();
     const streamer = new Proxy(fixture.streamer, {
       deleteProperty() {
-      return false;
-    },
+        return false;
+      },
     });
     const hook = observeNativeStreamer({ streamer, streamerPrototype: fixture.prototype, capture });
     expect(streamer.put()).toBe(fixture.returned);

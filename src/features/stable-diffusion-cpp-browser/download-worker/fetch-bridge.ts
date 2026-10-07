@@ -17,8 +17,8 @@ export function createImageDownloadFetchBridge({ signal }: { signal: AbortSignal
     const server = servePrivacyStreamWithFetcher({
       port: channel.port1,
       fetchResponse: ({ signal: streamSignal }) => {
-      return privacyFetchStream({ request: { ...validated, signal: AbortSignal.any([signal, streamSignal]) } });
-    },
+        return privacyFetchStream({ request: { ...validated, signal: AbortSignal.any([signal, streamSignal]) } });
+      },
     });
     connections.add({ channel, dispose: server.dispose });
     return workerTransfer({ value: channel.port2, transferables: [channel.port2] });

@@ -242,8 +242,8 @@ describe('createFileExplorerDirectoryArchive', () => {
           opened.resolve();
           return new ReadableStream<Uint8Array>({
             pull() {
-            return new Promise(() => undefined);
-          },
+              return new Promise(() => undefined);
+            },
             cancel,
           });
         },

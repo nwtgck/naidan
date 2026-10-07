@@ -141,10 +141,10 @@ describe('structured image download metadata', () => {
   it('preserves existing WebP alpha/ICCP/Exif chunks and flags with large international settings', async () => {
     const source = webpFixture({
       chunks: [
-      { name: 'VP8X', payload: [0x38, 0, 0, 0, 15, 0, 0, 11, 0, 0] },
-      { name: 'ICCP', payload: [1, 2, 3] }, { name: 'ALPH', payload: [0, 1, 2, 3] },
-      { name: 'VP8 ', payload: vp8 }, { name: 'EXIF', payload: [4, 5] },
-    ],
+        { name: 'VP8X', payload: [0x38, 0, 0, 0, 15, 0, 0, 11, 0, 0] },
+        { name: 'ICCP', payload: [1, 2, 3] }, { name: 'ALPH', payload: [0, 1, 2, 3] },
+        { name: 'VP8 ', payload: vp8 }, { name: 'EXIF', payload: [4, 5] },
+      ],
     });
     const data = { prompt: '癒し😀'.repeat(20_000), image };
     const output = new Uint8Array(await webpWithXmp({ bytes: source, packet: generationXmp({ json: JSON.stringify(data) }) }).arrayBuffer());

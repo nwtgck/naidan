@@ -15,14 +15,14 @@ vi.mock('@/utils/worker-transport', async importOriginal => {
   return {
     ...original,
     wrapWorkerRemote: () => {
-    const writer = createDownloadWriter();
-    if (calls.pause) writer.pause = calls.pause;
-    if (calls.append) writer.append = calls.append;
-    return writer;
-  },
+      const writer = createDownloadWriter();
+      if (calls.pause) writer.pause = calls.pause;
+      if (calls.append) writer.append = calls.append;
+      return writer;
+    },
     releaseWorkerRemote: calls.release,
     workerTransfer: ({ value }: { value: object }) => value,
-  workerProxy: ({ value }: { value: object }) => value,
+    workerProxy: ({ value }: { value: object }) => value,
     getReadableStreamTransferSupport: async () => 'unsupported',
   };
 });
@@ -51,8 +51,8 @@ beforeEach(() => {
     headers: new Headers(),
     body: new ReadableStream<Uint8Array<ArrayBuffer>>({
       start(controller) {
-      controller.enqueue(ggufBytes()); controller.close();
-    },
+        controller.enqueue(ggufBytes()); controller.close();
+      },
     }),
   }));
 });
@@ -139,8 +139,8 @@ describe('standalone browser model downloads', () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: async () => {
-        throw new DOMException('Denied', 'SecurityError');
-      },
+          throw new DOMException('Denied', 'SecurityError');
+        },
       },
       locks: { request: async (_name: string, _options: object, operation: (lock: object) => Promise<unknown>) => operation({}) },
     });

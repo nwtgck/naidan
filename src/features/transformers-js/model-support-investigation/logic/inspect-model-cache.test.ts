@@ -48,22 +48,22 @@ function toDirectoryHandle({ value }: { value: FakeDirectory }): FileSystemDirec
 function storageRoot({ modelChildren }: { modelChildren: Record<string, FakeHandle> }): FileSystemDirectoryHandle {
   return toDirectoryHandle({
     value: directory({
-    children: {
-    models: directory({
       children: {
-      'huggingface.co': directory({
-        children: {
-        org: directory({
+        models: directory({
           children: {
-          model: directory({ children: modelChildren }),
-        },
+            'huggingface.co': directory({
+              children: {
+                org: directory({
+                  children: {
+                    model: directory({ children: modelChildren }),
+                  },
+                }),
+              },
+            }),
+          },
         }),
       },
-      }),
-    },
     }),
-  },
-  }),
   });
 }
 
@@ -71,22 +71,22 @@ describe('inspectModelCache', () => {
   it('records nested files, completion markers, sizes, and weight identity', async () => {
     const root = storageRoot({
       modelChildren: {
-      resolve: directory({
-        children: {
-        main: directory({
+        resolve: directory({
           children: {
-          'config.json': file({ size: 10 }),
-          '.config.json.complete': file({ size: 0 }),
-          'tokenizer.model': file({ size: 20 }),
-          '.tokenizer.model.complete': file({ size: 0 }),
-          'model_q4.onnx': file({ size: 30 }),
-          '.model_q4.onnx.complete': file({ size: 0 }),
-          '.missing.onnx.complete': file({ size: 0 }),
-        },
+            main: directory({
+              children: {
+                'config.json': file({ size: 10 }),
+                '.config.json.complete': file({ size: 0 }),
+                'tokenizer.model': file({ size: 20 }),
+                '.tokenizer.model.complete': file({ size: 0 }),
+                'model_q4.onnx': file({ size: 30 }),
+                '.model_q4.onnx.complete': file({ size: 0 }),
+                '.missing.onnx.complete': file({ size: 0 }),
+              },
+            }),
+          },
         }),
       },
-      }),
-    },
     });
 
     const result = await inspectModelCache({ modelId: 'hf.co/org/model', storageRoot: root });
@@ -121,18 +121,18 @@ describe('inspectModelCache', () => {
   it('keeps root-level legacy metadata in evidence without counting it as an incomplete cached artifact', async () => {
     const root = storageRoot({
       modelChildren: {
-      '.naidan-download-manifest.json': file({ size: 478 }),
-      resolve: directory({
-        children: {
-        main: directory({
+        '.naidan-download-manifest.json': file({ size: 478 }),
+        resolve: directory({
           children: {
-          'model_q4.onnx': file({ size: 30 }),
-          '.model_q4.onnx.complete': file({ size: 0 }),
-        },
+            main: directory({
+              children: {
+                'model_q4.onnx': file({ size: 30 }),
+                '.model_q4.onnx.complete': file({ size: 0 }),
+              },
+            }),
+          },
         }),
       },
-      }),
-    },
     });
 
     const result = await inspectModelCache({ modelId: 'hf.co/org/model', storageRoot: root });

@@ -16,8 +16,8 @@ subscribeWorkerNotifications({
   endpoint: undefined,
   schema: cancelControlSchema,
   listener({ value }) {
-  api.cancel({ control: value });
-},
+    api.cancel({ control: value });
+  },
 });
 exposeWorkerRemote<ImageWorker>({ api, endpoint: undefined });
 export const TEST_ONLY = {

@@ -6,8 +6,8 @@ it.each(['config', 'candidate-plan', 'tokenizer-processor'] as const)('records %
   await expect(withDownloadedModelPreparationPhase({
     phase,
     run: async () => {
-    throw cause;
-  },
+      throw cause;
+    },
   })).rejects.toMatchObject({
     name: 'DownloadedModelPreparationError',
     phase,

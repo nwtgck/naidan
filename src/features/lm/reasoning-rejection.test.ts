@@ -12,8 +12,8 @@ describe('positive reasoning rejection classification', () => {
     expect(() => renderThinkingTemplate({
       offRequested: true,
       render: () => {
-      throw new Error(message);
-    },
+        throw new Error(message);
+      },
     })).toThrow(UnsupportedReasoningError);
   });
   it('does not classify a generic template failure or a failure without an off request', () => {
@@ -22,8 +22,8 @@ describe('positive reasoning rejection classification', () => {
       expect(() => renderThinkingTemplate({
         offRequested,
         render: () => {
-        throw error;
-      },
+          throw error;
+        },
       })).toThrow(error);
     }
     const error = new Error('Thinking is not supported');
@@ -31,8 +31,8 @@ describe('positive reasoning rejection classification', () => {
       renderThinkingTemplate({
         offRequested: false,
         render: () => {
-        throw error;
-      },
+          throw error;
+        },
       });
     } catch (caught) {
       expect(caught).toBe(error);
@@ -45,8 +45,8 @@ describe('positive reasoning rejection classification', () => {
       renderThinkingTemplate({
         offRequested: true,
         render: () => {
-        throw trap;
-      },
+          throw trap;
+        },
       });
     } catch (error) {
       expect(error).toBe(trap);
@@ -63,22 +63,22 @@ describe('positive reasoning rejection classification', () => {
   it.each(['invalid_value', 'invalid_enum_value', 'invalid_type'])('recognizes a structured %s identifying the reasoning parameter', code => {
     expect(isReasoningErrorEnvelope({
       value: {
-      error: {
-      code,
-      param: 'reasoning_effort',
-      message: "Expected one of 'low', 'medium', 'high'.",
-    },
-    },
+        error: {
+          code,
+          param: 'reasoning_effort',
+          message: "Expected one of 'low', 'medium', 'high'.",
+        },
+      },
       parameter: 'reasoning_effort',
     })).toBe(true);
     expect(isReasoningErrorEnvelope({
       value: {
-      error: {
-      code,
-      param: 'model',
-      message: 'Invalid model.',
-    },
-    },
+        error: {
+          code,
+          param: 'model',
+          message: 'Invalid model.',
+        },
+      },
       parameter: 'reasoning_effort',
     })).toBe(false);
   });

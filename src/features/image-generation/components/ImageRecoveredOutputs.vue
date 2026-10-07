@@ -15,14 +15,14 @@ const unowned = computed(() => entries.value.filter(entry => !pendingRuns.value.
   run.state.pending.some(output => output.asset.result.binaryObjectId === entry.record.result.binaryObjectId))));
 onScopeDispose(imagePendingRuns.subscribe({
   listener() {
-  pendingRuns.value = imagePendingRuns.list();
-},
+    pendingRuns.value = imagePendingRuns.list();
+  },
 }));
 const { showConfirm } = useConfirm();
 const unsubscribe = imageRecoveryStore.subscribe({
   listener() {
-  entries.value = imageRecoveryStore.list();
-},
+    entries.value = imageRecoveryStore.list();
+  },
 });
 onScopeDispose(unsubscribe);
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {

@@ -74,10 +74,10 @@ function codecs({ keys, label }: { keys: { a: NaidanPipingKeyContext; b: NaidanP
 function empty({ goaway }: { goaway: boolean }): Uint8Array {
   return encodeRecordPayload({
     payload: {
-    receiptRequest: 'not-requested',
-    receivedRecord: undefined,
-    snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] },
-  },
+      receiptRequest: 'not-requested',
+      receivedRecord: undefined,
+      snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] },
+    },
   });
 }
 
@@ -111,8 +111,8 @@ it('duplicate authenticated records apply exactly once to a living receiver', as
     const outcome = await rx.accept({
       capsule,
       apply: () => {
-      applications++;
-    },
+        applications++;
+      },
     });
     expect(outcome).toBe(index === 0 ? 'accepted' : 'stale');
   }
@@ -128,8 +128,8 @@ it('a forged high record number cannot poison the replay watermark', async () =>
   expect(await rx.accept({
     capsule: forged,
     apply: () => {
-    throw new Error('Unauthenticated application');
-  },
+      throw new Error('Unauthenticated application');
+    },
   })).toBe('unauthenticated');
   expect(rx.high).toBe(-1n);
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
@@ -147,8 +147,8 @@ it('old records fail across fresh handshakes even with identical identities and 
   expect(await fresh.rx.accept({
     capsule,
     apply: () => {
-    throw new Error('Cross-session replay');
-  },
+      throw new Error('Cross-session replay');
+    },
   })).toBe('unauthenticated');
   expect(fresh.rx.high).toBe(-1n);
   first.a.dispose(); first.b.dispose(); second.a.dispose(); second.b.dispose();
@@ -165,8 +165,8 @@ it('direction reflection and domain substitution are rejected', async () => {
     expect(await rx.accept({
       capsule,
       apply: () => {
-      throw new Error('Wrong scope');
-    },
+        throw new Error('Wrong scope');
+      },
     })).toBe('unauthenticated');
   keys.a.dispose(); keys.b.dispose();
 });
@@ -193,15 +193,15 @@ it('an old decrypt finishing late cannot roll back already committed state', asy
   const pending = rx.accept({
     capsule: old,
     apply: ({ snapshot }) => {
-    applied.push(snapshot.goaway);
-  },
+      applied.push(snapshot.goaway);
+    },
   });
   await started.promise;
   expect(await rx.accept({
     capsule: newer,
     apply: ({ snapshot }) => {
-    applied.push(snapshot.goaway);
-  },
+      applied.push(snapshot.goaway);
+    },
   })).toBe('accepted');
   release?.();
   expect(await pending).toBe('stale');
@@ -220,8 +220,8 @@ it('disposal during authentication prevents publishing plaintext state', async (
   await expect(rx.accept({
     capsule,
     apply: () => {
-    throw new Error('Disposed delivery');
-  },
+      throw new Error('Disposed delivery');
+    },
   })).rejects.toThrow('disposed');
   expect(rx.high).toBe(-1n); keys.a.dispose();
 });
@@ -254,18 +254,18 @@ it('authenticated protocol violations reject the runner lifetime instead of look
   // A responder-local ID cannot be allocated by an incoming initiator advertisement.
   const invalid = await sender.seal({
     plaintext: encodeRecordPayload({
-    payload: {
-    receiptRequest: 'not-requested',
-    receivedRecord: undefined,
-    snapshot: {
-    goaway: false,
-    finished: new Uint8Array(),
-    reset: new Uint8Array(),
-    states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 0n, final: 0n }],
-    data: [],
-  },
-  },
-  }),
+      payload: {
+        receiptRequest: 'not-requested',
+        receivedRecord: undefined,
+        snapshot: {
+          goaway: false,
+          finished: new Uint8Array(),
+          reset: new Uint8Array(),
+          states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 0n, final: 0n }],
+          data: [],
+        },
+      },
+    }),
   });
   const stop = new AbortController();
   try {

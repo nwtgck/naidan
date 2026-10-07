@@ -16,17 +16,17 @@ function simulatedWebLocks() {
   const lanes = new Map<string, Promise<void>>();
   return {
     request: async (name: string, callback: () => Promise<unknown>) => {
-    lockCalls.push(name);
-    const previous = lanes.get(name) ?? Promise.resolve();
-    const release = Promise.withResolvers<void>();
-    const tail = previous.then(() => release.promise); lanes.set(name, tail);
-    await previous;
-    try {
-      return await callback();
-    } finally {
-      release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
-    }
-  },
+      lockCalls.push(name);
+      const previous = lanes.get(name) ?? Promise.resolve();
+      const release = Promise.withResolvers<void>();
+      const tail = previous.then(() => release.promise); lanes.set(name, tail);
+      await previous;
+      try {
+        return await callback();
+      } finally {
+        release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
+      }
+    },
   };
 }
 function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {

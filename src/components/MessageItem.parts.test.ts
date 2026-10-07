@@ -23,12 +23,12 @@ describe('message parts UI boundaries', () => {
     const message = assistant({ parts: [], interruption: undefined });
     const wrapper = mount(MessageItem, {
       props: {
-      chatId: toChatId({ raw: 'c' }),
-      message,
-      mode: 'tool_calls',
-      isGenerating: true,
-      toolCallDrafts: [{ partId: 'call-0', index: 0, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo hello' }],
-    },
+        chatId: toChatId({ raw: 'c' }),
+        message,
+        mode: 'tool_calls',
+        isGenerating: true,
+        toolCallDrafts: [{ partId: 'call-0', index: 0, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo hello' }],
+      },
     });
     expect(wrapper.get('[data-testid="tool-call-draft"]').text()).toContain('Generating tool call…');
     expect(wrapper.get('[data-testid="tool-call-draft-arguments"]').text()).toContain('$ echo hello');

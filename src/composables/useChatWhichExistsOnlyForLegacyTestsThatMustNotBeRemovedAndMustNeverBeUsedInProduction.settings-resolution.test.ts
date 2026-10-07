@@ -78,13 +78,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Default Global Settings
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'http://global-openai' },
-      defaultModelId: 'global-gpt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-    },
+        endpoint: { type: 'openai', url: 'http://global-openai' },
+        defaultModelId: 'global-gpt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+      },
     });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
@@ -112,10 +112,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 1. Setup with Setting A
     __testOnlySetSettings({
       newSettings: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpoint: { type: 'openai', url: 'http://endpoint-a' },
-      defaultModelId: 'global-gpt',
-    },
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: { type: 'openai', url: 'http://endpoint-a' },
+        defaultModelId: 'global-gpt',
+      },
     });
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
@@ -130,10 +130,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 2. Change to Setting B
     __testOnlySetSettings({
       newSettings: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpoint: { type: 'openai', url: 'http://endpoint-b' },
-      defaultModelId: 'model-b',
-    },
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: { type: 'openai', url: 'http://endpoint-b' },
+        defaultModelId: 'model-b',
+      },
     });
 
     // Send second message in SAME chat - should now use Global B
@@ -169,8 +169,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await updateChatSettings({
       id: idToRaw({ id }),
       updates: {
-      endpoint: { type: 'ollama', url: 'http://pinned-ollama' },
-    },
+        endpoint: { type: 'ollama', url: 'http://pinned-ollama' },
+      },
     });
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
@@ -202,13 +202,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 1. Global only
     __testOnlySetSettings({
       newSettings: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpoint: {
-        type: 'openai',
-        url: 'http://global-openai',
-        httpHeaders: [['X-Global', '1']],
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: {
+          type: 'openai',
+          url: 'http://global-openai',
+          httpHeaders: [['X-Global', '1']],
+        },
       },
-    },
     });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;

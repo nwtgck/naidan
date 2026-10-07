@@ -53,14 +53,14 @@ async function createFixture() {
     currentLeafId: toMessageId({ raw: 'user' }),
     root: {
       items: [{
-      id: toMessageId({ raw: 'user' }),
-      role: 'user',
-      createdAt: 1,
-      modelId: undefined,
-      lmParameters: undefined,
-      parts: [{ type: 'text', text: 'Original saved message', completeness: 'complete' }],
-      replies: { items: [] },
-    }],
+        id: toMessageId({ raw: 'user' }),
+        role: 'user',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'Original saved message', completeness: 'complete' }],
+        replies: { items: [] },
+      }],
     },
   };
   await provider.saveChatMeta({ meta: chat });
@@ -96,11 +96,11 @@ describe('OPFS export index read failures', () => {
     Object.defineProperty(blob, 'stream', {
       configurable: true,
       value: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
-      pull() {
-        entered.resolve(); return new Promise<void>(() => undefined);
-      },
-      cancel: cancelled,
-    }, { highWaterMark: 0 }),
+        pull() {
+          entered.resolve(); return new Promise<void>(() => undefined);
+        },
+        cancel: cancelled,
+      }, { highWaterMark: 0 }),
     });
     let iteratorClosed = false;
     vi.spyOn(storageService, 'dumpWithoutLock').mockResolvedValue({

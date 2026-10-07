@@ -478,18 +478,18 @@ export class NaidanPeerManager {
     entry.rpc = new NaidanRpcPeer({
       transport: link,
       exports: [expose({
-      contract: naidanPeerContract,
-      allowedMethods: ['getProvidedMethods', ...entry.access.state().effective],
-      implementation: createNaidanPeerImplementation({
-        inference: this.dependencies.inference,
-        providedMethods: () => {
-        entry.stop.signal.throwIfAborted();
-        if (this.validation && isSaved({ persistence: entry.persistence })) return { status: 'checking', methods: [] };
-        return { status: 'ready', methods: describePeerMethods({ names: [...entry.access.state().effective] }) };
-      },
-      }),
-    })],
-    limits: { maxCalls: 6, maxCallTimeoutMs: undefined },
+        contract: naidanPeerContract,
+        allowedMethods: ['getProvidedMethods', ...entry.access.state().effective],
+        implementation: createNaidanPeerImplementation({
+          inference: this.dependencies.inference,
+          providedMethods: () => {
+            entry.stop.signal.throwIfAborted();
+            if (this.validation && isSaved({ persistence: entry.persistence })) return { status: 'checking', methods: [] };
+            return { status: 'ready', methods: describePeerMethods({ names: [...entry.access.state().effective] }) };
+          },
+        }),
+      })],
+      limits: { maxCalls: 6, maxCallTimeoutMs: undefined },
       signal: entry.stop.signal,
     });
     entry.rpc.allowIncomingWhileSuspended({ contract: naidanPeerContract, allowedMethods: ['getProvidedMethods'] });
@@ -621,15 +621,15 @@ export class NaidanPeerManager {
         const id = toNaidanRpcConnectionId({ raw: nanoid() });
         const entry = this.add({
           connection: {
-          id,
-          peerId: toNaidanRpcPeerId({ raw: publicKey }),
-          localPublicKey,
-          label: `Peer ${publicKey.slice(0, 8)}`,
-          transport,
-          allowedMethods: [],
-          autoConnect: 'disabled',
-          revision: 0,
-        },
+            id,
+            peerId: toNaidanRpcPeerId({ raw: publicKey }),
+            localPublicKey,
+            label: `Peer ${publicKey.slice(0, 8)}`,
+            transport,
+            allowedMethods: [],
+            autoConnect: 'disabled',
+            revision: 0,
+          },
           persistence: 'temporary',
           registryAccess: undefined,
         });
@@ -748,10 +748,10 @@ export class NaidanPeerManager {
     if (entry.change !== 'idle' || entry.phase === 'stopping') throw new Error('The connection is being changed');
     return this.trackRegistryMutation({
       task: (async () => {
-      await entry.access.update({ allowedMethods: names });
-      if (!isSaved({ persistence: entry.persistence })) entry.connection = { ...entry.connection, allowedMethods: [...entry.access.state().effective] };
-      this.changed();
-    })(),
+        await entry.access.update({ allowedMethods: names });
+        if (!isSaved({ persistence: entry.persistence })) entry.connection = { ...entry.connection, allowedMethods: [...entry.access.state().effective] };
+        this.changed();
+      })(),
     });
   }
   async remember({ id, label }: { id: NaidanRpcConnectionId, label: string | undefined }): Promise<void> {
@@ -761,24 +761,24 @@ export class NaidanPeerManager {
     entry.change = 'remembering';
     entry.mutation = this.trackRegistryMutation({
       task: (async () => {
-      try {
-        await entry.access.settled();
-        const { access } = await this.dependencies.storage.list();
-        const identity = await this.dependencies.identity(); entry.stop.signal.throwIfAborted();
-        const connection = {
-          ...copyConnection({ connection: entry.connection }),
-          label: label?.trim() || entry.connection.label,
-          allowedMethods: [...entry.access.state().effective],
-          revision: 0,
-        };
-        const registryAccess = await this.dependencies.storage.remember({ access, connection, identity: { privateKey: identity.privateKey, publicKey: encodePeerKey({ bytes: identity.publicKey }) } });
-        // Remembering does not grant any additional method or initiate a connection.
-        entry.connection = connection; entry.registryAccess = registryAccess; entry.persistence = 'saved';
-        if (!entry.stop.signal.aborted) entry.access = this.access({ entry, initial: peerAllowedMethodsSchema.parse(connection.allowedMethods) });
-      } finally {
-        entry.change = 'idle'; this.changed();
-      }
-    })(),
+        try {
+          await entry.access.settled();
+          const { access } = await this.dependencies.storage.list();
+          const identity = await this.dependencies.identity(); entry.stop.signal.throwIfAborted();
+          const connection = {
+            ...copyConnection({ connection: entry.connection }),
+            label: label?.trim() || entry.connection.label,
+            allowedMethods: [...entry.access.state().effective],
+            revision: 0,
+          };
+          const registryAccess = await this.dependencies.storage.remember({ access, connection, identity: { privateKey: identity.privateKey, publicKey: encodePeerKey({ bytes: identity.publicKey }) } });
+          // Remembering does not grant any additional method or initiate a connection.
+          entry.connection = connection; entry.registryAccess = registryAccess; entry.persistence = 'saved';
+          if (!entry.stop.signal.aborted) entry.access = this.access({ entry, initial: peerAllowedMethodsSchema.parse(connection.allowedMethods) });
+        } finally {
+          entry.change = 'idle'; this.changed();
+        }
+      })(),
     });
     return entry.mutation;
   }
@@ -791,21 +791,21 @@ export class NaidanPeerManager {
     entry.change = 'editing';
     return this.trackRegistryMutation({
       task: (async () => {
-      try {
-        await entry.access.settled();
-        const next = {
-          ...copyConnection({ connection: entry.connection }),
-          label: label.trim() || entry.connection.label,
-          transport: nextTransport,
-          allowedMethods: [...entry.access.state().effective],
-          revision: entry.connection.revision + 1,
-        };
-        if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
-        entry.connection = next; entry.access = this.access({ entry, initial: peerAllowedMethodsSchema.parse(next.allowedMethods) });
-      } finally {
-        entry.change = 'idle'; this.changed();
-      }
-    })(),
+        try {
+          await entry.access.settled();
+          const next = {
+            ...copyConnection({ connection: entry.connection }),
+            label: label.trim() || entry.connection.label,
+            transport: nextTransport,
+            allowedMethods: [...entry.access.state().effective],
+            revision: entry.connection.revision + 1,
+          };
+          if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
+          entry.connection = next; entry.access = this.access({ entry, initial: peerAllowedMethodsSchema.parse(next.allowedMethods) });
+        } finally {
+          entry.change = 'idle'; this.changed();
+        }
+      })(),
     });
   }
   /** Names are local display metadata. Renaming never changes transport,
@@ -830,24 +830,24 @@ export class NaidanPeerManager {
     entry.change = 'editing';
     entry.mutation = this.trackRegistryMutation({
       task: (async () => {
-      try {
-        await entry.access.settled(); session?.throwIfAborted();
-        const allowedMethods = [...entry.access.state().effective];
-        const next = {
-          ...copyConnection({ connection: entry.connection }),
-          label: label.trim() || entry.connection.label,
-          allowedMethods,
-          revision: entry.connection.revision + 1,
-        };
-        if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
-        entry.connection = next;
-        // Disconnect recreates its access controller after this write retires.
-        // Do not replace the closed controller while that shutdown is pending.
-        if (!session?.aborted) entry.access = this.access({ entry, initial: allowedMethods });
-      } finally {
-        entry.change = 'idle'; this.changed();
-      }
-    })(),
+        try {
+          await entry.access.settled(); session?.throwIfAborted();
+          const allowedMethods = [...entry.access.state().effective];
+          const next = {
+            ...copyConnection({ connection: entry.connection }),
+            label: label.trim() || entry.connection.label,
+            allowedMethods,
+            revision: entry.connection.revision + 1,
+          };
+          if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
+          entry.connection = next;
+          // Disconnect recreates its access controller after this write retires.
+          // Do not replace the closed controller while that shutdown is pending.
+          if (!session?.aborted) entry.access = this.access({ entry, initial: allowedMethods });
+        } finally {
+          entry.change = 'idle'; this.changed();
+        }
+      })(),
     });
     return entry.mutation;
   }
@@ -870,31 +870,31 @@ export class NaidanPeerManager {
     entry.change = 'editing';
     entry.mutation = this.trackRegistryMutation({
       task: (async () => {
-      try {
-        await entry.access.settled();
-        const allowedMethods = [...entry.access.state().effective];
-        const next = { ...copyConnection({ connection: entry.connection }), autoConnect, allowedMethods, revision: entry.connection.revision + 1 };
-        await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
-        entry.connection = next;
-        // Rebuild after commit without granting anything beyond the current
-        // effective authority, including an earlier failed revocation.
-        switch (entry.phase) {
-        case 'connected': case 'connecting': case 'disconnected': entry.access = this.access({ entry, initial: allowedMethods }); break;
-        case 'stopping': break;
-        default: { const exhaustive: never = entry.phase; throw new Error(String(exhaustive)); }
+        try {
+          await entry.access.settled();
+          const allowedMethods = [...entry.access.state().effective];
+          const next = { ...copyConnection({ connection: entry.connection }), autoConnect, allowedMethods, revision: entry.connection.revision + 1 };
+          await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), connection: next, expectedRevision: entry.connection.revision });
+          entry.connection = next;
+          // Rebuild after commit without granting anything beyond the current
+          // effective authority, including an earlier failed revocation.
+          switch (entry.phase) {
+          case 'connected': case 'connecting': case 'disconnected': entry.access = this.access({ entry, initial: allowedMethods }); break;
+          case 'stopping': break;
+          default: { const exhaustive: never = entry.phase; throw new Error(String(exhaustive)); }
+          }
+          switch (autoConnect) {
+          case 'enabled': {
+            entry.automatic = 'active'; entry.automaticAttempts = 0; entry.nextAutomaticAttempt = 0;
+            break;
+          }
+          case 'disabled': break;
+          default: { const exhaustive: never = autoConnect; throw new Error(String(exhaustive)); }
+          }
+        } finally {
+          entry.change = 'idle'; this.changed();
         }
-        switch (autoConnect) {
-        case 'enabled': {
-          entry.automatic = 'active'; entry.automaticAttempts = 0; entry.nextAutomaticAttempt = 0;
-          break;
-        }
-        case 'disabled': break;
-        default: { const exhaustive: never = autoConnect; throw new Error(String(exhaustive)); }
-        }
-      } finally {
-        entry.change = 'idle'; this.changed();
-      }
-    })(),
+      })(),
     });
     return entry.mutation;
   }
@@ -910,16 +910,16 @@ export class NaidanPeerManager {
     entry.change = 'forgetting';
     return this.trackRegistryMutation({
       task: (async () => {
-      try {
-        await this.disconnect({ id });
-        // Disconnected records may still have a queued allowed-methods write.
-        await entry.access.settled();
-        if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.remove({ access: this.requireRegistryAccess({ entry }), id, expectedRevision: entry.connection.revision });
-        if (this.entries.get(id) === entry) this.entries.delete(id);
-      } finally {
-        entry.change = 'idle'; this.changed();
-      }
-    })(),
+        try {
+          await this.disconnect({ id });
+          // Disconnected records may still have a queued allowed-methods write.
+          await entry.access.settled();
+          if (isSaved({ persistence: entry.persistence })) await this.dependencies.storage.remove({ access: this.requireRegistryAccess({ entry }), id, expectedRevision: entry.connection.revision });
+          if (this.entries.get(id) === entry) this.entries.delete(id);
+        } finally {
+          entry.change = 'idle'; this.changed();
+        }
+      })(),
     });
   }
 }

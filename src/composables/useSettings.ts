@@ -136,33 +136,33 @@ let scheduledFakeLmRuntimePrefetch: ScheduledIdleTask | undefined;
 
 storageService.subscribeToChanges({
   listener: async ({ event }) => {
-  if (event.type === 'settings' || event.type === 'migration') {
-    try {
-      const fresh = await storageService.loadSettings();
-      if (fresh) {
-        _settings.value = fresh;
-        scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
-        await setStringLocale({
-          locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
-        });
-      } else {
-        const type = event.type;
-        switch (type) {
-        case 'settings': break;
-        case 'migration':
+    if (event.type === 'settings' || event.type === 'migration') {
+      try {
+        const fresh = await storageService.loadSettings();
+        if (fresh) {
+          _settings.value = fresh;
+          scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+          await setStringLocale({
+            locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
+          });
+        } else {
+          const type = event.type;
+          switch (type) {
+          case 'settings': break;
+          case 'migration':
           // Clearing storage still retires editor write owners. Republish the
           // current UI settings so mounted editors can capture the new provider
           // boundary even when no saved Settings record exists yet.
-          _settings.value = { ..._settings.value };
-          break;
-        default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+            _settings.value = { ..._settings.value };
+            break;
+          default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+          }
         }
+      } catch (error) {
+        console.error('Failed to synchronize settings:', error);
       }
-    } catch (error) {
-      console.error('Failed to synchronize settings:', error);
     }
-  }
-},
+  },
 });
 
 // Performance-only watcher: this does not maintain application correctness.
@@ -222,14 +222,14 @@ watch(
     })();
     const unsubscribe = modelService.subscribeModelList({
       listener: async () => {
-      const { fetchModels } = useSettings();
-      try {
-        await fetchModels({});
-      } catch {
+        const { fetchModels } = useSettings();
+        try {
+          await fetchModels({});
+        } catch {
         // fetchModels records the relevant error. Subscription callbacks must not
         // create unhandled promise rejections when a background refresh fails.
-      }
-    },
+        }
+      },
     });
     onCleanup(() => {
       unsubscribe();
@@ -498,9 +498,9 @@ export function useSettings(): UseSettingsApi {
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
     await storageService.updateSettings({
       updater: ({ current: curr }) => {
-      const base = curr || _settings.value;
-      return { ...base, ...normalizedPatch } as Settings;
-    },
+        const base = curr || _settings.value;
+        return { ...base, ...normalizedPatch } as Settings;
+      },
     });
 
     // Re-fetch models if connection changed
@@ -565,10 +565,10 @@ export function useSettings(): UseSettingsApi {
     const outcome = await storageService.updateSettingsForStorage({
       isCurrent,
       updater: ({ current }) => {
-      const base = current ?? _settings.value;
-      savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
-      return savedSettings;
-    },
+        const base = current ?? _settings.value;
+        savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
+        return savedSettings;
+      },
     });
     switch (outcome) {
     case 'changed': return outcome;
@@ -607,11 +607,11 @@ export function useSettings(): UseSettingsApi {
     let applied = false;
     await storageService.updateSettings({
       updater: ({ current }) => {
-      const base = current ?? _settings.value;
-      if (!stillExpected({ current: base })) return base;
-      applied = true;
-      return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
-    },
+        const base = current ?? _settings.value;
+        if (!stillExpected({ current: base })) return base;
+        applied = true;
+        return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
+      },
     });
     if (!applied) return 'changed';
     // A newer explicit in-memory selection must not be overwritten by the
@@ -641,15 +641,15 @@ export function useSettings(): UseSettingsApi {
     let observedDefault: { endpoint: Endpoint, modelId: string | undefined } | undefined;
     await storageService.updateSettings({
       updater: ({ current }) => {
-      const base = current ?? _settings.value;
-      // A dialog may be open while another settings action or browser tab saves.
-      if (!matchesExpected({ current: base })) {
-        observedDefault = { endpoint: cloneEndpoint({ endpoint: base.endpoint }), modelId: base.defaultModelId };
-        return base;
-      }
-      applied = true;
-      return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
-    },
+        const base = current ?? _settings.value;
+        // A dialog may be open while another settings action or browser tab saves.
+        if (!matchesExpected({ current: base })) {
+          observedDefault = { endpoint: cloneEndpoint({ endpoint: base.endpoint }), modelId: base.defaultModelId };
+          return base;
+        }
+        applied = true;
+        return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
+      },
     });
     if (!applied) {
       // Show the newly observed default before requesting another confirmation.
@@ -671,9 +671,9 @@ export function useSettings(): UseSettingsApi {
 
     await storageService.updateSettings({
       updater: ({ current: curr }) => ({
-      ...(curr || _settings.value),
-      endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
-    }),
+        ...(curr || _settings.value),
+        endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
+      }),
     });
 
     if (!areEndpointsEqual({ left: previousEndpoint, right: nextEndpoint })) {
@@ -717,15 +717,15 @@ export function useSettings(): UseSettingsApi {
 
     await storageService.updateSettings({
       updater: ({ current: curr }) => {
-      const base = curr ?? _settings.value;
-      return {
-        ...base,
-        experimental: {
-          ...base.experimental,
-          fakeLm: status,
-        },
-      };
-    },
+        const base = curr ?? _settings.value;
+        return {
+          ...base,
+          experimental: {
+            ...base.experimental,
+            fakeLm: status,
+          },
+        };
+      },
     });
 
     scheduleFakeLmRuntimePrefetch({ status });

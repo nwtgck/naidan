@@ -27,8 +27,8 @@ describe('GPT-OSS native output with the Production TextStreamer and original to
     const events: InferenceGenerationEvent[] = [];
     const parser = createGptOssGeneration({
       emit: ({ event }) => {
-      events.push(event);
-    },
+        events.push(event);
+      },
     });
     const streamer = new NativeProtocolStreamer({
       protocolTokens: undefined,

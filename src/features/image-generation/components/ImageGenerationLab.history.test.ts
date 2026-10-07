@@ -11,10 +11,10 @@ import ImageGenerationHistory from './ImageGenerationHistory.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), dispose: vi.fn(), subscribe: vi.fn(), getType: vi.fn() }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  subscribeToChanges: mocks.subscribe,
-  getCurrentType: mocks.getType,
-  getFile: async () => undefined,
-},
+    subscribeToChanges: mocks.subscribe,
+    getCurrentType: mocks.getType,
+    getFile: async () => undefined,
+  },
 }));
 vi.mock('@/features/image-generation/history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, dispose: mocks.dispose }) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
@@ -26,12 +26,12 @@ vi.mock('@/features/image-generation/use-image-generation', async () => {
     useImageGeneration() {
     // Only unrelated inference/model controls use the UI-only facade. The Lab
     // and history owner exercise their real lifecycle and migration handling.
-    const history = useImageGenerationHistory({ getStorageType: () => mocks.getType() });
-    onScopeDispose(() => {
-      void history.dispose();
-    });
-    return { ...createForm(), history };
-  },
+      const history = useImageGenerationHistory({ getStorageType: () => mocks.getType() });
+      onScopeDispose(() => {
+        void history.dispose();
+      });
+      return { ...createForm(), history };
+    },
   };
 });
 
@@ -40,16 +40,16 @@ let listener: ChangeListener | undefined;
 function page({ prompt }: { prompt: string }): ImageGenerationHistoryPage {
   return {
     items: [{
-    id: toImageGenerationId({ raw: 'saved-record' }),
-    createdAt: 1,
-    prompt,
-    modelName: 'fixture',
-    binaryObjectId: toBinaryObjectId({ raw: 'saved-image' }),
-    width: 256,
-    height: 256,
-    previewCount: 0,
-  }],
-  total: 81,
+      id: toImageGenerationId({ raw: 'saved-record' }),
+      createdAt: 1,
+      prompt,
+      modelName: 'fixture',
+      binaryObjectId: toBinaryObjectId({ raw: 'saved-image' }),
+      width: 256,
+      height: 256,
+      previewCount: 0,
+    }],
+    total: 81,
     warnings: [],
     warningCount: 0,
   };

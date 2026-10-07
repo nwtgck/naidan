@@ -36,9 +36,9 @@ vi.mock('@/utils/worker-transport', async importOriginal => {
     api: WorkerServerApi<IModelSupportInvestigationWorker>;
     endpoint: Parameters<typeof transport.exposeWorkerRemote>[0]['endpoint'];
   }) => {
-    if (endpoint === undefined) observed.planningApi = api;
-    else original.exposeWorkerRemote({ api, endpoint });
-  },
+      if (endpoint === undefined) observed.planningApi = api;
+      else original.exposeWorkerRemote({ api, endpoint });
+    },
   };
 });
 // Deliberate preflight failure: this suite proves startup/failure ownership,
@@ -54,8 +54,8 @@ vi.mock('@huggingface/transformers', () => {
   const model = {
     supports: () => true,
     from_pretrained: () => {
-    throw new Error('Unexpected heavyweight inference');
-  },
+      throw new Error('Unexpected heavyweight inference');
+    },
   };
   return {
     AutoModel: model,
@@ -77,10 +77,10 @@ vi.mock('@huggingface/transformers', () => {
 });
 vi.mock('onnxruntime-web', () => ({
   InferenceSession: {
-  create: () => {
-  throw new Error('Unexpected native inference');
-},
-},
+    create: () => {
+      throw new Error('Unexpected native inference');
+    },
+  },
   Tensor: class {},
 }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
@@ -123,15 +123,15 @@ class InvestigationTestWorker extends ProviderReplayTestWorker {
     expect(options?.type).toBe('module');
     super({
       start: async ({ worker }) => {
-      switch (kind) {
-      case 'planning':
-        if (observed.planningApi === undefined) throw new Error('Real planning entry was not loaded');
-        transport.exposeWorkerRemote({ api: observed.planningApi, endpoint: worker.endpoint });
-        break;
-      case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint }); break;
-      default: { const exhaustive: never = kind; throw new Error('Unexpected Worker kind: ' + exhaustive); }
-      }
-    },
+        switch (kind) {
+        case 'planning':
+          if (observed.planningApi === undefined) throw new Error('Real planning entry was not loaded');
+          transport.exposeWorkerRemote({ api: observed.planningApi, endpoint: worker.endpoint });
+          break;
+        case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint }); break;
+        default: { const exhaustive: never = kind; throw new Error('Unexpected Worker kind: ' + exhaustive); }
+        }
+      },
     });
     this.kind = kind;
     workers.push(this);
@@ -224,10 +224,10 @@ async function exportBatch() {
   const schema = z.object({
     runId: z.string(),
     steps: z.array(z.object({
-    id: z.string(),
-    status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
-    detail: z.string().optional(),
-  })),
+      id: z.string(),
+      status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
+      detail: z.string().optional(),
+    })),
   });
   for (const path of Object.keys(zip.files).filter(path => path.endsWith('/run.json'))) {
     const archived = await readArchivedJson({ zip, path, schema });

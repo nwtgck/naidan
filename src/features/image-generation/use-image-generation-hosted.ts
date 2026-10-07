@@ -72,40 +72,40 @@ export function useImageGeneration(): ImageGenerationView {
   };
   const unsubscribeStorage = storageService.subscribeToChanges({
     listener: ({ event }) => {
-    switch (event.type) {
-    case 'migration':
-      storageRevision.value++;
-      historySaving.status.value = 'idle';
-      historySaving.error.value = '';
-      break;
-    case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
-    }
-  },
+      switch (event.type) {
+      case 'migration':
+        storageRevision.value++;
+        historySaving.status.value = 'idle';
+        historySaving.error.value = '';
+        break;
+      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
+      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+      }
+    },
   });
   const pendingSaves = new Map<number, ImageGenerationId>();
   const savedHistoryIds = ref(new Map<number, ImageGenerationId>());
   let activeHistoryId: ImageGenerationId | undefined;
   const unsubscribePendingHistory = pendingImageHistory.subscribe({
     listener({ event }) {
-    switch (event.type) {
-    case 'changed': return;
-    case 'saved':
-      for (const [resultId, id] of pendingSaves) {
-        if (id === event.id && finalGallery.entries().some(entry => entry.id === resultId)) savedHistoryIds.value.set(resultId, id);
+      switch (event.type) {
+      case 'changed': return;
+      case 'saved':
+        for (const [resultId, id] of pendingSaves) {
+          if (id === event.id && finalGallery.entries().some(entry => entry.id === resultId)) savedHistoryIds.value.set(resultId, id);
+        }
+        if (activeHistoryId === event.id && historySaving.supported.value) historySaving.status.value = 'saved';
+        break;
+      case 'discarded':
+        if (activeHistoryId === event.id && historySaving.supported.value) historySaving.status.value = 'idle';
+        break;
+      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
       }
-      if (activeHistoryId === event.id && historySaving.supported.value) historySaving.status.value = 'saved';
-      break;
-    case 'discarded':
-      if (activeHistoryId === event.id && historySaving.supported.value) historySaving.status.value = 'idle';
-      break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
-    }
-    for (const [resultId, id] of pendingSaves) if (id === event.id) pendingSaves.delete(resultId);
-    historySaving.pendingCount.value = pendingSaves.size;
-    if (activeHistoryId === event.id) historySaving.error.value = '';
-    clearDiscardedHistoryStatus();
-  },
+      for (const [resultId, id] of pendingSaves) if (id === event.id) pendingSaves.delete(resultId);
+      historySaving.pendingCount.value = pendingSaves.size;
+      if (activeHistoryId === event.id) historySaving.error.value = '';
+      clearDiscardedHistoryStatus();
+    },
   });
   let historySaveRunning = false;
   let restoredModels: Request['models'] | undefined;
@@ -496,25 +496,25 @@ export function useImageGeneration(): ImageGenerationView {
     const modelFiles: ImageGenerationDraft['modelFiles'] = [];
     const snapshot = snapshotImageGeneration({
       request: {
-      debug: debug.value,
-      runId: 0,
-      sessionId: '',
-      artifact: artifact.value,
-      baseUrl: window.location.href,
-      models,
-      loras: imageLoraHistorySelections({ selections: form.loras.value }),
-      imageInputs: form.imageInputs.value,
-      parameters: { ...parameters.value },
-      preview: { ...preview.value },
-      weightResidency: weightResidency.value,
-      gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value,
-    },
+        debug: debug.value,
+        runId: 0,
+        sessionId: '',
+        artifact: artifact.value,
+        baseUrl: window.location.href,
+        models,
+        loras: imageLoraHistorySelections({ selections: form.loras.value }),
+        imageInputs: form.imageInputs.value,
+        parameters: { ...parameters.value },
+        preview: { ...preview.value },
+        weightResidency: weightResidency.value,
+        gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value,
+      },
       sourceCommit,
       createdAt: Date.now(),
       identifyInput,
-    locateFile({ file }) {
-      const location = library.historyFileLocation({ file }); modelFiles.push({ location, file }); return location;
-    },
+      locateFile({ file }) {
+        const location = library.historyFileLocation({ file }); modelFiles.push({ location, file }); return location;
+      },
     });
     return {
       inferenceLocation: inferenceLocation.captureLocation(),
@@ -629,12 +629,12 @@ export function useImageGeneration(): ImageGenerationView {
         inferenceLocation.restore({
           value: request.runtime,
           modelEditor: (() => {
-          switch (purpose.type) {
-          case 'draft': return purpose.remoteModelEditor;
-          case 'history': return undefined;
-          default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
-          }
-        })(),
+            switch (purpose.type) {
+            case 'draft': return purpose.remoteModelEditor;
+            case 'history': return undefined;
+            default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+            }
+          })(),
         });
         const { prompt, negativePrompt, width, height, seed, steps, guidance, sampler, scheduler, distilledGuidance } = request.parameters;
         parameters.value = { ...parameters.value, prompt, negativePrompt, width, height, seed, steps, guidance, sampler, scheduler, distilledGuidance };
@@ -649,9 +649,9 @@ export function useImageGeneration(): ImageGenerationView {
       nativePreferences.discardDeferredModelSelection();
       await library.prepareHistoryFiles({
         requiredFiles: [
-        ...request.models.flatMap(model => [model.file, ...model.companions.map(companion => companion.file)]),
-        ...request.loras.map(lora => lora.file),
-      ].filter(location => !findFile({ location })),
+          ...request.models.flatMap(model => [model.file, ...model.companions.map(companion => companion.file)]),
+          ...request.loras.map(lora => lora.file),
+        ].filter(location => !findFile({ location })),
       });
       if (disposed || revision !== storageRevision.value) return false;
       const restored = await (() => {
@@ -842,8 +842,8 @@ export function useImageGeneration(): ImageGenerationView {
       snapshot,
       client: () => client ??= createImageEngineClient({
         onReleased: () => {
-        modelResident.value = false; engineState.invalidate();
-      },
+          modelResident.value = false; engineState.invalidate();
+        },
       }),
       onDiagnostic: recordDiagnostic,
       onModelResident: ({ resident }) => {
@@ -928,27 +928,27 @@ export function useImageGeneration(): ImageGenerationView {
             seed: actualSeed,
             signal: operation.signal,
             onProgress({ event }) {
-            if (!disposed && !operation.signal.aborted) {
-              progress.value = event;
-              switch (event.phase) {
-              case 'model': if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime })) modelResident.value = false; break;
-              case 'runtime': case 'sampling': case 'decoding': case 'encoding': break;
-              default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+              if (!disposed && !operation.signal.aborted) {
+                progress.value = event;
+                switch (event.phase) {
+                case 'model': if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime })) modelResident.value = false; break;
+                case 'runtime': case 'sampling': case 'decoding': case 'encoding': break;
+                default: { const exhaustive: never = event.phase; throw new Error(String(exhaustive)); }
+                }
               }
-            }
-          },
+            },
             onPreview({ frame }) {
-            if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) return;
-            const { png, ...metadata } = frame;
-            const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
-            liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
-            livePreview.value = liveGallery.entries()[0];
-            if (keepPreviews.value) {
-              const saved = snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: { ...entry, request: imageSnapshot.request } });
-              runPreviewIds.add(saved.id);
-              previewSnapshots.value = snapshotGallery.entries();
-            }
-          },
+              if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) return;
+              const { png, ...metadata } = frame;
+              const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
+              liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
+              livePreview.value = liveGallery.entries()[0];
+              if (keepPreviews.value) {
+                const saved = snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: { ...entry, request: imageSnapshot.request } });
+                runPreviewIds.add(saved.id);
+                previewSnapshots.value = snapshotGallery.entries();
+              }
+            },
           });
         } catch (error) {
           nativeFailed = true; recovery?.release(); throw error;

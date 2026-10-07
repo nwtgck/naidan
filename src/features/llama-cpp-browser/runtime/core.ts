@@ -246,18 +246,18 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
     naidanNavigator: createCoreWebGpuNavigator({
       navigator: globalThis.navigator,
       report({ axis, count, limit, chunks }) {
-      logDiagnostic({
-        diagnostic: {
-        event: 'native-info',
-        nativeOperation: 'dispatch-split',
-        nativeBackend: 'WebGPU',
-        dispatchAxis: axis,
-        dispatchCount: count,
-        dispatchLimit: limit,
-        chunkCount: chunks,
+        logDiagnostic({
+          diagnostic: {
+            event: 'native-info',
+            nativeOperation: 'dispatch-split',
+            nativeBackend: 'WebGPU',
+            dispatchAxis: axis,
+            dispatchCount: count,
+            dispatchLimit: limit,
+            chunkCount: chunks,
+          },
+        });
       },
-      });
-    },
     }),
   } : moduleOptions;
   const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions: options });

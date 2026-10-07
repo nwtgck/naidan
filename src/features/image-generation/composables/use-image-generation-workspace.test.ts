@@ -185,9 +185,9 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   let view: ImageGenerationWorkspaceView | undefined;
   const wrapper = mount(defineComponent({
     setup() {
-    generation.inferenceLocation = useImageInferenceLocation({ form: generation, blocked: () => busy.value, identifyInput: () => toBinaryObjectId({ raw: 'test-input' }) });
-    view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
-  },
+      generation.inferenceLocation = useImageInferenceLocation({ form: generation, blocked: () => busy.value, identifyInput: () => toBinaryObjectId({ raw: 'test-input' }) });
+      view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
+    },
   }));
   if (!view) throw new Error('Missing Workspace.');
   views.push({ wrapper, view });

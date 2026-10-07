@@ -72,8 +72,8 @@ export function createDeliveryDecode({ mode, signal, now }: {
           operation: deliver,
           kind: 'deliveryWaitMs',
           onFailure: () => {
-          deliveryRejected = true;
-        },
+            deliveryRejected = true;
+          },
         });
         void delivery.catch(() => {});
         await Promise.resolve();
@@ -81,9 +81,9 @@ export function createDeliveryDecode({ mode, signal, now }: {
           kind: 'decodeWaitMs',
           onFailure: undefined,
           operation: async () => {
-          checkCancelled();
-          if (!deliveryRejected) await decode();
-        },
+            checkCancelled();
+            if (!deliveryRejected) await decode();
+          },
         });
         // Fail-fast aggregation would release the caller while native code or a
         // remote callback still owns its resources. Never race this with abort.

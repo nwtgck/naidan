@@ -34,16 +34,16 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       try {
         reportDiagnostic?.({
           diagnostic: {
-          ...entry,
-          message: (() => {
-          switch (entry.event) {
-          case 'failed': return 'Image runtime failed while idle';
-          case 'gpu': return sanitizeImageLog({ message: entry.message ?? '', secrets: [] });
-          default: { const exhaustive: never = entry.event; throw new Error(String(exhaustive)); }
-          }
-        })(),
-          elapsedMs: 0,
-        },
+            ...entry,
+            message: (() => {
+              switch (entry.event) {
+              case 'failed': return 'Image runtime failed while idle';
+              case 'gpu': return sanitizeImageLog({ message: entry.message ?? '', secrets: [] });
+              default: { const exhaustive: never = entry.event; throw new Error(String(exhaustive)); }
+              }
+            })(),
+            elapsedMs: 0,
+          },
         });
       } catch { /* observational */ }
     }

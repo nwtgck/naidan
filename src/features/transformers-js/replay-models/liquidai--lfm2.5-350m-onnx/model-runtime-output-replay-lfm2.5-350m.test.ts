@@ -62,32 +62,32 @@ describe("LFM2.5 350M original tokenizer and structured standard generation", ()
       abortController: controller,
       onChange: () => {},
       items: createInferenceGeneration({
-      signal: controller.signal,
-      generate: async ({ onEvent }) => {
-        const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-        try {
-          const strategy = selectGenerationStrategy({ modelType: "lfm2", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
-          await strategy.generate({
-            model,
-            tokenizer,
-            messages: input.messages,
-            params: undefined,
-            tools: undefined,
-            onChunk,
-            onToolCalls,
-            onRawChunk: () => {},
-            debugLog: () => {},
-            observationSink: undefined,
-            generationCapture: undefined,
-            runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-          });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }),
+        signal: controller.signal,
+        generate: async ({ onEvent }) => {
+          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+          try {
+            const strategy = selectGenerationStrategy({ modelType: "lfm2", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
+            await strategy.generate({
+              model,
+              tokenizer,
+              messages: input.messages,
+              params: undefined,
+              tools: undefined,
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
     });
     let settled = false; void operation.then(() => {
       settled = true;
@@ -170,35 +170,35 @@ Next<|im_end|>
         abortController: controller,
         onChange: () => {},
         items: createInferenceGeneration({
-        signal: controller.signal,
-        generate: async ({ onEvent }) => {
-          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          try {
-            await selectGenerationStrategy({ modelType: 'lfm2', activeModelId: modelId }).generate({
-              model,
-              tokenizer,
-              messages: request.messages,
-              tools: request.tools,
-              params: undefined,
-              onChunk: () => {
-                throw new Error('Legacy output must not be used');
-              },
-              onToolCalls: () => {
-                throw new Error('Legacy calls must not be used');
-              },
-              onRawChunk: () => {},
-              debugLog: () => {},
-              observationSink: undefined,
-              generationCapture: undefined,
-              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-            });
-          } finally {
-            await queue.finish();
-          }
-        },
-      }),
+          signal: controller.signal,
+          generate: async ({ onEvent }) => {
+            const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+            try {
+              await selectGenerationStrategy({ modelType: 'lfm2', activeModelId: modelId }).generate({
+                model,
+                tokenizer,
+                messages: request.messages,
+                tools: request.tools,
+                params: undefined,
+                onChunk: () => {
+                  throw new Error('Legacy output must not be used');
+                },
+                onToolCalls: () => {
+                  throw new Error('Legacy calls must not be used');
+                },
+                onRawChunk: () => {},
+                debugLog: () => {},
+                observationSink: undefined,
+                generationCapture: undefined,
+                runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+                stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+                onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+              });
+            } finally {
+              await queue.finish();
+            }
+          },
+        }),
       });
     }
     const request = await prepareInferenceRequest({ messages: [{ id: user.id, role: 'user', parts: user.parts }], parameters: undefined, tools: [{ name: 'f', description: '', parameters: { type: 'object' } }], readBinaryObject: undefined, signal: undefined });

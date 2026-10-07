@@ -99,9 +99,9 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
       // Keep the deliberate network choice even if full precaching has failed.
       onState({
         next: {
-        kind: 'preparing',
-        handler: sw.controller && sw.controller === current.active && current.active.state === 'activated' ? apply : undefined,
-      },
+          kind: 'preparing',
+          handler: sw.controller && sw.controller === current.active && current.active.state === 'activated' ? apply : undefined,
+        },
       });
     } else {
       onState({ next: { kind: 'idle' } });
@@ -136,12 +136,12 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
 
   return {
     dispose() {
-    lifetime.abort();
-    sw.removeEventListener('controllerchange', synchronize);
-    registration?.removeEventListener('updatefound', synchronize);
-    for (const [worker, listener] of observed) worker.removeEventListener('statechange', listener);
-    observed.clear();
-  },
+      lifetime.abort();
+      sw.removeEventListener('controllerchange', synchronize);
+      registration?.removeEventListener('updatefound', synchronize);
+      for (const [worker, listener] of observed) worker.removeEventListener('statechange', listener);
+      observed.clear();
+    },
   };
 }
 

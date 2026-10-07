@@ -459,8 +459,8 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
         },
         hot: {
           send(message: unknown) {
-          customMessages.push(message);
-        },
+            customMessages.push(message);
+          },
         },
       },
     };
@@ -537,8 +537,8 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
         async reloadModule() {},
         hot: {
           send(message: unknown) {
-          customMessages.push(message);
-        },
+            customMessages.push(message);
+          },
         },
       },
     };
@@ -625,8 +625,8 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
         async reloadModule() {},
         hot: {
           send(message: { data?: { moduleIds?: string[] } }) {
-          customMessages.push(message);
-        },
+            customMessages.push(message);
+          },
         },
       },
     };

@@ -16,14 +16,14 @@ function user({ id, replies }: { id: string, replies: MessageNode[] }): UserMess
     parts: [{
       type: 'attachment',
       attachment: {
-      id: toAttachmentId({ raw: `${id}-attachment` }),
-      binaryObjectId: toBinaryObjectId({ raw: `${id}-binary` }),
-      originalName: `${id}.txt`,
-      mimeType: 'text/plain',
-      size: 1,
-      uploadedAt: 1,
-      status: 'persisted',
-    },
+        id: toAttachmentId({ raw: `${id}-attachment` }),
+        binaryObjectId: toBinaryObjectId({ raw: `${id}-binary` }),
+        originalName: `${id}.txt`,
+        mimeType: 'text/plain',
+        size: 1,
+        uploadedAt: 1,
+        status: 'persisted',
+      },
     }],
     replies: { items: replies },
   };

@@ -179,8 +179,8 @@ describe('acceptDownloadedProductionRevision', () => {
   it('classifies a missing required cache artifact as failed, not runtime rejected', async () => {
     const worker = client({
       verifyDownloadedModelRevision: vi.fn(async () => {
-      throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1'), { name: 'MissingDownloadedModelArtifact' });
-    }),
+        throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1'), { name: 'MissingDownloadedModelArtifact' });
+      }),
     });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
 
@@ -200,8 +200,8 @@ describe('acceptDownloadedProductionRevision', () => {
   it('reports all-candidate runtime rejection separately from cache incompleteness', async () => {
     const worker = client({
       verifyDownloadedModelRevision: vi.fn(async () => {
-      throw new Error('WASM q4 runtime rejected');
-    }),
+        throw new Error('WASM q4 runtime rejected');
+      }),
     });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
 

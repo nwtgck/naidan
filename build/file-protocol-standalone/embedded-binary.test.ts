@@ -58,8 +58,8 @@ describe('standalone binary embedding', () => {
       plugins: [{
         name: 'unexpected-sidecar',
         generateBundle() {
-        this.emitFile({ type: 'asset', fileName, source: gzipSync(new Uint8Array([1])) });
-      },
+          this.emitFile({ type: 'asset', fileName, source: gzipSync(new Uint8Array([1])) });
+        },
       }, createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
       build: { write: false, rollupOptions: { input: path.join(root, 'main.js') } },
     })).rejects.toThrow('External WebAssembly');
@@ -82,12 +82,12 @@ describe('standalone binary embedding', () => {
     const packaging: Plugin = {
       name: 'packaging-must-not-run',
       writeBundle: {
-      order: 'post',
-      sequential: true,
-      handler() {
-      packaged = true;
-    },
-    },
+        order: 'post',
+        sequential: true,
+        handler() {
+          packaged = true;
+        },
+      },
     };
     await expect(build({
       configFile: false,

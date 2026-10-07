@@ -12,8 +12,8 @@ const failed = computed(() => entries.value.filter(entry => entry.state.needsRet
 const { showConfirm } = useConfirm();
 const unsubscribe = imagePendingRuns.subscribe({
   listener() {
-  entries.value = imagePendingRuns.list();
-},
+    entries.value = imagePendingRuns.list();
+  },
 });
 onScopeDispose(unsubscribe);
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {

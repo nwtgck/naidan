@@ -14,10 +14,10 @@ describe('native call adaptation', () => {
       profile: 'cpu-wasm32',
       baseURL,
       moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
-      print() {},
-      printErr() {},
-    },
+        wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+        print() {},
+        printErr() {},
+      },
     });
   });
   afterEach(() => vi.restoreAllMocks());
@@ -26,8 +26,8 @@ describe('native call adaptation', () => {
     let allocate = (): bigint => 0n;
     const module = new Proxy(core.module, {
       get(target, property) {
-      return property === '_lcb_malloc' ? allocate : Reflect.get(target, property, target);
-    },
+        return property === '_lcb_malloc' ? allocate : Reflect.get(target, property, target);
+      },
     });
     const optionalCore = attachCore({ module, callMode: 'direct' });
     expect(optionalCore.tryAlloc({ bytes: 8 })).toBeUndefined();
@@ -53,10 +53,10 @@ describe('native call adaptation', () => {
       profile: 'webgpu-wasm32-jspi',
       baseURL,
       moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
-      print() {},
-      printErr() {},
-    },
+        wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+        print() {},
+        printErr() {},
+      },
     });
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });
@@ -144,18 +144,18 @@ describe('native call adaptation', () => {
     let truncated = false; const freed: bigint[] = [];
     const module = new Proxy(core.module, {
       get(target, property) {
-      const value: unknown = Reflect.get(target, property, target);
-      if (property === 'HEAPU8' && truncated) return new Uint8Array(0);
-      if (property === '_lcb_malloc') return (...args: bigint[]) => {
-        if (typeof value !== 'function') throw new Error('Missing fixture allocation');
-        const pointer: unknown = Reflect.apply(value, target, args); truncated = true; return pointer;
-      };
-      if (property === '_lcb_free') return (pointer: bigint) => {
-        if (typeof value !== 'function') throw new Error('Missing fixture release');
-        freed.push(pointer); return Reflect.apply(value, target, [pointer]);
-      };
-      return value;
-    },
+        const value: unknown = Reflect.get(target, property, target);
+        if (property === 'HEAPU8' && truncated) return new Uint8Array(0);
+        if (property === '_lcb_malloc') return (...args: bigint[]) => {
+          if (typeof value !== 'function') throw new Error('Missing fixture allocation');
+          const pointer: unknown = Reflect.apply(value, target, args); truncated = true; return pointer;
+        };
+        if (property === '_lcb_free') return (pointer: bigint) => {
+          if (typeof value !== 'function') throw new Error('Missing fixture release');
+          freed.push(pointer); return Reflect.apply(value, target, [pointer]);
+        };
+        return value;
+      },
     });
     const bound = attachCore({ module, callMode: 'direct' });
     const run = () => kind === 'string' ? bound.utf8({ text: 'owned native string' }) : bound.allocRecord({ name: 'llama_batch' });

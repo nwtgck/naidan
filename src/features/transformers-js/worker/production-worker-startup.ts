@@ -117,11 +117,11 @@ export async function startProductionWorkerRuntime({ loadEntry, postMessage }: {
   } catch (error) {
     postMessage({
       message: {
-      channel: PRODUCTION_WORKER_READY.channel,
-      version: PRODUCTION_WORKER_READY.version,
-      status: 'failed',
-      message: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
-    },
+        channel: PRODUCTION_WORKER_READY.channel,
+        version: PRODUCTION_WORKER_READY.version,
+        status: 'failed',
+        message: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
+      },
     });
     throw error;
   }

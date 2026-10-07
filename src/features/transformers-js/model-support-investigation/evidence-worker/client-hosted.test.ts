@@ -37,8 +37,8 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     vi.useFakeTimers();
     const openStream = vi.fn(async () => new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.enqueue(new TextEncoder().encode('streamed bytes')); controller.close();
-    },
+        controller.enqueue(new TextEncoder().encode('streamed bytes')); controller.close();
+      },
     }));
     const remote: IModelSupportInvestigationEvidenceWorker = {
       streamEvidence: vi.fn(async ({ port }) => {
@@ -75,11 +75,11 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
           port,
           signal: undefined,
           openStream: async () => new ReadableStream<Uint8Array>({
-          pull() {
-            entered.resolve(); return new Promise<void>(() => undefined);
-          },
-          cancel: cancelled,
-        }, { highWaterMark: 0 }),
+            pull() {
+              entered.resolve(); return new Promise<void>(() => undefined);
+            },
+            cancel: cancelled,
+          }, { highWaterMark: 0 }),
         });
         return { fileName: 'stream.zip' };
       }),

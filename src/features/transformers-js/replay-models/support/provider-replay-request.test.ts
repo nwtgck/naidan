@@ -36,20 +36,20 @@ describe('explicit Provider native request ownership', () => {
       const capture = captureProviderChat({
         provider: replay.provider,
         request: {
-        model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        messages: [{
-          id: toMessageId({ raw: 'user' }),
-          role: 'user',
-          parts: [
-          { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
-        ],
-        }],
-        parameters,
-        tools: [],
-        signal: new AbortController().signal,
-        debug: undefined,
-        readBinaryObject: undefined,
-      },
+          model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          messages: [{
+            id: toMessageId({ raw: 'user' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Template probe user message.', completeness: 'complete' },
+            ],
+          }],
+          parameters,
+          tools: [],
+          signal: new AbortController().signal,
+          debug: undefined,
+          readBinaryObject: undefined,
+        },
       });
       await capture.completion;
       const observed = capture.snapshot();
@@ -76,14 +76,14 @@ describe('explicit Provider native request ownership', () => {
       replay.beginNativeRequest({
         caseId: 'first-turn',
         parameters: {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: { effort: undefined },
-      },
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
+        },
       });
       expect(() => replay.endNativeRequest()).toThrow('attempted native inventory');
       expect(() => replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: undefined } })).toThrow('explicit current rejection');

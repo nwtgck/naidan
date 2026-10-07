@@ -57,36 +57,36 @@ describe('public chat observation mechanics', () => {
     const reasoning = Promise.withResolvers<void>();
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      { type: 'text', partId: 'answer', index: 2, chunks: values({ items: ['Answer', '</think>'] }), completeness: Promise.resolve('complete') },
-      {
-        type: 'reasoning',
-        partId: 'reason',
-        index: 0,
-        chunks: {
-        async *[Symbol.asyncIterator]() {
-          await reasoning.promise;
-          yield 'Reason';
-          yield '<think>literal</think>';
-        },
+        chat: () => values({
+          items: [
+            { type: 'text', partId: 'answer', index: 2, chunks: values({ items: ['Answer', '</think>'] }), completeness: Promise.resolve('complete') },
+            {
+              type: 'reasoning',
+              partId: 'reason',
+              index: 0,
+              chunks: {
+                async *[Symbol.asyncIterator]() {
+                  await reasoning.promise;
+                  yield 'Reason';
+                  yield '<think>literal</think>';
+                },
+              },
+              completeness: Promise.resolve('complete'),
+            },
+            {
+              type: 'tool_call',
+              partId: 'call',
+              index: 1,
+              toolCall: {
+                id: toToolCallId({ raw: 'call-1' }),
+                type: 'function',
+                function: { name: 'weather', arguments: ' { "city": "Tokyo" } ' },
+              },
+            },
+            { type: 'result', result: { type: 'finished', next: 'tool_results' } },
+          ],
+        }),
       },
-        completeness: Promise.resolve('complete'),
-      },
-      {
-        type: 'tool_call',
-        partId: 'call',
-        index: 1,
-        toolCall: {
-        id: toToolCallId({ raw: 'call-1' }),
-        type: 'function',
-        function: { name: 'weather', arguments: ' { "city": "Tokyo" } ' },
-      },
-      },
-      { type: 'result', result: { type: 'finished', next: 'tool_results' } },
-    ],
-    }),
-    },
       request: request(),
     });
     await vi.waitFor(() => expect(capture.snapshot().result).toEqual({ type: 'finished', next: 'tool_results' }));
@@ -112,14 +112,14 @@ describe('public chat observation mechanics', () => {
     const toolCall = { id: toToolCallId({ raw: 'mutable' }), type: 'function' as const, function: { name: 'original', arguments: '{}' } };
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      async *[Symbol.asyncIterator]() {
-        yield { type: 'tool_call', partId: 'call', index: 0, toolCall };
-        toolCall.function.name = 'changed';
-        yield { type: 'result', result: { type: 'finished', next: 'tool_results' } };
+        chat: () => ({
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'tool_call', partId: 'call', index: 0, toolCall };
+            toolCall.function.name = 'changed';
+            yield { type: 'result', result: { type: 'finished', next: 'tool_results' } };
+          },
+        }),
       },
-    }),
-    },
       request: request(),
     });
     await capture.completion;
@@ -137,22 +137,22 @@ describe('public chat observation mechanics', () => {
     const release = Promise.withResolvers<void>();
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      {
-        type: 'text',
-        partId: 'answer',
-        index: 0,
-        completeness: Promise.resolve('complete'),
-        chunks: {
-        async *[Symbol.asyncIterator]() {
-          yield 'first'; await release.promise; yield 'last';
-        },
+        chat: () => values({
+          items: [
+            {
+              type: 'text',
+              partId: 'answer',
+              index: 0,
+              completeness: Promise.resolve('complete'),
+              chunks: {
+                async *[Symbol.asyncIterator]() {
+                  yield 'first'; await release.promise; yield 'last';
+                },
+              },
+            }, finished,
+          ],
+        }),
       },
-      }, finished,
-    ],
-    }),
-    },
       request: request(),
     });
     await vi.waitFor(() => expect(capture.snapshot().parts).toEqual([
@@ -174,10 +174,10 @@ describe('public chat observation mechanics', () => {
     const error = new Error('synchronous native boundary');
     const capture = captureProviderChat({
       provider: {
-      chat: () => {
-      throw error;
-    },
-    },
+        chat: () => {
+          throw error;
+        },
+      },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -194,24 +194,24 @@ describe('public chat observation mechanics', () => {
     const childFinished = Promise.withResolvers<void>();
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      async *[Symbol.asyncIterator]() {
-        yield {
-          type: 'text',
-          partId: 'answer',
-          index: 0,
-          completeness: Promise.resolve('complete'),
-          chunks: {
+        chat: () => ({
           async *[Symbol.asyncIterator]() {
-            yield 'partial'; childFinished.resolve();
+            yield {
+              type: 'text',
+              partId: 'answer',
+              index: 0,
+              completeness: Promise.resolve('complete'),
+              chunks: {
+                async *[Symbol.asyncIterator]() {
+                  yield 'partial'; childFinished.resolve();
+                },
+              },
+            };
+            await childFinished.promise;
+            throw error;
           },
-        },
-        };
-        await childFinished.promise;
-        throw error;
+        }),
       },
-    }),
-    },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -223,22 +223,22 @@ describe('public chat observation mechanics', () => {
     const error = new Error('child failure');
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      {
-        type: 'text',
-        partId: 'answer',
-        index: 0,
-        completeness: Promise.resolve('complete'),
-        chunks: {
-        async *[Symbol.asyncIterator]() {
-          yield 'partial'; throw error;
-        },
+        chat: () => values({
+          items: [
+            {
+              type: 'text',
+              partId: 'answer',
+              index: 0,
+              completeness: Promise.resolve('complete'),
+              chunks: {
+                async *[Symbol.asyncIterator]() {
+                  yield 'partial'; throw error;
+                },
+              },
+            }, finished,
+          ],
+        }),
       },
-      }, finished,
-    ],
-    }),
-    },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -250,12 +250,12 @@ describe('public chat observation mechanics', () => {
     const error = new Error('completeness failure');
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      { type: 'text', partId: 'answer', index: 0, chunks: values({ items: [] }), completeness: Promise.reject(error) }, finished,
-    ],
-    }),
-    },
+        chat: () => values({
+          items: [
+            { type: 'text', partId: 'answer', index: 0, chunks: values({ items: [] }), completeness: Promise.reject(error) }, finished,
+          ],
+        }),
+      },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -269,27 +269,27 @@ describe('public chat observation mechanics', () => {
     const childReturn = vi.fn(async () => ({ done: true as const, value: undefined }));
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      async *[Symbol.asyncIterator]() {
-        yield {
-          type: 'text',
-          partId: 'answer',
-          index: 0,
-          completeness: Promise.resolve('complete'),
-          chunks: {
-          [Symbol.asyncIterator]: () => ({
-            next: () => {
-              childRead.resolve(); return pending.promise;
-            },
-            return: childReturn,
-          }),
-        },
-        };
-        await childRead.promise;
-        throw error;
+        chat: () => ({
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'text',
+              partId: 'answer',
+              index: 0,
+              completeness: Promise.resolve('complete'),
+              chunks: {
+                [Symbol.asyncIterator]: () => ({
+                  next: () => {
+                    childRead.resolve(); return pending.promise;
+                  },
+                  return: childReturn,
+                }),
+              },
+            };
+            await childRead.promise;
+            throw error;
+          },
+        }),
       },
-    }),
-    },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -315,25 +315,25 @@ describe('public chat observation mechanics', () => {
     const error = new Error('outer failure while waiting for completeness');
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      async *[Symbol.asyncIterator]() {
-        yield {
-          type: 'text',
-          partId: 'answer',
-          index: 0,
-          completeness: completeness.promise,
-          chunks: {
+        chat: () => ({
           async *[Symbol.asyncIterator]() {
-            yield 'partial';
-            drained.resolve();
+            yield {
+              type: 'text',
+              partId: 'answer',
+              index: 0,
+              completeness: completeness.promise,
+              chunks: {
+                async *[Symbol.asyncIterator]() {
+                  yield 'partial';
+                  drained.resolve();
+                },
+              },
+            };
+            await drained.promise;
+            throw error;
           },
-        },
-        };
-        await drained.promise;
-        throw error;
+        }),
       },
-    }),
-    },
       request: request(),
     });
     await expect(capture.completion).rejects.toBe(error);
@@ -351,13 +351,13 @@ describe('public chat observation mechanics', () => {
     const error = new Error('native failure');
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      text({ partId: 'answer', index: 0, chunks: ['partial'], completeness: 'partial' }),
-      { type: 'result', result: { type: 'error', error } },
-    ],
-    }),
-    },
+        chat: () => values({
+          items: [
+            text({ partId: 'answer', index: 0, chunks: ['partial'], completeness: 'partial' }),
+            { type: 'result', result: { type: 'error', error } },
+          ],
+        }),
+      },
       request: request(),
     });
     await capture.completion;
@@ -375,13 +375,13 @@ describe('public chat observation mechanics', () => {
   it.each(['aborted', 'limit', 'stop_sequence', 'unknown'] as const)('records interrupted %s as a delivered terminal result', async reason => {
     const capture = captureProviderChat({
       provider: {
-      chat: () => values({
-      items: [
-      text({ partId: 'answer', index: 0, chunks: ['partial'], completeness: 'partial' }),
-      { type: 'result', result: { type: 'interrupted', reason } },
-    ],
-    }),
-    },
+        chat: () => values({
+          items: [
+            text({ partId: 'answer', index: 0, chunks: ['partial'], completeness: 'partial' }),
+            { type: 'result', result: { type: 'interrupted', reason } },
+          ],
+        }),
+      },
       request: request(),
     });
     await capture.completion;
@@ -393,16 +393,16 @@ describe('public chat observation mechanics', () => {
     const ready = Promise.withResolvers<void>();
     const capture = captureProviderChat({
       provider: {
-      chat: ({ signal }) => createChatGenerationStream({
-      signal,
-      run: async ({ writer, signal: ownedSignal }) => {
-        await writer.text({ type: 'text', text: 'accepted' });
-        ready.resolve();
-        await new Promise<void>(resolve => ownedSignal.addEventListener('abort', () => resolve(), { once: true }));
-        return { type: 'interrupted', reason: 'aborted' };
+        chat: ({ signal }) => createChatGenerationStream({
+          signal,
+          run: async ({ writer, signal: ownedSignal }) => {
+            await writer.text({ type: 'text', text: 'accepted' });
+            ready.resolve();
+            await new Promise<void>(resolve => ownedSignal.addEventListener('abort', () => resolve(), { once: true }));
+            return { type: 'interrupted', reason: 'aborted' };
+          },
+        }),
       },
-    }),
-    },
       request: { ...request(), signal: controller.signal },
     });
     await ready.promise;
@@ -428,32 +428,32 @@ describe('public chat observation mechanics', () => {
     let reads = 0;
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      [Symbol.asyncIterator]: () => ({
-      next: async () => {
-        if (reads++ !== 0) return outerPending.promise;
-        return {
-          done: false,
-          value: {
-          type: 'text',
-          partId: 'pending',
-          index: 0,
-          completeness: completeness.promise,
-          chunks: {
+        chat: () => ({
           [Symbol.asyncIterator]: () => ({
-            next: () => {
-            childRead.resolve(); return childPending.promise;
-          },
-            return: childReturn,
+            next: async () => {
+              if (reads++ !== 0) return outerPending.promise;
+              return {
+                done: false,
+                value: {
+                  type: 'text',
+                  partId: 'pending',
+                  index: 0,
+                  completeness: completeness.promise,
+                  chunks: {
+                    [Symbol.asyncIterator]: () => ({
+                      next: () => {
+                        childRead.resolve(); return childPending.promise;
+                      },
+                      return: childReturn,
+                    }),
+                  },
+                },
+              };
+            },
+            return: outerReturn,
           }),
-        },
-        },
-        };
+        }),
       },
-      return: outerReturn,
-    }),
-    }),
-    },
       request: request(),
     });
     await childRead.promise;
@@ -479,17 +479,17 @@ describe('public chat observation mechanics', () => {
     const error = new Error('return failure');
     const capture = captureProviderChat({
       provider: {
-      chat: () => ({
-      [Symbol.asyncIterator]: () => ({
-      next: () => {
-        read.resolve(); return pending.promise;
+        chat: () => ({
+          [Symbol.asyncIterator]: () => ({
+            next: () => {
+              read.resolve(); return pending.promise;
+            },
+            return: async () => {
+              throw error;
+            },
+          }),
+        }),
       },
-      return: async () => {
-        throw error;
-      },
-    }),
-    }),
-    },
       request: request(),
     });
     await read.promise;
@@ -502,9 +502,9 @@ describe('public chat observation mechanics', () => {
     let calls = 0;
     const provider: Pick<LmProvider, 'chat'> = {
       chat: () => {
-      if (calls++ !== 0) return values({ items: [text({ partId: 'new', index: 0, chunks: ['new text'], completeness: 'complete' }), finished] });
-      return { [Symbol.asyncIterator]: () => ({ next: () => oldRead.promise, return: async () => ({ done: true, value: undefined }) }) };
-    },
+        if (calls++ !== 0) return values({ items: [text({ partId: 'new', index: 0, chunks: ['new text'], completeness: 'complete' }), finished] });
+        return { [Symbol.asyncIterator]: () => ({ next: () => oldRead.promise, return: async () => ({ done: true, value: undefined }) }) };
+      },
     };
     const first = captureProviderChat({ provider, request: request() });
     await first.dispose();

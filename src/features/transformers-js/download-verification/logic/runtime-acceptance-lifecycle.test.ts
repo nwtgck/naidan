@@ -78,11 +78,11 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       inspectCachedRevisions: async () => {
         expect(onProgress).toHaveBeenLastCalledWith({
           progress: {
-          phase: 'cache-after',
-          revision: REVISION,
-          candidate: undefined,
-          info: undefined,
-        },
+            phase: 'cache-after',
+            revision: REVISION,
+            candidate: undefined,
+            info: undefined,
+          },
         });
         return inventory();
       },
@@ -149,19 +149,19 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       controller,
       timeoutMs: cancellation === 'deadline' ? 100 : 10_000,
       start: () => completeDownloadVerificationRuntimeEvidence({
-      evidence: input(),
-      signal: controller.signal,
-      onProgress,
-      storageRoot: {} as FileSystemDirectoryHandle,
-      reusableCandidateOrderByRevision: { [REVISION]: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }] },
+        evidence: input(),
+        signal: controller.signal,
+        onProgress,
+        storageRoot: {} as FileSystemDirectoryHandle,
+        reusableCandidateOrderByRevision: { [REVISION]: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }] },
         // Only replace filesystem I/O. Completion, reuse, revision orchestration,
         // candidate acceptance and abort handling are the actual implementation.
-      reuseRevision: async args => await reuseDownloadedProductionRevision({
-        ...args,
-        inspectCachedRevisions: async () => inventory(),
+        reuseRevision: async args => await reuseDownloadedProductionRevision({
+          ...args,
+          inspectCachedRevisions: async () => inventory(),
+        }),
+        inspectCachedRevisions: inspectAfter,
       }),
-      inspectCachedRevisions: inspectAfter,
-    }),
     }).then(value => ({ status: 'resolved' as const, value }), error => ({ status: 'rejected' as const, error }));
     const reason = new Error('User stopped this model');
     try {

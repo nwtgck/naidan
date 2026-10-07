@@ -168,10 +168,10 @@ function download(): void {
     repository: requestedQuantization.repository,
     source: 'suggestion',
     prepare: async ({ signal }) => {
-    if (pinned) return pinned;
-    const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
-    return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
-  },
+      if (pinned) return pinned;
+      const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
+      return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
+    },
   });
 }
 onUnmounted(() => {

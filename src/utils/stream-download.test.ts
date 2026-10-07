@@ -32,13 +32,13 @@ beforeEach(() => {
   page = new EventTarget();
   installStreamDownloadWorker({
     scope: {
-    registration: { scope: 'https://example.test/app/' },
-    clients: { get: async () => ({ id: 'page' }) },
-    addEventListener(type: string, listener: unknown) {
-      if (type === 'message') onMessage = listener as typeof onMessage;
-      if (type === 'fetch') onFetch = listener as typeof onFetch;
-    },
-  } as DownloadWorkerScope,
+      registration: { scope: 'https://example.test/app/' },
+      clients: { get: async () => ({ id: 'page' }) },
+      addEventListener(type: string, listener: unknown) {
+        if (type === 'message') onMessage = listener as typeof onMessage;
+        if (type === 'fetch') onFetch = listener as typeof onFetch;
+      },
+    } as DownloadWorkerScope,
   });
   worker = Object.assign(new EventTarget(), {
     state: 'activated',
@@ -63,21 +63,21 @@ beforeEach(() => {
     createElement: (tag: string) => ({ tag, src: '', href: '', download: '', click, remove: tag === 'iframe' ? removeFrame : vi.fn() }),
     body: {
       append: vi.fn((element: { tag: string, src: string }) => {
-      if (element.tag === 'iframe') navigate.call(element);
-    }),
+        if (element.tag === 'iframe') navigate.call(element);
+      }),
     },
   });
   vi.stubGlobal('location', { protocol: 'https:', origin: 'https://example.test', pathname: '/app/index.html' });
   vi.stubGlobal('isSecureContext', true);
   vi.stubGlobal('navigator', {
     serviceWorker: {
-    controller: worker,
-    getRegistration,
-    register: vi.fn(),
-    get ready() {
-      throw new Error('Do not wait for a worker to be installed');
+      controller: worker,
+      getRegistration,
+      register: vi.fn(),
+      get ready() {
+        throw new Error('Do not wait for a worker to be installed');
+      },
     },
-  },
   });
   createObjectURL = vi.fn(() => 'blob:test');
   vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectURL);
@@ -95,8 +95,8 @@ afterEach(async () => {
 function smallStream(): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
-    controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-  },
+      controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+    },
   });
 }
 function fakeClock(): void {
@@ -205,9 +205,9 @@ describe('download feature detection and fallback', () => {
   it('falls back when the worker changes during the preload check', async () => {
     registration.navigationPreload = {
       getState: vi.fn(async () => {
-      registration.active = null;
-      return { enabled: false };
-    }),
+        registration.active = null;
+        return { enabled: false };
+      }),
       disable: vi.fn(),
     };
     await downloadReadableStream({ stream: smallStream(), filename: 'changed', size: 3, signal: undefined });
@@ -259,8 +259,8 @@ describe('download feature detection and fallback', () => {
   it('uses the destination active registration rather than an older page controller', async () => {
     const old = {
       postMessage: vi.fn(() => {
-      throw new Error('old protocol');
-    }),
+        throw new Error('old protocol');
+      }),
     };
     vi.stubGlobal('navigator', { serviceWorker: { controller: old, getRegistration } });
     await downloadReadableStream({ stream: smallStream(), filename: 'updated', size: undefined, signal: undefined });
@@ -295,8 +295,8 @@ describe('download feature detection and fallback', () => {
     case 'throwing-service-worker-getter':
       vi.stubGlobal('navigator', {
         get serviceWorker() {
-        throw new DOMException('blocked', 'SecurityError');
-      },
+          throw new DOMException('blocked', 'SecurityError');
+        },
       }); break;
     case 'no-active-worker': registration.active = null; break;
     case 'activating-worker': worker.state = 'activating'; break;
@@ -564,12 +564,12 @@ describe('buffered compatibility data and ownership', () => {
     let produced = 0;
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
-      if (produced === 3) {
-        controller.close(); return;
-      }
-      bytes.fill(++produced);
-      controller.enqueue(bytes);
-    },
+        if (produced === 3) {
+          controller.close(); return;
+        }
+        bytes.fill(++produced);
+        controller.enqueue(bytes);
+      },
     }, { highWaterMark: 0 });
     await downloadReadableStream({ stream, filename: 'copy.bin', size: 6, signal: undefined });
     await expectBufferedBytes({ bytes: [1, 1, 2, 2, 3, 3] });
@@ -578,10 +578,10 @@ describe('buffered compatibility data and ownership', () => {
   it('saves an empty stream as a zero-byte file', async () => {
     await downloadReadableStream({
       stream: new ReadableStream({
-      start(controller) {
-      controller.close();
-    },
-    }),
+        start(controller) {
+          controller.close();
+        },
+      }),
       filename: 'empty',
       size: 0,
       signal: undefined,
@@ -598,11 +598,11 @@ describe('buffered compatibility data and ownership', () => {
     let produced = false;
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
-      if (produced) controller.error(new Error('read failed'));
-      else {
-        produced = true; controller.enqueue(new Uint8Array([1]));
-      }
-    },
+        if (produced) controller.error(new Error('read failed'));
+        else {
+          produced = true; controller.enqueue(new Uint8Array([1]));
+        }
+      },
     }, { highWaterMark: 0 });
     await expect(downloadReadableStream({ stream, filename: 'broken', size: undefined, signal: undefined })).rejects.toThrow('read failed');
     expect(createObjectURL).not.toHaveBeenCalled();
@@ -685,8 +685,8 @@ describe('buffered compatibility data and ownership', () => {
   it('rejects non-byte output without starting a download', async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.enqueue('not bytes' as unknown as Uint8Array); controller.close();
-    },
+        controller.enqueue('not bytes' as unknown as Uint8Array); controller.close();
+      },
     });
     await expect(downloadReadableStream({ stream, filename: 'invalid', size: undefined, signal: undefined })).rejects.toThrow('byte stream');
     expect(createObjectURL).not.toHaveBeenCalled();
@@ -829,13 +829,13 @@ describe('native File snapshots and exact output lengths', () => {
     Object.assign(registration, { installing: worker });
     vi.stubGlobal('navigator', {
       serviceWorker: {
-      controller: null,
-      getRegistration,
-      register,
-      get ready() {
-        throw new Error('Must not wait for precaching');
+        controller: null,
+        getRegistration,
+        register,
+        get ready() {
+          throw new Error('Must not wait for precaching');
+        },
       },
-    },
     });
     await downloadFile({ file, filename: file.name, signal: undefined });
     expect(savedBlob()).toBe(file);

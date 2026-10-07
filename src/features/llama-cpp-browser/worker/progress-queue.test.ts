@@ -21,9 +21,9 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      seen.push(progress.completed);
-      return seen.length === 1 ? first.promise : last.promise;
-    },
+        seen.push(progress.completed);
+        return seen.length === 1 ? first.promise : last.promise;
+      },
     });
     for (let completed = 1; completed <= 10000; completed++) queue.send({ progress: update({ phase: 'generating', completed }) });
     expect(seen).toEqual([1]);
@@ -52,10 +52,10 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      seen.push(`${progress.phase}:${progress.completed}`);
-      if (progress.phase === 'prefill') return prefill.promise;
-      return progress.completed === 1 ? generating.promise : last.promise;
-    },
+        seen.push(`${progress.phase}:${progress.completed}`);
+        if (progress.phase === 'prefill') return prefill.promise;
+        return progress.completed === 1 ? generating.promise : last.promise;
+      },
     });
     for (const completed of [1, 2, 3]) queue.send({ progress: update({ phase: 'prefill', completed }) });
     for (const completed of [1, 2, 3]) queue.send({ progress: update({ phase: 'generating', completed }) });
@@ -87,8 +87,8 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      seen.push({ ...progress }); return seen.length === 1 ? blocked.promise : undefined;
-    },
+        seen.push({ ...progress }); return seen.length === 1 ? blocked.promise : undefined;
+      },
     });
     const progress = update({ phase: 'prefill', completed: 1 }); queue.send({ progress });
     progress.completed = 20; queue.send({ progress });
@@ -100,8 +100,8 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      progress.phase = 'generating';
-    },
+        progress.phase = 'generating';
+      },
     });
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) });
     await queue.finish(); expect(queue.counters.settled).toBe(1);
@@ -131,18 +131,18 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: () => {
-      const error = new Error('private callback payload');
-      switch (kind) {
-      case 'sync': throw error;
-      case 'async': return Promise.reject(error);
-      case 'thenable': return {
-        get then() {
-        throw error;
+        const error = new Error('private callback payload');
+        switch (kind) {
+        case 'sync': throw error;
+        case 'async': return Promise.reject(error);
+        case 'thenable': return {
+          get then() {
+            throw error;
+          },
+        } as unknown as Promise<void>;
+        default: { const exhaustive: never = kind; throw new Error(exhaustive); }
+        }
       },
-      } as unknown as Promise<void>;
-      default: { const exhaustive: never = kind; throw new Error(exhaustive); }
-      }
-    },
     });
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) });
     queue.send({ progress: update({ phase: 'prefill', completed: 2 }) });
@@ -172,14 +172,14 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      seen.push(progress.completed);
-      if (progress.completed === 1) {
-        queue.send({ progress: update({ phase: 'generating', completed: 2 }) });
-        queue.send({ progress: update({ phase: 'generating', completed: 3 }) });
-        return first.promise;
-      }
-      return undefined;
-    },
+        seen.push(progress.completed);
+        if (progress.completed === 1) {
+          queue.send({ progress: update({ phase: 'generating', completed: 2 }) });
+          queue.send({ progress: update({ phase: 'generating', completed: 3 }) });
+          return first.promise;
+        }
+        return undefined;
+      },
     });
     queue.send({ progress: update({ phase: 'generating', completed: 1 }) });
     expect(seen).toEqual([1]); first.resolve(); await queue.finish(); expect(seen).toEqual([1, 3]);
@@ -190,8 +190,8 @@ describe('bounded text progress delivery', () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: ({ progress }) => {
-      seen.push(progress.completed); return progress.completed === 1 ? blocked.promise : undefined;
-    },
+        seen.push(progress.completed); return progress.completed === 1 ? blocked.promise : undefined;
+      },
     });
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) });
     queue.send({ progress: update({ phase: 'prefill', completed: 2 }) });

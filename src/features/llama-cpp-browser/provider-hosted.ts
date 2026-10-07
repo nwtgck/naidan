@@ -26,30 +26,30 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
     await this.service.runGenerationOperation({
       signal,
       onProgress({ progress }) {
-      if (signal?.aborted) return;
-      const { phase, completed, total } = progress;
-      switch (phase) {
-      case 'initializing': case 'loading': case 'prefill': case 'generating': notify({ progress: { phase, completed, total } }); break;
-      case 'importing': case 'decoding-audio': break;
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
-      }
-    },
+        if (signal?.aborted) return;
+        const { phase, completed, total } = progress;
+        switch (phase) {
+        case 'initializing': case 'loading': case 'prefill': case 'generating': notify({ progress: { phase, completed, total } }); break;
+        case 'importing': case 'decoding-audio': break;
+        default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+        }
+      },
       operation: async ({ scope }) => {
-      const owned = createScopedGeneration({ scope });
-      let failure: { error: unknown } | undefined;
-      try {
-        await operation({ chat: owned.chat, signal: scope.signal });
-      } catch (error) {
-        failure = { error };
-      }
-      try {
-        await owned.close();
-      } catch (error) {
-        if (failure !== undefined && failure.error !== error) throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
-        throw error;
-      }
-      if (failure !== undefined) throw failure.error;
-    },
+        const owned = createScopedGeneration({ scope });
+        let failure: { error: unknown } | undefined;
+        try {
+          await operation({ chat: owned.chat, signal: scope.signal });
+        } catch (error) {
+          failure = { error };
+        }
+        try {
+          await owned.close();
+        } catch (error) {
+          if (failure !== undefined && failure.error !== error) throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+          throw error;
+        }
+        if (failure !== undefined) throw failure.error;
+      },
     });
   }
 }

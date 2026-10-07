@@ -72,10 +72,10 @@ it('does not promote an unsolicited HTTP 206 model response to a complete file',
     downloadedCount: 0,
     failedCount: 1,
     files: [{
-    status: 'failed',
-    failureStage: 'response-status',
-    httpStatus: 206,
-  }],
+      status: 'failed',
+      failureStage: 'response-status',
+      httpStatus: 206,
+    }],
   });
   expect(h.fs.files.has(marker)).toBe(false);
   expect(h.fs.files.has(path)).toBe(false);
@@ -101,11 +101,11 @@ it('does not mark a fresh split artifact complete after its network stream is in
     downloadedCount: 0,
     failedCount: 1,
     files: [{
-    status: 'failed',
-    path,
-    failureStage: 'write',
-    error: { message: 'Fixture transfer interrupted' },
-  }],
+      status: 'failed',
+      path,
+      failureStage: 'write',
+      error: { message: 'Fixture transfer interrupted' },
+    }],
   });
   // Advisory samples may be coalesced. The RPC result retains final observed
   // bytes even if the progress callback port is still waiting for its ACK.
@@ -128,11 +128,11 @@ it('does not publish completion when the final promotion writable fails to close
     downloadedCount: 0,
     failedCount: 1,
     files: [{
-    status: 'failed',
-    path,
-    failureStage: 'write',
-    error: { name: 'QuotaExceededError' },
-  }],
+      status: 'failed',
+      path,
+      failureStage: 'write',
+      error: { name: 'QuotaExceededError' },
+    }],
   });
   expect(h.fs.files.has(marker)).toBe(false);
   expect(h.fs.files.has(path)).toBe(false);

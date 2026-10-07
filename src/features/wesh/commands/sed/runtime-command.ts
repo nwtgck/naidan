@@ -207,8 +207,8 @@ export function createSedRuntimeCommands({
           rangeEnd: command.rangeEnd,
           negated: command.negated,
           targetIndex: command.targetLabel === undefined
-                ? undefined
-                : labelIndices.get(command.targetLabel),
+            ? undefined
+            : labelIndices.get(command.targetLabel),
         },
         inRange: false,
         rangeStarted: false,

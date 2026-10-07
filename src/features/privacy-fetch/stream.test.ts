@@ -88,8 +88,8 @@ describe('privacy stream transport', () => {
     const { buffer } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
+          controller.enqueue(bytes); controller.close();
+        },
       }),
       status: 206,
       headers: {},
@@ -119,8 +119,8 @@ describe('privacy stream transport', () => {
     const { buffer, fetchMock } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-        controller.enqueue(new Uint8Array([4, 5])); controller.close();
-      },
+          controller.enqueue(new Uint8Array([4, 5])); controller.close();
+        },
       }),
       status: 206,
       headers: { 'Content-Range': 'bytes 3-4/5', ETag: '"tag"' },
@@ -142,10 +142,10 @@ describe('privacy stream transport', () => {
     const metadataUrl = 'https://huggingface.co/api/models/owner/model';
     mockResponse({
       body: new ReadableStream({
-      start(controller) {
-      controller.enqueue(new TextEncoder().encode('{}')); controller.close();
-    },
-    }),
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{}')); controller.close();
+        },
+      }),
       status: 200,
       headers: {},
       responseUrl: metadataUrl,
@@ -164,10 +164,10 @@ describe('privacy stream transport', () => {
   it('normalizes caller headers without interpreting their HTTP meaning', async () => {
     const { fetchMock } = mockResponse({
       body: new ReadableStream({
-      start(controller) {
-      controller.close();
-    },
-    }),
+        start(controller) {
+          controller.close();
+        },
+      }),
       status: 416,
       headers: {},
       responseUrl: url,
@@ -188,8 +188,8 @@ describe('privacy stream transport', () => {
     const { buffer } = mockResponse({
       body: new ReadableStream({
         pull(controller) {
-        reads++; controller.enqueue(new Uint8Array(300 * 1024).fill(7)); controller.close();
-      },
+          reads++; controller.enqueue(new Uint8Array(300 * 1024).fill(7)); controller.close();
+        },
       }, { highWaterMark: 0 }),
       status,
       headers: { 'Content-Range': 'bytes 3-307202/307203', Link: '<https://huggingface.co/api/models/owner/model/tree/main?cursor=x>; rel="next"' },
@@ -246,10 +246,10 @@ describe('privacy stream transport', () => {
   it('propagates stream failure without exposing native error text', async () => {
     mockResponse({
       body: new ReadableStream({
-      pull(controller) {
-      controller.error(new Error('private-token'));
-    },
-    }, { highWaterMark: 0 }),
+        pull(controller) {
+          controller.error(new Error('private-token'));
+        },
+      }, { highWaterMark: 0 }),
       status: 200,
       headers: {},
       responseUrl: url,

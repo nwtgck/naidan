@@ -31,18 +31,18 @@ async function capturedSession({ batchId, modelId, observation }: { batchId: str
   if (observation === 'parts') {
     trace.observeAssistant({
       message: {
-      id: toMessageId({ raw: 'synthetic-assistant' }),
-      role: 'assistant',
-      createdAt: 0,
-      modelId: undefined,
-      lmParameters: undefined,
-      interruption: undefined,
-      replies: { items: [] },
-      parts: [
-      { type: 'reasoning', text: '  reason\n', completeness: 'complete' },
-      { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-    ],
-    },
+        id: toMessageId({ raw: 'synthetic-assistant' }),
+        role: 'assistant',
+        createdAt: 0,
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
+        replies: { items: [] },
+        parts: [
+          { type: 'reasoning', text: '  reason\n', completeness: 'complete' },
+          { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+        ],
+      },
     });
     trace.observeResult({ result: { type: 'interrupted', reason: 'limit' } });
   }
@@ -84,19 +84,19 @@ async function capturedSession({ batchId, modelId, observation }: { batchId: str
       collection: {
         status: 'returned',
         result: {
-        status: 'captured',
-        capture: {
-        schemaVersion: 1,
-        runId,
-        workerEpoch: 1,
-        byteOrder: 'little-endian',
-        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
-        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes } }],
-        incompleteReasons: [],
-        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      },
-      },
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId,
+            workerEpoch: 1,
+            byteOrder: 'little-endian',
+            limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+            calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+            events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes } }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        },
       },
     }],
   };
@@ -125,10 +125,10 @@ beforeEach(() => {
   }));
   vi.stubGlobal('navigator', {
     storage: {
-    getDirectory: vi.fn(() => {
-    throw new Error('Session retention must not access OPFS');
-  }),
-  },
+      getDirectory: vi.fn(() => {
+        throw new Error('Session retention must not access OPFS');
+      }),
+    },
   });
 });
 afterEach(() => {

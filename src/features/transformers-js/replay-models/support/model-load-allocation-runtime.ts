@@ -133,8 +133,8 @@ export function trapLargeModelAllocation({ failure }: { failure: RangeError }) {
   return {
     requests,
     restore() {
-    globalThis.Uint8Array = original; globalThis.ArrayBuffer = originalBuffer; WebAssembly.Memory = originalMemory;
-  },
+      globalThis.Uint8Array = original; globalThis.ArrayBuffer = originalBuffer; WebAssembly.Memory = originalMemory;
+    },
   };
 }
 

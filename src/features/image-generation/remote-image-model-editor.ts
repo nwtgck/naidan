@@ -58,14 +58,14 @@ export function remoteImageSelectionFromEditor({ editor }: { editor: RemoteImage
     primary: selectedPrimary,
     components,
     loras: loras.flatMap(item => {
-    const { file, strength, enabled, ...unhandledLora } = item;
+      const { file, strength, enabled, ...unhandledLora } = item;
     unhandledLora satisfies Record<PropertyKey, never>;
     switch (enabled) {
     case 'enabled': return [{ file, strength }];
     case 'disabled': return [];
     default: { const exhaustive: never = enabled; throw new Error(String(exhaustive)); }
     }
-  }),
+    }),
   });
 }
 

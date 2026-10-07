@@ -79,8 +79,8 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
     const discoveryBinding = await channel.binding({ signal: activeSignal });
     const binding = new Uint8Array(await crypto.subtle.digest('SHA-256', fields({
       parts: [
-      ascii({ text: 'naidan-piping-purpose/v1' }), discoveryBinding, purpose,
-    ],
+        ascii({ text: 'naidan-piping-purpose/v1' }), discoveryBinding, purpose,
+      ],
     })));
     const keys = await establishVerifiedNaidanPipingKeys({
       role: channel.role,

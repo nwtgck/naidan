@@ -137,10 +137,10 @@ export function createSedReadFileManager({
       const line = result?.done === false ? result.value : undefined;
       await writer.writeReadFile({
         lines: line === undefined
-            ? undefined
-            : (async function* (): AsyncGenerator<SedReadFileLine> {
-              yield line;
-            })(),
+          ? undefined
+          : (async function* (): AsyncGenerator<SedReadFileLine> {
+            yield line;
+          })(),
         terminatePendingOutputWhenEmpty: false,
       });
     },

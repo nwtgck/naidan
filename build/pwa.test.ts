@@ -95,14 +95,14 @@ describe('real generated Workbox worker', () => {
       port: firstHop.port1,
       signal: undefined,
       openStream: async () => new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (produced === chunks) {
-          controller.close(); return;
-        }
-        controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES).fill(produced % 251));
-        produced += 1; maximumAhead = Math.max(maximumAhead, produced - consumed);
-      },
-    }, { highWaterMark: 0 }),
+        pull(controller) {
+          if (produced === chunks) {
+            controller.close(); return;
+          }
+          controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES).fill(produced % 251));
+          produced += 1; maximumAhead = Math.max(maximumAhead, produced - consumed);
+        },
+      }, { highWaterMark: 0 }),
     });
     const intermediate = receiveByteStream({ port: firstHop.port2 });
     const sender = serveByteStream({ port: secondHop.port1, signal: undefined, openStream: async () => intermediate.stream });

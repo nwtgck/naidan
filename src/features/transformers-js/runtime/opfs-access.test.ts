@@ -28,9 +28,9 @@ describe('Cooperative OPFS access', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     await entered.promise;
     const url = 'https://huggingface.co/fixture/model/resolve/revision/onnx/model.onnx';
@@ -60,10 +60,10 @@ describe('Cooperative OPFS access', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-      events.push('cleanup-complete');
-    },
+        entered.resolve();
+        await release.promise;
+        events.push('cleanup-complete');
+      },
     });
     await entered.promise;
     const second = withOpfsFileLease({
@@ -72,13 +72,13 @@ describe('Cooperative OPFS access', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      events.push('second');
-    },
+        events.push('second');
+      },
     });
     const deletion = withOpfsRootDeletion({
       run: async () => {
-      events.push('delete');
-    },
+        events.push('delete');
+      },
     });
     await Promise.resolve();
     expect(events).toEqual([]);
@@ -103,9 +103,9 @@ describe('Cooperative OPFS access', () => {
       availability: 'immediate',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     await entered.promise;
     const snapshot = await withOpfsFileLease({ path, mode: 'shared', availability: 'immediate', signal: undefined, run: async () => 4 });
@@ -121,10 +121,10 @@ describe('Cooperative OPFS access', () => {
     const failure = new DOMException('Synthetic denied lock', 'SecurityError');
     vi.stubGlobal('navigator', {
       locks: {
-      request: () => {
-      throw failure;
-    },
-    },
+        request: () => {
+          throw failure;
+        },
+      },
     });
     const run = vi.fn(async () => 4);
     await expect(withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run })).rejects.toBe(failure);
@@ -143,16 +143,16 @@ describe('Cooperative OPFS access', () => {
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     await entered.promise;
     const deletion = withOpfsModelDeletion({
       modelPath: 'models/huggingface.co/fixture/model',
       run: async () => {
-      deleted = true;
-    },
+        deleted = true;
+      },
     });
     const unrelated = await withOpfsFileLease({ path: 'models/huggingface.co/fixture/other/resolve/revision/onnx/model.onnx', mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => 4 });
     expect(unrelated).toBe(4);
@@ -192,10 +192,10 @@ describe('Cooperative OPFS access', () => {
       availability: 'wait',
       signal: undefined,
       run: async ({ lease }) => {
-      escaped = lease;
-      assertOpfsFileLease({ path, mode: 'exclusive', lease });
-      return lease.coordinated;
-    },
+        escaped = lease;
+        assertOpfsFileLease({ path, mode: 'exclusive', lease });
+        return lease.coordinated;
+      },
     });
     expect(result).toBe(false);
     expect(escaped).toBeDefined();

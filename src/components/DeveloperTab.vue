@@ -40,12 +40,12 @@ function togglePWAUpdate(): void {
   case 'idle':
     setUpdateState({
       next: {
-      kind: 'ready',
-      handler: async () => {
-      console.log('PWA Update triggered via Developer Tab');
-      window.location.reload();
-    },
-    },
+        kind: 'ready',
+        handler: async () => {
+          console.log('PWA Update triggered via Developer Tab');
+          window.location.reload();
+        },
+      },
     });
     return;
   case 'preparing':

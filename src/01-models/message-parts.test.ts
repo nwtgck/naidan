@@ -19,10 +19,10 @@ describe('message parts', () => {
         {
           type: 'tool_call',
           toolCall: {
-          id: toToolCallId({ raw: 'call-1' }),
-          type: 'function',
-          function: { name: 'calculator', arguments: ' { "expression": "1 + 1" } ' },
-        },
+            id: toToolCallId({ raw: 'call-1' }),
+            type: 'function',
+            function: { name: 'calculator', arguments: ' { "expression": "1 + 1" } ' },
+          },
         },
       ],
       interruption: { type: 'cancelled' },

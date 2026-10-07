@@ -285,8 +285,8 @@ describe('Production Worker startup ownership', () => {
     const incompatibility = new Error('unsupported graph');
     await expect(session.run({
       operation: async () => {
-      throw incompatibility;
-    },
+        throw incompatibility;
+      },
     })).rejects.toBe(incompatibility);
     await expect(session.run({ operation: async () => 'next candidate' })).resolves.toBe('next candidate');
     expect(session.isActive()).toBe(true);
@@ -330,8 +330,8 @@ describe('Production Worker startup ownership', () => {
     transported.name = 'RequiredDownloadedResourceCleanupError';
     await expect(session.run({
       operation: () => {
-      throw transported;
-    },
+        throw transported;
+      },
     })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
     expect(session.isActive()).toBe(false);
     expect(worker.terminate).toHaveBeenCalledOnce();
@@ -345,8 +345,8 @@ describe('Production Worker startup ownership', () => {
     const ordinary = new Error('RequiredDownloadedResourceCleanupError: fixture model rejection');
     await expect(session.run({
       operation: async () => {
-      throw ordinary;
-    },
+        throw ordinary;
+      },
     })).rejects.toBe(ordinary);
     expect(session.isActive()).toBe(true);
     await expect(session.run({ operation: async () => 'next RPC' })).resolves.toBe('next RPC');

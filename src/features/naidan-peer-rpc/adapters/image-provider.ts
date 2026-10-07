@@ -50,15 +50,15 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
   let lastProgress: PeerProgress | undefined;
   const call = client.generateImage({
     input: {
-    modelSelection: wireSelection,
-    parameters,
-    preview,
-    imageInputs: { initial, references, strength: input.imageInputs.strength },
-  },
+      modelSelection: wireSelection,
+      parameters,
+      preview,
+      imageInputs: { initial, references, strength: input.imageInputs.strength },
+    },
     on: {
       progress: ({ value }) => {
-    lastProgress = { ...value }; onProgress({ value });
-  },
+        lastProgress = { ...value }; onProgress({ value });
+      },
     },
     signal: lifetime,
     timeoutMs: undefined,
@@ -135,16 +135,16 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
             if (width !== part.header.width || height !== part.header.height) throw new Error('Preview dimensions differ');
             onPreview({
               frame: {
-              type: 'naidan-image-preview-v1',
-              runId,
-              revision,
-              step: part.header.step,
-              steps: part.header.steps,
-              width,
-              height,
-              mode: part.header.mode,
-              png: new Blob([part.bytes], { type: 'image/png' }),
-            },
+                type: 'naidan-image-preview-v1',
+                runId,
+                revision,
+                step: part.header.step,
+                steps: part.header.steps,
+                width,
+                height,
+                mode: part.header.mode,
+                png: new Blob([part.bytes], { type: 'image/png' }),
+              },
             });
             part = undefined; break;
           }
@@ -195,12 +195,12 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
       if (pixels) return {
         status: 'interrupted',
         recoverable: {
-        png: new Blob([pixels], { type: 'image/png' }),
-        width: parameters.width,
-        height: parameters.height,
-        reported: completed ? { seed: completed.seed, modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } : undefined,
-      },
-      message: `Image received, but successful RPC completion was not confirmed\n${description}`,
+          png: new Blob([pixels], { type: 'image/png' }),
+          width: parameters.width,
+          height: parameters.height,
+          reported: completed ? { seed: completed.seed, modelVersion: completed.modelVersion, uniformOutput: completed.uniformOutput } : undefined,
+        },
+        message: `Image received, but successful RPC completion was not confirmed\n${description}`,
       };
       return lifetime.aborted ? { status: 'cancelled' } : { status: 'failed', message: description };
     } finally {
@@ -211,8 +211,8 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
   return {
     result,
     cancel() {
-    stop.abort();
-  },
+      stop.abort();
+    },
   };
 }
 

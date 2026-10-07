@@ -14,10 +14,10 @@ beforeEach(() => {
   }));
   vi.stubGlobal('navigator', {
     storage: {
-    getDirectory: vi.fn(async () => {
-    throw new Error('Synthetic weather Tool must not access storage');
-  }),
-  },
+      getDirectory: vi.fn(async () => {
+        throw new Error('Synthetic weather Tool must not access storage');
+      }),
+    },
   });
 });
 
@@ -105,8 +105,8 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
       id: toMessageId({ raw: 'user' }),
       role: 'user',
       parts: [
-      { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-    ],
+        { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+      ],
     }];
     const original = structuredClone(input);
     const turn = await runProviderReplayTurn({
@@ -141,13 +141,13 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
       {
         role: 'tool',
         parts: [{
-        type: 'tool_result',
-        result: {
-        toolCallId: call.id,
-        status: 'success',
-        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-      },
-      }],
+          type: 'tool_result',
+          result: {
+            toolCallId: call.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
       },
       { role: 'assistant', parts: [{ type: 'text', text: 'Synthetic final answer.', completeness: 'complete' }] },
     ]);
@@ -178,8 +178,8 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
           id: toMessageId({ raw: 'user' }),
           role: 'user',
           parts: [
-          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-        ],
+            { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          ],
         }],
         parameters: undefined,
         readBinaryObject: undefined,

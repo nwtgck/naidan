@@ -301,14 +301,14 @@ it('provides discovery with no inference grants and reports effective restrictio
   const other = new NaidanRpcPeer({
     transport: links[0]!.b,
     exports: [expose({
-    contract: naidanPeerContract,
-    allowedMethods: ['getProvidedMethods'],
-    implementation: createNaidanPeerImplementation({
-      inference: dependencies.inference,
-      providedMethods: () => ({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }),
-    }),
-  })],
-  limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
+      contract: naidanPeerContract,
+      allowedMethods: ['getProvidedMethods'],
+      implementation: createNaidanPeerImplementation({
+        inference: dependencies.inference,
+        providedMethods: () => ({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) }),
+      }),
+    })],
+    limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
     signal: new AbortController().signal,
   });
   try {
@@ -640,8 +640,8 @@ it('a cross-tab stop closes actual manager admission before acknowledging native
     const unregister = localControl.registerOwner({ ownerId: 'actual-owner', stop: () => manager.setEnabled({ enabled: false }) });
     return {
       release: () => {
-      unregister(); release();
-    },
+        unregister(); release();
+      },
     };
   });
   try {

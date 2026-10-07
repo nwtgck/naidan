@@ -186,19 +186,19 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
       {
         type: 'tool_call',
         toolCall: {
-        id: call.toolCall.id,
-        type: 'function',
-        function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      },
+          id: call.toolCall.id,
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        },
       },
     ]);
     expect(continuation[2]?.parts).toEqual([{
       type: 'tool_result',
       result: {
-      toolCallId: call.toolCall.id,
-      status: 'success',
-      content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-    },
+        toolCallId: call.toolCall.id,
+        status: 'success',
+        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+      },
     }]);
     expect(history[3]?.parts).toEqual([{
       type: 'text',

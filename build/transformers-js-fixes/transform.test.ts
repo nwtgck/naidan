@@ -187,8 +187,8 @@ it('rejects an excessive external declaration without waiting for a held core', 
   const getSession = sessionFixture({
     core: () => core.promise,
     external: async () => {
-    throw new Error('Must not request a chunk');
-  },
+      throw new Error('Must not request a chunk');
+    },
   });
   await expect(getSession(101)).rejects.toThrow('exceeds the maximum');
   core.resolve(new Uint8Array([1]));
@@ -224,8 +224,8 @@ it('propagates a synchronous external reader throw through the async upstream co
   const getSession = sessionFixture({
     core: async () => new Uint8Array([1]),
     external: () => {
-    throw failure;
-  },
+      throw failure;
+    },
   });
   await expect(getSession(1)).rejects.toBe(failure);
 });

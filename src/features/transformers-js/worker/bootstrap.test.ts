@@ -33,9 +33,9 @@ it('installs fail-closed fetch before entry evaluation and emits ready only afte
     await entryFinished.promise;
     return {
       initializeProductionWorkerRuntime: async () => {
-      await initialized.promise;
-      return { requestId };
-    },
+        await initialized.promise;
+        return { requestId };
+      },
     };
   });
   await import('./bootstrap');

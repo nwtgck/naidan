@@ -353,10 +353,10 @@ export function createProductionProviderInvestigation({
         phase = 'sealing';
         const outcome = await waitPhase({
           startOperation: () => {
-          startSealing({ provider });
-          if (sealWork === undefined) throw new Error('Investigation seal operation is missing');
-          return sealWork;
-        },
+            startSealing({ provider });
+            if (sealWork === undefined) throw new Error('Investigation seal operation is missing');
+            return sealWork;
+          },
           milliseconds: deadlines.sealingMs,
           deadlineReason: 'sealing-deadline',
         });

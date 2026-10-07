@@ -55,8 +55,8 @@ it('does not invoke message accessors or allow classification and observer failu
   expect(events.at(-1)).toMatchObject({ phase: 'session-rejected', errorCategory: 'unclassified' });
   const inaccessible = new Proxy({}, {
     getOwnPropertyDescriptor() {
-    throw new Error('Diagnostic proxy');
-  },
+      throw new Error('Diagnostic proxy');
+    },
   });
   await expect(session({ observer: (event: unknown) => events.push(event), failure: inaccessible })()).rejects.toBe(inaccessible);
   expect(events.at(-1)).toMatchObject({ errorCategory: 'unclassified' });
@@ -91,8 +91,8 @@ function setup() {
     loadOrdinal: 1,
     resourceNames: 'public-repository',
     sink: ({ packet }) => {
-    packets.push(packet); ledger.observe({ packet });
-  },
+      packets.push(packet); ledger.observe({ packet });
+    },
   });
   return { ledger, operation, packets };
 }
@@ -200,10 +200,10 @@ it.each(['throw', 'reject'] as const)('reports a recovered %s transport failure 
     loadOrdinal: 1,
     resourceNames: 'public-repository',
     sink: ({ packet }) => {
-    if (++deliveries > 1) return ledger.observe({ packet });
-    if (mode === 'throw') throw new Error('Sink failure');
-    return Promise.reject(new Error('Sink failure'));
-  },
+      if (++deliveries > 1) return ledger.observe({ packet });
+      if (mode === 'throw') throw new Error('Sink failure');
+      return Promise.reject(new Error('Sink failure'));
+    },
   });
   operation.emit({ kind: 'load-start', details: {} });
   await Promise.resolve();
@@ -218,9 +218,9 @@ it('does not throw or reject Load for synchronous or asynchronous diagnostic sin
       loadOrdinal: 1,
       resourceNames: 'public-repository',
       sink: () => {
-      if (mode === 'throw') throw new Error('Sink failed');
-      return Promise.reject(new Error('Sink rejected'));
-    },
+        if (mode === 'throw') throw new Error('Sink failed');
+        return Promise.reject(new Error('Sink rejected'));
+      },
     });
     expect(() => operation.emit({ kind: 'load-start', details: {} })).not.toThrow();
     await Promise.resolve();

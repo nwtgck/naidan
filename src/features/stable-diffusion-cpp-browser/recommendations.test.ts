@@ -43,12 +43,12 @@ it.each([{ id: 'z-image-turbo', steps: 8 }, { id: 'z-image-base', steps: 50 }, {
   const scan = (revision: string) => scanImageRepositories({
     signal: undefined,
     repositories: [{
-    id: 'user/x',
-    name: 'x',
-    files: [
-    { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
-  ],
-  }],
+      id: 'user/x',
+      name: 'x',
+      files: [
+        { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
+      ],
+    }],
   });
   const known = await scan(option.revision);
   expect(recommendationForSelection({ model: known.candidates[0] })?.parameters.steps).toBe(steps);

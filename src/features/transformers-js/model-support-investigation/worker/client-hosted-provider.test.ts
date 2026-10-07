@@ -24,11 +24,11 @@ vi.mock('comlink', () => ({
   releaseProxy: mocks.release,
   proxy: (value: unknown) => value,
   wrap: () => ({
-  runPartialInvestigation: mocks.planning,
-  runCandidateAttempt: mocks.candidate,
-  inspectDownloadedTemplateBehavior: mocks.template,
-  [mocks.release]: async () => undefined,
-}),
+    runPartialInvestigation: mocks.planning,
+    runCandidateAttempt: mocks.candidate,
+    inspectDownloadedTemplateBehavior: mocks.template,
+    [mocks.release]: async () => undefined,
+  }),
 }));
 vi.mock('@/features/transformers-js/worker/client-hosted', () => ({
   createTransformersJsGenerationCaptureClient: mocks.captureClient,
@@ -161,21 +161,21 @@ describe('exclusive hosted Provider investigation routing', () => {
         return {
           status: 'captured',
           capture: {
-          schemaVersion: 1,
-          runId: input.runId,
-          workerEpoch: input.workerEpoch,
-          byteOrder: 'little-endian',
-          limits: input.limits,
-          calls: [{
-            context,
-            loadIdentity: { status: 'not-observed', reason: 'no-completed-load' },
-            outcome: 'fulfilled',
-            invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }],
-          }],
-          events: [{ kind: 'native-call', identity: { ...context, nativeInvocationOrdinal: 1 }, phase: 'entering' }],
-          incompleteReasons: [],
-          unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-        },
+            schemaVersion: 1,
+            runId: input.runId,
+            workerEpoch: input.workerEpoch,
+            byteOrder: 'little-endian',
+            limits: input.limits,
+            calls: [{
+              context,
+              loadIdentity: { status: 'not-observed', reason: 'no-completed-load' },
+              outcome: 'fulfilled',
+              invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }],
+            }],
+            events: [{ kind: 'native-call', identity: { ...context, nativeInvocationOrdinal: 1 }, phase: 'entering' }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
         };
       });
       return capture;

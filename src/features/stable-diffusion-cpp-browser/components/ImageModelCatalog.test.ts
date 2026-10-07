@@ -22,11 +22,11 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list: vi.fn(async () => []),
-    scan: vi.fn(async () => ({ candidates: [], issues: [] })),
-    import: vi.fn(),
-    download,
-  },
+      list: vi.fn(async () => []),
+      scan: vi.fn(async () => ({ candidates: [], issues: [] })),
+      import: vi.fn(),
+      download,
+    },
   }))!;
   try {
     wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
@@ -136,11 +136,11 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   const view = {
     ...createDisabledImageLibrary(),
     downloadRecipe: vi.fn(async () => {
-    available.value = 3;
-  }),
+      available.value = 3;
+    }),
     chooseRecipe: vi.fn(),
-  ready: computed(() => available.value === 3),
-  recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }),
+    ready: computed(() => available.value === 3),
+    recipeAvailability: () => ({ available: available.value, total: 3, selected: false, bytes: 32 }),
   };
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
   await wrapper.get('[data-testid="recipe-option-z-image-turbo-diffusion"]').setValue('q8-0');

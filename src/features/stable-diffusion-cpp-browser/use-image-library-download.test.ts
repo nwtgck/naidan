@@ -215,8 +215,8 @@ it('deduplicates active downloads and pauses without publishing a completion', a
   const h = harness({
     initial: [],
     download: async ({ signal }) => new Promise((_resolve, reject) => {
-    signal?.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')), { once: true });
-  }),
+      signal?.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')), { once: true });
+    }),
   });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.downloading.value).toBe(true); expect(h.library.ready.value).toBe(false);
@@ -229,9 +229,9 @@ it('aborts a pending download on scope disposal and ignores late completion', as
   const h = harness({
     initial: [],
     download: async args => {
-    signal = args.signal;
-    await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
-  },
+      signal = args.signal;
+      await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
+    },
   });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(signal).toBeDefined());
@@ -249,11 +249,11 @@ it('keeps uninspected files unavailable until post-download inventory resolves',
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list,
-    scan: scanImageRepositories,
-    import: vi.fn(),
-    download: vi.fn(async () => undefined),
-  },
+      list,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download: vi.fn(async () => undefined),
+    },
   }))!;
   const operation = view.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());

@@ -21,9 +21,9 @@ export const inferenceGenerationEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('result'),
     result: z.discriminatedUnion('type', [
-    z.object({ type: z.literal('finished'), next: z.enum(['user', 'tool_results']) }),
-    z.object({ type: z.literal('interrupted'), reason: z.enum(['aborted', 'limit', 'unknown']) }),
-  ]),
+      z.object({ type: z.literal('finished'), next: z.enum(['user', 'tool_results']) }),
+      z.object({ type: z.literal('interrupted'), reason: z.enum(['aborted', 'limit', 'unknown']) }),
+    ]),
   }),
 ]);
 export type InferenceGenerationEvent = z.infer<typeof inferenceGenerationEventSchema>;

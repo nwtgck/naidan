@@ -18,14 +18,14 @@ export function createImageGenerationArchive({ snapshot, exportedAt }: { snapsho
       await add({
         path: 'README.txt',
         blob: new Blob([
-        'Naidan Image Generation session export\n\n',
-        'Experimental metadata may change between versions. This archive preserves the current canonical records and original image bytes.\n',
-        'metadata/catalog.json contains only tag definitions used by this session. Cross-session lineage references are preserved but other sessions are not copied.\n',
-        'images/<binary-object-id>.<extension> maps to binaryObjectId in the metadata. Input images and saved previews are included. Model weights are not included.\n',
-        'metadata/deleted-binaries records deliberate permanent deletions. Their bytes are excluded even when another run or draft still references them. Archived images are included.\n',
-        'Generated settings are snapshots, not a promise of identical pixels across devices, runtime versions, or modified model files.\n',
-        `Exported at: ${modifiedAt.toISOString()}\n`,
-      ], { type: 'text/plain' }),
+          'Naidan Image Generation session export\n\n',
+          'Experimental metadata may change between versions. This archive preserves the current canonical records and original image bytes.\n',
+          'metadata/catalog.json contains only tag definitions used by this session. Cross-session lineage references are preserved but other sessions are not copied.\n',
+          'images/<binary-object-id>.<extension> maps to binaryObjectId in the metadata. Input images and saved previews are included. Model weights are not included.\n',
+          'metadata/deleted-binaries records deliberate permanent deletions. Their bytes are excluded even when another run or draft still references them. Archived images are included.\n',
+          'Generated settings are snapshots, not a promise of identical pixels across devices, runtime versions, or modified model files.\n',
+          `Exported at: ${modifiedAt.toISOString()}\n`,
+        ], { type: 'text/plain' }),
       });
       for (const entry of snapshot.metadata) await add({ path: `metadata/${entry.path}`, blob: entry.blob });
       for (const { id, blob } of snapshot.binaries) {

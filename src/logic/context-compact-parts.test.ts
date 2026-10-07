@@ -64,14 +64,14 @@ messageId=a
     expect(messages[1]!.parts).toHaveLength(2);
     expect(messages[0]!.parts[0]).toMatchObject({
       result: {
-      content: {
-      type: 'text',
-      text: `\
+        content: {
+          type: 'text',
+          text: `\
 messageId=tool
 
   Result  `,
-    },
-    },
+        },
+      },
     });
     expect(tool.parts[0]).toMatchObject({ result: { content: { type: 'binary_object' } } });
   });
@@ -121,8 +121,8 @@ describe('context compaction tool text storage parity', () => {
       parts: [{
         type: 'tool_result',
         result: status === 'success'
-        ? { toolCallId, status, content }
-        : { toolCallId, status, error: { code: 'other', message: content } },
+          ? { toolCallId, status, content }
+          : { toolCallId, status, error: { code: 'other', message: content } },
       }],
     };
   }

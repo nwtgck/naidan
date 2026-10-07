@@ -43,22 +43,22 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       endpoint: worker,
       schema: imageDiagnosticEnvelopeSchema,
       listener({ value }) {
-      if (target.closed) return;
-      if (active?.state === target) {
-        const id = value.diagnostic.fields.runId;
-        if (id === undefined || id === active.runId) active.diagnostic({ diagnostic: value.diagnostic });
-      } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message ?? ''))) retire({ target });
-    },
+        if (target.closed) return;
+        if (active?.state === target) {
+          const id = value.diagnostic.fields.runId;
+          if (id === undefined || id === active.runId) active.diagnostic({ diagnostic: value.diagnostic });
+        } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message ?? ''))) retire({ target });
+      },
     }));
     target.unsubscribe.push(subscribeWorkerNotifications({
       endpoint: worker,
       schema: previewFrameSchema,
       listener({ value }) {
-      if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || active.cancelRequested || !active.enabled || value.mode !== active.mode) return;
-      try {
-        active.preview({ frame: value });
-      } catch { /* UI is observational */ }
-    },
+        if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || active.cancelRequested || !active.enabled || value.mode !== active.mode) return;
+        try {
+          active.preview({ frame: value });
+        } catch { /* UI is observational */ }
+      },
     }));
     const crash: EventListener = event => {
       if (active?.state === target) active.crash(event);
@@ -183,11 +183,11 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         if (signal.aborted) abort();
         const generated = target.remote.generate(request, workerProxy({
           value: ({ event }) => {
-          const parsed = progressSchema.safeParse(event);
-          if (parsed.success && !closed && active === operation && !signal.aborted && !disposed) try {
-            onProgress({ event: parsed.data });
-          } catch { /* observational */ }
-        },
+            const parsed = progressSchema.safeParse(event);
+            if (parsed.success && !closed && active === operation && !signal.aborted && !disposed) try {
+              onProgress({ event: parsed.data });
+            } catch { /* observational */ }
+          },
         }));
         // Queue the generate command before callbacks may request a live update.
         // Worker endpoint ordering then preserves even an immediate ON/OFF.
@@ -195,11 +195,11 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         switch (request.debug) {
         case 'on': publish({
           diagnostic: {
-          event: 'native',
-          stage: 'worker',
-          elapsedMs: Math.max(0, performance.now() - began),
-          fields: { metric: 'worker-selection', perfVersion: 1, runId: request.runId, reusedWorker: reused, reason: workerReason },
-        },
+            event: 'native',
+            stage: 'worker',
+            elapsedMs: Math.max(0, performance.now() - began),
+            fields: { metric: 'worker-selection', perfVersion: 1, runId: request.runId, reusedWorker: reused, reason: workerReason },
+          },
         }); break;
         case 'off': case undefined: break;
         default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
@@ -220,12 +220,12 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         try {
           onDiagnostic?.({
             diagnostic: {
-            event: cancelled ? 'cancelled' : 'failed',
-            stage: firstFailureStage ?? lastStage,
-            elapsedMs: performance.now() - began,
-            message: cancelled ? undefined : sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }),
-            fields: {},
-          },
+              event: cancelled ? 'cancelled' : 'failed',
+              stage: firstFailureStage ?? lastStage,
+              elapsedMs: performance.now() - began,
+              message: cancelled ? undefined : sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }),
+              fields: {},
+            },
           });
         } catch { /* observational */ }
         throw error;

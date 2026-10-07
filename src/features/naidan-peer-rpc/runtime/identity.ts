@@ -35,21 +35,21 @@ export function createRpcIdentityLoader({ read }: { read(): Promise<NaidanRpcIde
   return {
     load(): Promise<NaidanPipingIdentity> {
     // Invoked by an explicit connection command only, never by component mount.
-    if (!loading) {
-      const attempt = Promise.resolve().then(async () => {
-        const stored = await read();
-        return stored ? restoreRpcIdentity({ identity: stored }) : createNaidanPipingIdentity();
-      });
-      loading = attempt;
-      // A failed read/validation is not absence of a saved identity. Do not
-      // generate a replacement or retry automatically. Only the next explicit
-      // connection command may retry; a successful identity stays pinned.
-      void attempt.catch(() => {
-        if (loading === attempt) loading = undefined;
-      });
-    }
-    return loading;
-  },
+      if (!loading) {
+        const attempt = Promise.resolve().then(async () => {
+          const stored = await read();
+          return stored ? restoreRpcIdentity({ identity: stored }) : createNaidanPipingIdentity();
+        });
+        loading = attempt;
+        // A failed read/validation is not absence of a saved identity. Do not
+        // generate a replacement or retry automatically. Only the next explicit
+        // connection command may retry; a successful identity stays pinned.
+        void attempt.catch(() => {
+          if (loading === attempt) loading = undefined;
+        });
+      }
+      return loading;
+    },
   };
 }
 export const TEST_ONLY = {

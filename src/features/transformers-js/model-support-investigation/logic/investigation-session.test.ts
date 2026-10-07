@@ -114,8 +114,8 @@ describe('tab-memory investigation sessions', () => {
     const first = createInvestigationSessionView({ initialSnapshot: undefined });
     const result = await first.retire({
       dispose: async () => {
-      throw new Error('Worker termination unavailable');
-    },
+        throw new Error('Worker termination unavailable');
+      },
     });
     expect(result).toEqual({ status: 'failed', error: 'Worker termination unavailable' });
     const reopened = createInvestigationSessionView({ initialSnapshot: undefined });
@@ -129,8 +129,8 @@ describe('tab-memory investigation sessions', () => {
     const view = createInvestigationSessionView({ initialSnapshot: undefined });
     expect(await view.retire({
       dispose: () => {
-      throw new Error('Synchronous teardown failure');
-    },
+        throw new Error('Synchronous teardown failure');
+      },
     })).toEqual({
       status: 'failed',
       error: 'Synchronous teardown failure',

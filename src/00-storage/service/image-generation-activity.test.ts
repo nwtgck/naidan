@@ -100,8 +100,8 @@ describe('durable, wall-clock-independent image session activity', () => {
       store,
       run,
       writeInputs: async () => {
-      throw new Error('input failure');
-    },
+        throw new Error('input failure');
+      },
     })).rejects.toThrow('input failure');
     expect(await journal()).toEqual(before);
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);

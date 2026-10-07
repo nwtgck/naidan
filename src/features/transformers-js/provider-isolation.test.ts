@@ -121,10 +121,10 @@ describe('Explicit hosted Provider service ownership', () => {
       expect(tools).toEqual([{
         type: 'function',
         function: {
-        name: 'lookup_fixture',
-        description: 'Read a fixed synthetic value.',
-        parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'], additionalProperties: false },
-      },
+          name: 'lookup_fixture',
+          description: 'Read a fixed synthetic value.',
+          parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'], additionalProperties: false },
+        },
       }]);
       await onEvent({ event: { type: 'tool_start', index: 0 } });
       await onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });

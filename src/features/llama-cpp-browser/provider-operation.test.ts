@@ -44,13 +44,13 @@ describe('llama.cpp public generation across the real owned service lane', () =>
       provider,
       request: chatRequest(),
       tools: [{
-      name: 'lookup',
-      description: '',
-      parametersSchema: z.object({}),
-      execute: async () => {
-      entered.resolve();await release.promise;return { status: 'success', content: 'tool result' };
-    },
-    }],
+        name: 'lookup',
+        description: '',
+        parametersSchema: z.object({}),
+        execute: async () => {
+          entered.resolve();await release.promise;return { status: 'success', content: 'tool result' };
+        },
+      }],
       controller: new AbortController(),
       onToolEvent: () => {},
     });
@@ -72,13 +72,13 @@ describe('llama.cpp public generation across the real owned service lane', () =>
       provider,
       request: chatRequest(),
       tools: [{
-      name: 'lookup',
-      description: '',
-      parametersSchema: z.object({}),
-      execute: async ({ signal, onEvent }) => {
-      toolSignal = signal;notify = onEvent;entered.resolve();await release.promise;await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late tool progress' } });return { status: 'success', content: 'observed side effect' };
-    },
-    }],
+        name: 'lookup',
+        description: '',
+        parametersSchema: z.object({}),
+        execute: async ({ signal, onEvent }) => {
+          toolSignal = signal;notify = onEvent;entered.resolve();await release.promise;await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late tool progress' } });return { status: 'success', content: 'observed side effect' };
+        },
+      }],
       controller: new AbortController(),
       onToolEvent,
     });
@@ -118,8 +118,8 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     await provider.runChatOperation!({
       signal: undefined,
       operation: async ({ chat }) => {
-      const reader = chat(chatRequest())[Symbol.asyncIterator]();const first = await reader.next();expect(first.done).toBe(false);expect(ended).toBe(false);
-    },
+        const reader = chat(chatRequest())[Symbol.asyncIterator]();const first = await reader.next();expect(first.done).toBe(false);expect(ended).toBe(false);
+      },
     });
     expect(ended).toBe(true);expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });expect(factory).toHaveBeenCalledOnce();
@@ -129,8 +129,8 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     await service.runGenerationOperation({
       signal: undefined,
       operation: async ({ scope }) => {
-      escaped = scope.generate;
-    },
+        escaped = scope.generate;
+      },
     });
     expect(() => escaped!({ input: queuedRequest(), onEvent: () => {}, signal: undefined })).toThrow('closed');expect(worker.generate).not.toHaveBeenCalled();
   });
@@ -138,8 +138,8 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     await service.runGenerationOperation({
       signal: undefined,
       operation: async ({ scope }) => {
-      await expect(scope.generate({ input: queuedRequest(), onEvent: () => {}, signal: AbortSignal.abort() })).rejects.toThrow('aborted');
-    },
+        await expect(scope.generate({ input: queuedRequest(), onEvent: () => {}, signal: AbortSignal.abort() })).rejects.toThrow('aborted');
+      },
     });
     expect(worker.generate).not.toHaveBeenCalled();expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });expect(worker.generate).toHaveBeenCalledOnce();
@@ -195,8 +195,8 @@ it('reports only the translation queue and its own progress, never an earlier ch
     signal: new AbortController().signal,
     fakeLmDebugModeStatus: 'disabled',
     onProgress({ progress }) {
-    phases.push(progress.phase);
-  },
+      phases.push(progress.phase);
+    },
   });
   for (let i = 0; i < 10; i++) await Promise.resolve();
   firstProgress?.({ progress: { phase: 'loading', completed: 99, total: 100 } });

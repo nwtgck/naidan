@@ -183,14 +183,14 @@ it('does not re-read a creation descriptor and never replaces a native result wi
   let reads = 0;
   const descriptor = {
     get size() {
-    reads++; return 16;
-  },
+      reads++; return 16;
+    },
     usage: 0x80,
   };
   const raw = {
     get size() {
-    throw new Error('observation unavailable');
-  },
+      throw new Error('observation unavailable');
+    },
     usage: 0x80,
     mapAsync: vi.fn(async () => undefined),
   };

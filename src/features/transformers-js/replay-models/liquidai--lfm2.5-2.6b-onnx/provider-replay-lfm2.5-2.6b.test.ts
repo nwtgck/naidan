@@ -117,15 +117,15 @@ const observedToolMessagesSchema = z.array(z.object({
 const strictLfm26Tools = [{
   type: 'function',
   function: {
-  name: 'lookup_weather',
-  description: 'Return deterministic weather fixture data.',
-  parameters: {
-    type: 'object',
-    properties: { city: { type: 'string' } },
-    required: ['city'],
-    additionalProperties: false,
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+      additionalProperties: false,
+    },
   },
-},
 }];
 const LFM26_TOOL_INPUT_STOP = 'LFM2.6 tool input captured; no inference output supplied';
 
@@ -149,11 +149,11 @@ function captureLfm26Chat({ provider, request }: {
   return captureProviderChat({
     provider,
     request: {
-    ...request,
-    readBinaryObject: request.readBinaryObject,
-    debug: request.debug,
-    signal: request.signal ?? new AbortController().signal,
-  },
+      ...request,
+      readBinaryObject: request.readBinaryObject,
+      debug: request.debug,
+      signal: request.signal ?? new AbortController().signal,
+    },
   });
 }
 
@@ -1109,19 +1109,19 @@ A separate synthetic LFM conversation.<|im_end|>
                 id: toMessageId({ raw: 'message_1' }),
                 role: 'assistant',
                 parts: [{
-                type: 'reasoning',
-                text: firstReasoning,
-                completeness: 'partial',
-              }],
+                  type: 'reasoning',
+                  text: firstReasoning,
+                  completeness: 'partial',
+                }],
               },
               {
                 id: toMessageId({ raw: 'message_2' }),
                 role: 'user',
                 parts: [{
-                type: 'text',
-                text: 'Continue the synthetic conversation with a short response.',
-                completeness: 'complete',
-              }],
+                  type: 'text',
+                  text: 'Continue the synthetic conversation with a short response.',
+                  completeness: 'complete',
+                }],
               },
             ],
             parameters,
@@ -1491,34 +1491,34 @@ describe('LFM2.5 2.6B Provider / tools', () => {
         id: toMessageId({ raw: 'message_0' }),
         role: 'user',
         parts: [{
-        type: 'text',
-        text: scenario.messages[0].content,
-        completeness: 'complete',
-      }],
+          type: 'text',
+          text: scenario.messages[0].content,
+          completeness: 'complete',
+        }],
       },
       {
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',
         parts: [{
-        type: 'tool_call',
-        toolCall: {
-          id: toToolCallId({ raw: 'call_template_probe_1' }),
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        },
-      }],
+          type: 'tool_call',
+          toolCall: {
+            id: toToolCallId({ raw: 'call_template_probe_1' }),
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          },
+        }],
       },
       {
         id: toMessageId({ raw: 'message_2' }),
         role: 'tool',
         parts: [{
-        type: 'tool_result',
-        result: {
-          toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
-          status: 'success',
-          content: { type: 'text', text: scenario.messages[2].content },
-        },
-      }],
+          type: 'tool_result',
+          result: {
+            toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
+            status: 'success',
+            content: { type: 'text', text: scenario.messages[2].content },
+          },
+        }],
       },
     ];
     try {
@@ -1639,10 +1639,10 @@ Use the weather tool for Tokyo.<|im_end|>
           role: 'assistant',
           content: '',
           tool_calls: [{
-          id: 'call_template_probe_1',
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
-        }],
+            id: 'call_template_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
+          }],
         },
         nativeMappedMessages[2],
       ];
@@ -1858,34 +1858,34 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
           id: toMessageId({ raw: 'message_0' }),
           role: 'user',
           parts: [{
-          type: 'text',
-          text: 'Use the weather tool for Tokyo.',
-          completeness: 'complete',
-        }],
+            type: 'text',
+            text: 'Use the weather tool for Tokyo.',
+            completeness: 'complete',
+          }],
         },
         {
           id: toMessageId({ raw: 'message_1' }),
           role: 'assistant',
           parts: [{
-          type: 'tool_call',
-          toolCall: {
-            id: callId,
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-          },
-        }],
+            type: 'tool_call',
+            toolCall: {
+              id: callId,
+              type: 'function',
+              function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+            },
+          }],
         },
         {
           id: toMessageId({ raw: 'message_2' }),
           role: 'tool',
           parts: [{
-          type: 'tool_result',
-          result: {
-            toolCallId: callId,
-            status: 'success',
-            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-          },
-        }],
+            type: 'tool_result',
+            result: {
+              toolCallId: callId,
+              status: 'success',
+              content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+            },
+          }],
         },
       ];
       const tool: Tool = {
@@ -1960,9 +1960,9 @@ describe('LFM2.5 2.6B Provider / images', () => {
               id: toMessageId({ raw: 'message_0' }),
               role: 'user',
               parts: [
-              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
-            ],
+                { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+              ],
             }],
             parameters,
             tools: [],
@@ -2010,150 +2010,150 @@ const lfm26FullStructuredParts = {
       scenario: 'first-turn',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The user wants me to "Template probe user message." This is a bit ambiguous', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The user wants me to "Template probe user message." This is a bit ambiguous', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     { scenario: 'continuity', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
     {
       scenario: 'independent-next-input',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'system-user',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'supplied-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-none',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-low',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-medium',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-high',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'natural-tool-minimal',
       settlement: 'fulfilled',
       events: [
-      {
-        kind: 'assistant',
-        parts: [
-        { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The user wants me to use the weather tool for Tokyo. I need to call the lookup_weather function with the city parameter set to "Tokyo".', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
       ],
-        terminal: { type: 'none' },
-      },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      {
-        kind: 'assistant',
-        parts: [
-        { type: 'reasoning', text: 'The weather tool has returned the weather data for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ],
-        terminal: { type: 'finished', next: 'user' },
-      },
-    ],
     },
     {
       scenario: 'natural-tool-representative',
       settlement: 'fulfilled',
       events: [
-      {
-        kind: 'assistant',
-        parts: [
         {
-          type: 'reasoning',
-          text: `\
+          kind: 'assistant',
+          parts: [
+            {
+              type: 'reasoning',
+              text: `\
 The user wants me to:
 1. Use the lookup_weather tool for Tokyo
 2. Then provide a short answer based on the tool result
 
 Let me first call the lookup_weather function with city "Tokyo".`,
-          completeness: 'complete',
+              completeness: 'complete',
+            },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
         },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
+            { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+          ],
+          terminal: { type: 'finished', next: 'user' },
+        },
       ],
-        terminal: { type: 'none' },
-      },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      {
-        kind: 'assistant',
-        parts: [
-        { type: 'reasoning', text: 'The tool returned weather data for Tokyo: temperature is 20°C and the condition is "clear". I need to provide a short answer based on this result.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ],
-        terminal: { type: 'finished', next: 'user' },
-      },
-    ],
     },
     {
       scenario: 'structured-tool-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-        { type: 'reasoning', text: 'The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.', completeness: 'complete' },
-        { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
-      ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.', completeness: 'complete' },
+          { type: 'text', text: 'The weather in Tokyo is currently **clear** with a temperature of **20°C**.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
   legacyInputProjections: [{
     scenario: 'continuity',
     assistant: {
-    role: 'assistant',
-    content: '<think>The user wants me to "Template probe user message." This is a bit ambiguous',
-  },
+      role: 'assistant',
+      content: '<think>The user wants me to "Template probe user message." This is a bit ambiguous',
+    },
   }],
 } satisfies StructuredPartsReplayContract;
 
@@ -2224,28 +2224,28 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
                 id: toMessageId({ raw: 'message_0' }),
                 role: 'user',
                 parts: [{
-                type: 'text',
-                text: 'Template probe user message.',
-                completeness: 'complete',
-              }],
+                  type: 'text',
+                  text: 'Template probe user message.',
+                  completeness: 'complete',
+                }],
               },
               {
                 id: toMessageId({ raw: 'message_1' }),
                 role: 'assistant',
                 parts: [{
-                type: 'reasoning',
-                text: firstReasoning,
-                completeness: 'partial',
-              }],
+                  type: 'reasoning',
+                  text: firstReasoning,
+                  completeness: 'partial',
+                }],
               },
               {
                 id: toMessageId({ raw: 'message_2' }),
                 role: 'user',
                 parts: [{
-                type: 'text',
-                text: 'Continue the synthetic conversation with a short response.',
-                completeness: 'complete',
-              }],
+                  type: 'text',
+                  text: 'Continue the synthetic conversation with a short response.',
+                  completeness: 'complete',
+                }],
               },
             ],
             parameters,
@@ -2276,15 +2276,15 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
     await verifyCapturedFullReplay({
       reviewedPublicContract: {
-      correctedEvents: [],
-      correctedFinalizedStreams: undefined,
-      invalidatedOutputs: [],
-      preNativeRejections: [
-        { scenario: 'continuity', reason: 'LFM2 cannot close partial reasoning without inventing a native delimiter.' },
-        { scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' },
-      ],
-      structuredParts: lfm26FullStructuredParts,
-    },
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [
+          { scenario: 'continuity', reason: 'LFM2 cannot close partial reasoning without inventing a native delimiter.' },
+          { scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' },
+        ],
+        structuredParts: lfm26FullStructuredParts,
+      },
       unavailableOutputs: [],
       completeResult: undefined,
       expectedLoadReceipt: undefined,

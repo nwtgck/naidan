@@ -40,18 +40,18 @@ describe('MemoryStorageProvider', () => {
           modelId: undefined,
           lmParameters: undefined,
           parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, {
-          type: 'attachment',
-          attachment: {
-          id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
-          binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
-          originalName: 'attachment.txt',
-          mimeType: blob.type,
-          size: blob.size,
-          uploadedAt: 1,
-          status: 'memory',
-          blob,
-        },
-        }],
+            type: 'attachment',
+            attachment: {
+              id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
+              binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
+              originalName: 'attachment.txt',
+              mimeType: blob.type,
+              size: blob.size,
+              uploadedAt: 1,
+              status: 'memory',
+              blob,
+            },
+          }],
           replies: { items: [] },
         }],
       },
@@ -71,13 +71,13 @@ describe('MemoryStorageProvider', () => {
     const chatId = toChatId({ raw: 'detached-chat' });
     await provider.saveChatMeta({
       meta: {
-      id: chatId,
-      title: 'Detached',
-      createdAt: 1,
-      updatedAt: 1,
-      debugEnabled: false,
-      mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
-    },
+        id: chatId,
+        title: 'Detached',
+        createdAt: 1,
+        updatedAt: 1,
+        debugEnabled: false,
+        mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
+      },
     });
 
     await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
@@ -88,13 +88,13 @@ describe('MemoryStorageProvider', () => {
     const volumeId = toVolumeId({ raw: 'volume-detached-group' });
     await provider.saveChatGroup({
       chatGroup: {
-      id: toChatGroupId({ raw: 'detached-group' }),
-      name: 'Detached Group',
-      updatedAt: 1,
-      isCollapsed: false,
-      items: [],
-      mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
-    },
+        id: toChatGroupId({ raw: 'detached-group' }),
+        name: 'Detached Group',
+        updatedAt: 1,
+        isCollapsed: false,
+        items: [],
+        mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
+      },
     });
 
     await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
@@ -263,10 +263,10 @@ describe('MemoryStorageProvider', () => {
 
       await provider.saveHierarchy({
         hierarchy: {
-        items: [
-          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
-        ],
-      },
+          items: [
+            { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+          ],
+        },
       });
 
       const visibleChats = await provider.listChats();

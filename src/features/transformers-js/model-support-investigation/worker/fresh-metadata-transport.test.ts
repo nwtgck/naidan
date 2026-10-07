@@ -44,11 +44,11 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
     async runPartialInvestigation(request, _onEvent, onCheckpoint, collect) {
       const result = freshMetadataResultSchema.parse(await collect({
         request: {
-        modelId: request.modelId,
-        revision,
-        maximumBytes: 1024,
-        repositoryFiles: [{ path: 'config.json', size: 2 }],
-      },
+          modelId: request.modelId,
+          revision,
+          maximumBytes: 1024,
+          repositoryFiles: [{ path: 'config.json', size: 2 }],
+        },
       }));
       const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: request.runId, now: () => '2026-09-09T00:00:00.000Z' });
       const run = toPlanningWorkerRun({ run: { ...checkpoint.run, freshMetadata: result.summary, replayMetadata: result.replayMetadata } });
@@ -67,9 +67,9 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
       workerProxy({ value: ({ run, replayMetadata }) => checkpointReceived.resolve({ run, files: replayMetadata ?? [] }) }),
       workerProxy({
         value: async ({ request }) => {
-        expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
-        return expected;
-      },
+          expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
+          return expected;
+        },
       }),
     );
     const received = await checkpointReceived.promise;

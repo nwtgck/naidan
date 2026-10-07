@@ -14,8 +14,8 @@ describe('full document reload', () => {
     const history = {
       state: null,
       replaceState: vi.fn(() => {
-      throw new DOMException('blocked', 'SecurityError');
-    }),
+        throw new DOMException('blocked', 'SecurityError');
+      }),
     };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

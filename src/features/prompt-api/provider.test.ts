@@ -18,9 +18,9 @@ function userImage({ withText }: { withText: boolean }): ChatMessage {
     id: toMessageId({ raw: 'image-user' }),
     role: 'user',
     parts: [
-    ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
-    { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
-  ],
+      ...(withText ? [{ type: 'text' as const, text: 'Describe this image.', completeness: 'complete' as const }] : []),
+      { type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image.png', mimeType: 'image/png', size: 5, uploadedAt: 1, status: 'memory', blob: new Blob(['hello'], { type: 'image/png' }) } },
+    ],
   };
 }
 async function generate({ provider, messages, model, parameters, tools }: {

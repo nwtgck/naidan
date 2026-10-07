@@ -16,11 +16,11 @@ describe('one delivery paired with one decode', () => {
     const order: string[] = []; let finished = false;
     const task = pair.run({
       deliver: () => {
-      order.push('deliver'); return delivery.promise;
-    },
-    decode: () => {
-      order.push('decode'); return native.promise;
-    },
+        order.push('deliver'); return delivery.promise;
+      },
+      decode: () => {
+        order.push('decode'); return native.promise;
+      },
     }).finally(() => {
       finished = true;
     });
@@ -66,8 +66,8 @@ describe('one delivery paired with one decode', () => {
     const error = new Error('failed delivery'); const decode = vi.fn(async () => {});
     await expect(pair.run({
       deliver: () => {
-      if (failure === 'throw') throw error; return Promise.reject(error);
-    },
+        if (failure === 'throw') throw error; return Promise.reject(error);
+      },
       decode,
     })).rejects.toBe(error);
     expect(decode).not.toHaveBeenCalled();
@@ -85,8 +85,8 @@ describe('one delivery paired with one decode', () => {
     const result = pair.run({
       deliver: () => delivery.promise,
       decode: () => {
-      throw error;
-    },
+        throw error;
+      },
     }).catch(reason => {
       ended = true; return reason;
     });
@@ -108,8 +108,8 @@ describe('one delivery paired with one decode', () => {
     const decode = vi.fn(async () => {});
     await expect(pair.run({
       deliver: () => {
-      controller.abort();
-    },
+        controller.abort();
+      },
       decode,
     })).rejects.toThrow('aborted');
     expect(decode).not.toHaveBeenCalled(); expect(pair.counters.settledPairs).toBe(1);
@@ -144,8 +144,8 @@ describe('one delivery paired with one decode', () => {
     const decode = vi.fn(async () => {});
     await expect(pair.run({
       deliver: () => {
-      if (outcome === 'cancel') controller.abort(); else throw new Error('failure');
-    },
+        if (outcome === 'cancel') controller.abort(); else throw new Error('failure');
+      },
       decode,
     }))
       .rejects.toThrow(outcome === 'cancel' ? 'aborted' : 'failure');
@@ -166,8 +166,8 @@ describe('one delivery paired with one decode', () => {
       mode: 'overlap',
       signal: undefined,
       now: () => {
-      if (value === 'throw') throw new Error('clock'); return value;
-    },
+        if (value === 'throw') throw new Error('clock'); return value;
+      },
     });
     const decode = vi.fn(async () => {});
     await pair.run({ deliver: () => {}, decode });
@@ -184,8 +184,8 @@ describe('delivery/decode error identity during cancellation', () => {
     const pair = createDeliveryDecode({ mode, signal: controller.signal, now: undefined });
     await expect(pair.run({
       deliver: () => {
-      controller.abort(); throw failure;
-    },
+        controller.abort(); throw failure;
+      },
       decode,
     })).rejects.toBe(failure);
     expect(decode).not.toHaveBeenCalled();

@@ -125,16 +125,16 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
       signal,
       timeoutMs: undefined,
       operation: async () => {
-      const opened = await openStream();
-      // Retain ownership before resolving the setup race: abort can win after
-      // this callback returns but before its caller receives the stream.
-      openedStream = opened;
-      if (signal.aborted) {
-        if (!opened.locked) void opened.cancel(signal.reason).catch(() => undefined);
-        signal.throwIfAborted();
-      }
-      return opened;
-    },
+        const opened = await openStream();
+        // Retain ownership before resolving the setup race: abort can win after
+        // this callback returns but before its caller receives the stream.
+        openedStream = opened;
+        if (signal.aborted) {
+          if (!opened.locked) void opened.cancel(signal.reason).catch(() => undefined);
+          signal.throwIfAborted();
+        }
+        return opened;
+      },
     });
     // Do not let a producer's never-settling cancel hook hold the UI open.
     await createAbortableByteStream({ stream, signal, onCancel: undefined }).pipeTo(new WritableStream<Uint8Array>({
@@ -290,11 +290,11 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
       port: data.port1,
       signal: abort.signal,
       openStream: async () => {
-      signal.throwIfAborted();
-      // A broken/outdated peer must not consume the input during negotiation.
-      if (phase !== 'ready' && phase !== 'claimed') throw new Error('Download was not prepared');
-      return openStream();
-    },
+        signal.throwIfAborted();
+        // A broken/outdated peer must not consume the input during negotiation.
+        if (phase !== 'ready' && phase !== 'claimed') throw new Error('Download was not prepared');
+        return openStream();
+      },
     });
     void source.completed.catch(reason => fail({ reason }));
     channel = createValidatedMessagePort({

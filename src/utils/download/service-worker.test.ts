@@ -90,10 +90,10 @@ describe('streaming download Service Worker', () => {
     const source = f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-      },
-    }),
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+        },
+      }),
     });
     await vi.waitFor(() => expect(f.messages).toContainEqual(expect.objectContaining({ type: 'ready' })));
     expect(source.openStream).not.toHaveBeenCalled();
@@ -112,10 +112,10 @@ describe('streaming download Service Worker', () => {
     f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      start(controller) {
-      controller.close();
-    },
-    }),
+        start(controller) {
+          controller.close();
+        },
+      }),
     });
     for (const [clientId, method, range, status] of [
       ['other', 'GET', undefined, 403], ['owner', 'HEAD', undefined, 405],
@@ -144,10 +144,10 @@ describe('streaming download Service Worker', () => {
     f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-      },
-    }),
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+        },
+      }),
     });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     await expect(response.arrayBuffer()).rejects.toThrow('size mismatch');
@@ -161,11 +161,11 @@ describe('streaming download Service Worker', () => {
     const source = f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      pull() {
-        return new Promise(() => undefined);
-      },
-      cancel,
-    }),
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel,
+      }),
     });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     const reader = response.body!.getReader();
@@ -243,10 +243,10 @@ describe('fragment downloads', () => {
     const source = f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      start(controller) {
-      controller.enqueue(new Uint8Array([7, 8, 9])); controller.close();
-    },
-    }),
+        start(controller) {
+          controller.enqueue(new Uint8Array([7, 8, 9])); controller.close();
+        },
+      }),
     });
     await vi.waitFor(() => expect(f.messages).toContainEqual(expect.objectContaining({ type: 'ready', version: 2 })));
     expect(source.openStream).not.toHaveBeenCalled();
@@ -264,10 +264,10 @@ describe('fragment downloads', () => {
     const source = f.prepare({
       owner: 'owner',
       stream: new ReadableStream({
-      start(controller) {
-      controller.close();
-    },
-    }),
+        start(controller) {
+          controller.close();
+        },
+      }),
     });
     const u = new URL(f.url);
     const token = u.hash.substring('#?id='.length);

@@ -97,16 +97,16 @@ export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan
 export async function prepareModelRemoval({ id }: { id: string }): Promise<ModelRemovalRequest> {
   return withModelMutationLock({
     operation: () => withRemovalRepositoryLock({
-    id,
-    operation: async () => {
-    const { folder, selectedPaths, projectors, affectedVariants } = await removalTarget({ id, sharedProjector: 'include' });
-    const { files } = await scanDeletionTree({ folder });
-    const selected = selectedPaths ? files.filter(file => selectedPaths.includes(file.path)) : files;
-    const plan = deletionPlanSchema.parse({ id, sharedProjector: projectors.length ? 'keep' : undefined, files: selected.filter(file => !projectors.includes(file.path)) });
-    const sharedPlan = projectors.length ? deletionPlanSchema.parse({ id, sharedProjector: 'include', files: selected }) : undefined;
-    return { plan, sharedPlan, affectedVariants };
-  },
-  }),
+      id,
+      operation: async () => {
+        const { folder, selectedPaths, projectors, affectedVariants } = await removalTarget({ id, sharedProjector: 'include' });
+        const { files } = await scanDeletionTree({ folder });
+        const selected = selectedPaths ? files.filter(file => selectedPaths.includes(file.path)) : files;
+        const plan = deletionPlanSchema.parse({ id, sharedProjector: projectors.length ? 'keep' : undefined, files: selected.filter(file => !projectors.includes(file.path)) });
+        const sharedPlan = projectors.length ? deletionPlanSchema.parse({ id, sharedProjector: 'include', files: selected }) : undefined;
+        return { plan, sharedPlan, affectedVariants };
+      },
+    }),
   });
 }
 export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
@@ -117,20 +117,20 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
   return withRemovalRepositoryLock({
     id: plan.id,
     operation: async () => {
-    const { parent, name, folder, selectedPaths } = await removalTarget({ id: plan.id, sharedProjector: plan.sharedProjector });
-    const result = await executeDeletionPlan({ folder, plan, selectedPaths });
-    switch (result) {
-    case 'changed': return result;
-    case 'deleted': break;
-    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
-    }
-    try {
-      await parent.getDirectoryHandle(name); await parent.removeEntry(name);
-    } catch (error) {
-      if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
-    }
-    return result;
-  },
+      const { parent, name, folder, selectedPaths } = await removalTarget({ id: plan.id, sharedProjector: plan.sharedProjector });
+      const result = await executeDeletionPlan({ folder, plan, selectedPaths });
+      switch (result) {
+      case 'changed': return result;
+      case 'deleted': break;
+      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      }
+      try {
+        await parent.getDirectoryHandle(name); await parent.removeEntry(name);
+      } catch (error) {
+        if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
+      }
+      return result;
+    },
   });
 }
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {

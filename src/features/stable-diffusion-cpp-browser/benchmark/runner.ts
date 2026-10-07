@@ -53,21 +53,21 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
       plan,
       state: 'running',
       runs: plan.models.flatMap((_model, modelIndex) => Array.from({ length: plan.protocol.repeats }, (_, runIndex): BenchmarkRun => ({
-      record: {
-        id: `m${String(modelIndex + 1).padStart(3, '0')}-r${String(runIndex + 1).padStart(3, '0')}`,
-        modelIndex,
-        runIndex,
-        plannedKind: plan.protocol.mode === 'cold-warm' && runIndex > 0 ? 'warm' : 'cold',
-        status: 'queued',
-        metrics: { diagnosticsReceived: 0, invalidDiagnostics: 0, omittedDiagnostics: 0, steps: [] },
-        image: { status: 'no-output', bytes: 0 },
-        previewFrames: 0,
-        hiddenObserved: false,
-        visibilityChanges: 0,
-      },
-      diagnostics: '',
-      png: undefined,
-    }))),
+        record: {
+          id: `m${String(modelIndex + 1).padStart(3, '0')}-r${String(runIndex + 1).padStart(3, '0')}`,
+          modelIndex,
+          runIndex,
+          plannedKind: plan.protocol.mode === 'cold-warm' && runIndex > 0 ? 'warm' : 'cold',
+          status: 'queued',
+          metrics: { diagnosticsReceived: 0, invalidDiagnostics: 0, omittedDiagnostics: 0, steps: [] },
+          image: { status: 'no-output', bytes: 0 },
+          previewFrames: 0,
+          hiddenObserved: false,
+          visibilityChanges: 0,
+        },
+        diagnostics: '',
+        png: undefined,
+      }))),
     };
     snapshot = batch;
     let imageBytes = 0;
@@ -97,9 +97,9 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
                 changed({ hidden }) {
                 // The observer reports the initial state before subscribing.
                 // It matters for hiddenObserved, but is not a visibility change.
-                if (previousHidden !== undefined && previousHidden !== hidden) run.record.visibilityChanges++;
-                previousHidden = hidden; run.record.hiddenObserved ||= hidden;
-              },
+                  if (previousHidden !== undefined && previousHidden !== hidden) run.record.visibilityChanges++;
+                  previousHidden = hidden; run.record.hiddenObserved ||= hidden;
+                },
               });
               client ??= createClient();
               if (plan.protocol.timeoutSeconds) timer = setTimeout(() => {

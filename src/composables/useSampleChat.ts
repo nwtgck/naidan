@@ -93,16 +93,16 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
   await storageService.updateChatContent({
     id: chat.id,
     updater: () => ({
-    root: chat.root,
-    currentLeafId: chat.currentLeafId,
-  }),
+      root: chat.root,
+      currentLeafId: chat.currentLeafId,
+    }),
   });
   await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
   await storageService.updateHierarchy({
     updater: ({ current: curr }) => {
-    curr.items.push({ type: 'chat', id: chat.id });
-    return curr;
-  },
+      curr.items.push({ type: 'chat', id: chat.id });
+      return curr;
+    },
   });
 
   await loadChats();

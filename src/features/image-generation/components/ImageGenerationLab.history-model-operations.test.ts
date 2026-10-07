@@ -22,12 +22,12 @@ vi.mock('@/composables/useSettings', async () => {
 });
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  createImageGenerationHistoryWriter: () => ({ ready: async () => {}, save: (...args: unknown[]) => mocks.save(...args) }),
-  saveImageGeneration: (...args: unknown[]) => mocks.save(...args),
-  getCurrentType: () => 'opfs',
-  subscribeToChanges: () => () => {},
-  getFile: (...args: unknown[]) => mocks.getFile(...args),
-},
+    createImageGenerationHistoryWriter: () => ({ ready: async () => {}, save: (...args: unknown[]) => mocks.save(...args) }),
+    saveImageGeneration: (...args: unknown[]) => mocks.save(...args),
+    getCurrentType: () => 'opfs',
+    subscribeToChanges: () => () => {},
+    getFile: (...args: unknown[]) => mocks.getFile(...args),
+  },
 }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
   const { artifactFixture } = await import('@/features/stable-diffusion-cpp-browser/test-fixtures');
@@ -38,11 +38,11 @@ let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 function readyInventory() {
   return scanImageRepositories({
     repositories: selectedRecipeFiles({ recipe: imageModelRecipes[0]!, selections: {} }).map(source => {
-    const name = source.path.split('/').at(-1)!;
-    const file = source.role === 'vae' ? safetensorsFixture({ name, tensors: fluxVaeTensors }).file
-      : ggufFixture({ name, tensors: source.role === 'diffusion' ? zImageTensors : qwenTextTensors({ width: 2560, layers: 36 }), metadata: source.role === 'lm' ? { 'general.architecture': 'qwen3' } : { 'general.name': 'Z-Image-Turbo' }, extraBytes: 0 }).file;
-    return { id: `huggingface.co/${source.repository}/resolve/main`, name: source.repository, files: [{ path: source.path, file }] };
-  }),
+      const name = source.path.split('/').at(-1)!;
+      const file = source.role === 'vae' ? safetensorsFixture({ name, tensors: fluxVaeTensors }).file
+        : ggufFixture({ name, tensors: source.role === 'diffusion' ? zImageTensors : qwenTextTensors({ width: 2560, layers: 36 }), metadata: source.role === 'lm' ? { 'general.architecture': 'qwen3' } : { 'general.name': 'Z-Image-Turbo' }, extraBytes: 0 }).file;
+      return { id: `huggingface.co/${source.repository}/resolve/main`, name: source.repository, files: [{ path: source.path, file }] };
+    }),
     signal: undefined,
   });
 }

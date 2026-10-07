@@ -26,8 +26,8 @@ export async function rendezvousRoom({ code, origin }: { code: string; origin: s
   });
   return new Uint8Array(await crypto.subtle.digest('SHA-256', fields({
     parts: [
-    ascii({ text: 'piping-rendezvous/v2' }), ascii({ text: url.origin }), ascii({ text: normalizeRendezvousCode({ code }) }),
-  ],
+      ascii({ text: 'piping-rendezvous/v2' }), ascii({ text: url.origin }), ascii({ text: normalizeRendezvousCode({ code }) }),
+    ],
   })));
 }
 export async function rendezvousRoute({ room, kind, attempts }: {
@@ -60,7 +60,7 @@ export class RendezvousChannel {
     this.journal = new JournalChannel({ role, attemptI, attemptR });
     this.digest = crypto.subtle.digest('SHA-256', fields({
       parts: [ascii({ text: 'piping-rendezvous-binding/v2' }),
-      room, attemptI, attemptR, this.challenge],
+        room, attemptI, attemptR, this.challenge],
     })).then(bytes => new Uint8Array(bytes));
     void this.digest.catch(() => {});
   }

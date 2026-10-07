@@ -63,14 +63,14 @@ it('renders raw body and reasoning in part order including explicit empty parts'
 it('renders tool results without flattening them into body text', () => {
   const w = render({
     node: {
-    id: toMessageId({ raw: 't' }),
-    role: 'tool',
-    createdAt: 0,
-    modelId: undefined,
-    lmParameters: undefined,
-    replies: { items: [] },
-    parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }],
-  },
+      id: toMessageId({ raw: 't' }),
+      role: 'tool',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+      replies: { items: [] },
+      parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'text', text: '<think>result</think>' } } }],
+    },
   });
   expect(w.get('[data-testid="debug-part"][data-part-type="tool_result"]').text()).toContain('<think>result</think>');
   expect(w.find('[data-testid="copy-content-btn"]').exists()).toBe(false);

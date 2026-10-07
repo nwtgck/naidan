@@ -58,10 +58,10 @@ describe('collectChatMedia', () => {
       id: 'u',
       createdAt: 1,
       parts: [
-      { type: 'attachment', attachment: file },
-      { type: 'attachment', attachment: file },
-      { type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'partial' },
-    ],
+        { type: 'attachment', attachment: file },
+        { type: 'attachment', attachment: file },
+        { type: 'text', text: imageBlock({ id: 'same-binary' }), completeness: 'partial' },
+      ],
     });
     const before = collectChatMedia({ messages: [message], order: 'forward' })[0]!.items;
     expect(new Set(before.map(item => item.id)).size).toBe(3);
@@ -109,10 +109,10 @@ invalid-json
       id: 'u',
       createdAt: 1,
       parts: [
-      { type: 'attachment', attachment: attachment({ status: 'missing' }) },
-      { type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
-      { type: 'attachment', attachment: memory },
-    ],
+        { type: 'attachment', attachment: attachment({ status: 'missing' }) },
+        { type: 'attachment', attachment: { ...persisted, mimeType: 'text/plain' } },
+        { type: 'attachment', attachment: memory },
+      ],
     });
     const groups = collectChatMedia({ messages: [message], order: 'forward' });
     expect(groups[0]?.items).toHaveLength(1);

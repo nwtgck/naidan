@@ -21,8 +21,8 @@ export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Reado
       if (allowExternalWasmAssets) return;
       rejectAssets({
         assets: Object.values(bundle)
-        .filter(output => output.type === 'asset' && isWasmAsset({ fileName: output.fileName }))
-        .map(output => output.fileName),
+          .filter(output => output.type === 'asset' && isWasmAsset({ fileName: output.fileName }))
+          .map(output => output.fileName),
       });
     },
     // publicDir copies are not Rollup assets. Check disk before the release
@@ -37,7 +37,7 @@ export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Reado
         const entries = await readdir(directory, { recursive: true, withFileTypes: true });
         rejectAssets({
           assets: entries.filter(entry => entry.isFile() && isWasmAsset({ fileName: entry.name }))
-          .map(entry => path.relative(directory, path.join(entry.parentPath, entry.name))),
+            .map(entry => path.relative(directory, path.join(entry.parentPath, entry.name))),
         });
       },
     },

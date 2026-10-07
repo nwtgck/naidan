@@ -70,9 +70,9 @@ export function createGptOssGeneration({ emit }: {
         id: generateId<ToolCallId>(),
         type: 'function',
         function: {
-        name: message.recipient!.slice('functions.'.length),
-        arguments: message.content,
-      },
+          name: message.recipient!.slice('functions.'.length),
+          arguments: message.content,
+        },
       };
       parts.push({ type: 'tool_call', toolCall });
       emit({ event: { type: 'tool_call', index: active.index, toolCall } });
@@ -134,11 +134,11 @@ export function createGptOssGeneration({ emit }: {
       }
       emit({
         event: {
-        type: 'result',
-        result: terminal === undefined
-        ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal },
-      },
+          type: 'result',
+          result: terminal === undefined
+            ? { type: 'interrupted', reason }
+            : { type: 'finished', next: terminal },
+        },
       });
       active = undefined; activePart = undefined;
     },

@@ -27,12 +27,12 @@ describe('WelcomeScreen.vue', () => {
   it('renders ephemeral storage message when memory storage is active', async () => {
     TEST_ONLY.__testOnlySetSettings({
       newSettings: {
-      storageType: 'memory',
-      endpoint: { type: 'openai', url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      providerProfiles: [],
-      mounts: [],
-    } as Settings,
+        storageType: 'memory',
+        endpoint: { type: 'openai', url: '' },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        providerProfiles: [],
+        mounts: [],
+      } as Settings,
     });
 
     const wrapper = mount(WelcomeScreen);

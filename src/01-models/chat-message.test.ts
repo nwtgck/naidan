@@ -97,12 +97,12 @@ describe('createChatMessageSnapshot', () => {
       createdAt: 1,
       replies: { items: [] },
       parts: [
-      { type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
-    ],
+        { type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
+      ],
     };
     const expected = structuredClone(node.parts);
     const snapshot = createChatMessageSnapshot({ node });

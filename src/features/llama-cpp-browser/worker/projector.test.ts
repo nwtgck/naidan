@@ -13,8 +13,8 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     mtmd_context_params_default: vi.fn(async () => {}),
     mtmd_init_from_file: vi.fn(async () => 500n),
     mtmd_free: vi.fn(async () => {
-    order.push('native-free');
-  }),
+      order.push('native-free');
+    }),
   };
   const addFunction = vi.fn(() => 7); const removeFunction = vi.fn(() => {
     order.push('callback-free');

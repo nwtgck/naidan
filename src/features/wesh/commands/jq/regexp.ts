@@ -8689,12 +8689,12 @@ export function collectJqRegularExpressionMatches({
       : boundedSimpleCaptureHistoryInputCodePointLength({
         input,
         allowUniformSevenCodePoints: allowsUniformSevenCodePointCaptureHistoryReplay({
-            compatiblePatternMode: compiled.uniformSevenCodePointCaptureHistoryReplayCompatible,
-            global,
-            ignoreCase: compiled.ignoreCase,
-            longest: compiled.longest,
-            hasCaseFoldedBackreference,
-          }),
+          compatiblePatternMode: compiled.uniformSevenCodePointCaptureHistoryReplayCompatible,
+          global,
+          ignoreCase: compiled.ignoreCase,
+          longest: compiled.longest,
+          hasCaseFoldedBackreference,
+        }),
         allowSingletonRequiredSevenCodePoints: compiled.singletonRequiredSevenCodePointCaptureHistoryReplayCompatible
           && !compiled.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
       });

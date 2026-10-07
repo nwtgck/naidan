@@ -59,13 +59,13 @@ export function createEmbeddedBinaryPlugin({ binaries, diagnostics }: {
       // second gzip payload or a decoder polyfill; the actual Worker probes Brotli.
       const compressed = brotliCompressSync(bytes, {
         params: {
-        [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC,
-        [constants.BROTLI_PARAM_QUALITY]: 11,
+          [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC,
+          [constants.BROTLI_PARAM_QUALITY]: 11,
           // The reviewed 8.2 MB Wasm benefits from window 23; 24 adds no size saving.
           // Keep standard Brotli, not the incompatible large-window extension.
-        [constants.BROTLI_PARAM_LGWIN]: 23,
-        [constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
-      },
+          [constants.BROTLI_PARAM_LGWIN]: 23,
+          [constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
+        },
       });
       const base64 = compressed.toString('base64');
       records.set(id, {

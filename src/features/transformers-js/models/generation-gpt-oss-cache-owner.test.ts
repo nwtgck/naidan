@@ -80,8 +80,8 @@ describe('GPT-OSS public conversation cache ownership', () => {
             id: toMessageId({ raw: 'user' }),
             role: 'user',
             parts: [
-            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
-          ],
+              { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+            ],
           }],
         },
       });
@@ -108,21 +108,21 @@ describe('GPT-OSS public conversation cache ownership', () => {
               id: toMessageId({ raw: 'separate-assistant' }),
               role: 'assistant',
               parts: [
-              { type: 'text', text: '', completeness: 'complete' },
-              { type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-            ],
+                { type: 'text', text: '', completeness: 'complete' },
+                { type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+              ],
             },
             {
               id: toMessageId({ raw: 'separate-tool' }),
               role: 'tool',
               parts: [{
-              type: 'tool_result',
-              result: {
-              toolCallId: id,
-              status: 'success',
-              content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
-            },
-            }],
+                type: 'tool_result',
+                result: {
+                  toolCallId: id,
+                  status: 'success',
+                  content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
+                },
+              }],
             },
           ],
         },
@@ -141,8 +141,8 @@ describe('GPT-OSS public conversation cache ownership', () => {
             id: toMessageId({ raw: 'user' }),
             role: 'user',
             parts: [
-            { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
-          ],
+              { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
+            ],
           }],
         },
       });

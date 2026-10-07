@@ -434,141 +434,141 @@ async function exportChat() {
       signal: undefined,
       openStream: async () => createTextExportStream({
         produce: async ({ write }) => {
-        await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
+          await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
 
-        const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
-          for (const item of items) {
-            const itemType = item.type;
-            switch (itemType) {
-            case 'message': {
+          const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
+            for (const item of items) {
+              const itemType = item.type;
+              switch (itemType) {
+              case 'message': {
               // Generating tool arguments are presentation-only and must not enter exports.
-              if (item.toolCallDrafts?.length) continue;
-              const msg = item.node;
-              const role = (() => {
-                const r = msg.role;
-                switch (r) {
-                case 'user': return userLabel;
-                case 'assistant': return aiLabel;
-                case 'system': return systemLabel;
-                case 'tool': return toolLabel;
-                default: {
-                  const _ex: never = r;
-                  return (_ex as string);
-                }
-                }
-              })();
-              const prefix = (() => {
-                const mode = item.mode;
-                switch (mode) {
-                case 'thinking': return `[${thoughtLabel}]: `;
-                case 'content':
-                case 'tool_calls':
-                case 'waiting':
-                  return '';
-                default: {
-                  const _ex: never = mode;
-                  return _ex;
-                }
-                }
-              })();
-              await write({ text: `## ${role}:\n${prefix}` });
-              await write({ text: item.partContent ?? getDisplayedMessageText({ message: msg }) });
-              await write({ text: '\n\n' });
-              break;
-            }
-            case 'tool_group': {
-              await write({ text: `## ${toolExecutionsLabel}:\n` });
-              for (const tc of item.toolCalls) {
-                let resultStr: string | Blob = '';
-                let errorPrefix = '';
-                const status = tc.result.status;
-                switch (status) {
-                case 'success': {
-                  const contentType = tc.result.content.type;
-                  switch (contentType) {
-                  case 'text':
-                    resultStr = tc.result.content.text;
-                    break;
-                  case 'binary_object': {
-                    const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
-                    resultStr = blob ?? binaryObjectMissing;
-                    break;
-                  }
+                if (item.toolCallDrafts?.length) continue;
+                const msg = item.node;
+                const role = (() => {
+                  const r = msg.role;
+                  switch (r) {
+                  case 'user': return userLabel;
+                  case 'assistant': return aiLabel;
+                  case 'system': return systemLabel;
+                  case 'tool': return toolLabel;
                   default: {
-                    const _ex: never = contentType;
-                    resultStr = `[Unknown content type: ${_ex}]`;
+                    const _ex: never = r;
+                    return (_ex as string);
                   }
                   }
-                  break;
-                }
-                case 'error': {
-                  const messageType = tc.result.error.message.type;
-                  switch (messageType) {
-                  case 'text':
-                    resultStr = tc.result.error.message.text;
-                    break;
-                  case 'binary_object': {
-                    const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
-                    resultStr = blob ?? binaryErrorDetailMissing;
-                    errorPrefix = `Error [${tc.result.error.code}]: `;
-                    break;
-                  }
+                })();
+                const prefix = (() => {
+                  const mode = item.mode;
+                  switch (mode) {
+                  case 'thinking': return `[${thoughtLabel}]: `;
+                  case 'content':
+                  case 'tool_calls':
+                  case 'waiting':
+                    return '';
                   default: {
-                    const _ex: never = messageType;
-                    resultStr = `[Unknown error message type: ${_ex}]`;
+                    const _ex: never = mode;
+                    return _ex;
                   }
                   }
-                  break;
-                }
-                case 'executing':
-                  resultStr = toolStillExecuting;
-                  break;
-                default: {
-                  const _ex: never = status;
-                  resultStr = `[Unknown status: ${_ex}]`;
-                }
-                }
-                await write({ text: `### ${tc.call.function.name}\n${argumentsLabel}: ` });
-                await write({ text: tc.call.function.arguments });
-                await write({ text: `\n${resultLabel}: ${errorPrefix}` });
-                await write({ text: resultStr });
+                })();
+                await write({ text: `## ${role}:\n${prefix}` });
+                await write({ text: item.partContent ?? getDisplayedMessageText({ message: msg }) });
                 await write({ text: '\n\n' });
+                break;
               }
-              break;
-            }
-            case 'process_sequence': {
-              const summaryParts: string[] = [];
-              if (item.stats.thinkingSteps > 0) {
-                summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
-              }
-              if (item.stats.toolCallCount > 0) {
-                summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
-              }
-              if (item.stats.toolNames.length > 0) {
-                const displayedToolNames = item.stats.toolNames.slice(0, 2);
-                let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
-                if (item.stats.toolNames.length > displayedToolNames.length) {
-                  toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+              case 'tool_group': {
+                await write({ text: `## ${toolExecutionsLabel}:\n` });
+                for (const tc of item.toolCalls) {
+                  let resultStr: string | Blob = '';
+                  let errorPrefix = '';
+                  const status = tc.result.status;
+                  switch (status) {
+                  case 'success': {
+                    const contentType = tc.result.content.type;
+                    switch (contentType) {
+                    case 'text':
+                      resultStr = tc.result.content.text;
+                      break;
+                    case 'binary_object': {
+                      const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
+                      resultStr = blob ?? binaryObjectMissing;
+                      break;
+                    }
+                    default: {
+                      const _ex: never = contentType;
+                      resultStr = `[Unknown content type: ${_ex}]`;
+                    }
+                    }
+                    break;
+                  }
+                  case 'error': {
+                    const messageType = tc.result.error.message.type;
+                    switch (messageType) {
+                    case 'text':
+                      resultStr = tc.result.error.message.text;
+                      break;
+                    case 'binary_object': {
+                      const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
+                      resultStr = blob ?? binaryErrorDetailMissing;
+                      errorPrefix = `Error [${tc.result.error.code}]: `;
+                      break;
+                    }
+                    default: {
+                      const _ex: never = messageType;
+                      resultStr = `[Unknown error message type: ${_ex}]`;
+                    }
+                    }
+                    break;
+                  }
+                  case 'executing':
+                    resultStr = toolStillExecuting;
+                    break;
+                  default: {
+                    const _ex: never = status;
+                    resultStr = `[Unknown status: ${_ex}]`;
+                  }
+                  }
+                  await write({ text: `### ${tc.call.function.name}\n${argumentsLabel}: ` });
+                  await write({ text: tc.call.function.arguments });
+                  await write({ text: `\n${resultLabel}: ${errorPrefix}` });
+                  await write({ text: resultStr });
+                  await write({ text: '\n\n' });
                 }
-                summaryParts.push(toolSummary);
+                break;
               }
-              const summary = summaryParts.length > 0
-                ? summaryParts.join(' • ')
-                : await ensureStrings.AssistantProcessSequence__process_details();
-              await write({ text: `## ${processSequenceLabel}: ${summary}\n` });
-              await processFlowItems({ items: item.items });
-              break;
+              case 'process_sequence': {
+                const summaryParts: string[] = [];
+                if (item.stats.thinkingSteps > 0) {
+                  summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
+                }
+                if (item.stats.toolCallCount > 0) {
+                  summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
+                }
+                if (item.stats.toolNames.length > 0) {
+                  const displayedToolNames = item.stats.toolNames.slice(0, 2);
+                  let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+                  if (item.stats.toolNames.length > displayedToolNames.length) {
+                    toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+                  }
+                  summaryParts.push(toolSummary);
+                }
+                const summary = summaryParts.length > 0
+                  ? summaryParts.join(' • ')
+                  : await ensureStrings.AssistantProcessSequence__process_details();
+                await write({ text: `## ${processSequenceLabel}: ${summary}\n` });
+                await processFlowItems({ items: item.items });
+                break;
+              }
+              default: {
+                const _ex: never = itemType;
+                console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
+              }
+              }
             }
-            default: {
-              const _ex: never = itemType;
-              console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
-            }
-            }
-          }
-        };
+          };
 
-        await processFlowItems({ items: flow });
-      },
+          await processFlowItems({ items: flow });
+        },
       }),
     });
   } catch (error) {
@@ -609,12 +609,12 @@ async function openChatFileExplorer() {
 
   openFileExplorer({
     options: {
-    kind: 'wesh-mounts',
-    title: await ensureStrings.fileExplorer__files(),
-    rootName: await ensureStrings.fileExplorer__files(),
-    mounts,
-    initialPath: undefined,
-  },
+      kind: 'wesh-mounts',
+      title: await ensureStrings.fileExplorer__files(),
+      rootName: await ensureStrings.fileExplorer__files(),
+      mounts,
+      initialPath: undefined,
+    },
   });
 }
 

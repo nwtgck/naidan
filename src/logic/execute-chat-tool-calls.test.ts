@@ -72,12 +72,12 @@ describe('completed tool call execution', () => {
     const seen: string[] = [];
     const implementation = tool({
       execute: async ({ approvalContext, onEvent }) => {
-      expect(approvalContext).toBe(approval);
-      await onEvent?.({ event: { type: 'started' } });
-      expect(seen).toEqual(['started']);
-      await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'line' } });
-      return { status: 'success', content: 'done' };
-    },
+        expect(approvalContext).toBe(approval);
+        await onEvent?.({ event: { type: 'started' } });
+        expect(seen).toEqual(['started']);
+        await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'line' } });
+        return { status: 'success', content: 'done' };
+      },
     });
     const completed = call({ id: 'call', name: 'f', argumentsText: '{}' });
     await executeChatToolCalls({
@@ -89,8 +89,8 @@ describe('completed tool call execution', () => {
       onChange: () => {},
       persistContent: inline,
       onEvent: async ({ toolCallId, event }) => {
-      await Promise.resolve(); expect(toolCallId).toBe(completed.id); seen.push(event.type);
-    },
+        await Promise.resolve(); expect(toolCallId).toBe(completed.id); seen.push(event.type);
+      },
     });
     expect(seen).toEqual(['started', 'output']);
   });
@@ -104,8 +104,8 @@ describe('completed tool call execution', () => {
       signal: undefined,
       onChange: () => {},
       persistContent: async () => {
-      expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { type: 'text', text: 'already executed' } }); throw fault;
-    },
+        expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { type: 'text', text: 'already executed' } }); throw fault;
+      },
     })).rejects.toBe(fault);
     expect(perform).toHaveBeenCalledTimes(1); expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'already executed' } });
   });
@@ -121,11 +121,11 @@ describe('completed tool call execution', () => {
       node,
       signal: undefined,
       onChange: () => {
-      order.push('notify');
-    },
+        order.push('notify');
+      },
       persistContent: async () => {
-      order.push('persist'); await Promise.resolve(); return { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) };
-    },
+        order.push('persist'); await Promise.resolve(); return { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) };
+      },
     });
     expect(order).toEqual(['notify', 'execute', 'notify', 'persist', 'notify', 'notify', 'execute', 'notify', 'persist', 'notify']);
     expect(node.parts[1]?.result).toMatchObject({ content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) } });
@@ -153,10 +153,10 @@ describe('completed tool call execution', () => {
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async () => {
-      controller.abort(reason); throw reason;
-    },
-    })],
+        execute: async () => {
+          controller.abort(reason); throw reason;
+        },
+      })],
       node,
       signal: controller.signal,
       onChange: () => {},
@@ -171,18 +171,18 @@ describe('completed tool call execution', () => {
     await expect(executeChatToolCalls({
       calls: [completed],
       tools: [tool({
-      execute: async ({ onEvent }) => {
-      await onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
-    },
-    })],
+        execute: async ({ onEvent }) => {
+          await onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
+        },
+      })],
       node,
       signal: undefined,
       approvalContext: undefined,
       onChange: () => {},
       persistContent: inline,
       onEvent: () => {
-      throw fault;
-    },
+        throw fault;
+      },
     })).rejects.toBe(fault);
     expect(node.parts[0]?.result.status).toBe('error');
   });
@@ -195,8 +195,8 @@ describe('completed tool call execution', () => {
       node,
       signal: undefined,
       onChange: () => {
-      throw fault;
-    },
+        throw fault;
+      },
       persistContent: inline,
     })).rejects.toBe(fault);
     expect(perform).not.toHaveBeenCalled(); expect(node.parts[0]?.result.status).toBe('error');
@@ -217,8 +217,8 @@ describe('completed tool call execution', () => {
       node: fresh(),
       signal: undefined,
       onChange: () => {
-      second.function.arguments = '{"n":99}';
-    },
+        second.function.arguments = '{"n":99}';
+      },
       persistContent: inline,
     });
     expect(perform.mock.calls[1]?.[0].args).toEqual({ n: 7 });
@@ -229,10 +229,10 @@ describe('completed tool call execution', () => {
     await executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async ({ onEvent }) => {
-      late = onEvent; return { status: 'success', content: 'done' };
-    },
-    })],
+        execute: async ({ onEvent }) => {
+          late = onEvent; return { status: 'success', content: 'done' };
+        },
+      })],
       node: fresh(),
       signal: undefined,
       approvalContext: undefined,
@@ -249,18 +249,18 @@ describe('completed tool call execution', () => {
     const running = executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async ({ onEvent }) => {
-      void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
-    },
-    })],
+        execute: async ({ onEvent }) => {
+          void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
+        },
+      })],
       node,
       signal: undefined,
       approvalContext: undefined,
       onChange: () => {},
       persistContent: inline,
       onEvent: async () => {
-      entered.resolve(); await release.promise;
-    },
+        entered.resolve(); await release.promise;
+      },
     }).then(() => {
       settled = true;
     });
@@ -279,8 +279,8 @@ describe('completed tool call execution', () => {
       signal: undefined,
       onChange: () => {},
       persistContent: async () => {
-      node.parts = []; return { type: 'binary_object', id: toBinaryObjectId({ raw: 'unlinked' }) };
-    },
+        node.parts = []; return { type: 'binary_object', id: toBinaryObjectId({ raw: 'unlinked' }) };
+      },
     })).rejects.toThrow('changed during persistence');
     expect(node.parts).toEqual([]); expect(perform).toHaveBeenCalledTimes(1);
   });
@@ -290,18 +290,18 @@ describe('completed tool call execution', () => {
     await expect(executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async ({ onEvent }) => {
-      void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'known outcome' };
-    },
-    })],
+        execute: async ({ onEvent }) => {
+          void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'known outcome' };
+        },
+      })],
       node,
       signal: undefined,
       approvalContext: undefined,
       onChange: () => {},
       persistContent: inline,
       onEvent: async () => {
-      await Promise.resolve(); throw fault;
-    },
+        await Promise.resolve(); throw fault;
+      },
     })).rejects.toBe(fault);
     expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'known outcome' } });
   });
@@ -321,12 +321,12 @@ describe('completed tool call execution', () => {
     await execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async () => {
-      node.parts.unshift(inserted);
-      await Promise.resolve();
-      return { status: 'success', content: 'done' };
-    },
-    })],
+        execute: async () => {
+          node.parts.unshift(inserted);
+          await Promise.resolve();
+          return { status: 'success', content: 'done' };
+        },
+      })],
       node,
       signal: undefined,
       onChange: () => {},
@@ -347,12 +347,12 @@ describe('completed tool call execution', () => {
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
-      execute: async () => {
-      node.parts[0] = replacement;
-      await Promise.resolve();
-      return { status: 'success', content: 'owned outcome' };
-    },
-    })],
+        execute: async () => {
+          node.parts[0] = replacement;
+          await Promise.resolve();
+          return { status: 'success', content: 'owned outcome' };
+        },
+      })],
       node,
       signal: undefined,
       onChange: () => {},

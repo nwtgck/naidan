@@ -19,13 +19,13 @@ beforeEach(async () => {
   });
   wrapper = mount(ImageInputControls, {
     props: {
-    modelValue: inputs,
-    disabled: false,
-    active: true,
-    'onUpdate:modelValue': value => {
-      inputs = value; void wrapper?.setProps({ modelValue: value });
+      modelValue: inputs,
+      disabled: false,
+      active: true,
+      'onUpdate:modelValue': value => {
+        inputs = value; void wrapper?.setProps({ modelValue: value });
+      },
     },
-  },
   });
 });
 afterEach(() => {
@@ -209,8 +209,8 @@ it.each(['unavailable', 'denied', 'no-image'] as const)('explains %s clipboard a
   case 'unavailable': Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); break;
   case 'denied': clipboard({
     read: async () => {
-    throw new DOMException('Denied', 'NotAllowedError');
-  },
+      throw new DOMException('Denied', 'NotAllowedError');
+    },
   }); break;
   case 'no-image': clipboard({ read: async () => [clipboardItem({ types: ['text/plain'] })] }); break;
   default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }

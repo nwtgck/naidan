@@ -65,17 +65,17 @@ describe('SearchPreview Component', () => {
             createdAt: 1,
             replies: {
               items: [
-              {
-                id: 'm2',
-                modelId: undefined,
-                lmParameters: undefined,
-                interruption: undefined,
-                parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }],
-                role: 'assistant',
-                createdAt: 2,
-                replies: { items: [] },
-              },
-            ],
+                {
+                  id: 'm2',
+                  modelId: undefined,
+                  lmParameters: undefined,
+                  interruption: undefined,
+                  parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }],
+                  role: 'assistant',
+                  createdAt: 2,
+                  replies: { items: [] },
+                },
+              ],
             },
           },
         ],
@@ -186,29 +186,29 @@ describe('SearchPreview Component', () => {
             createdAt: 1,
             replies: {
               items: [
-              {
-                id: 'm2',
-                modelId: undefined,
-                lmParameters: undefined,
-                interruption: undefined,
-                parts: [{ type: 'text', text: 'M2', completeness: 'complete' }],
-                role: 'assistant',
-                createdAt: 2,
-                replies: {
-                  items: [
-                  {
-                    id: 'm3',
-                    modelId: undefined,
-                    lmParameters: undefined,
-                    parts: [{ type: 'text', text: 'M3', completeness: 'complete' }],
-                    role: 'user',
-                    createdAt: 3,
-                    replies: { items: [] },
+                {
+                  id: 'm2',
+                  modelId: undefined,
+                  lmParameters: undefined,
+                  interruption: undefined,
+                  parts: [{ type: 'text', text: 'M2', completeness: 'complete' }],
+                  role: 'assistant',
+                  createdAt: 2,
+                  replies: {
+                    items: [
+                      {
+                        id: 'm3',
+                        modelId: undefined,
+                        lmParameters: undefined,
+                        parts: [{ type: 'text', text: 'M3', completeness: 'complete' }],
+                        role: 'user',
+                        createdAt: 3,
+                        replies: { items: [] },
+                      },
+                    ],
                   },
-                ],
                 },
-              },
-            ],
+              ],
             },
           },
         ],
@@ -288,14 +288,14 @@ describe('SearchPreview Component', () => {
       .mockResolvedValueOnce({
         root: {
           items: [{
-          id: 'new-message',
-          modelId: undefined,
-          lmParameters: undefined,
-          parts: [{ type: 'text', text: 'New preview', completeness: 'complete' }],
-          role: 'user',
-          createdAt: 2,
-          replies: { items: [] },
-        }],
+            id: 'new-message',
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [{ type: 'text', text: 'New preview', completeness: 'complete' }],
+            role: 'user',
+            createdAt: 2,
+            replies: { items: [] },
+          }],
         },
         currentLeafId: 'new-message',
       } as any);
@@ -313,14 +313,14 @@ describe('SearchPreview Component', () => {
     resolveFirst?.({
       root: {
         items: [{
-        id: 'old-message',
-        modelId: undefined,
-        lmParameters: undefined,
-        parts: [{ type: 'text', text: 'Old preview', completeness: 'complete' }],
-        role: 'user',
-        createdAt: 1,
-        replies: { items: [] },
-      }],
+          id: 'old-message',
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'Old preview', completeness: 'complete' }],
+          role: 'user',
+          createdAt: 1,
+          replies: { items: [] },
+        }],
       },
       currentLeafId: 'old-message',
     });

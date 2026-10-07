@@ -16,7 +16,7 @@ async function completedFile({ url }: { url: string }): Promise<File | undefined
     availability: 'wait',
     signal: undefined,
     run: async ({ lease }) =>
-    await readCompletedOpfsSnapshot({ path, lease }),
+      await readCompletedOpfsSnapshot({ path, lease }),
   });
 }
 
@@ -29,8 +29,8 @@ export function createRuntimeMetadataStorage(): RuntimeMetadataStorage {
       return {
         byteLength: file.size,
         response: new Response(file.stream(), {
-        headers: { 'Content-Length': String(file.size), 'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain' },
-      }),
+          headers: { 'Content-Length': String(file.size), 'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain' },
+        }),
       };
     },
     async stat({ url }) {

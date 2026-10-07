@@ -165,16 +165,16 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         role: 'user',
         content: 'A',
         replies: [
-        createNode({
-          id: 'B',
-          role: 'assistant',
-          content: 'B',
-          replies: [
-          createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+          createNode({
+            id: 'B',
+            role: 'assistant',
+            content: 'B',
+            replies: [
+              createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+            ],
+            extra: {},
+          }),
         ],
-          extra: {},
-        }),
-      ],
         extra: {},
       }),
     ]);
@@ -221,17 +221,17 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         role: 'user',
         content: 'A',
         replies: [
-        createNode({
-          id: 'B',
-          role: 'assistant',
-          content: 'B',
-          replies: [
-          createNode({ id: 'D', role: 'user', content: 'D', replies: [], extra: {} }),
+          createNode({
+            id: 'B',
+            role: 'assistant',
+            content: 'B',
+            replies: [
+              createNode({ id: 'D', role: 'user', content: 'D', replies: [], extra: {} }),
+            ],
+            extra: {},
+          }),
+          createNode({ id: 'C', role: 'assistant', content: 'C', replies: [], extra: {} }),
         ],
-          extra: {},
-        }),
-        createNode({ id: 'C', role: 'assistant', content: 'C', replies: [], extra: {} }),
-      ],
         extra: {},
       }),
     ]);
@@ -256,16 +256,16 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         role: 'user',
         content: 'A',
         replies: [
-        createNode({
-          id: 'B',
-          role: 'assistant',
-          content: 'B',
-          replies: [
-          createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+          createNode({
+            id: 'B',
+            role: 'assistant',
+            content: 'B',
+            replies: [
+              createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
+            ],
+            extra: {},
+          }),
         ],
-          extra: {},
-        }),
-      ],
         extra: {},
       }),
     ]);
@@ -439,16 +439,16 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       content: 'A',
       replies: [],
       extra: {
-      attachments: [{
-        id: toAttachmentId({ raw: 'att-1' }),
-        binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
-        originalName: 'test.png',
-        mimeType: 'image/png',
-        size: 100,
-        uploadedAt: Date.now(),
-        status: 'persisted' as const,
-      }],
-    },
+        attachments: [{
+          id: toAttachmentId({ raw: 'att-1' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
+          originalName: 'test.png',
+          mimeType: 'image/png',
+          size: 100,
+          uploadedAt: Date.now(),
+          status: 'persisted' as const,
+        }],
+      },
     });
     const activeMessages = [nodeWithAtt];
 
@@ -469,9 +469,9 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       content: 'Final Content',
       replies: [],
       extra: {
-      thinking: 'Analyzing the request...',
-      error: 'Simulated API Timeout',
-    },
+        thinking: 'Analyzing the request...',
+        error: 'Simulated API Timeout',
+      },
     });
     const activeMessages = [nodeWithDetails];
     const chat = createMockChat(activeMessages);
@@ -502,8 +502,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       role: 'assistant',
       content: 'B content',
       replies: [
-      createNode({ id: 'C', role: 'user', content: 'C content', replies: [], extra: {} }),
-    ],
+        createNode({ id: 'C', role: 'user', content: 'C content', replies: [], extra: {} }),
+      ],
       extra: {},
     });
     const chat = createMockChat([

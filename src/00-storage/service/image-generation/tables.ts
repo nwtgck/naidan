@@ -41,12 +41,12 @@ function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDt
   return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({
     ...metadata,
     ...(() => {
-    switch (confirmation) {
-    case 'unconfirmed': return { confirmation };
-    case 'confirmed': case undefined: return {};
-    default: { const exhaustive: never = confirmation; throw new Error(String(exhaustive)); }
-    }
-  })(),
+      switch (confirmation) {
+      case 'unconfirmed': return { confirmation };
+      case 'confirmed': case undefined: return {};
+      default: { const exhaustive: never = confirmation; throw new Error(String(exhaustive)); }
+      }
+    })(),
     binaryObjectId,
     width,
     height,

@@ -237,9 +237,9 @@ export async function runPartialModelSupportInvestigation({
         await collectReplayMetadata({
           run,
           onSummary: ({ summary }) => {
-          run.replayMetadata = summary;
-          onRunUpdate({ run: structuredClone(run) });
-        },
+            run.replayMetadata = summary;
+            onRunUpdate({ run: structuredClone(run) });
+          },
         });
       }
     } catch (error) {
@@ -339,9 +339,9 @@ export async function runPartialModelSupportInvestigation({
     await collectReplayMetadata({
       run,
       onSummary: ({ summary }) => {
-      run.replayMetadata = summary;
-      onRunUpdate({ run: structuredClone(run) });
-    },
+        run.replayMetadata = summary;
+        onRunUpdate({ run: structuredClone(run) });
+      },
     });
   }
 

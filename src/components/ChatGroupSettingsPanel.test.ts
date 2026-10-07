@@ -1392,11 +1392,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
       expect(mocks.openFileExplorer).toHaveBeenCalledWith({
         options: expect.objectContaining({
-        kind: 'wesh-mounts',
-        rootName: 'Files',
-        title: 'Folders',
-        initialPath: ['home', 'user', 'work'],
-      }),
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          title: 'Folders',
+          initialPath: ['home', 'user', 'work'],
+        }),
       });
     });
 
@@ -1417,8 +1417,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
       expect(mocks.openFileExplorer).toHaveBeenCalledWith({
         options: expect.objectContaining({
-        initialPath: ['home', 'user', 'beta'],
-      }),
+          initialPath: ['home', 'user', 'beta'],
+        }),
       });
     });
   });

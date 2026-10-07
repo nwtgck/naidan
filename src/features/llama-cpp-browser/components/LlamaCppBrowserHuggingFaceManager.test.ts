@@ -82,8 +82,8 @@ describe('Hugging Face download controls', () => {
     const wrapper = mount(defineComponent({
       components: { LlamaCppBrowserHuggingFaceManager },
       setup() {
-      provideHuggingFaceSession(); return { visible, modelPreset };
-    },
+        provideHuggingFaceSession(); return { visible, modelPreset };
+      },
       template: '<LlamaCppBrowserHuggingFaceManager v-if="visible" :disabled="false" :model-preset="modelPreset" />',
     })); wrappers.push(wrapper);
     await flushPromises();

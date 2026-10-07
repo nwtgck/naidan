@@ -58,9 +58,9 @@ export async function runProviderConversationForTest({ provider, messages, model
       role: 'assistant',
       interruption: undefined,
       parts: [
-      { type: 'text', text: String(content), completeness: 'complete' },
-      ...(message.tool_calls ?? []).map(toolCall => ({ type: 'tool_call' as const, toolCall })),
-    ],
+        { type: 'text', text: String(content), completeness: 'complete' },
+        ...(message.tool_calls ?? []).map(toolCall => ({ type: 'tool_call' as const, toolCall })),
+      ],
     }); break;
     case 'tool': {
       if (!message.tool_call_id) throw new Error('Fixture tool call ID is required.');

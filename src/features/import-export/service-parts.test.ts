@@ -113,16 +113,16 @@ describe('parts archive boundaries', () => {
     zip.file('export-manifest.json', '{}');
     zip.file('chat-metas.json', JSON.stringify({
       entries: order.map(id => ({
-      id,
-      title: id,
-      createdAt: 1,
-      updatedAt: 2,
-      debugEnabled: false,
-      titleGeneration: 'inherit',
-      currentLeafId: 'origin-message',
-      originChatId: id === 'fork' ? 'parent' : undefined,
-      originMessageId: id === 'fork' ? 'origin-message' : undefined,
-    })),
+        id,
+        title: id,
+        createdAt: 1,
+        updatedAt: 2,
+        debugEnabled: false,
+        titleGeneration: 'inherit',
+        currentLeafId: 'origin-message',
+        originChatId: id === 'fork' ? 'parent' : undefined,
+        originMessageId: id === 'fork' ? 'origin-message' : undefined,
+      })),
     }));
     for (const id of order) {
       // A real fork copies the parent's message IDs, but each imported chat gets its own IDs.
@@ -130,12 +130,12 @@ describe('parts archive boundaries', () => {
         currentLeafId: 'origin-message',
         root: {
           items: [{
-          id: 'origin-message',
-          role: 'assistant',
-          createdAt: 1,
-          parts: [{ type: 'text', text: '  <think>literal</think> [Aborted]\n' }],
-          replies: { items: [] },
-        }],
+            id: 'origin-message',
+            role: 'assistant',
+            createdAt: 1,
+            parts: [{ type: 'text', text: '  <think>literal</think> [Aborted]\n' }],
+            replies: { items: [] },
+          }],
         },
       }));
     }
@@ -174,9 +174,9 @@ describe('parts archive boundaries', () => {
     if (origin === 'imported') {
       zip.file('chat-metas.json', JSON.stringify({
         entries: [
-        { ...content, root: undefined, messages: undefined },
-        { id: 'parent', title: 'Parent', createdAt: 1, updatedAt: 2, debugEnabled: false, titleGeneration: 'inherit' },
-      ],
+          { ...content, root: undefined, messages: undefined },
+          { id: 'parent', title: 'Parent', createdAt: 1, updatedAt: 2, debugEnabled: false, titleGeneration: 'inherit' },
+        ],
       }));
       if (parentContent === 'empty') zip.file('chat-contents/parent.json', JSON.stringify({ root: { items: [] } }));
     }
@@ -199,19 +199,19 @@ describe('parts archive boundaries', () => {
     dump({
       storage: f.storage,
       content: chat({
-      root: {
-      items: [{
-      id: 'a',
-      role: 'assistant',
-      timestamp: 7,
-      thinking: '  R\n',
-      content: `\
+        root: {
+          items: [{
+            id: 'a',
+            role: 'assistant',
+            timestamp: 7,
+            thinking: '  R\n',
+            content: `\
 <think>literal</think>
  [Generation Aborted] `,
-      replies: { items: [] },
-    }],
-    },
-    }),
+            replies: { items: [] },
+          }],
+        },
+      }),
       binaries: [],
     });
     const content = await exportedContent({ zip: await readExport(await f.service.exportData({})) });
@@ -237,25 +237,25 @@ describe('parts archive boundaries', () => {
     const root = { items: [modernAssistant({ parts: [{ type: 'text', text: marker({ id: 'image' }) }] })] };
     const content = chat({
       root: {
-      items: [{
-      ...root.items[0],
-      replies: {
-      items: [
-      {
-        id: 'tool',
-        role: 'tool',
-        createdAt: 1,
-        parts: [
-        { type: 'tool_result', result: { toolCallId: 'c1', status: 'success', content: { type: 'binary_object', id: 'good' } } },
-        { type: 'tool_result', result: { toolCallId: 'c2', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
-      ],
-        replies: { items: [] },
+        items: [{
+          ...root.items[0],
+          replies: {
+            items: [
+              {
+                id: 'tool',
+                role: 'tool',
+                createdAt: 1,
+                parts: [
+                  { type: 'tool_result', result: { toolCallId: 'c1', status: 'success', content: { type: 'binary_object', id: 'good' } } },
+                  { type: 'tool_result', result: { toolCallId: 'c2', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
+                ],
+                replies: { items: [] },
+              },
+              { id: 'other', role: 'assistant', createdAt: 2, parts: [{ type: 'text', text: marker({ id: 'other-image' }) }], replies: { items: [] } },
+            ],
+          },
+        }],
       },
-      { id: 'other', role: 'assistant', createdAt: 2, parts: [{ type: 'text', text: marker({ id: 'other-image' }) }], replies: { items: [] } },
-    ],
-    },
-    }],
-    },
     }); content.currentLeafId = 'tool';
     const f = fixture(); dump({ storage: f.storage, content, binaries: ['image', 'good', 'error', 'other-image'] });
     const zip = await readExport(await f.service.exportData({ exclude: ['chat_history'] }));
@@ -271,22 +271,22 @@ describe('parts archive boundaries', () => {
     ];
     const dto = chat({
       root: {
-      items: [{
-      ...modernAssistant({ parts }),
-      replies: {
-      items: [{
-      id: 'tool',
-      role: 'tool',
-      createdAt: 1,
-      parts: [
-      { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'image' } } },
-      { type: 'tool_result', result: { toolCallId: 'call', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
-    ],
-      replies: { items: [] },
-    }],
-    },
-    }],
-    },
+        items: [{
+          ...modernAssistant({ parts }),
+          replies: {
+            items: [{
+              id: 'tool',
+              role: 'tool',
+              createdAt: 1,
+              parts: [
+                { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'image' } } },
+                { type: 'tool_result', result: { toolCallId: 'call', status: 'error', error: { code: 'other', message: { type: 'binary_object', id: 'error' } } } },
+              ],
+              replies: { items: [] },
+            }],
+          },
+        }],
+      },
     }); dto.currentLeafId = 'tool';
     const zip = await archive({ content: dto }); addBinary({ zip, id: 'image' }); addBinary({ zip, id: 'error' });
     const f = fixture(); await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });

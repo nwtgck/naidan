@@ -88,8 +88,8 @@ it('does not reuse a single-image confirmation after a run claims that image', a
     persistence: {
       create: vi.fn(async () => {}),
       commit: vi.fn(async () => {
-      throw new Error('quota');
-    }),
+        throw new Error('quota');
+      }),
       update: vi.fn(async () => {}),
     },
   });

@@ -69,8 +69,8 @@ describe('hosted artifact transport', () => {
     // Hosted does not select a compression format by browser name.
     vi.stubGlobal('navigator', {
       get userAgent() {
-      throw new Error('No browser sniffing');
-    },
+        throw new Error('No browser sniffing');
+      },
     });
     await expect(loadHostedWasm({ signal: undefined, profile, assetBaseURL: 'https://fixture.invalid/runtime/' })).resolves.toEqual(source);
     expect(fetcher).toHaveBeenCalledOnce();

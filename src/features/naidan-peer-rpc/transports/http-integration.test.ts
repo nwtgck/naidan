@@ -46,18 +46,18 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
   const observed = { connected: false };
   const manager: NaidanPeerManager = new NaidanPeerManager({
     dependencies: {
-    storage: store,
-    identity: async () => identity,
-    acquireOwner: async () => ({ release }),
-    open: openPipingRpc,
-    inference: { resources, inputBudget, deliveryBudget },
-    changed: () => {
-      observed.connected ||= manager.list().some(entry => entry.phase === 'connected');
+      storage: store,
+      identity: async () => identity,
+      acquireOwner: async () => ({ release }),
+      open: openPipingRpc,
+      inference: { resources, inputBudget, deliveryBudget },
+      changed: () => {
+        observed.connected ||= manager.list().some(entry => entry.phase === 'connected');
+      },
+      retireResources: async () => {
+        await Promise.all([inputBudget.whenIdle(), deliveryBudget.whenIdle()]);
+      },
     },
-    retireResources: async () => {
-      await Promise.all([inputBudget.whenIdle(), deliveryBudget.whenIdle()]);
-    },
-  },
   });
   return { manager, resources, store, release, answer, inputBudget, deliveryBudget, observed };
 }
@@ -108,11 +108,11 @@ it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects expli
     const job = startPeerImage({
       client,
       input: {
-      modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/test.safetensors' } } }, components: [], loras: [] },
-      parameters: { prompt: 'Private image prompt.', negativePrompt: '', width: 128, height: 128, seed: '7', steps: 1, guidance: 1, sampler: 'auto', scheduler: 'auto', distilledGuidance: 1 },
-      preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
-      imageInputs: { initial: undefined, references: [], strength: 0.5 },
-    },
+        modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/test.safetensors' } } }, components: [], loras: [] },
+        parameters: { prompt: 'Private image prompt.', negativePrompt: '', width: 128, height: 128, seed: '7', steps: 1, guidance: 1, sampler: 'auto', scheduler: 'auto', distilledGuidance: 1 },
+        preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
+        imageInputs: { initial: undefined, references: [], strength: 0.5 },
+      },
       signal: lifetime.signal,
       onPreview: () => {},
       onProgress: () => {},

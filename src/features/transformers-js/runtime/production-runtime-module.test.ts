@@ -28,8 +28,8 @@ it('fetches the complete pinned module once through the real runtime guard witho
   const createObjectURL = vi.spyOn(URL, 'createObjectURL');
   const h = guardedResponse({
     response: new Response(originalBytes, {
-    headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Content-Length': '47389' },
-  }),
+      headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Content-Length': '47389' },
+    }),
   });
   const bytes = await fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch });
   expect(bytes.byteLength).toBe(47_389);
@@ -51,8 +51,8 @@ it('verifies the independently pinned standard module without accepting an async
 it('uses decoded bytes rather than compressed Content-Length for full module verification', async () => {
   const h = guardedResponse({
     response: new Response(originalBytes, {
-    headers: { 'Content-Type': 'text/javascript', 'Content-Encoding': 'gzip', 'Content-Length': '123' },
-  }),
+      headers: { 'Content-Type': 'text/javascript', 'Content-Encoding': 'gzip', 'Content-Length': '123' },
+    }),
   });
   const bytes = await fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch });
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(originalSha256);
@@ -63,9 +63,9 @@ it('rejects HTTP 206 before reading the body and owns its cancellation', async (
   const cancel = vi.fn();
   const h = guardedResponse({
     response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-    status: 206,
-    headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-1/47389' },
-  }),
+      status: 206,
+      headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-1/47389' },
+    }),
   });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
   expect(pull).not.toHaveBeenCalled();
@@ -76,8 +76,8 @@ it('rejects a Content-Range response even when its HTTP status is 200', async ()
   const cancel = vi.fn();
   const h = guardedResponse({
     response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
-    headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-47388/99999' },
-  }),
+      headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-47388/99999' },
+    }),
   });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
   expect(cancel).toHaveBeenCalledOnce();
@@ -88,8 +88,8 @@ it('rejects non-JavaScript MIME without consuming its unread body', async () => 
   const cancel = vi.fn();
   const h = guardedResponse({
     response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-    headers: { 'Content-Type': 'text/html' },
-  }),
+      headers: { 'Content-Type': 'text/html' },
+    }),
   });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('not JavaScript');
   expect(pull).not.toHaveBeenCalled();
@@ -132,8 +132,8 @@ it('keeps a read error primary even when cancellation rejects and reader release
   const failure = new Error('fixture read failed');
   const stream = new ReadableStream<Uint8Array>({
     pull: () => {
-    throw failure;
-  },
+      throw failure;
+    },
   }, { highWaterMark: 0 });
   const response = new Response(stream, { headers: { 'Content-Type': 'text/javascript' } });
   const reader = stream.getReader();
@@ -153,8 +153,8 @@ it('keeps a read error primary even when cancellation rejects and reader release
 it('does not certify successful reading when the only failure is reader release', async () => {
   const stream = new ReadableStream<Uint8Array>({
     start: controller => {
-    controller.enqueue(originalBytes); controller.close();
-  },
+      controller.enqueue(originalBytes); controller.close();
+    },
   });
   const response = new Response(stream, { headers: { 'Content-Type': 'text/javascript' } });
   const reader = stream.getReader();
@@ -173,9 +173,9 @@ it('returns the known HTTP error without waiting for a cancellation that never s
   const cancel = vi.fn(() => pending.promise);
   const h = guardedResponse({
     response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
-    status: 503,
-    headers: { 'Content-Type': 'text/javascript' },
-  }),
+      status: 503,
+      headers: { 'Content-Type': 'text/javascript' },
+    }),
   });
   try {
     await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');

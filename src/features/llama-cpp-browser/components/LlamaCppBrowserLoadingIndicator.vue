@@ -12,8 +12,8 @@ let unsubscribe: (() => void) | undefined;
 onMounted(() => {
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {
-    state.value = next;
-  },
+      state.value = next;
+    },
   });
 });
 onUnmounted(() => unsubscribe?.());

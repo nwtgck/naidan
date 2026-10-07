@@ -91,14 +91,14 @@ export async function withOpfsFileLease<T>({ path, mode, availability, signal, r
     availability,
     signal,
     run: async () =>
-    await request({
-      name: `${rootKey}:model:${model}`,
-      mode: 'shared',
-      availability,
-      signal,
-      run: async () =>
-      await request({ name: `${rootKey}:file:${canonical}`, mode, availability, signal, run: execute }),
-    }),
+      await request({
+        name: `${rootKey}:model:${model}`,
+        mode: 'shared',
+        availability,
+        signal,
+        run: async () =>
+          await request({ name: `${rootKey}:file:${canonical}`, mode, availability, signal, run: execute }),
+      }),
   });
 }
 
@@ -117,7 +117,7 @@ export async function withOpfsModelDeletion<T>({ modelPath, run }: {
     availability: 'wait',
     signal: undefined,
     run: async () =>
-    await request({ name: `${rootKey}:model:${model}`, mode: 'exclusive', availability: 'wait', signal: undefined, run }),
+      await request({ name: `${rootKey}:model:${model}`, mode: 'exclusive', availability: 'wait', signal: undefined, run }),
   });
 }
 

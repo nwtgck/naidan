@@ -11,8 +11,8 @@ export function transportPair({ capacity, fragmentBytes }: { capacity: number; f
     const controls: TransformStreamDefaultController<Uint8Array>[] = [];
     const flows = [0, 1].map(() => new TransformStream<Uint8Array, Uint8Array>({
       start(controller) {
-      controls.push(controller);
-    },
+        controls.push(controller);
+      },
     }, { highWaterMark: 1 }, { highWaterMark: 1 }));
     const abort = () => {
       if (done) return; done = true; active--; aborters.delete(abort);

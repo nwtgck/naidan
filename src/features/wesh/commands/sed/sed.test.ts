@@ -81,8 +81,8 @@ describe("wesh sed", () => {
     const result = await wesh.execute({
       source: createTextShellSource({ text: script }),
       stdin: stdinBytes === undefined
-          ? createTestReadHandleFromText({ text: stdinText ?? "" })
-          : createTestReadHandleFromBytes({ bytes: stdinBytes }),
+        ? createTestReadHandleFromText({ text: stdinText ?? "" })
+        : createTestReadHandleFromBytes({ bytes: stdinBytes }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });

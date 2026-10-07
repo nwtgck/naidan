@@ -90,11 +90,11 @@ describe('Production native collection through actual Comlink', () => {
         return {
           ...capture,
           async takeGenerationCapture() {
-          takeCalls.push(workerEpoch);
-          const result = await capture.takeGenerationCapture();
-          if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
-          return result;
-        },
+            takeCalls.push(workerEpoch);
+            const result = await capture.takeGenerationCapture();
+            if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
+            return result;
+          },
         };
       },
       createUnrecordedWorkerClient: () => {
@@ -204,8 +204,8 @@ describe('Production native collection through actual Comlink', () => {
       const exported: unknown = JSON.parse(await firstZip.file(sidecar.path)!.async('text'));
       expect(exported).toMatchObject({
         epochs: expect.arrayContaining([
-        expect.objectContaining({ workerEpoch: 1, lifetime: { status: 'observed', value: expect.objectContaining({ loadDiagnostics: diagnostics }) } }),
-      ]),
+          expect.objectContaining({ workerEpoch: 1, lifetime: { status: 'observed', value: expect.objectContaining({ loadDiagnostics: diagnostics }) } }),
+        ]),
       });
       const paths = Object.keys(firstZip.files).filter(path => !firstZip.files[path]!.dir).sort();
       expect(Object.keys(secondZip.files).filter(path => !secondZip.files[path]!.dir).sort()).toEqual(paths);
@@ -562,21 +562,21 @@ describe('Production native collection through actual Comlink', () => {
       expect(capture.calls).toEqual(contexts.map(context => ({
         context,
         loadIdentity: {
-        status: 'ready',
-        workerLoadOrdinal: 1,
-        requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
-        cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        autoClass: 'AutoModelForCausalLM',
-        processor: 'tokenizer',
-        selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
-        resolvedRevision: { status: 'not-observed' },
-        sessionExecutionProvider: { status: 'not-observed' },
-      },
+          status: 'ready',
+          workerLoadOrdinal: 1,
+          requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
+          cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          autoClass: 'AutoModelForCausalLM',
+          processor: 'tokenizer',
+          selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
+          resolvedRevision: { status: 'not-observed' },
+          sessionExecutionProvider: { status: 'not-observed' },
+        },
         outcome: 'fulfilled',
         invocations: [
-        { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
-      ],
+          { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
+        ],
       })));
       expect(capture.incompleteReasons).toEqual([]);
       expect(capture.events.filter(event => event.kind === 'native-stream')).toEqual(contexts.flatMap((context, index) => {

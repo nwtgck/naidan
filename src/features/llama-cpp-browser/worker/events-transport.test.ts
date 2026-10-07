@@ -45,9 +45,9 @@ describe('structured generation over the actual Comlink MessageChannel transport
     try {
       const pending = remote.generate(request(), workerProxy({
         value: async ({ event }: { event: GenerationEvent }) => {
-        events.push(event);
-        if (event.type === 'tool_call_draft') await gate.promise;
-      },
+          events.push(event);
+          if (event.type === 'tool_call_draft') await gate.promise;
+        },
       }), workerProxy({ value: () => {} }));
       await vi.waitFor(() => expect(events).toHaveLength(2));
       expect(acknowledged).toBe(false);
@@ -73,8 +73,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
     try {
       const pending = remote.generate(request(), workerProxy({
         value: async ({ event }: { event: GenerationEvent }) => {
-        events.push(event);if (event.type === 'reasoning') await gate.promise;
-      },
+          events.push(event);if (event.type === 'reasoning') await gate.promise;
+        },
       }), workerProxy({ value: () => {} }));
       await vi.waitFor(() => expect(events).toHaveLength(1));expect(stage).toBe(1);gate.resolve();
       expect(await pending).toMatchObject({ content: '<think>literal</think>  ', reasoningContent: ' R\n' });expect(stage).toBe(3);expect(events.map(e => e.type)).toEqual(['reasoning', 'text']);
@@ -94,8 +94,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
     try {
       const pending = remote.generate(request(), workerProxy({
         value: async ({ event }: { event: GenerationEvent }) => {
-        events.push(event);
-      },
+          events.push(event);
+        },
       }), workerProxy({ value: () => {} }));
       await vi.waitFor(() => expect(events).toHaveLength(1));await remote.cancelGeneration({ generationId: 1 });expect(signal?.aborted).toBe(true);
       gate.resolve();await pending;expect(events).toEqual([{ type: 'text', text: 'accepted' }, { type: 'tool_call_start', index: 0 }, { type: 'tool_call', index: 0, toolCall: call }]);
@@ -113,8 +113,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
     try {
       await expect(remote.generate(request(), workerProxy({
         value: async () => {
-        throw new Error('private consumer details');
-      },
+          throw new Error('private consumer details');
+        },
       }), workerProxy({ value: () => {} }))).rejects.toThrow('worker-failed');
       expect(after).toBe(false);
       native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
@@ -132,8 +132,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
       await pair.run({
         deliver: () => onEvent({ event: { type: 'text', text: 'first' } }),
         decode: async () => {
-        started.resolve(); await nativeGate.promise;
-      },
+          started.resolve(); await nativeGate.promise;
+        },
       });
       advanced = true;
       return { content: 'first', reasoningContent: '', toolCalls: [], finishReason: 'length' };
@@ -141,8 +141,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
     const remote = connect();
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
-      events.push(event); await deliveryGate.promise;
-    },
+        events.push(event); await deliveryGate.promise;
+      },
     }), workerProxy({ value: () => {} }));
     const observed = pending.then(value => ({ type: 'ok' as const, value }), error => ({ type: 'error' as const, error: error as Error })).finally(() => {
       returned = true;

@@ -61,9 +61,9 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
 <think>
 `,
       tools: undefined,
-    emit: ({ event }) => {
-      events.push(event);
-    },
+      emit: ({ event }) => {
+        events.push(event);
+      },
     });
     const streamer = new NativeProtocolStreamer({
       tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
@@ -175,31 +175,31 @@ R
       abortController,
       onChange: () => {},
       items: createInferenceGeneration({
-      signal: abortController.signal,
-      generate: async ({ onEvent }) => {
-        const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-        try {
-          await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
-            model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
-            tokenizer: tokenizer as unknown as Context['tokenizer'],
-            messages: [{ role: 'user', content: 'Calculate.' }],
-            onChunk,
-            onToolCalls,
-            onRawChunk: () => {},
-            params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
-            tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-            runtimeState: state,
-            debugLog: () => {},
-            observationSink: undefined,
-            generationCapture: undefined,
-            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-          });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }),
+        signal: abortController.signal,
+        generate: async ({ onEvent }) => {
+          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+          try {
+            await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
+              model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
+              tokenizer: tokenizer as unknown as Context['tokenizer'],
+              messages: [{ role: 'user', content: 'Calculate.' }],
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
+              tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              runtimeState: state,
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
     });
     let settled = false; void operation.then(() => {
       settled = true;
@@ -263,28 +263,28 @@ Calculate.<|im_end|>
       abortController: new AbortController(),
       onChange: () => {},
       items: createInferenceGeneration({
-      signal: undefined,
-      generate: async ({ onEvent }) => {
-        const events: InferenceGenerationEvent[] = [];
-        const codec = createQwen3_5Generation({
-          prompt: prefix,
-          tools: [{ type: 'function', function: { name: 'calculator', description: '', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-          emit: ({ event }) => {
-            events.push(event);
-          },
-        });
-        const streamer = new NativeProtocolStreamer({
-          tokenizer,
-          protocolTokens: qwen3_5ProtocolTokens,
-          onText: ({ text }) => codec.text({ text }),
-          onControl: ({ token }) => codec.control({ token }),
-        });
-        streamer.put([tokenizer.encode(prefix, { add_special_tokens: false }).map(BigInt)]);
-        streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]);
-        streamer.end(); codec.finish({ reason: 'unknown' });
-        for (const event of events) await onEvent({ event });
-      },
-    }),
+        signal: undefined,
+        generate: async ({ onEvent }) => {
+          const events: InferenceGenerationEvent[] = [];
+          const codec = createQwen3_5Generation({
+            prompt: prefix,
+            tools: [{ type: 'function', function: { name: 'calculator', description: '', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+            emit: ({ event }) => {
+              events.push(event);
+            },
+          });
+          const streamer = new NativeProtocolStreamer({
+            tokenizer,
+            protocolTokens: qwen3_5ProtocolTokens,
+            onText: ({ text }) => codec.text({ text }),
+            onControl: ({ token }) => codec.control({ token }),
+          });
+          streamer.put([tokenizer.encode(prefix, { add_special_tokens: false }).map(BigInt)]);
+          streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]);
+          streamer.end(); codec.finish({ reason: 'unknown' });
+          for (const event of events) await onEvent({ event });
+        },
+      }),
     });
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
     const call = node.parts.find(p => p.type === 'tool_call'); if (!call) throw new Error('Expected a native completed call.');

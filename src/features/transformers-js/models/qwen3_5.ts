@@ -75,7 +75,7 @@ export function buildQwen3_5Prompt({
   return renderThinkingTemplate({
     offRequested: thinking.enable_thinking === false,
     render: () => tokenizer.apply_chat_template(messages.map(message => {
-    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
+      const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     const reasoning = readCompleteInferenceReasoning({ message });
     return {
@@ -85,7 +85,7 @@ export function buildQwen3_5Prompt({
       ...(tool_calls === undefined ? {} : { tool_calls: normalizeQwen3_5ToolCallsForTemplate({ toolCalls: tool_calls }) }),
       ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
     };
-  }), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) }),
+    }), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) }),
   });
 }
 

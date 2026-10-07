@@ -32,8 +32,8 @@ it('recovers from an encoder rejection and never strands a frame arriving at the
   const encode = vi.fn<typeof encodeImagePixels>().mockResolvedValue(encoded()).mockRejectedValueOnce(new Error('encode failure'));
   const output = createPreviewOutput({
     publish: ({ frame }: { frame: PreviewFrame }) => {
-    seen.push(frame.step);
-  },
+      seen.push(frame.step);
+    },
     valid: () => true,
     onError,
     encode,
@@ -59,16 +59,16 @@ it('records native and delivered sizes plus encoding/queue wall time without inc
   output.push({ capture: capture({ step: 2 }) }); time = 15; gate.resolve(encoded()); await output.finish();
   expect(measure).toHaveBeenCalledWith({
     fields: expect.objectContaining({
-    step: 2,
-    nativeWidth: 1,
-    nativeHeight: 1,
-    outputWidth: 1,
-    outputHeight: 1,
-    queueWallMs: 0,
-    encodeWallMs: 15,
-    delivered: true,
-    includesNativeDecode: false,
-  }),
+      step: 2,
+      nativeWidth: 1,
+      nativeHeight: 1,
+      outputWidth: 1,
+      outputHeight: 1,
+      queueWallMs: 0,
+      encodeWallMs: 15,
+      delivered: true,
+      includesNativeDecode: false,
+    }),
   });
 });
 it('does not let a broken measurement sink change a successfully delivered preview', async () => {

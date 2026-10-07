@@ -32,10 +32,10 @@ describe('native model directory settings', () => {
     const dto = SettingsSchemaDto.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
-      hostModelDirectories,
-      locale: 'ja',
-      futureFeature: { active: true },
-    },
+        hostModelDirectories,
+        locale: 'ja',
+        futureFeature: { active: true },
+      },
     });
     const restored = settingsToDomain({ dto });
     expect(restored.experimental?.locale).toBe('ja');

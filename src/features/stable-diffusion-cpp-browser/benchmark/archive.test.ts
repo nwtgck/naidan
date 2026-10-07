@@ -71,8 +71,8 @@ it('keeps legacy diagnostics readable and records requested adapter strengths wi
   const file = new File(['adapter-data'], 'style.safetensors', { lastModified: 42 });
   Object.defineProperty(file, 'arrayBuffer', {
     value: () => {
-    throw new Error('Do not read adapter weights for diagnostics');
-  },
+      throw new Error('Do not read adapter weights for diagnostics');
+    },
   });
   snapshot.plan.models[0]!.request.loras = [{ file, path: 'styles/style.safetensors', strength: 0.75 }];
   const after = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
@@ -92,13 +92,13 @@ it('does not reread or hash any model weights for export', async () => {
   for (const model of snapshot.plan.models) for (const member of model.request.models) {
     Object.defineProperty(member.file, 'arrayBuffer', {
       value: () => {
-      throw new Error('weight read');
-    },
+        throw new Error('weight read');
+      },
     });
     Object.defineProperty(member.file, 'stream', {
       value: () => {
-      throw new Error('weight read');
-    },
+        throw new Error('weight read');
+      },
     });
   }
   await expect(benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z', signal: new AbortController().signal })).resolves.toBeInstanceOf(Blob);

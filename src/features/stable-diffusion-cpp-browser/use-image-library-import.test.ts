@@ -111,11 +111,11 @@ it('removes a queued transfer during import without starting its download or tou
     blocked: () => false,
     onSelection: vi.fn(),
     dependencies: {
-    list,
-    scan: scanImageRepositories,
-    import: () => importing.promise,
-    download,
-  },
+      list,
+      scan: scanImageRepositories,
+      import: () => importing.promise,
+      download,
+    },
   }))!;
   try {
     library.hostDirectories.busy.value = true;

@@ -59,12 +59,12 @@ describe('browser image generation settings', () => {
     };
     const saved = settingsToDto({
       domain: {
-      ...base,
-      experimental: {
-      browserImageGeneration: preferences,
-      hostModelDirectories: [{ id: directoryId, name: 'models' }],
-    },
-    },
+        ...base,
+        experimental: {
+          browserImageGeneration: preferences,
+          hostModelDirectories: [{ id: directoryId, name: 'models' }],
+        },
+      },
     });
     const raw = JSON.parse(JSON.stringify(saved));
     expect(raw.experimental.browserImageGeneration.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'linked-models' });
@@ -96,10 +96,10 @@ describe('browser image generation settings', () => {
     const dto = SettingsSchemaDto.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
-      locale: 'ja',
-      hostModelDirectories: [{ id: 'linked-models', name: 'models' }],
-      browserImageGeneration: invalid,
-    },
+        locale: 'ja',
+        hostModelDirectories: [{ id: 'linked-models', name: 'models' }],
+        browserImageGeneration: invalid,
+      },
     });
     const read = settingsToDomain({ dto });
     expect(read.experimental?.locale).toBe('ja');
@@ -112,8 +112,8 @@ describe('browser image generation settings', () => {
     const dto = SettingsSchemaDto.parse({
       ...settingsToDto({ domain: base }),
       experimental: {
-      browserImageGeneration: { width: 256, preview: { interval: 2 }, imageDownload: { format: 'jpeg' } },
-    },
+        browserImageGeneration: { width: 256, preview: { interval: 2 }, imageDownload: { format: 'jpeg' } },
+      },
     });
     const read = settingsToDomain({ dto });
     expect(read.experimental?.browserImageGeneration).toMatchObject({

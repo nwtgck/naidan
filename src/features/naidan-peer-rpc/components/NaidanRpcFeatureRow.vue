@@ -11,8 +11,8 @@ const pending = ref(false), failed = ref('');
 const stopStatus = ref(rpcStopStatus());
 onScopeDispose(subscribeRpcState({
   listener: () => {
-  stopStatus.value = rpcStopStatus();
-},
+    stopStatus.value = rpcStopStatus();
+  },
 }));
 const stopMessage = computed(() => {
   const value = stopStatus.value;

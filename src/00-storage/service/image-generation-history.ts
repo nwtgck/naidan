@@ -152,10 +152,10 @@ export async function captureImageGenerationHistoryTarget({ storageType }: { sto
   assertStorage({ storageType });
   return withHistoryLock({
     operation: async () => {
-    const directory = await getDirectory({ create: true });
-    if (!directory) throw new Error('Image generation directory unavailable');
-    return directory;
-  },
+      const directory = await getDirectory({ create: true });
+      if (!directory) throw new Error('Image generation directory unavailable');
+      return directory;
+    },
   });
 }
 
@@ -177,29 +177,29 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
   const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
   await withHistoryLock({
     operation: async () => {
-    const parent = await getDirectory({ create: expectedDirectory === undefined });
-    if (expectedDirectory && (!parent || !await expectedDirectory.isSameEntry(parent))) throw new Error('Image history store changed or was removed');
-    if (!parent) throw new Error('Image generation directory unavailable');
-    const shard = dto.id.slice(-2).toLowerCase();
-    const directory = await parent.getDirectoryHandle(shard, { create: true });
-    if (await isDeleted({ directory, rawId: dto.id })) throw new Error('This image history record was deleted');
-    const index = await readIndex({ directory, shard });
-    const existing = await readRecord({ directory, rawId: dto.id });
-    if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) throw new Error('Image generation records are immutable');
-    const root = await imageGenerationRoot({ create: false });
-    if (!root) throw new Error('Image generation directory unavailable');
-    await assertImageGenerationBinariesNotDeleted({
-      directory: root,
-      ids: [dto.result.binaryObjectId,
-      ...dto.previews.map(image => image.binaryObjectId),
-      ...(dto.request.imageInputs.initImage ? [dto.request.imageInputs.initImage.binaryObjectId] : []),
-      ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)],
-    });
-    await writeImages();
-    if (!existing) await writeText({ directory, name: `${dto.id}.json`, text: JSON.stringify(dto) });
-    Object.defineProperty(index.generations, dto.id, { value: summarize({ record: dto }), configurable: true, enumerable: true, writable: true });
-    await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
-  },
+      const parent = await getDirectory({ create: expectedDirectory === undefined });
+      if (expectedDirectory && (!parent || !await expectedDirectory.isSameEntry(parent))) throw new Error('Image history store changed or was removed');
+      if (!parent) throw new Error('Image generation directory unavailable');
+      const shard = dto.id.slice(-2).toLowerCase();
+      const directory = await parent.getDirectoryHandle(shard, { create: true });
+      if (await isDeleted({ directory, rawId: dto.id })) throw new Error('This image history record was deleted');
+      const index = await readIndex({ directory, shard });
+      const existing = await readRecord({ directory, rawId: dto.id });
+      if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) throw new Error('Image generation records are immutable');
+      const root = await imageGenerationRoot({ create: false });
+      if (!root) throw new Error('Image generation directory unavailable');
+      await assertImageGenerationBinariesNotDeleted({
+        directory: root,
+        ids: [dto.result.binaryObjectId,
+          ...dto.previews.map(image => image.binaryObjectId),
+          ...(dto.request.imageInputs.initImage ? [dto.request.imageInputs.initImage.binaryObjectId] : []),
+          ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)],
+      });
+      await writeImages();
+      if (!existing) await writeText({ directory, name: `${dto.id}.json`, text: JSON.stringify(dto) });
+      Object.defineProperty(index.generations, dto.id, { value: summarize({ record: dto }), configurable: true, enumerable: true, writable: true });
+      await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
+    },
   });
 }
 
@@ -208,17 +208,17 @@ export async function loadImageGenerationRecord({ storageType, id }: { storageTy
   const rawId = rawIdSchema.parse(idToRaw({ id }));
   return withHistoryLock({
     operation: async () => {
-    const parent = await getDirectory({ create: false });
-    if (!parent) return undefined;
-    let directory: FileSystemDirectoryHandle;
-    try {
-      directory = await parent.getDirectoryHandle(rawId.slice(-2).toLowerCase());
-    } catch (error) {
-      if (isNotFound({ error })) return undefined; throw error;
-    }
-    const dto = await readRecord({ directory, rawId });
-    return dto && imageGenerationToDomain({ dto });
-  },
+      const parent = await getDirectory({ create: false });
+      if (!parent) return undefined;
+      let directory: FileSystemDirectoryHandle;
+      try {
+        directory = await parent.getDirectoryHandle(rawId.slice(-2).toLowerCase());
+      } catch (error) {
+        if (isNotFound({ error })) return undefined; throw error;
+      }
+      const dto = await readRecord({ directory, rawId });
+      return dto && imageGenerationToDomain({ dto });
+    },
   });
 }
 
@@ -227,26 +227,26 @@ export async function deleteImageGenerationRecord({ storageType, id }: { storage
   const rawId = rawIdSchema.parse(idToRaw({ id }));
   await withHistoryLock({
     operation: async () => {
-    const parent = await getDirectory({ create: true });
-    if (!parent) return;
-    const shard = rawId.slice(-2).toLowerCase();
-    let directory: FileSystemDirectoryHandle;
-    try {
-      directory = await parent.getDirectoryHandle(shard, { create: true });
-    } catch (error) {
-      if (isNotFound({ error })) return; throw error;
-    }
-    const index = await readIndex({ directory, shard });
-    const existing = await readRecord({ directory, rawId });
-    // Commit deletion intent before removing metadata. Even a lost response
-    // cannot make a retained save recreate this identity on another attempt.
-    if (!await isDeleted({ directory, rawId })) await writeText({ directory, name: `${rawId}.deleted`, text: JSON.stringify({ id: rawId }) });
-    if (existing) await directory.removeEntry(`${rawId}.json`);
-    delete index.generations[rawId];
-    await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
+      const parent = await getDirectory({ create: true });
+      if (!parent) return;
+      const shard = rawId.slice(-2).toLowerCase();
+      let directory: FileSystemDirectoryHandle;
+      try {
+        directory = await parent.getDirectoryHandle(shard, { create: true });
+      } catch (error) {
+        if (isNotFound({ error })) return; throw error;
+      }
+      const index = await readIndex({ directory, shard });
+      const existing = await readRecord({ directory, rawId });
+      // Commit deletion intent before removing metadata. Even a lost response
+      // cannot make a retained save recreate this identity on another attempt.
+      if (!await isDeleted({ directory, rawId })) await writeText({ directory, name: `${rawId}.deleted`, text: JSON.stringify({ id: rawId }) });
+      if (existing) await directory.removeEntry(`${rawId}.json`);
+      delete index.generations[rawId];
+      await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
     // Binary objects may be reused as input images or by chats. Deleting a
     // history record deliberately keeps those immutable bytes available.
-  },
+    },
   });
 }
 
@@ -294,25 +294,25 @@ export async function queryImageGenerationHistory({ storageType, query }: {
   const words = text.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   return withHistoryLock({
     operation: async () => {
-    const parent = await getDirectory({ create: false });
-    if (!parent) return { items: [], total: 0, warnings: [], warningCount: 0 };
-    const matches: ExperimentalImageGenerationSummaryDto[] = [];
-    const warnings: ImageGenerationHistoryPage['warnings'] = [];
-    let warningCount = 0;
-    function warn({ path, cause }: { path: string, cause: unknown }): void {
-      warningCount++;
-      if (warnings.length < 100) warnings.push({ path: path.slice(0, 1024), message: (cause instanceof Error ? cause.message : String(cause)).slice(0, 1024) });
-    }
-    for await (const [shard, directory] of parent.entries()) {
-      if (directory.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) continue;
-      for (const summary of await queryShard({ directory, shard, warn })) {
-        const haystack = `${summary.prompt}\n${summary.modelName}`.toLocaleLowerCase();
-        if (words.every(word => haystack.includes(word))) matches.push(summary);
+      const parent = await getDirectory({ create: false });
+      if (!parent) return { items: [], total: 0, warnings: [], warningCount: 0 };
+      const matches: ExperimentalImageGenerationSummaryDto[] = [];
+      const warnings: ImageGenerationHistoryPage['warnings'] = [];
+      let warningCount = 0;
+      function warn({ path, cause }: { path: string, cause: unknown }): void {
+        warningCount++;
+        if (warnings.length < 100) warnings.push({ path: path.slice(0, 1024), message: (cause instanceof Error ? cause.message : String(cause)).slice(0, 1024) });
       }
-    }
-    matches.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
-    return { items: matches.slice(offset, offset + limit).map(dto => imageGenerationSummaryToDomain({ dto })), total: matches.length, warnings, warningCount };
-  },
+      for await (const [shard, directory] of parent.entries()) {
+        if (directory.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) continue;
+        for (const summary of await queryShard({ directory, shard, warn })) {
+          const haystack = `${summary.prompt}\n${summary.modelName}`.toLocaleLowerCase();
+          if (words.every(word => haystack.includes(word))) matches.push(summary);
+        }
+      }
+      matches.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+      return { items: matches.slice(offset, offset + limit).map(dto => imageGenerationSummaryToDomain({ dto })), total: matches.length, warnings, warningCount };
+    },
   });
 }
 

@@ -38,11 +38,11 @@ describe('generation stream producer bridge', () => {
     const { node, result } = await collect({
       controller,
       items: createChatGenerationStream({
-      signal: controller.signal,
-      run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'partial' }); throw fault;
-    },
-    }),
+        signal: controller.signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'partial' }); throw fault;
+        },
+      }),
     });
     expect(node.parts[0]).toMatchObject({ text: 'partial', completeness: 'partial' });
     expect(result).toEqual({ type: 'error', error: fault });
@@ -53,10 +53,10 @@ describe('generation stream producer bridge', () => {
     const generation = createChatGenerationStream({
       signal: undefined,
       run: async ({ writer }) => {
-      writer.reserveCall({ key: 0 }); writer.reserveCall({ key: 1 });
-      await writer.call({ key: 1, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
-      return { type: 'interrupted', reason: 'limit' };
-    },
+        writer.reserveCall({ key: 0 }); writer.reserveCall({ key: 1 });
+        await writer.call({ key: 1, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
+        return { type: 'interrupted', reason: 'limit' };
+      },
     });
     const items = (async function* () {
       for await (const item of generation) {
@@ -74,10 +74,10 @@ describe('generation stream producer bridge', () => {
     const items = createChatGenerationStream({
       signal: controller.signal,
       run: async ({ writer, signal }) => {
-      await writer.text({ type: 'text', text: 'A' }); started.resolve();
-      await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
-      return { type: 'finished', next: 'user' };
-    },
+        await writer.text({ type: 'text', text: 'A' }); started.resolve();
+        await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+        return { type: 'finished', next: 'user' };
+      },
     });
     const pending = collect({ items, controller }); await started.promise; controller.abort();
     const { node, result } = await pending;
@@ -88,10 +88,10 @@ describe('generation stream producer bridge', () => {
     const items = createChatGenerationStream({
       signal: undefined,
       run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', cancelled);
-      for (let i = 0; i < 50; i++) await writer.text({ type: 'text', text: String(i) });
-      return { type: 'finished', next: 'user' };
-    },
+        signal.addEventListener('abort', cancelled);
+        for (let i = 0; i < 50; i++) await writer.text({ type: 'text', text: String(i) });
+        return { type: 'finished', next: 'user' };
+      },
     });
     const iterator = items[Symbol.asyncIterator](); const first = await iterator.next();
     expect(first.value.type).toBe('text');

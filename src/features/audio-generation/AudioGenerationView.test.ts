@@ -31,11 +31,11 @@ const service = vi.hoisted(() => ({
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
   default: defineComponent({
-  name: 'LlamaCppBrowserManager',
-  props: ['suggestions'],
-  emits: ['modelsChanged', 'modelSelected', 'runtimeReady'],
-  template: '<div />',
-}),
+    name: 'LlamaCppBrowserManager',
+    props: ['suggestions'],
+    emits: ['modelsChanged', 'modelSelected', 'runtimeReady'],
+    template: '<div />',
+  }),
 }));
 const urls = { create: vi.fn(), revoke: vi.fn() };
 let wrapper: VueWrapper | undefined;

@@ -124,19 +124,19 @@ for (const kind of ['openai', 'ollama'] as const) {
         const { result } = await consumeProviderGenerationForTest({
           provider,
           request: {
-          debug: undefined,
-          messages,
-          model: 'test',
-          parameters: undefined,
-          tools: undefined,
-          signal: undefined,
-          readBinaryObject: async ({ binaryObjectId, signal }) => {
-            signal?.throwIfAborted();
-            const blob = await storage.getFile({ binaryObjectId });
-            if (!blob) throw new Error('Missing stored tool result.');
-            return blob;
+            debug: undefined,
+            messages,
+            model: 'test',
+            parameters: undefined,
+            tools: undefined,
+            signal: undefined,
+            readBinaryObject: async ({ binaryObjectId, signal }) => {
+              signal?.throwIfAborted();
+              const blob = await storage.getFile({ binaryObjectId });
+              if (!blob) throw new Error('Missing stored tool result.');
+              return blob;
+            },
           },
-        },
         });
         expect(result).toEqual({ type: 'finished', next: 'user' });
       }
@@ -145,22 +145,22 @@ for (const kind of ['openai', 'ollama'] as const) {
         model: 'test',
         stream: true,
         messages: [
-        { role: 'user', content: '質問' },
-        {
-          role: 'assistant',
-          content: literalText,
-          ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
-          tool_calls: [{
-            id: 'lookup-1',
-            type: 'function',
-            function: {
-            name: 'lookup',
-            arguments: kind === 'openai' ? argumentsText : { n: 1, label: 'a' },
+          { role: 'user', content: '質問' },
+          {
+            role: 'assistant',
+            content: literalText,
+            ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
+            tool_calls: [{
+              id: 'lookup-1',
+              type: 'function',
+              function: {
+                name: 'lookup',
+                arguments: kind === 'openai' ? argumentsText : { n: 1, label: 'a' },
+              },
+            }],
           },
-          }],
-        },
-        { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
-      ],
+          { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
+        ],
       };
       expect(fetcher).toHaveBeenCalledTimes(2);
       expect(requestBody({ fetcher, index: 0 })).toEqual(expected);
@@ -186,14 +186,14 @@ for (const kind of ['openai', 'ollama'] as const) {
         const invoke = ({ content }: { content: ChatContent }) => consumeProviderGenerationForTest({
           provider,
           request: {
-          debug: undefined,
-          model: 'test',
-          parameters: undefined,
-          tools: undefined,
-          signal: undefined,
-          readBinaryObject,
-          messages: build({ content }),
-        },
+            debug: undefined,
+            model: 'test',
+            parameters: undefined,
+            tools: undefined,
+            signal: undefined,
+            readBinaryObject,
+            messages: build({ content }),
+          },
         });
         expect((await invoke({ content: chat })).result).toEqual({ type: 'finished', next: 'user' });
         await storage.saveFile({ binaryObjectId, blob: new Blob([text], { type: 'text/plain' }), name: 'result.txt', mimeType: 'text/plain' });
@@ -218,15 +218,15 @@ for (const kind of ['openai', 'ollama'] as const) {
           model: 'test',
           stream: true,
           messages: [
-          { role: 'user', content: '質問' },
-          {
-            role: 'assistant',
-            content: '<think>literal</think>',
-            ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
-            tool_calls: [{ id: 'lookup-1', type: 'function', function: { name: 'lookup', arguments: kind === 'openai' ? ' {"n": 1} ' : { n: 1 } } }],
-          },
-          { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
-        ],
+            { role: 'user', content: '質問' },
+            {
+              role: 'assistant',
+              content: '<think>literal</think>',
+              ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
+              tool_calls: [{ id: 'lookup-1', type: 'function', function: { name: 'lookup', arguments: kind === 'openai' ? ' {"n": 1} ' : { n: 1 } } }],
+            },
+            { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
+          ],
         };
         expect(fetcher).toHaveBeenCalledTimes(2);
         expect(requestBody({ fetcher, index: 0 })).toEqual(expected);
@@ -241,14 +241,14 @@ for (const kind of ['openai', 'ollama'] as const) {
       const { node, result } = await consumeProviderGenerationForTest({
         provider,
         request: {
-        debug: undefined,
-        messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
-        model: 'test',
-        parameters: undefined,
-        tools: undefined,
-        signal: undefined,
-        readBinaryObject: async () => new Blob([Uint8Array.of(0xff)]),
-      },
+          debug: undefined,
+          messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
+          model: 'test',
+          parameters: undefined,
+          tools: undefined,
+          signal: undefined,
+          readBinaryObject: async () => new Blob([Uint8Array.of(0xff)]),
+        },
       });
       expect(result.type).toBe('error');
       expect(fetcher).not.toHaveBeenCalled();

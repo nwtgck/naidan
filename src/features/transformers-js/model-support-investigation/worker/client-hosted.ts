@@ -453,116 +453,116 @@ export function createModelSupportInvestigationWorkerClient({
             },
             workerProxy({
               value: ({ event }) => {
-              if (!planningAcceptingCallbacks) return;
-              // Planning has no Provider collection owner. Do not forward a
-              // forged host-only progress projection from that Worker boundary.
-              if (Object.hasOwn(event, 'productionProviderProgress')) return;
-              planningStage = event.stepId;
-              publishEvent({ event });
-            },
+                if (!planningAcceptingCallbacks) return;
+                // Planning has no Provider collection owner. Do not forward a
+                // forged host-only progress projection from that Worker boundary.
+                if (Object.hasOwn(event, 'productionProviderProgress')) return;
+                planningStage = event.stepId;
+                publishEvent({ event });
+              },
             }),
             workerProxy({
               value: ({ run, replayMetadata }) => {
-              if (!planningAcceptingCallbacks) return;
-              checkpoint = replaceInvestigationCheckpointRun({
-                checkpoint,
-                run: withExecutionPolicy({ run: fromPlanningWorkerRun({ run }) }),
-                now,
-              });
-              if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
-              publishCheckpoint();
-            },
+                if (!planningAcceptingCallbacks) return;
+                checkpoint = replaceInvestigationCheckpointRun({
+                  checkpoint,
+                  run: withExecutionPolicy({ run: fromPlanningWorkerRun({ run }) }),
+                  now,
+                });
+                if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
+                publishCheckpoint();
+              },
             }),
             workerProxy({
               value: async ({ request: input }) => {
-              if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
-              const request = freshMetadataRequestSchema.parse(input);
-              if (configuration.externalNetworkPolicy !== 'allow' || !executionPlan.repositoryDownload
+                if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
+                const request = freshMetadataRequestSchema.parse(input);
+                if (configuration.externalNetworkPolicy !== 'allow' || !executionPlan.repositoryDownload
                 || request.modelId !== normalizeTransformersJsProductionModelId({ modelId })
                 || request.maximumBytes > (replayMetadataBudgetBytes ?? FRESH_METADATA_MAX_BYTES)) {
-                throw new Error('Fresh metadata request exceeds the selected investigation authority');
-              }
-              // A failed acquisition must not mint another target-sized budget.
-              // One disposable runtime owns this target's fresh attempt.
-              switch (freshMetadataAcquisition) {
-              case 'not-started': break;
-              case 'started': throw new Error('Fresh metadata acquisition already started for this target');
-              default: {
-                const _ex: never = freshMetadataAcquisition;
-                throw new Error(`Unknown fresh acquisition state: ${_ex}`);
-              }
-              }
-              freshMetadataAcquisition = 'started';
-              const client = createFreshMetadataWorkerClient();
-              activeMetadataClients.add(client);
-              const controller = new AbortController();
-              activeRuntimeAbortController = controller;
-              try {
-                return await client.run({
-                  ...request,
-                  repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })),
-                  signal: controller.signal,
-                  onObservation: ({ summary }) => {
-                    if (!planningAcceptingCallbacks || userInterruptionRequested) return;
-                    checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: { ...checkpoint.run, freshMetadata: summary }, now });
-                    const last = summary.requests.at(-1);
-                    publishEvent({
-                      event: {
-                      stepId: 'download-evidence',
-                      status: 'running',
-                      detail: `Fresh metadata: ${summary.status}; ${last?.consumer ?? 'runtime-preparation'}; file=${last?.path ?? 'starting'}; response=${last?.httpStatus ?? 'pending'}; received=${summary.receivedBytes}/${summary.maximumBytes} bytes; preparation-stage=${summary.preparationStage ?? 'not-recorded'}; failure-category=${summary.failureCategory ?? 'not-recorded'}`,
+                  throw new Error('Fresh metadata request exceeds the selected investigation authority');
+                }
+                // A failed acquisition must not mint another target-sized budget.
+                // One disposable runtime owns this target's fresh attempt.
+                switch (freshMetadataAcquisition) {
+                case 'not-started': break;
+                case 'started': throw new Error('Fresh metadata acquisition already started for this target');
+                default: {
+                  const _ex: never = freshMetadataAcquisition;
+                  throw new Error(`Unknown fresh acquisition state: ${_ex}`);
+                }
+                }
+                freshMetadataAcquisition = 'started';
+                const client = createFreshMetadataWorkerClient();
+                activeMetadataClients.add(client);
+                const controller = new AbortController();
+                activeRuntimeAbortController = controller;
+                try {
+                  return await client.run({
+                    ...request,
+                    repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })),
+                    signal: controller.signal,
+                    onObservation: ({ summary }) => {
+                      if (!planningAcceptingCallbacks || userInterruptionRequested) return;
+                      checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: { ...checkpoint.run, freshMetadata: summary }, now });
+                      const last = summary.requests.at(-1);
+                      publishEvent({
+                        event: {
+                          stepId: 'download-evidence',
+                          status: 'running',
+                          detail: `Fresh metadata: ${summary.status}; ${last?.consumer ?? 'runtime-preparation'}; file=${last?.path ?? 'starting'}; response=${last?.httpStatus ?? 'pending'}; received=${summary.receivedBytes}/${summary.maximumBytes} bytes; preparation-stage=${summary.preparationStage ?? 'not-recorded'}; failure-category=${summary.failureCategory ?? 'not-recorded'}`,
+                        },
+                      });
                     },
-                    });
-                  },
-                });
-              } finally {
-                client.dispose();
-                activeMetadataClients.delete(client);
-                if (activeRuntimeAbortController === controller) activeRuntimeAbortController = undefined;
-              }
-            },
+                  });
+                } finally {
+                  client.dispose();
+                  activeMetadataClients.delete(client);
+                  if (activeRuntimeAbortController === controller) activeRuntimeAbortController = undefined;
+                }
+              },
             }),
           );
           const planningRun = await awaitInterruptible({
             operation: withPlanningTimeout({
-            operation,
-            timeoutMs: planningTimeoutMs,
-            timeoutError: () => new PlanningTimeoutError({ stage: planningStage, timeoutMs: planningTimeoutMs }),
-            onTimeout: () => {
-              planningTimedOut = true;
-              planningAcceptingCallbacks = false;
-              for (const client of activeMetadataClients) client.dispose();
-              activeMetadataClients.clear();
-              terminateWorkerHandle({ handle: planningHandle });
-              publishEvent({
-                event: {
-                  stepId: (() => {
-                    switch (planningStage) {
-                    case "worker-start":
-                      return "runtime-assets";
-                    case "runtime-assets":
-                    case "repository-information":
-                    case "download-evidence":
-                    case "existing-model-data":
-                    case "model-declarations":
-                    case "template-behavior":
-                    case "model-file-plan":
-                    case "loading-investigation":
-                    case "lane-comparison":
-                    case "evidence-export":
-                      return planningStage;
-                    default: {
-                      const _ex: never = planningStage;
-                      throw new Error(`Unhandled planning stage: ${_ex}`);
-                    }
-                    }
-                  })(),
-                  status: "failed",
-                  detail: `Investigation planning timed out at ${planningStage}`,
-                },
-              });
-            },
-          }),
+              operation,
+              timeoutMs: planningTimeoutMs,
+              timeoutError: () => new PlanningTimeoutError({ stage: planningStage, timeoutMs: planningTimeoutMs }),
+              onTimeout: () => {
+                planningTimedOut = true;
+                planningAcceptingCallbacks = false;
+                for (const client of activeMetadataClients) client.dispose();
+                activeMetadataClients.clear();
+                terminateWorkerHandle({ handle: planningHandle });
+                publishEvent({
+                  event: {
+                    stepId: (() => {
+                      switch (planningStage) {
+                      case "worker-start":
+                        return "runtime-assets";
+                      case "runtime-assets":
+                      case "repository-information":
+                      case "download-evidence":
+                      case "existing-model-data":
+                      case "model-declarations":
+                      case "template-behavior":
+                      case "model-file-plan":
+                      case "loading-investigation":
+                      case "lane-comparison":
+                      case "evidence-export":
+                        return planningStage;
+                      default: {
+                        const _ex: never = planningStage;
+                        throw new Error(`Unhandled planning stage: ${_ex}`);
+                      }
+                      }
+                    })(),
+                    status: "failed",
+                    detail: `Investigation planning timed out at ${planningStage}`,
+                  },
+                });
+              },
+            }),
           });
           partialRun = withExecutionPolicy({ run: fromPlanningWorkerRun({ run: planningRun }) });
           planningAcceptingCallbacks = false;
@@ -621,11 +621,11 @@ export function createModelSupportInvestigationWorkerClient({
           providerInvestigation = owned;
           publishEvent({
             event: {
-            stepId: 'loading-investigation',
-            status: 'running',
-            detail: `Public Provider collection ${plan}; maximum deadlines run=${deadlines.runMs}ms, collection=${deadlines.collectionMs}ms, sealing=${deadlines.sealingMs}ms, cleanup=${deadlines.cleanupMs}ms`,
-            productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress: owned.getProgress(), deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
-          },
+              stepId: 'loading-investigation',
+              status: 'running',
+              detail: `Public Provider collection ${plan}; maximum deadlines run=${deadlines.runMs}ms, collection=${deadlines.collectionMs}ms, sealing=${deadlines.sealingMs}ms, cleanup=${deadlines.cleanupMs}ms`,
+              productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress: owned.getProgress(), deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
+            },
           });
           const result = await owned.run();
           const summary = readProductionProviderInvestigationSummaryEvidence({
@@ -711,11 +711,11 @@ export function createModelSupportInvestigationWorkerClient({
             const sample = progressTracker?.flush();
             if (sample !== undefined) publishEvent({
               event: {
-              stepId: 'download-evidence',
-              status: 'running',
-              detail: progressDetail,
-              progress: sample,
-            },
+                stepId: 'download-evidence',
+                status: 'running',
+                detail: progressDetail,
+                progress: sample,
+              },
             });
           };
           flushActiveProductionInterruptionEvidence = flushAcceptanceProgress;
@@ -769,11 +769,11 @@ export function createModelSupportInvestigationWorkerClient({
                     if (sample === undefined) return;
                     publishEvent({
                       event: {
-                      stepId: 'download-evidence',
-                      status: 'running',
-                      detail: progressDetail,
-                      progress: sample,
-                    },
+                        stepId: 'download-evidence',
+                        status: 'running',
+                        detail: progressDetail,
+                        progress: sample,
+                      },
                     });
                   },
                   allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
@@ -933,46 +933,46 @@ export function createModelSupportInvestigationWorkerClient({
                 { generation: executionPlan.generation, capabilityProbes: executionPlan.capabilityProbes },
                 workerProxy({
                   value: ({ event }) => {
-                  if (!attemptAcceptingCallbacks) return;
-                  publishEvent({ event });
-                },
+                    if (!attemptAcceptingCallbacks) return;
+                    publishEvent({ event });
+                  },
                 }),
                 workerProxy({
                   value: ({ event }) => {
-                  if (!attemptAcceptingCallbacks) return;
-                  lastStage = event.stage;
-                  attemptEvents.push(event);
-                },
+                    if (!attemptAcceptingCallbacks) return;
+                    lastStage = event.stage;
+                    attemptEvents.push(event);
+                  },
                 }),
                 workerProxy({
                   value: ({ attempt }) => {
-                  if (!attemptAcceptingCallbacks) return;
-                  onAttemptCheckpoint({ attempt });
-                },
+                    if (!attemptAcceptingCallbacks) return;
+                    onAttemptCheckpoint({ attempt });
+                  },
                 }),
               );
               const result = await awaitInterruptible({
                 operation: withCandidateAttemptTimeout({
-                operation,
-                timeoutMs: candidateAttemptTimeoutMs,
-                timeoutError: () => new CandidateAttemptTimeoutError({
-                  stage: lastStage,
-                  events: [...attemptEvents],
+                  operation,
                   timeoutMs: candidateAttemptTimeoutMs,
+                  timeoutError: () => new CandidateAttemptTimeoutError({
+                    stage: lastStage,
+                    events: [...attemptEvents],
+                    timeoutMs: candidateAttemptTimeoutMs,
+                  }),
+                  onTimeout: () => {
+                    timedOut = true;
+                    attemptAcceptingCallbacks = false;
+                    terminateWorkerHandle({ handle: attemptHandle });
+                    publishEvent({
+                      event: {
+                        stepId: "loading-investigation",
+                        status: "running",
+                        detail: `${candidate.candidateId}: timed out at ${lastStage}; starting the next eligible candidate`,
+                      },
+                    });
+                  },
                 }),
-                onTimeout: () => {
-                  timedOut = true;
-                  attemptAcceptingCallbacks = false;
-                  terminateWorkerHandle({ handle: attemptHandle });
-                  publishEvent({
-                    event: {
-                      stepId: "loading-investigation",
-                      status: "running",
-                      detail: `${candidate.candidateId}: timed out at ${lastStage}; starting the next eligible candidate`,
-                    },
-                  });
-                },
-              }),
               });
               attemptAcceptingCallbacks = false;
               return result;
@@ -1113,75 +1113,75 @@ export function createModelSupportInvestigationWorkerClient({
               try {
                 const operation = productionHandle.session.run({
                   operation: ({ remote }) => remote.runModelSupportInvestigationScenario(
-                  candidateScenario,
-                  workerProxy({
-                    value: ({ event }) => {
-                    if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
-                    switch (event.kind) {
-                    case "model-load":
-                      latestCandidateLoadProgress = structuredClone(event.progress);
-                      publishEvent({
-                        event: {
-                          stepId: "lane-comparison",
-                          status: "running",
-                          detail: productionLoadProgressDetail({
-                            stage: stageState.lastStage,
-                            candidate,
-                          }),
-                          progress: event.progress,
-                        },
-                      });
-                      return;
-                    case "stage":
-                      stageState.lastStage = productionLaneStageFromStatus({
-                        status: event.status,
-                        currentStage: stageState.lastStage,
-                      });
-                      publishEvent({
-                        event: {
-                          stepId: "lane-comparison",
-                          status: "running",
-                          detail: `Production Lane ${candidate.device}/${candidate.dtype} ${stageState.lastStage}`,
-                        },
-                      });
-                      return;
-                    default: {
-                      const _ex: never = event;
-                      return _ex;
-                    }
-                    }
-                  },
-                  }),
-                  workerProxy({
-                    value: ({ observation }) => {
-                    if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
-                    latestCandidateObservation = structuredClone(observation);
-                    onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
-                  },
-                  }),
-                ),
+                    candidateScenario,
+                    workerProxy({
+                      value: ({ event }) => {
+                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
+                        switch (event.kind) {
+                        case "model-load":
+                          latestCandidateLoadProgress = structuredClone(event.progress);
+                          publishEvent({
+                            event: {
+                              stepId: "lane-comparison",
+                              status: "running",
+                              detail: productionLoadProgressDetail({
+                                stage: stageState.lastStage,
+                                candidate,
+                              }),
+                              progress: event.progress,
+                            },
+                          });
+                          return;
+                        case "stage":
+                          stageState.lastStage = productionLaneStageFromStatus({
+                            status: event.status,
+                            currentStage: stageState.lastStage,
+                          });
+                          publishEvent({
+                            event: {
+                              stepId: "lane-comparison",
+                              status: "running",
+                              detail: `Production Lane ${candidate.device}/${candidate.dtype} ${stageState.lastStage}`,
+                            },
+                          });
+                          return;
+                        default: {
+                          const _ex: never = event;
+                          return _ex;
+                        }
+                        }
+                      },
+                    }),
+                    workerProxy({
+                      value: ({ observation }) => {
+                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
+                        latestCandidateObservation = structuredClone(observation);
+                        onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
+                      },
+                    }),
+                  ),
                 });
                 const result = await awaitInterruptible({
                   operation: withProductionLaneTimeout({
-                  operation,
-                  timeoutMs: productionLaneTimeoutMs,
-                  timeoutError: () => new ProductionLaneTimeoutError({
-                    stage: stageState.lastStage,
+                    operation,
                     timeoutMs: productionLaneTimeoutMs,
+                    timeoutError: () => new ProductionLaneTimeoutError({
+                      stage: stageState.lastStage,
+                      timeoutMs: productionLaneTimeoutMs,
+                    }),
+                    onTimeout: () => {
+                      timedOut = true;
+                      productionAcceptingCallbacks = false;
+                      terminateProductionWorkerHandle({ handle: productionHandle });
+                      publishEvent({
+                        event: {
+                          stepId: "lane-comparison",
+                          status: "running",
+                          detail: `Production Lane ${candidate.device}/${candidate.dtype} timed out at ${stageState.lastStage}`,
+                        },
+                      });
+                    },
                   }),
-                  onTimeout: () => {
-                    timedOut = true;
-                    productionAcceptingCallbacks = false;
-                    terminateProductionWorkerHandle({ handle: productionHandle });
-                    publishEvent({
-                      event: {
-                        stepId: "lane-comparison",
-                        status: "running",
-                        detail: `Production Lane ${candidate.device}/${candidate.dtype} timed out at ${stageState.lastStage}`,
-                      },
-                    });
-                  },
-                }),
                 });
                 productionAcceptingCallbacks = false;
                 return mergeObservation({ observation: result });

@@ -32,17 +32,17 @@ describe('persistence parts evidence', () => {
   it('records call IDs and argument bytes without parsing or canonicalizing them', () => {
     const result = recordPersistencePartsMessages({
       messages: [{
-      id: toMessageId({ raw: 'm' }),
-      role: 'assistant',
-      parts: [{
-        type: 'tool_call',
-        toolCall: {
-        id: toToolCallId({ raw: 'call' }),
-        type: 'function',
-        function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
-      },
+        id: toMessageId({ raw: 'm' }),
+        role: 'assistant',
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            id: toToolCallId({ raw: 'call' }),
+            type: 'function',
+            function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
+          },
+        }],
       }],
-    }],
     });
     expect(result).toEqual([{
       id: 'm',
@@ -50,10 +50,10 @@ describe('persistence parts evidence', () => {
       parts: [{
         type: 'tool_call',
         toolCall: {
-        id: 'call',
-        type: 'function',
-        function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
-      },
+          id: 'call',
+          type: 'function',
+          function: { name: 'tool', arguments: ' { "x": 1.00, "y": "\\u0061" } ' },
+        },
       }],
     }]);
   });
@@ -67,10 +67,10 @@ describe('persistence parts evidence', () => {
     ];
     const recorded = recordPersistencePartsMessages({
       messages: [{
-      id: toMessageId({ raw: 't' }),
-      role: 'tool',
-      parts: results.map((result) => ({ type: 'tool_result', result })),
-    }],
+        id: toMessageId({ raw: 't' }),
+        role: 'tool',
+        parts: results.map((result) => ({ type: 'tool_result', result })),
+      }],
     });
     expect(recorded).toEqual([{
       id: 't',
@@ -87,15 +87,15 @@ describe('persistence parts evidence', () => {
       parts: [{
         type: 'attachment',
         attachment: {
-        id: toAttachmentId({ raw: 'a' }),
-        binaryObjectId: toBinaryObjectId({ raw: 'b' }),
-        originalName: 'image',
-        mimeType: 'image/png',
-        size: blob.size,
-        uploadedAt: 0,
-        status: 'memory',
-        blob,
-      },
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+          originalName: 'image',
+          mimeType: 'image/png',
+          size: blob.size,
+          uploadedAt: 0,
+          status: 'memory',
+          blob,
+        },
       }],
     };
     expect(() => recordPersistencePartsMessages({ messages: [message] })).toThrow('must not contain attachments');
@@ -111,10 +111,10 @@ describe('persistence parts evidence', () => {
     for (const result of results) {
       expect(() => recordPersistencePartsMessages({
         messages: [{
-        id: toMessageId({ raw: 't' }),
-        role: 'tool',
-        parts: [{ type: 'tool_result', result }],
-      }],
+          id: toMessageId({ raw: 't' }),
+          role: 'tool',
+          parts: [{ type: 'tool_result', result }],
+        }],
       })).toThrow(/binary tool/);
     }
   });

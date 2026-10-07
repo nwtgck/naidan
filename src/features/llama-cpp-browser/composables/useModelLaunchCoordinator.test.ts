@@ -21,11 +21,11 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ loadData: vi.
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  loadChatMeta: ({ id }: Parameters<MemoryStorageProvider['loadChatMeta']>[0]) => provider.loadChatMeta({ id }),
-  getModelLaunch: ({ chatId }: { chatId: ModelLaunchChatRequest['chatId'] }) => readModelLaunch({ provider, chatId }),
-  prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
-  captureModelLaunchStorage: () => () => storageCurrent,
-},
+    loadChatMeta: ({ id }: Parameters<MemoryStorageProvider['loadChatMeta']>[0]) => provider.loadChatMeta({ id }),
+    getModelLaunch: ({ chatId }: { chatId: ModelLaunchChatRequest['chatId'] }) => readModelLaunch({ provider, chatId }),
+    prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
+    captureModelLaunchStorage: () => () => storageCurrent,
+  },
 }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: [{ label: 'Model-Q4_K_M', size: 256, files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] }] };
 const hosts: ReturnType<typeof mount>[] = [];
@@ -40,8 +40,8 @@ async function start({ path }: { path: string }) {
   await router.push(path); await router.isReady();
   const wrapper = mount(defineComponent({
     setup() {
-    useModelLaunchCoordinator(); return {};
-  },
+      useModelLaunchCoordinator(); return {};
+    },
     template: '<div />',
   }), { global: { plugins: [router] } });
   hosts.push(wrapper); return router;

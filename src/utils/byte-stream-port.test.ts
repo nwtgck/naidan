@@ -29,10 +29,10 @@ describe('bounded byte stream ports', () => {
     const bytes = new Uint8Array(BYTE_STREAM_CHUNK_BYTES * 3 + 7).fill(42);
     const fixture = connect({
       stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
-    }),
+        start(controller) {
+          controller.enqueue(bytes); controller.close();
+        },
+      }),
       signal: undefined,
     });
     await new Promise(resolve => setTimeout(resolve, 10));
@@ -57,10 +57,10 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({
       signal: undefined,
       stream: new ReadableStream({
-      pull(controller) {
-        produced++; controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
-      },
-    }, { highWaterMark: 0 }),
+        pull(controller) {
+          produced++; controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
+        },
+      }, { highWaterMark: 0 }),
     });
     const reader = fixture.receiver.stream.getReader();
     await reader.read();
@@ -77,10 +77,10 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({
       signal: undefined,
       stream: new ReadableStream({
-      start(controller) {
-        controller.enqueue(bytes.subarray(1, 3)); controller.close();
-      },
-    }),
+        start(controller) {
+          controller.enqueue(bytes.subarray(1, 3)); controller.close();
+        },
+      }),
     });
     expect([...new Uint8Array(await new Response(fixture.receiver.stream).arrayBuffer())]).toEqual([10, 20]);
     await fixture.sender.completed;
@@ -91,11 +91,11 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({
       signal: undefined,
       stream: new ReadableStream({
-      pull() {
-        return new Promise(() => undefined);
-      },
-      cancel,
-    }),
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel,
+      }),
     });
     const reader = fixture.receiver.stream.getReader();
     const pending = reader.read();
@@ -146,10 +146,10 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({
       signal: undefined,
       stream: new ReadableStream({
-      pull(controller) {
-        controller.error(new Error('disk read failed'));
-      },
-    }),
+        pull(controller) {
+          controller.error(new Error('disk read failed'));
+        },
+      }),
     });
     await expect(new Response(fixture.receiver.stream).arrayBuffer()).rejects.toThrow('disk read failed');
     await expect(fixture.sender.completed).rejects.toThrow('disk read failed');

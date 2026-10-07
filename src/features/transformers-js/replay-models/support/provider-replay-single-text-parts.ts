@@ -118,22 +118,22 @@ export function projectSingleTextReplayInput({ input, precedingEvents }: {
   return {
     ...checked,
     messages: checked.messages.map(message => {
-    if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
-    const current = assistantPartsSchema.parse(message);
-    const precedingPart = (() => {
-      if (precedingEvents === undefined) return undefined;
-      const events = precedingEvents;
-      const starts = events.filter(event => event.kind === 'assistant_message');
-      const revisions = events.filter(event => event.kind === 'part_text');
-      const last = revisions.at(-1);
-      if (starts.length !== 1 || !last || last.partType !== 'text' || last.index !== 0
+      if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
+      const current = assistantPartsSchema.parse(message);
+      const precedingPart = (() => {
+        if (precedingEvents === undefined) return undefined;
+        const events = precedingEvents;
+        const starts = events.filter(event => event.kind === 'assistant_message');
+        const revisions = events.filter(event => event.kind === 'part_text');
+        const last = revisions.at(-1);
+        if (starts.length !== 1 || !last || last.partType !== 'text' || last.index !== 0
         || revisions.some(event => event.messageId !== starts[0]!.messageId || event.partId !== last.partId || event.partType !== 'text' || event.index !== 0)
         || events.some(event => event.kind === 'part_call')) return undefined;
-      return { id: last.partId, type: 'text', text: last.text, completeness: last.completeness };
-    })();
-    expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);
-    return { role: current.role, content: current.parts[0].text };
-  }),
+        return { id: last.partId, type: 'text', text: last.text, completeness: last.completeness };
+      })();
+      expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);
+      return { role: current.role, content: current.parts[0].text };
+    }),
   };
 }
 

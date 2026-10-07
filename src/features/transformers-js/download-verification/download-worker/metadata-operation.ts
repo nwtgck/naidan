@@ -146,10 +146,10 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     let received = 0;
     const lease = {
       async cancel() {
-      if (ended) return;
-      ended = true;
-      await reader.cancel();
-    },
+        if (ended) return;
+        ended = true;
+        await reader.cancel();
+      },
     };
     ownLease({ lease });
     const body = new ReadableStream<Uint8Array>({
@@ -184,52 +184,52 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     run: async () => {
     // Request merges method/headers/signal with the platform's own precedence.
     // Relative remote requests are not valid for this exact HF-only operation.
-    const request = new Request(input, init);
-    request.signal.throwIfAborted();
-    const probe = request.method === 'GET' && request.headers.get('Range') === 'bytes=0-0';
-    if (request.method !== 'GET') throw new Error('Unexpected metadata request method');
-    const id = resource({ value: request.url, presence: probe ? 'allowed' : 'forbidden' });
-    // TJS also probes the size of any exact-revision metadata resource when
-    // its full GET omits Content-Length. This is independent of the two known
-    // revisionless presence probes: resource() alone owns that alias policy.
-    // Neither kind of probe may acquire a full-resource save obligation.
-    if (request.headers.has('Range') && !probe) {
-      throw new Error('Unexpected metadata Range request');
-    }
-    const target = new URL(request.url);
-    target.pathname = new URL(id.url).pathname;
-    const canonical = new Request(target, request);
-    const response = await downloadFetch(canonical, { credentials: 'omit', referrerPolicy: 'no-referrer' });
-    // Optional 404 and probes are never promoted to required saved metadata.
-    const obligation = probe ? 'probe' : response.status === 200 ? 'save' : 'none';
-    const owned = ownResponse({ response, url: id.url, obligation });
-    if (probe && (response.status === 200 || response.status === 206)) {
+      const request = new Request(input, init);
+      request.signal.throwIfAborted();
+      const probe = request.method === 'GET' && request.headers.get('Range') === 'bytes=0-0';
+      if (request.method !== 'GET') throw new Error('Unexpected metadata request method');
+      const id = resource({ value: request.url, presence: probe ? 'allowed' : 'forbidden' });
+      // TJS also probes the size of any exact-revision metadata resource when
+      // its full GET omits Content-Length. This is independent of the two known
+      // revisionless presence probes: resource() alone owns that alias policy.
+      // Neither kind of probe may acquire a full-resource save obligation.
+      if (request.headers.has('Range') && !probe) {
+        throw new Error('Unexpected metadata Range request');
+      }
+      const target = new URL(request.url);
+      target.pathname = new URL(id.url).pathname;
+      const canonical = new Request(target, request);
+      const response = await downloadFetch(canonical, { credentials: 'omit', referrerPolicy: 'no-referrer' });
+      // Optional 404 and probes are never promoted to required saved metadata.
+      const obligation = probe ? 'probe' : response.status === 200 ? 'save' : 'none';
+      const owned = ownResponse({ response, url: id.url, obligation });
+      if (probe && (response.status === 200 || response.status === 206)) {
       // TJS may allocate its full-file read buffer from the probe's advertised
       // total before consuming the actual full response. Bounding only the
       // one-byte probe body does not bound that allocation. Match the pinned
       // runtime's header interpretation; absent/unparseable sizes remain unknown.
-      const rangeSize = response.status === 206
-        ? response.headers.get('Content-Range')?.match(/bytes \d+-\d+\/(\d+)/u)?.[1]
-        : undefined;
-      const advertisedSize = Number.parseInt(rangeSize ?? response.headers.get('Content-Length') ?? '', 10);
-      if (!Number.isNaN(advertisedSize) && (!Number.isSafeInteger(advertisedSize) || advertisedSize < 0 || advertisedSize > maximumByteLength)) {
-        throw new Error('Metadata probe advertised an invalid or oversized resource size');
+        const rangeSize = response.status === 206
+          ? response.headers.get('Content-Range')?.match(/bytes \d+-\d+\/(\d+)/u)?.[1]
+          : undefined;
+        const advertisedSize = Number.parseInt(rangeSize ?? response.headers.get('Content-Length') ?? '', 10);
+        if (!Number.isNaN(advertisedSize) && (!Number.isSafeInteger(advertisedSize) || advertisedSize < 0 || advertisedSize > maximumByteLength)) {
+          throw new Error('Metadata probe advertised an invalid or oversized resource size');
+        }
       }
-    }
-    if (!probe && response.status !== 404) {
-      const error = fullResourceResponseError({ response });
-      if (error !== undefined) throw error;
-    }
-    if (response.status !== 200 && response.status !== 404 && !(probe && response.status === 206)) {
-      throw new Error(`Metadata HTTP status ${response.status} is not an optional absence or complete response`);
-    }
-    if (response.status === 200 && response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) {
-      throw new Error('HTML response is not runtime metadata');
-    }
-    request.signal.throwIfAborted();
-    check();
-    return owned;
-  },
+      if (!probe && response.status !== 404) {
+        const error = fullResourceResponseError({ response });
+        if (error !== undefined) throw error;
+      }
+      if (response.status !== 200 && response.status !== 404 && !(probe && response.status === 206)) {
+        throw new Error(`Metadata HTTP status ${response.status} is not an optional absence or complete response`);
+      }
+      if (response.status === 200 && response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) {
+        throw new Error('HTML response is not runtime metadata');
+      }
+      request.signal.throwIfAborted();
+      check();
+      return owned;
+    },
   });
 
   const cache = {

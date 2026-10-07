@@ -195,8 +195,8 @@ export async function writeToOpfs({ path, response }: { path: string, response: 
     availability: 'wait',
     signal: undefined,
     run: async ({ lease }) => {
-    await writeDirectUnderLease({ path, response, lease });
-  },
+      await writeDirectUnderLease({ path, response, lease });
+    },
   });
 }
 
@@ -283,7 +283,7 @@ export async function writeToOpfsWithStaging({ path, response }: { path: string,
     availability: 'wait',
     signal: undefined,
     run: async ({ lease }) =>
-    await writeToOpfsWithStagingUnderLease({ path, response, lease }),
+      await writeToOpfsWithStagingUnderLease({ path, response, lease }),
   });
 }
 

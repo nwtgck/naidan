@@ -19,8 +19,8 @@ it('does not delete the handle when saving removal fails', async () => {
   await expect(unregisterHostModelDirectory({
     id,
     save: async () => {
-    throw new Error('Settings save failed');
-  },
+      throw new Error('Settings save failed');
+    },
     restore,
   })).rejects.toThrow('Settings save failed');
   expect(hostModelHandles.delete).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
@@ -34,11 +34,11 @@ it('restores just the removed registration when handle cleanup fails', async () 
   await expect(unregisterHostModelDirectory({
     id,
     save: async () => {
-    order.push('save');
-  },
+      order.push('save');
+    },
     restore: async () => {
-    order.push('restore');
-  },
+      order.push('restore');
+    },
   })).rejects.toThrow('registration was restored');
   expect(order).toEqual(['save', 'delete', 'restore']);
 });
@@ -49,7 +49,7 @@ it('reports partial removal explicitly if both cleanup and restoration fail', as
     id,
     save: async () => {},
     restore: async () => {
-    throw new Error('Settings unavailable');
-  },
+      throw new Error('Settings unavailable');
+    },
   })).rejects.toThrow('registration could not be restored');
 });

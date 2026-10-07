@@ -69,11 +69,11 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
     report({
       metric: 'gpu-write-sizes',
       fields: {
-      ...fields,
-      bucketUpperBytes: [...UPLOAD_BUCKET_LIMITS],
+        ...fields,
+        bucketUpperBytes: [...UPLOAD_BUCKET_LIMITS],
         // Last bucket is > final upper bound, no unbounded histogram/labels.
-      calls: run.histogram.map((n, i) => final ? n : n - run.previousHistogram[i]!),
-    },
+        calls: run.histogram.map((n, i) => final ? n : n - run.previousHistogram[i]!),
+      },
     });
     for (const [kind, wait, previous] of [['queue', run.queue, run.previousQueue], ['map', run.mapping, run.previousMapping]] as const) {
       const value = wait.snapshot();
@@ -81,13 +81,13 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
       report({
         metric: 'gpu-wait',
         fields: {
-        ...fields,
-        kind,
-        ...difference,
-        pending: value.pending,
-        peakPending: value.peakPending,
-        maxCompletedMs: value.maxCompletedMs,
-      },
+          ...fields,
+          kind,
+          ...difference,
+          pending: value.pending,
+          peakPending: value.peakPending,
+          maxCompletedMs: value.maxCompletedMs,
+        },
       });
       if (!final) Object.assign(previous, value);
     }
@@ -128,13 +128,13 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
       report({
         metric: 'gpu-observation',
         fields: {
-        runId,
-        gpuTimestamps: false,
-        addedQueueWaits: false,
-        countsAreHostCalls: true,
-        bufferBytesAreLiveVram: false,
-        unavailableMethods: [...unavailable].join(',').slice(0, 512),
-      },
+          runId,
+          gpuTimestamps: false,
+          addedQueueWaits: false,
+          countsAreHostCalls: true,
+          bufferBytesAreLiveVram: false,
+          unavailableMethods: [...unavailable].join(',').slice(0, 512),
+        },
       });
       for (const fields of deviceSummaries) report({ metric: 'gpu-device', fields: { ...fields, runId, reusedDevice: true } });
     },

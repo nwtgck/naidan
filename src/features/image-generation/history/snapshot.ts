@@ -26,17 +26,17 @@ export function copyImageGenerationSnapshot({ snapshot }: { snapshot: ImageGener
     createdAt,
     inputFiles: inputFiles.map(file => ({ ...file })),
     request: {
-    parameters: { ...parameters },
-    preview: { ...preview },
-    runtime: copyImageGenerationRuntime({ runtime }),
-    models: models.map(({ file, companions, ...model }) => ({ ...model, file: { ...file }, companions: companions.map(companion => ({ ...companion, file: { ...companion.file } })) })),
-    loras: loras.map(lora => ({ ...lora, file: { ...lora.file } })),
-    imageInputs: {
-      initImage: imageInputs.initImage && { ...imageInputs.initImage },
-      strength: imageInputs.strength,
-      referenceImages: imageInputs.referenceImages.map(image => ({ ...image })),
+      parameters: { ...parameters },
+      preview: { ...preview },
+      runtime: copyImageGenerationRuntime({ runtime }),
+      models: models.map(({ file, companions, ...model }) => ({ ...model, file: { ...file }, companions: companions.map(companion => ({ ...companion, file: { ...companion.file } })) })),
+      loras: loras.map(lora => ({ ...lora, file: { ...lora.file } })),
+      imageInputs: {
+        initImage: imageInputs.initImage && { ...imageInputs.initImage },
+        strength: imageInputs.strength,
+        referenceImages: imageInputs.referenceImages.map(image => ({ ...image })),
+      },
     },
-  },
   };
 }
 
@@ -71,7 +71,7 @@ export function snapshotImageGeneration({ request, sourceCommit, locateFile, cre
           companions: (companions ?? []).map(({ path, file, ...rest }) => {
           rest satisfies Record<PropertyKey, never>;
           return { path, file: locateFile({ file }) };
-        }),
+          }),
         };
       }),
       loras: loras.map(({ file, path, strength, ...rest }) => {
@@ -125,21 +125,21 @@ export function recoverImageGenerationSnapshot({ snapshot, output, elapsedMs }: 
   const binaryObjectId = generateId<BinaryObjectId>();
   return {
     record: {
-    id: captured.id,
-    createdAt: captured.createdAt,
-    request: captured.request,
-    result: {
-      confirmation: 'unconfirmed',
-      binaryObjectId,
-      width: output.width,
-      height: output.height,
-      modelVersion: output.reported?.modelVersion,
-      uniformOutput: output.reported?.uniformOutput,
-      elapsedMs,
+      id: captured.id,
+      createdAt: captured.createdAt,
+      request: captured.request,
+      result: {
+        confirmation: 'unconfirmed',
+        binaryObjectId,
+        width: output.width,
+        height: output.height,
+        modelVersion: output.reported?.modelVersion,
+        uniformOutput: output.reported?.uniformOutput,
+        elapsedMs,
+      },
+      previews: [],
     },
-    previews: [],
-  },
-  files: [...captured.inputFiles, { binaryObjectId, blob: output.png, name: 'recovered-image.png' }],
+    files: [...captured.inputFiles, { binaryObjectId, blob: output.png, name: 'recovered-image.png' }],
   };
 }
 

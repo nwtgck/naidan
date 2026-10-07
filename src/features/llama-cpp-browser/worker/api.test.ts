@@ -549,15 +549,15 @@ describe('generation progress mailbox integration', () => {
         expect(reports).toEqual([{
           event: 'generation-progress',
           progressDelivery: {
-          received: 33,
-          sent: 2,
-          settled: 2,
-          coalesced: 31,
-          discarded: 0,
-          callbackFailures: 0,
-          peakInFlight: 1,
-          peakPending: 1,
-        },
+            received: 33,
+            sent: 2,
+            settled: 2,
+            coalesced: 31,
+            discarded: 0,
+            callbackFailures: 0,
+            peakInFlight: 1,
+            peakPending: 1,
+          },
         }]);
       } else expect(reports).toEqual([]);
     } finally {

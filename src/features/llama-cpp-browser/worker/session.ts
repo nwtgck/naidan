@@ -233,13 +233,13 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           core,
           path: `/models/${entry.path}`,
           source: readCache.wrap({
-          source: {
-          size: access.getSize(),
-          read({ destination, offset }) {
-          return access.read(destination, { at: offset });
-        },
-        },
-        }),
+            source: {
+              size: access.getSize(),
+              read({ destination, offset }) {
+                return access.read(destination, { at: offset });
+              },
+            },
+          }),
           maxChunkBytes: 8 * 1024 * 1024,
         }));
       }
@@ -297,10 +297,10 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           try {
             if (reportFileReads) logDiagnostic({
               diagnostic: {
-              event: 'file-read-performance',
-              profile,
-              fileReads: { target: 'model', ...readCache.counters },
-            },
+                event: 'file-read-performance',
+                profile,
+                fileReads: { target: 'model', ...readCache.counters },
+              },
             });
           } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
         }

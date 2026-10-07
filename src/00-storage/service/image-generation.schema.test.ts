@@ -56,9 +56,9 @@ describe('Image Generation persistence contracts', () => {
       createdAt: 1,
       preferences: { assistantLayout: 'floating' },
       tags: [
-      { id: 'tag-aa', name, createdAt: 1, updatedAt: 1, state: 'active' },
-      { id: 'tag-bb', name: sameKeyName, createdAt: 1, updatedAt: 1, state: 'archived' },
-    ],
+        { id: 'tag-aa', name, createdAt: 1, updatedAt: 1, state: 'active' },
+        { id: 'tag-bb', name: sameKeyName, createdAt: 1, updatedAt: 1, state: 'archived' },
+      ],
     };
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse(catalog).success).toBe(false);
   });
@@ -69,9 +69,9 @@ describe('Image Generation persistence contracts', () => {
       revision: 1,
       state: 'active' as const,
       tags: [
-      { tag: { type: 'system', key: 'favorite' }, assignedAt: 1 },
-      { tag: { type: 'user', tagId: 'favorite' }, assignedAt: 2 },
-    ],
+        { tag: { type: 'system', key: 'favorite' }, assignedAt: 1 },
+        { tag: { type: 'user', tagId: 'favorite' }, assignedAt: 2 },
+      ],
     };
     expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse(annotations).tags).toHaveLength(2);
     expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.safeParse({ ...annotations, tags: [{ tag: { type: 'system', key: 'custom' }, assignedAt: 1 }] }).success).toBe(false);

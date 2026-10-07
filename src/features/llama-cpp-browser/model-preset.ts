@@ -36,9 +36,9 @@ function coordinateModelPreset({ state, input, initialized, isOnboardingDismisse
       input: value,
       target: isOnboardingDismissed.value ? 'settings' : 'onboarding',
       claim: () => {
-      if (claimed) return false;
-      claimed = true; return true;
-    },
+        if (claimed) return false;
+        claimed = true; return true;
+      },
     };
   }, { immediate: true });
 }

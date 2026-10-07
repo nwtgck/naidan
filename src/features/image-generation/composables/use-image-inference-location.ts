@@ -48,8 +48,8 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   const connected = computed(() => selected.value?.phase === 'connected' && selected.value.connection.peerId === peerId.value);
   const unsubscribe = subscribeRpcState({
     listener() {
-    if (isRemote.value) void refresh({ fromStorage: false });
-  },
+      if (isRemote.value) void refresh({ fromStorage: false });
+    },
   });
   onScopeDispose(() => {
     disposed = true; catalogStop?.abort(); unsubscribe();
@@ -204,7 +204,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     return {
       inferenceLocation: location,
       remoteModelEditors: editors.value.filter(item => durable({ id: item.connectionId, peer: item.peerId }))
-      .map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) })),
+        .map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) })),
     };
   }
   function restorePreferences({ inferenceLocation, remoteModelEditors }: {
@@ -267,28 +267,28 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     return {
       inputFiles,
       request: {
-      parameters: { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler, distilledGuidance },
-      preview: { ...form.preview.value },
-      models: [],
-      loras: [],
-      runtime: isRemote.value && connectionId.value && peerId.value ? runtime() : undefined,
-      imageInputs: {
-        initImage: inputs.initImage && image({ file: inputs.initImage }),
-        strength: inputs.strength,
-        referenceImages: inputs.referenceImages.map(file => image({ file })),
+        parameters: { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler, distilledGuidance },
+        preview: { ...form.preview.value },
+        models: [],
+        loras: [],
+        runtime: isRemote.value && connectionId.value && peerId.value ? runtime() : undefined,
+        imageInputs: {
+          initImage: inputs.initImage && image({ file: inputs.initImage }),
+          strength: inputs.strength,
+          referenceImages: inputs.referenceImages.map(file => image({ file })),
+        },
       },
-    },
     };
   }
   function snapshot({ seed, createdAt }: { seed: string, createdAt: number }): ImageGenerationSnapshot {
     const captured = captureDraftRequest({ seed });
     return copyImageGenerationSnapshot({
       snapshot: {
-      id: generateId<ImageGenerationId>(),
-      createdAt,
-      inputFiles: captured.inputFiles,
-      request: { ...captured.request, runtime: runtime() },
-    },
+        id: generateId<ImageGenerationId>(),
+        createdAt,
+        inputFiles: captured.inputFiles,
+        request: { ...captured.request, runtime: runtime() },
+      },
     });
   }
   async function prepare({ seed, createdAt, signal }: { seed: string, createdAt: number, signal: AbortSignal }): Promise<PreparedImageExecution> {
@@ -310,8 +310,8 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const plan = preparePeerImageExecution({ binding, input });
     return {
       get snapshot() {
-      return copyImageGenerationSnapshot({ snapshot: captured });
-    },
+        return copyImageGenerationSnapshot({ snapshot: captured });
+      },
       start: plan.start,
     };
   }

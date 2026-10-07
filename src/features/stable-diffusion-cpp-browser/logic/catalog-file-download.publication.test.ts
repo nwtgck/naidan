@@ -22,8 +22,8 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
     vi.stubGlobal('navigator', {
       storage: { getDirectory: async () => root },
       locks: {
-      request: async (_name: string, _options: unknown, run: () => Promise<void>) => run(),
-    },
+        request: async (_name: string, _options: unknown, run: () => Promise<void>) => run(),
+      },
     });
     const bytes = new Uint8Array(32), view = new DataView(bytes.buffer);
     view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true);
@@ -39,8 +39,8 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
       headers: new Headers(),
       body: new ReadableStream({
         start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
+          controller.enqueue(bytes); controller.close();
+        },
       }),
     }));
     const original = MemoryFile.prototype.createWritable;
@@ -54,14 +54,14 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
         if (phase === 'write') return {
           ...writer,
           write: async () => {
-          throw failure;
-        },
+            throw failure;
+          },
         };
         return {
           ...writer,
           close: async () => {
-          throw failure;
-        },
+            throw failure;
+          },
         };
       }
       return original.call(this, options);

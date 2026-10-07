@@ -16,8 +16,8 @@ async function mountBypass({ path }: { path: string }) {
   await router.push(path);
   const wrapper = mount(defineComponent({
     setup() {
-    return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
-  },
+      return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
+    },
     template: '<div>{{ bypass }}</div>',
   }), { global: { plugins: [router] } });
   return { router, wrapper };
@@ -61,8 +61,8 @@ describe('initial model-link navigation', () => {
     expect(router.currentRoute.value).toBe(START_LOCATION);
     const wrapper = mount(defineComponent({
       setup() {
-      return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
-    },
+        return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
+      },
       template: '<div>{{ bypass }}</div>',
     }), { global: { plugins: [router] } });
     expect(wrapper.text()).toBe('true'); expect(loadMeta).not.toHaveBeenCalled();

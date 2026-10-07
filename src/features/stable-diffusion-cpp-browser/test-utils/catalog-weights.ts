@@ -11,28 +11,28 @@ export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageReci
       metadata: {},
       extraBytes: 0,
       tensors: [
-      tensor({ name: 'txt_in.text_norm.weight', shape: [4096] }),
-      tensor({ name: 'img_in.weight', shape: [1, 64] }),
-      tensor({ name: 'txt_in.in_layer.weight', shape: [1, 4096] }),
-    ],
+        tensor({ name: 'txt_in.text_norm.weight', shape: [4096] }),
+        tensor({ name: 'img_in.weight', shape: [1, 64] }),
+        tensor({ name: 'txt_in.in_layer.weight', shape: [1, 4096] }),
+      ],
     }).file;
     case 'vae': return safetensorsFixture({
       name,
       tensors: [
-      tensor({ name: 'conv2.weight', shape: [64, 64, 1, 1, 1] }),
-      tensor({ name: 'decoder.conv1.weight', shape: [1, 64, 1, 1, 1] }),
-      tensor({ name: 'decoder.head.2.weight', shape: [4, 1, 1, 1, 1] }),
-    ],
+        tensor({ name: 'conv2.weight', shape: [64, 64, 1, 1, 1] }),
+        tensor({ name: 'decoder.conv1.weight', shape: [1, 64, 1, 1, 1] }),
+        tensor({ name: 'decoder.head.2.weight', shape: [4, 1, 1, 1, 1] }),
+      ],
     }).file;
     case 'lm': return ggufFixture({
       name,
       metadata: { 'general.architecture': 'qwen3vl', 'qwen3vl.block_count': layers },
       extraBytes: 0,
       tensors: [
-      tensor({ name: 'token_embd.weight', shape: [1, 4096] }),
-      tensor({ name: 'blk.0.attn_q_norm.weight', shape: [128] }),
-      tensor({ name: `blk.${layers - 1}.attn_norm.weight`, shape: [4096] }),
-    ],
+        tensor({ name: 'token_embd.weight', shape: [1, 4096] }),
+        tensor({ name: 'blk.0.attn_q_norm.weight', shape: [128] }),
+        tensor({ name: `blk.${layers - 1}.attn_norm.weight`, shape: [4096] }),
+      ],
     }).file;
     default: { const exhaustive: never = file.role; throw new Error(String(exhaustive)); }
     }

@@ -244,8 +244,8 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     const unsubscribe = subscribeDiagnostics({
       debug: 'on',
       listener: async () => {
-      throw new Error('private transport error');
-    },
+        throw new Error('private transport error');
+      },
     });
     try {
       await expect(logOperation({ diagnostic: { event: 'operation-start', stage: 'image-tokenize' } })).resolves.toBeUndefined();

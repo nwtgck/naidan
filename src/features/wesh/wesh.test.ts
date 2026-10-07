@@ -1525,12 +1525,12 @@ tempfn`,
 
     await wesh.execute({
       source: createTextShellSource({
-      text: `\
+        text: `\
 cat <<EOF
 hello
 world
 EOF`,
-    }),
+      }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,

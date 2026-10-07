@@ -45,13 +45,13 @@ it('selects a registered root and shows its real repository-relative nested layo
   const view = createView({ supported: true, entries: [{ id: 'root-a', name: 'my-image-models', access: 'readwrite', error: undefined }] });
   wrapper = mount(ImageHostModelDirectories, {
     props: {
-    view,
-    opfsSupported: true,
-    disabled: false,
-    mutationDisabled: false,
-    downloading: false,
-    layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
-  },
+      view,
+      opfsSupported: true,
+      disabled: false,
+      mutationDisabled: false,
+      downloading: false,
+      layoutFile: { repository: 'example-owner/image-model', path: 'split_files/vae/model.safetensors' },
+    },
   });
   await wrapper.get('[data-testid="image-download-destination"]').setValue('root-a');
   expect(view.selectDestination).toHaveBeenCalledWith({ id: 'root-a' });
@@ -73,9 +73,9 @@ it('keeps missing registrations visible for reconnect and distinguishes them by 
   const view = createView({
     supported: true,
     entries: [
-    { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
-    { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
-  ],
+      { id: 'missing-a', name: 'models', access: 'missing', error: undefined },
+      { id: 'available-b', name: 'models', access: 'readwrite', error: undefined },
+    ],
   });
   wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   expect(wrapper.get<HTMLOptionElement>('option[value="missing-a"]').element.disabled).toBe(true);

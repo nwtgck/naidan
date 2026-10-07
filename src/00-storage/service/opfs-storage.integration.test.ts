@@ -171,9 +171,9 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     await importExportService.executeImport({
       zipFile: zipBlob,
       config: {
-      data: { mode: 'replace' },
-      settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-    },
+        data: { mode: 'replace' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+      },
     });
 
     // 3. Verify storage is now sharded and hydrated correctly

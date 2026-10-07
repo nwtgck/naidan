@@ -70,20 +70,20 @@ describe('automatic title scheduling', () => {
     scheduler.schedule({
       chatId: chatA,
       run: async () => {
-      calls.push('old');
-    },
+        calls.push('old');
+      },
     });
     scheduler.schedule({
       chatId: chatB,
       run: async () => {
-      calls.push('b');
-    },
+        calls.push('b');
+      },
     });
     scheduler.schedule({
       chatId: chatA,
       run: async () => {
-      calls.push('a');
-    },
+        calls.push('a');
+      },
     });
     await vi.advanceTimersByTimeAsync(2500);
     expect(calls).toEqual(['a']);
@@ -137,8 +137,8 @@ describe('automatic title scheduling', () => {
     scheduler.schedule({
       chatId: chatA,
       run: () => {
-      throw error;
-    },
+        throw error;
+      },
     });
     await vi.advanceTimersByTimeAsync(2500);
     expect(onError).toHaveBeenCalledExactlyOnceWith({ error });
@@ -153,8 +153,8 @@ describe('automatic title scheduling', () => {
     scheduler.schedule({
       chatId: chatB,
       run: async () => {
-      throw new Error('endpoint failed');
-    },
+        throw new Error('endpoint failed');
+      },
     });
     await vi.advanceTimersByTimeAsync(5000);
     expect(completed).toHaveBeenCalledOnce();

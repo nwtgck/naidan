@@ -36,10 +36,10 @@ async function prepare({ input }: { input: EvidenceStreamRequest }): Promise<Pre
       batchId,
       ordinaryDownloadTiming: timing?.snapshot,
       items: items.map((item, index) => ({
-      ...item,
-      replayMetadata: replayMetadata?.[index] === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata[index]),
-      nativeEvidence: nativeEvidence?.[index],
-    })),
+        ...item,
+        replayMetadata: replayMetadata?.[index] === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata[index]),
+        nativeEvidence: nativeEvidence?.[index],
+      })),
     });
 
   }

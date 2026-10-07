@@ -55,8 +55,8 @@ it('restores a pending session location before local availability would disable 
   let view!: ImageGenerationView;
   const host = mount(defineComponent({
     setup() {
-    view = useImageGeneration(); return () => h('div');
-  },
+      view = useImageGeneration(); return () => h('div');
+    },
   }));
   try {
     await flushPromises();

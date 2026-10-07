@@ -38,11 +38,11 @@ export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Ui
   let at = 0;
   return new ReadableStream({
     pull(controller) {
-    if (at === bytes.length) {
-      controller.close(); return;
-    }
-    const end = Math.min(at + 16384, bytes.length); controller.enqueue(bytes.slice(at, end)); at = end;
-  },
+      if (at === bytes.length) {
+        controller.close(); return;
+      }
+      const end = Math.min(at + 16384, bytes.length); controller.enqueue(bytes.slice(at, end)); at = end;
+    },
   }, { highWaterMark: 0 });
 }
 /** Starts computation on demand, preserves backpressure, and joins native cleanup on cancel. */
@@ -64,8 +64,8 @@ export function computationSource<T>({ signal, run }: { signal: AbortSignal; run
         controller.signal.throwIfAborted(); await run({
           signal: controller.signal,
           emit: async ({ value }) => {
-          controller.signal.throwIfAborted(); await writer.write(value);
-        },
+            controller.signal.throwIfAborted(); await writer.write(value);
+          },
         }); await writer.close();
       } catch (error) {
         controller.abort(error); await writer.abort(error).catch(() => {});

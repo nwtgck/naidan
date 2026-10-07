@@ -7,33 +7,33 @@ import { parseProviderReplayTextEvidence, replayRecordedText } from './provider-
 function recording() {
   return parseProviderReplayTextEvidence({
     value: {
-    schemaVersion: 1,
-    identity: { modelId: 'example/model', resolvedRevision: 'a'.repeat(40), investigationRunId: 'synthetic', transformersJsVersion: 'test-fixture' },
-    scenario: {
-      id: 'synthetic-prefix',
-      messages: [{ role: 'user', content: 'Synthetic' }],
-      tools: [],
-      lmParameters: { temperature: 0, topP: 1, maxCompletionTokens: 2 },
-      boundary: { kind: 'natural-prefix', lengthRelation: 'equals-requested-budget', stopCause: 'not-recorded' },
+      schemaVersion: 1,
+      identity: { modelId: 'example/model', resolvedRevision: 'a'.repeat(40), investigationRunId: 'synthetic', transformersJsVersion: 'test-fixture' },
+      scenario: {
+        id: 'synthetic-prefix',
+        messages: [{ role: 'user', content: 'Synthetic' }],
+        tools: [],
+        lmParameters: { temperature: 0, topP: 1, maxCompletionTokens: 2 },
+        boundary: { kind: 'natural-prefix', lengthRelation: 'equals-requested-budget', stopCause: 'not-recorded' },
+      },
+      inputContract: {
+        inputTokenIds: [10, 20],
+        inputTensorFacts: [
+          { name: 'attention_mask', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+          { name: 'input_ids', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+        ],
+        effectiveGenerationConfig: { maxNewTokens: 2, temperature: 0, topP: 1, doSample: false },
+      },
+      modelReplay: {
+        source: 'production-lane',
+        sourceInputTokenIds: [10, 20],
+        sourceInputSha256: createHash('sha256').update('[10,20]').digest('hex'),
+        generatedTokenIds: [30, 40],
+        generatedSequenceTokenIds: [10, 20, 30, 40],
+        generatedText: 'Synthetic output',
+      },
+      expectedProviderSemantic: { basis: 'production-positive-control', captureScope: 'prefix', visibleContent: 'Synthetic output' },
     },
-    inputContract: {
-      inputTokenIds: [10, 20],
-      inputTensorFacts: [
-        { name: 'attention_mask', dtype: 'int64', dims: [1, 2], location: 'cpu' },
-        { name: 'input_ids', dtype: 'int64', dims: [1, 2], location: 'cpu' },
-      ],
-      effectiveGenerationConfig: { maxNewTokens: 2, temperature: 0, topP: 1, doSample: false },
-    },
-    modelReplay: {
-      source: 'production-lane',
-      sourceInputTokenIds: [10, 20],
-      sourceInputSha256: createHash('sha256').update('[10,20]').digest('hex'),
-      generatedTokenIds: [30, 40],
-      generatedSequenceTokenIds: [10, 20, 30, 40],
-      generatedText: 'Synthetic output',
-    },
-    expectedProviderSemantic: { basis: 'production-positive-control', captureScope: 'prefix', visibleContent: 'Synthetic output' },
-  },
   });
 }
 
@@ -59,15 +59,15 @@ function endedRecording() {
   const evidence = recording();
   return parseProviderReplayTextEvidence({
     value: {
-    ...evidence,
-    scenario: {
-      ...evidence.scenario,
-      lmParameters: { ...evidence.scenario.lmParameters, maxCompletionTokens: 3 },
-      boundary: { kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 40, stopCause: 'not-recorded' },
+      ...evidence,
+      scenario: {
+        ...evidence.scenario,
+        lmParameters: { ...evidence.scenario.lmParameters, maxCompletionTokens: 3 },
+        boundary: { kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 40, stopCause: 'not-recorded' },
+      },
+      inputContract: { ...evidence.inputContract, effectiveGenerationConfig: { ...evidence.inputContract.effectiveGenerationConfig, maxNewTokens: 3 } },
+      expectedProviderSemantic: { ...evidence.expectedProviderSemantic, captureScope: 'recorded-output' },
     },
-    inputContract: { ...evidence.inputContract, effectiveGenerationConfig: { ...evidence.inputContract.effectiveGenerationConfig, maxNewTokens: 3 } },
-    expectedProviderSemantic: { ...evidence.expectedProviderSemantic, captureScope: 'recorded-output' },
-  },
   });
 }
 
@@ -143,9 +143,9 @@ describe('Captured text causal gate mechanics', () => {
     const evidence = recording();
     expect(() => parseProviderReplayTextEvidence({
       value: {
-      ...evidence,
-      scenario: { ...evidence.scenario, boundary: { kind: 'natural-complete', termination: 'eos' } },
-    },
+        ...evidence,
+        scenario: { ...evidence.scenario, boundary: { kind: 'natural-complete', termination: 'eos' } },
+      },
     })).toThrow();
   });
 
@@ -154,9 +154,9 @@ describe('Captured text causal gate mechanics', () => {
     expect(evidence.modelReplay.generatedTokenIds).toHaveLength(evidence.scenario.lmParameters.maxCompletionTokens);
     expect(() => parseProviderReplayTextEvidence({
       value: {
-      ...evidence,
-      scenario: { ...evidence.scenario, boundary: { ...evidence.scenario.boundary, stopCause: 'max-new-tokens' } },
-    },
+        ...evidence,
+        scenario: { ...evidence.scenario, boundary: { ...evidence.scenario.boundary, stopCause: 'max-new-tokens' } },
+      },
     })).toThrow();
   });
 

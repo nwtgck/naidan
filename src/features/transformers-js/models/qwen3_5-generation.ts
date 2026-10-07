@@ -190,11 +190,11 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
       flushSeparator(); flushCallSeparator(); flushThoughtNewline(); close({ completeness: 'partial' });
       emit({
         event: {
-        type: 'result',
-        result: terminal === undefined || terminal === 'incomplete'
-        ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal },
-      },
+          type: 'result',
+          result: terminal === undefined || terminal === 'incomplete'
+            ? { type: 'interrupted', reason }
+            : { type: 'finished', next: terminal },
+        },
       });
     },
   };

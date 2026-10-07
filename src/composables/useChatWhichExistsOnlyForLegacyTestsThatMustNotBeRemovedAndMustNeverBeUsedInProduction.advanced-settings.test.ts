@@ -77,20 +77,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // Default Global Settings
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'http://global-openai' },
-      defaultModelId: 'global-gpt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      systemPrompt: 'Global Default Prompt',
-      lmParameters: {
-        ...EMPTY_LM_PARAMETERS,
-        temperature: 0.7,
-        maxCompletionTokens: 1000,
-        reasoning: { effort: undefined },
+        endpoint: { type: 'openai', url: 'http://global-openai' },
+        defaultModelId: 'global-gpt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        systemPrompt: 'Global Default Prompt',
+        lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
+          temperature: 0.7,
+          maxCompletionTokens: 1000,
+          reasoning: { effort: undefined },
+        },
       },
-    },
     });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
@@ -127,14 +127,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
       __testOnlySetSettings({
         newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        providerProfiles: [{
-          id: 'p1',
-          name: 'Profile 1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
-          systemPrompt: 'Profile Prompt',
-        }],
-      },
+          ...JSON.parse(JSON.stringify(settings.value)),
+          providerProfiles: [{
+            id: 'p1',
+            name: 'Profile 1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            systemPrompt: 'Profile Prompt',
+          }],
+        },
       });
 
       await sendMessage({ content: 'Hi' });
@@ -159,14 +159,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
       __testOnlySetSettings({
         newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        providerProfiles: [{
-          id: 'p1',
-          name: 'Profile 1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
-          systemPrompt: 'Profile Prompt',
-        } as any],
-      },
+          ...JSON.parse(JSON.stringify(settings.value)),
+          providerProfiles: [{
+            id: 'p1',
+            name: 'Profile 1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            systemPrompt: 'Profile Prompt',
+          } as any],
+        },
       });
       await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
 
@@ -184,39 +184,39 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
       __testOnlySetSettings({
         newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
-        lmParameters: {
-          ...EMPTY_LM_PARAMETERS,
-          temperature: 0.1,
-          topP: 0.9,
-          maxCompletionTokens: 100, // Will be overridden by chat
-          reasoning: { effort: undefined },
-        },
-          // Profile should be ignored at runtime
-        providerProfiles: [{
-          id: 'p1',
-          name: 'P1',
-          endpoint: { type: 'openai', url: 'http://global-openai' },
+          ...JSON.parse(JSON.stringify(settings.value)),
           lmParameters: {
             ...EMPTY_LM_PARAMETERS,
-            temperature: 0.5,
-            presencePenalty: 1.0,
+            temperature: 0.1,
+            topP: 0.9,
+            maxCompletionTokens: 100, // Will be overridden by chat
             reasoning: { effort: undefined },
           },
-        } as any],
-      },
+          // Profile should be ignored at runtime
+          providerProfiles: [{
+            id: 'p1',
+            name: 'P1',
+            endpoint: { type: 'openai', url: 'http://global-openai' },
+            lmParameters: {
+              ...EMPTY_LM_PARAMETERS,
+              temperature: 0.5,
+              presencePenalty: 1.0,
+              reasoning: { effort: undefined },
+            },
+          } as any],
+        },
       });
 
       await updateChatSettings({
         id: idToRaw({ id: currentChat.value!.id }),
         updates: {
-        lmParameters: {
-          ...EMPTY_LM_PARAMETERS,
-          maxCompletionTokens: 500,
-          frequencyPenalty: 0.5,
-          reasoning: { effort: undefined },
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+            maxCompletionTokens: 500,
+            frequencyPenalty: 0.5,
+            reasoning: { effort: undefined },
+          },
         },
-      },
       });
 
       await sendMessage({ content: 'Hi' });
@@ -294,15 +294,15 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     vi.clearAllMocks();
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'http://global-openai' },
-      defaultModelId: 'global-gpt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      systemPrompt: undefined,
-      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
-    },
+        endpoint: { type: 'openai', url: 'http://global-openai' },
+        defaultModelId: 'global-gpt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        systemPrompt: undefined,
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
+      },
     });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat({ id: idToRaw({ id: chat!.id }) });
@@ -324,12 +324,12 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     await updateChatSettings({
       id: idToRaw({ id: currentChat.value!.id }),
       updates: {
-      endpoint: {
-        type: 'openai',
-        url: 'http://chat-specific-url',
-        httpHeaders: [['Authorization', 'Bearer secret']],
+        endpoint: {
+          type: 'openai',
+          url: 'http://chat-specific-url',
+          httpHeaders: [['Authorization', 'Bearer secret']],
+        },
       },
-    },
     });
 
     expect(capturedStorageUpdater).toBeDefined();
@@ -362,12 +362,12 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     await updateChatSettings({
       id: idToRaw({ id: currentChat.value!.id }),
       updates: {
-      endpoint: {
-        type: 'openai',
-        url: 'http://chat-specific-url',
-        httpHeaders: [['Authorization', 'Bearer secret']],
+        endpoint: {
+          type: 'openai',
+          url: 'http://chat-specific-url',
+          httpHeaders: [['Authorization', 'Bearer secret']],
+        },
       },
-    },
     });
 
     expect(currentChat.value?.endpoint).toEqual({

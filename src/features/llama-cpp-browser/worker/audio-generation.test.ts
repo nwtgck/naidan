@@ -102,8 +102,8 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
       cancellationSignal: undefined,
       shouldComplete: () => finish,
       onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 1) finish = true;
-    },
+        if (progress.phase === 'generating' && progress.completed === 1) finish = true;
+      },
     });
     expect(result).toMatchObject({ finishReason: 'user-stop', frames: 1 });
     expect(result.wav).toEqual(audioResult().wav);
@@ -127,8 +127,8 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
       cancellationSignal: controller.signal,
       shouldComplete: () => true,
       onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 1) controller.abort();
-    },
+        if (progress.phase === 'generating' && progress.completed === 1) controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(native.api.mtmd_helper_gen_audio_get_output).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
   });
@@ -168,8 +168,8 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
       request: request(),
       cancellationSignal: controller.signal,
       onProgress: ({ progress }) => {
-      if (progress.phase === 'generating') setTimeout(() => controller.abort(), 0);
-    },
+        if (progress.phase === 'generating') setTimeout(() => controller.abort(), 0);
+      },
     });
     await expect(promise).rejects.toThrow('aborted');
     expect(native.api.mtmd_helper_gen_audio_get_output).not.toHaveBeenCalled(); expect(native.owned.size).toBe(0);
@@ -260,11 +260,11 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
       preview: {
         requestedVersion: () => version,
         onPreview: async ({ result, requestVersion }) => {
-        expect(native.api.mtmd_helper_gen_audio_free).not.toHaveBeenCalled();
-        previews.push(result); versions.push(requestVersion);
-        // Growing Wasm after a preview cannot invalidate the delivered copy.
-        native.controls.growDuringStep = true;
-      },
+          expect(native.api.mtmd_helper_gen_audio_free).not.toHaveBeenCalled();
+          previews.push(result); versions.push(requestVersion);
+          // Growing Wasm after a preview cannot invalidate the delivered copy.
+          native.controls.growDuringStep = true;
+        },
       },
     });
     expect(outputs).toEqual([72, 144, 150]);
@@ -298,11 +298,11 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
       cancellationSignal: cancellation.signal,
       onProgress: () => {},
       preview: {
-      requestedVersion: () => 1,
-      onPreview: async () => {
-      entered.resolve(); await ack.promise;
-    },
-    },
+        requestedVersion: () => 1,
+        onPreview: async () => {
+          entered.resolve(); await ack.promise;
+        },
+      },
     });
     await entered.promise; expect(native.controls.steps).toBe(72);
     const rejected = expect(pending).rejects.toThrow('aborted'); cancellation.abort(); ack.resolve(); await rejected;
@@ -331,11 +331,11 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
       cancellationSignal: undefined,
       onProgress: () => {},
       preview: {
-      requestedVersion: () => 1,
-      onPreview: async () => {
-      throw new Error('consumer gone');
-    },
-    },
+        requestedVersion: () => 1,
+        onPreview: async () => {
+          throw new Error('consumer gone');
+        },
+      },
     })).rejects.toThrow('consumer gone');
     expect(native.controls.steps).toBe(72); expect(native.owned.size).toBe(0);
   });

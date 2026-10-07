@@ -58,17 +58,17 @@ function fixedFixture(): ChatContent {
         {
           type: 'tool_call',
           toolCall: {
-          id: toolCallId,
-          type: 'function',
-          function: {
-          name: 'lookup_weather',
-          arguments: `\
+            id: toolCallId,
+            type: 'function',
+            function: {
+              name: 'lookup_weather',
+              arguments: `\
 {
   "city": "Tokyo",
   "unit": "C"
 }`,
-        },
-        },
+            },
+          },
         },
       ],
       replies: { items: [] },
@@ -82,15 +82,15 @@ function fixedFixture(): ChatContent {
       parts: [{
         type: 'tool_result',
         result: {
-        toolCallId,
-        status: 'success',
-        content: {
-        type: 'text',
-        text: `\
+          toolCallId,
+          status: 'success',
+          content: {
+            type: 'text',
+            text: `\
 {"temperatureC":20,"condition":"clear"}
 source=fixture`,
-      },
-      },
+          },
+        },
       }],
       replies: { items: [] },
     },
@@ -128,10 +128,10 @@ source=fixture`,
 function projectPersistenceFixture({ content }: { content: ChatContent }) {
   return recordPersistencePartsMessages({
     messages: buildChatGenerationMessages({
-    chat: content,
-    excludedMessageId: undefined,
-    systemPromptMessages: [],
-  }),
+      chat: content,
+      excludedMessageId: undefined,
+      systemPromptMessages: [],
+    }),
   });
 }
 

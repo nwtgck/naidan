@@ -14,8 +14,8 @@ const connections = shallowRef<RpcConnectionView[]>([]), failed = ref(false);
 let disposed = false;
 const unsubscribe = subscribeRpcState({
   listener: () => {
-  void refresh();
-},
+    void refresh();
+  },
 });
 onScopeDispose(() => {
   disposed = true; unsubscribe();

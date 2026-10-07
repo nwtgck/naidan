@@ -18,8 +18,8 @@ function text({ type, partId, index, chunks, completeness }: {
     partId,
     index,
     chunks: (async function* () {
-    yield* chunks;
-  })(),
+      yield* chunks;
+    })(),
     completeness: Promise.resolve(completeness),
   };
 }
@@ -40,9 +40,9 @@ function fixture({ chat }: { chat: LmProvider['chat'] }) {
   });
   const provider: LmProvider = {
     chat: () => {
-    throw new Error('Must use the owned production operation');
-  },
-  runChatOperation: operation,
+      throw new Error('Must use the owned production operation');
+    },
+    runChatOperation: operation,
     listModels: async () => [],
   };
   return { provider, calls, operation };
@@ -76,10 +76,10 @@ describe('production capture using the parts generation contract', () => {
   it('keeps reasoning and literal tagged text in their own parts for the next fixed user request', async () => {
     const f = fixture({
       chat: () => (async function* () {
-      yield text({ type: 'reasoning', partId: 'r', index: 0, chunks: ['  R', '\n'], completeness: 'complete' });
-      yield text({ type: 'text', partId: 't', index: 1, chunks: ['<thi', 'nk>literal</think>🙂\r\n'], completeness: 'partial' });
-      yield limited;
-    })(),
+        yield text({ type: 'reasoning', partId: 'r', index: 0, chunks: ['  R', '\n'], completeness: 'complete' });
+        yield text({ type: 'text', partId: 't', index: 1, chunks: ['<thi', 'nk>literal</think>🙂\r\n'], completeness: 'partial' });
+        yield limited;
+      })(),
     });
     const recorded = trace();
     const result = await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), abortController: new AbortController(), trace: recorded });
@@ -95,9 +95,9 @@ describe('production capture using the parts generation contract', () => {
     expect(history[1]).toMatchObject({
       role: 'assistant',
       parts: [
-      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
-      { type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
-    ],
+        { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+        { type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
+      ],
     });
     for (const part of history[1]?.parts ?? []) expect(part).not.toHaveProperty('id');
     expect(history[2]).toMatchObject({ role: 'user', parts: [{ text: 'Continue the synthetic conversation with a short response.' }] });
@@ -112,14 +112,14 @@ describe('production capture using the parts generation contract', () => {
     let count = 0;
     const f = fixture({
       chat: () => (async function* () {
-      if (count++ === 0) {
-        yield text({ type: 'reasoning', partId: 'r', index: 0, chunks: ['R\n'], completeness: 'complete' });
-        yield { type: 'tool_call', partId: 'c', index: 1, toolCall: { id: toToolCallId({ raw: 'call-fixed' }), type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } };
-        yield { type: 'result', result: { type: 'finished', next: 'tool_results' } };
-      } else {
-        yield text({ type: 'text', partId: 'answer', index: 0, chunks: ['20°C'], completeness: 'complete' }); yield done;
-      }
-    })(),
+        if (count++ === 0) {
+          yield text({ type: 'reasoning', partId: 'r', index: 0, chunks: ['R\n'], completeness: 'complete' });
+          yield { type: 'tool_call', partId: 'c', index: 1, toolCall: { id: toToolCallId({ raw: 'call-fixed' }), type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } };
+          yield { type: 'result', result: { type: 'finished', next: 'tool_results' } };
+        } else {
+          yield text({ type: 'text', partId: 'answer', index: 0, chunks: ['20°C'], completeness: 'complete' }); yield done;
+        }
+      })(),
     });
     const recorded = trace();
     await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'natural-tool-minimal', firstSettled: undefined }), abortController: new AbortController(), trace: recorded });
@@ -130,9 +130,9 @@ describe('production capture using the parts generation contract', () => {
         id: 'capture_assistant_0',
         role: 'assistant',
         parts: [
-        { type: 'reasoning', text: 'R\n', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { id: 'call-fixed', type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } },
-      ],
+          { type: 'reasoning', text: 'R\n', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { id: 'call-fixed', type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } },
+        ],
       },
       { id: 'capture_tool_1', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call-fixed', status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } } }] },
     ]);
@@ -146,10 +146,10 @@ describe('production capture using the parts generation contract', () => {
     const recorded = trace();
     const f = fixture({
       chat: () => (async function* () {
-      yield text({ type: 'text', partId: 't', index: 0, chunks: ['received'], completeness: 'partial' });
-      await vi.waitFor(() => expect(recorded.snapshot().events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'received' })));
-      throw error;
-    })(),
+        yield text({ type: 'text', partId: 't', index: 0, chunks: ['received'], completeness: 'partial' });
+        await vi.waitFor(() => expect(recorded.snapshot().events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'received' })));
+        throw error;
+      })(),
     });
     await expect(generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), abortController: new AbortController(), trace: recorded })).rejects.toBe(error);
     const settled = recorded.settle({ outcome: 'rejected', error });
@@ -161,8 +161,8 @@ describe('production capture using the parts generation contract', () => {
   it('materializes the existing image as a memory Blob and passes no binary fetch capability', async () => {
     const f = fixture({
       chat: () => (async function* () {
-      yield done;
-    })(),
+        yield done;
+      })(),
     });
     await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'image', firstSettled: undefined }), abortController: new AbortController(), trace: trace() });
     const call = f.calls.mock.calls[0]?.[0];
@@ -212,8 +212,8 @@ describe('production capture using the parts generation contract', () => {
   it('marks an over-budget observation incomplete without controlling production generation', async () => {
     const f = fixture({
       chat: () => (async function* () {
-      yield text({ type: 'text', partId: 't', index: 0, chunks: ['long captured content'], completeness: 'complete' }); yield done;
-    })(),
+        yield text({ type: 'text', partId: 't', index: 0, chunks: ['long captured content'], completeness: 'complete' }); yield done;
+      })(),
     });
     const recorded = createProductionProviderPartsTrace({ requestId: 'tiny', limits: { maximumEvents: 1, maximumCharacters: 1 } });
     expect(await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), abortController: new AbortController(), trace: recorded })).toEqual(done.result);

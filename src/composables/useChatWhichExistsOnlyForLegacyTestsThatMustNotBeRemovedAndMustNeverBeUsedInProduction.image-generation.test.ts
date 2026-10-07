@@ -215,8 +215,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       messages: expect.arrayContaining([
         expect.objectContaining({
           parts: expect.arrayContaining([
-          expect.objectContaining({ type: 'text', text: expect.stringContaining('A beautiful landscape') }),
-        ]),
+            expect.objectContaining({ type: 'text', text: expect.stringContaining('A beautiful landscape') }),
+          ]),
         }),
       ]),
     }));

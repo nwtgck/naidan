@@ -82,8 +82,8 @@ export function createOwnedImageEngine({ createClient }: {
               onReleased: () => {
               // A disposed native client may deliver a late event. It cannot
               // clear a replacement client's residency or notify its owner.
-              if (generation === nativeGeneration && client) released();
-            },
+                if (generation === nativeGeneration && client) released();
+              },
             });
           }
           const result = await client.generate({

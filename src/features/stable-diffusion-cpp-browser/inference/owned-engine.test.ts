@@ -83,17 +83,17 @@ it('ignores a released notification from a disposed native client after replacem
   const clients: ImageClient[] = [];
   const engine = createOwnedImageEngine({
     createClient: ({ onReleased }) => {
-    callbacks.push(onReleased);
-    const client: ImageClient = {
-      generate: vi.fn(async () => output),
-      cancel: vi.fn(),
-      release: vi.fn(),
-      dispose: vi.fn(),
-      updatePreview: vi.fn(),
-      inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'unsupported' })),
-    };
-    clients.push(client); return client;
-  },
+      callbacks.push(onReleased);
+      const client: ImageClient = {
+        generate: vi.fn(async () => output),
+        cancel: vi.fn(),
+        release: vi.fn(),
+        dispose: vi.fn(),
+        updatePreview: vi.fn(),
+        inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'unsupported' })),
+      };
+      clients.push(client); return client;
+    },
   });
   const old = engine.createOwner({ onReleased: undefined });
   await old.generate(args); old.dispose();

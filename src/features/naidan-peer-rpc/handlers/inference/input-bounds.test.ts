@@ -20,17 +20,17 @@ function png({ width, height }: { width: number, height: number }) {
 function transcript({ attachments }: { attachments: number[] }) {
   return bytesSource({
     bytes: encodeDocument({
-    value: {
-    messages: [{ role: 'user', content: attachments.map(attachment => ({ type: 'image', attachment })) }],
-    temperature: 0.7,
-    topP: 0.9,
-    maxTokens: 10,
-    presencePenalty: 0,
-    frequencyPenalty: 0,
-    stop: [],
-  },
-    limit: 8192,
-  }),
+      value: {
+        messages: [{ role: 'user', content: attachments.map(attachment => ({ type: 'image', attachment })) }],
+        temperature: 0.7,
+        topP: 0.9,
+        maxTokens: 10,
+        presencePenalty: 0,
+        frequencyPenalty: 0,
+        stop: [],
+      },
+      limit: 8192,
+    }),
   });
 }
 function resources() {
@@ -91,10 +91,10 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
   const provider = new NaidanRpcPeer({
     transport: pair.b,
     exports: [expose({
-    contract: naidanPeerContract,
-    implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: { resources: engine.value, inputBudget: budget, deliveryBudget: budget } }),
-    allowedMethods: ['generateChat'],
-  })],
+      contract: naidanPeerContract,
+      implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: { resources: engine.value, inputBudget: budget, deliveryBudget: budget } }),
+      allowedMethods: ['generateChat'],
+    })],
     limits: { maxCalls: 2, maxCallTimeoutMs: undefined },
     signal: lifetime.signal,
   });

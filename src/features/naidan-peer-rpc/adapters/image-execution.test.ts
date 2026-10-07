@@ -13,8 +13,8 @@ function png(): Uint8Array<ArrayBuffer> {
 function source<T>({ values }: { values: T[] }): ReadableStream<T> {
   return new ReadableStream({
     start(controller) {
-    for (const value of values) controller.enqueue(value); controller.close();
-  },
+      for (const value of values) controller.enqueue(value); controller.close();
+    },
   });
 }
 function setup() {

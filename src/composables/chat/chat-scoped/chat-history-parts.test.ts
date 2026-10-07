@@ -35,18 +35,18 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
 vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({ sendMessageToTargetChat: state.sent }));
 vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortProcessingForChat: () => {
-  state.abort(); state.processing = false;
-},
+    state.abort(); state.processing = false;
+  },
 }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: state.opened }) }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  get canPersistBinary() {
-  return state.persistBinary;
-},
-  saveFile: state.saveFile,
-  updateHierarchy: async ({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy }) => updater({ current: { items: [] } }),
-},
+    get canPersistBinary() {
+      return state.persistBinary;
+    },
+    saveFile: state.saveFile,
+    updateHierarchy: async ({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy }) => updater({ current: { items: [] } }),
+  },
 }));
 import { commitFullHistoryManipulationForChat, editMessageForChat, forkChatForChat, switchVersionForChat } from './chat-history-flow';
 
@@ -59,10 +59,10 @@ function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessage
     lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } },
     interruption: { type: 'error', message: '記録済みの理由' },
     parts: [
-    { type: 'reasoning', text: '  R\n', completeness: 'complete' },
-    { type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
-    { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "n": 1 }' } } },
-  ],
+      { type: 'reasoning', text: '  R\n', completeness: 'complete' },
+      { type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
+      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "n": 1 }' } } },
+    ],
     replies: { items: [] },
   };
   const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [assistant] } };

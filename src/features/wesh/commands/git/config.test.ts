@@ -51,43 +51,43 @@ two`, 'one\rtwo'])('round-trips Git-supported control characters in config value
     expect(getDiffRenameLimitConfigValue({ config: new Map() })).toBeUndefined();
     expect(getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '2' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '2' }],
+      ]),
     })).toBe(2);
     expect(getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '010' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '010' }],
+      ]),
     })).toBe(8);
     expect(getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '0x10' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '0x10' }],
+      ]),
     })).toBe(16);
     expect(getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '2k' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '2k' }],
+      ]),
     })).toBe(2_048);
     expect(getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '-1' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '-1' }],
+      ]),
     })).toBe(-1);
     expect(() => getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'implicit-boolean' }],
-    ]),
+        ['diff.renamelimit', { kind: 'implicit-boolean' }],
+      ]),
     })).toThrow("bad numeric config value '' for 'diff.renamelimit': invalid unit");
     expect(() => getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '08' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '08' }],
+      ]),
     })).toThrow("bad numeric config value '08' for 'diff.renamelimit': invalid unit");
     expect(() => getDiffRenameLimitConfigValue({
       config: new Map([
-      ['diff.renamelimit', { kind: 'explicit', value: '2g' }],
-    ]),
+        ['diff.renamelimit', { kind: 'explicit', value: '2g' }],
+      ]),
     })).toThrow("bad numeric config value '2g' for 'diff.renamelimit': out of range");
   });
 
@@ -95,28 +95,28 @@ two`, 'one\rtwo'])('round-trips Git-supported control characters in config value
     expect(getDiffRenamesConfigMode({ config: new Map() })).toBe('renames');
     expect(getDiffRenamesConfigMode({
       config: new Map([
-      ['diff.renames', { kind: 'implicit-boolean' }],
-    ]),
+        ['diff.renames', { kind: 'implicit-boolean' }],
+      ]),
     })).toBe('renames');
     expect(getDiffRenamesConfigMode({
       config: new Map([
-      ['diff.renames', { kind: 'explicit', value: 'false' }],
-    ]),
+        ['diff.renames', { kind: 'explicit', value: 'false' }],
+      ]),
     })).toBe('disabled');
     expect(getDiffRenamesConfigMode({
       config: new Map([
-      ['diff.renames', { kind: 'explicit', value: 'copy' }],
-    ]),
+        ['diff.renames', { kind: 'explicit', value: 'copy' }],
+      ]),
     })).toBe('copies');
     expect(getDiffRenamesConfigMode({
       config: new Map([
-      ['diff.renames', { kind: 'explicit', value: 'COPIES' }],
-    ]),
+        ['diff.renames', { kind: 'explicit', value: 'COPIES' }],
+      ]),
     })).toBe('copies');
     expect(() => getDiffRenamesConfigMode({
       config: new Map([
-      ['diff.renames', { kind: 'explicit', value: 'bogus' }],
-    ]),
+        ['diff.renames', { kind: 'explicit', value: 'bogus' }],
+      ]),
     })).toThrow("bad boolean config value 'bogus' for 'diff.renames'");
   });
 });

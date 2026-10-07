@@ -24,15 +24,15 @@ const template = `\
 const tools: NonNullable<GenerateInput['tools']> = [{
   type: 'function',
   function: {
-  name: 'lookup',
-  description: 'Look up a city',
-  parameters: {
-  type: 'object',
-  properties: { city: { type: 'string' } },
-  required: ['city'],
-  additionalProperties: false,
-},
-},
+    name: 'lookup',
+    description: 'Look up a city',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+      additionalProperties: false,
+    },
+  },
 }];
 // Emscripten requires Node 24 for memory64; CPU32 remains covered on older Node.
 const profiles: LlamaCppProfile[] = ['cpu-wasm32'];
@@ -67,15 +67,15 @@ describe.each(profiles)('native chat on %s', profile => {
       const weatherTools: NonNullable<GenerateInput['tools']> = [{
         type: 'function',
         function: {
-        name: 'get_weather',
-        description: 'Get weather',
-        parameters: {
-        type: 'object',
-        properties: { city: { type: 'string' } },
-        required: ['city'],
-        additionalProperties: false,
-      },
-      },
+          name: 'get_weather',
+          description: 'Get weather',
+          parameters: {
+            type: 'object',
+            properties: { city: { type: 'string' } },
+            required: ['city'],
+            additionalProperties: false,
+          },
+        },
       }];
       const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Get Tokyo weather' }], tools: weatherTools, reasoningEffort: undefined } });
       try {
@@ -159,13 +159,13 @@ describe.each(profiles)('native chat on %s', profile => {
           core,
           model,
           request: {
-          messages: [...messages,
-          { role: 'assistant', content: result.content, tool_calls: result.toolCalls.map(call => ({ ...call, id: 'call-1' })) },
-          { role: 'tool', content: 'Sunny', tool_call_id: 'call-1', name: 'lookup' },
-        ],
-          tools,
-          reasoningEffort: 'none',
-        },
+            messages: [...messages,
+              { role: 'assistant', content: result.content, tool_calls: result.toolCalls.map(call => ({ ...call, id: 'call-1' })) },
+              { role: 'tool', content: 'Sunny', tool_call_id: 'call-1', name: 'lookup' },
+            ],
+            tools,
+            reasoningEffort: 'none',
+          },
         });
         try {
           expect(next.params.prompt).toContain(`\

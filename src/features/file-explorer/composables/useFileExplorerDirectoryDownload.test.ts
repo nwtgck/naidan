@@ -54,8 +54,8 @@ function createClient({
   const startDirectoryArchive = vi.fn(() => ({
     stream: new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.close();
-    },
+        controller.close();
+      },
     }),
     result: archiveResult,
     cancel: cancelArchive,

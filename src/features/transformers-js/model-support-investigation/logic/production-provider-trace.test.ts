@@ -112,8 +112,8 @@ describe('bounded synchronous Production Provider trace', () => {
     const before = trace.snapshot();
     trace.callbacks.onChunk({
       get chunk(): string {
-      throw new Error('Must not inspect callbacks after overflow');
-    },
+        throw new Error('Must not inspect callbacks after overflow');
+      },
     });
     expect(trace.snapshot()).toEqual(before);
   });
@@ -190,12 +190,12 @@ describe('bounded synchronous Production Provider trace', () => {
     trace.callbacks.onToolEvent({
       id: toolCallId,
       event: {
-      type: 'output',
-      stream: 'stdout',
-      get text() {
-      return getter();
-    },
-    },
+        type: 'output',
+        stream: 'stdout',
+        get text() {
+          return getter();
+        },
+      },
     });
     expect(getter).not.toHaveBeenCalled();
     expect(trace.snapshot().failure?.reason).toBe('unreadable-callback');
@@ -207,8 +207,8 @@ describe('bounded synchronous Production Provider trace', () => {
     const emitCallbacks: CallbackSource = async ({ onChunk }) => {
       onChunk(new Proxy({ chunk: 'fixture' }, {
         getOwnPropertyDescriptor() {
-        throw new Error('Observer failure');
-      },
+          throw new Error('Observer failure');
+        },
       }));
       throw original;
     };

@@ -45,17 +45,17 @@ describe('recorded feature results versus collection completion', () => {
       observation: undefined,
       error: undefined,
       partialObservation: {
-      modelId: run.modelId,
-      resolvedRevision: 'a'.repeat(40),
-      candidate: undefined,
-      route: undefined,
-      isEncoderDecoder: undefined,
-      firstTurn: { status: 'failed', error: { name: 'FirstTurnError', message: 'generation failed' } },
-      continuity: { status: 'not-run', reason: 'First turn failed' },
-      toolResultContinuation: undefined,
-      reasoning: undefined,
-      multimodal: undefined,
-    },
+        modelId: run.modelId,
+        resolvedRevision: 'a'.repeat(40),
+        candidate: undefined,
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: { status: 'failed', error: { name: 'FirstTurnError', message: 'generation failed' } },
+        continuity: { status: 'not-run', reason: 'First turn failed' },
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      },
     };
     const result = investigationFeatureResults({ run });
     expect(result.failed).toBe(1);

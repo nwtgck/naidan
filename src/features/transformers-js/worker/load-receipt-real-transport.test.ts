@@ -53,15 +53,15 @@ describe('ordinary Load receipt through actual Worker communication without gene
         outcome: {
           status: 'accepted',
           receipt: {
-          modelId,
-          loaderRevisionOption: { status: 'provided', value: revision },
-          cacheLookup: { source: 'read-only-opfs-scoped-match', revision },
-          candidate: { device: 'webgpu', dtype: 'q4f16' },
-          resourceHealth: 'healthy-after-close',
-          accessBoundary: 'production-offline-read-only',
-          completion: 'model-session-and-tokenizer-processor-ready',
-          limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
-        },
+            modelId,
+            loaderRevisionOption: { status: 'provided', value: revision },
+            cacheLookup: { source: 'read-only-opfs-scoped-match', revision },
+            candidate: { device: 'webgpu', dtype: 'q4f16' },
+            resourceHealth: 'healthy-after-close',
+            accessBoundary: 'production-offline-read-only',
+            completion: 'model-session-and-tokenizer-processor-ready',
+            limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+          },
         },
       });
       const lifetime = capture.getCaptureLifetime();
@@ -84,10 +84,10 @@ describe('ordinary Load receipt through actual Worker communication without gene
       expect(cleared).toMatchObject({
         status: 'not-started',
         loadObservation: {
-        owner: { runId, workerEpoch: 1 },
-        loadOrdinal: 1,
-        outcome: { status: 'cleared' },
-      },
+          owner: { runId, workerEpoch: 1 },
+          loadOrdinal: 1,
+          outcome: { status: 'cleared' },
+        },
       });
       expect(worker.hostMessages.filter(message => loadEnvelope.safeParse(message).success)).toHaveLength(1);
       await capture.client.dispose();

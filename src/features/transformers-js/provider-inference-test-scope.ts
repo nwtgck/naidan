@@ -10,18 +10,18 @@ export async function runProviderTestInferenceOperation({ service, signal, opera
   const activeSignal = signal ?? new AbortController().signal;
   await operation({
     scope: {
-    signal: activeSignal,
-    assertActive() {
-      if (activeSignal.aborted) throw new Error('Generation aborted');
+      signal: activeSignal,
+      assertActive() {
+        if (activeSignal.aborted) throw new Error('Generation aborted');
+      },
+      getState: () => service.getState(),
+      loadDownloadedModel: ({ modelId }) => service.loadDownloadedModel({ modelId }),
+      generateMessage: ({ messages, onEvent, params, tools, continuationOwner }) => {
+        if (service.generateMessage === undefined) throw new Error('The fixture must supply a structured generation, not infer it from text callbacks.');
+        return service.generateMessage({ messages, onEvent, params, tools, continuationOwner, signal: activeSignal });
+      },
+      generateText: ({ messages, onChunk, onToolCalls, params, tools, continuationOwner }) => service.generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner, signal: activeSignal }),
     },
-    getState: () => service.getState(),
-    loadDownloadedModel: ({ modelId }) => service.loadDownloadedModel({ modelId }),
-    generateMessage: ({ messages, onEvent, params, tools, continuationOwner }) => {
-      if (service.generateMessage === undefined) throw new Error('The fixture must supply a structured generation, not infer it from text callbacks.');
-      return service.generateMessage({ messages, onEvent, params, tools, continuationOwner, signal: activeSignal });
-    },
-    generateText: ({ messages, onChunk, onToolCalls, params, tools, continuationOwner }) => service.generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner, signal: activeSignal }),
-  },
   });
 }
 

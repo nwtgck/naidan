@@ -95,10 +95,10 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
         parts: [{
           type: 'tool_result',
           result: {
-          toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
-          status: 'success',
-          content: { type: 'text', text: content },
-        },
+            toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
+            status: 'success',
+            content: { type: 'text', text: content },
+          },
         }],
       });
     }
@@ -151,13 +151,13 @@ function captureProviderChat({ provider, request }: {
   return captureStructuredProviderChat({
     provider,
     request: {
-    ...request,
-    messages,
-    tools,
-    readBinaryObject: request.readBinaryObject,
-    debug: request.debug,
-    signal: request.signal,
-  },
+      ...request,
+      messages,
+      tools,
+      readBinaryObject: request.readBinaryObject,
+      debug: request.debug,
+      signal: request.signal,
+    },
   });
 }
 
@@ -268,10 +268,10 @@ const publicToolDefinitionSchema = z.object({
 const strictQwenTools: [z.infer<typeof publicToolDefinitionSchema>] = [{
   type: 'function',
   function: {
-  name: 'lookup_weather',
-  description: 'Return deterministic weather fixture data.',
-  parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-},
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+  },
 }];
 const observedBuilderInputSchema = z.object({
   messages: z.array(z.union([
@@ -658,8 +658,8 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
     builderSpy,
     serviceSpy,
     restore() {
-    builderSpy.mockRestore(); operationSpy.mockRestore();
-  },
+      builderSpy.mockRestore(); operationSpy.mockRestore();
+    },
   };
 }
 
@@ -685,10 +685,10 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
     ].map(path => ({
       path,
       bytes: createSyntheticModelBody({
-      modelId: 'onnx-community/Qwen3.5-2B-ONNX',
-      revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
-      path,
-    }),
+        modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+        revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+        path,
+      }),
     })),
     generate: async context => {
       const { options, tokenizer, runtime } = context;
@@ -742,52 +742,52 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
     return {
       harness,
       verifyObsoletePrefixRejected() {
-      expect(gateAccepted).toBe(false);
-      expect(releasedTokenCount).toBe(0);
-      expect(harness.observations.inferenceCalls).toHaveLength(0);
-      expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
-      expect(builderSpy).toHaveBeenCalledOnce();
-    },
+        expect(gateAccepted).toBe(false);
+        expect(releasedTokenCount).toBe(0);
+        expect(harness.observations.inferenceCalls).toHaveLength(0);
+        expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
+        expect(builderSpy).toHaveBeenCalledOnce();
+      },
       verifyNativeInput() {
-      expect(gateAccepted).toBe(true);
-      expect(releasedTokenCount).toBe(replay.modelReplay.generatedTokenIds.length);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
-      expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: replay.identity.modelId,
-        revision: replay.identity.resolvedRevision,
-        repositoryPaths: new Set([
-          'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
-          'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-        ]),
-        core,
-        options,
-      })).toSorted((a, b) => a.corePath.localeCompare(b.corePath))).toEqual([
-        {
+        expect(gateAccepted).toBe(true);
+        expect(releasedTokenCount).toBe(replay.modelReplay.generatedTokenIds.length);
+        expect(harness.observations.inferenceCalls).toHaveLength(1);
+        expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
+        expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
           modelId: replay.identity.modelId,
           revision: replay.identity.resolvedRevision,
-          corePath: 'onnx/decoder_model_merged_q4f16.onnx',
-          externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }],
-          executionProviders: ['webgpu'],
-        },
-        {
-          modelId: replay.identity.modelId,
-          revision: replay.identity.resolvedRevision,
-          corePath: 'onnx/embed_tokens_q4f16.onnx',
-          externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }],
-          executionProviders: ['webgpu'],
-        },
-      ]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    },
+          repositoryPaths: new Set([
+            'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
+            'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+          ]),
+          core,
+          options,
+        })).toSorted((a, b) => a.corePath.localeCompare(b.corePath))).toEqual([
+          {
+            modelId: replay.identity.modelId,
+            revision: replay.identity.resolvedRevision,
+            corePath: 'onnx/decoder_model_merged_q4f16.onnx',
+            externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }],
+            executionProviders: ['webgpu'],
+          },
+          {
+            modelId: replay.identity.modelId,
+            revision: replay.identity.resolvedRevision,
+            corePath: 'onnx/embed_tokens_q4f16.onnx',
+            externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }],
+            executionProviders: ['webgpu'],
+          },
+        ]);
+        expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+        expect(harness.observations.localImageFetchCalls).toEqual([]);
+        expect(harness.observations.forbiddenTransport).toEqual([]);
+        expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+      },
       async close() {
-      processorSpy.mockRestore();
-      historicalAdapter?.restore();
-      await harness.close();
-    },
+        processorSpy.mockRestore();
+        historicalAdapter?.restore();
+        await harness.close();
+      },
     };
   } catch (error) {
     historicalAdapter?.restore();
@@ -827,8 +827,8 @@ async function createHistoricalMutationControl() {
     adapter,
     generate,
     async close() {
-    adapter.restore(); await harness.close();
-  },
+      adapter.restore(); await harness.close();
+    },
   };
 }
 
@@ -841,53 +841,53 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
   const streamCalls: { put: number, end: number }[] = [];
   const harness = await createQwenReplay({
     generate: async context => {
-    inputs.push(snapshotQwenInput({ context }));
-    const { options, runtime } = context;
-    const streamer = options.streamer instanceof runtime.TextStreamer ? options.streamer : undefined;
-    const put = streamer ? vi.spyOn(streamer, 'put') : undefined;
-    const end = streamer ? vi.spyOn(streamer, 'end') : undefined;
-    try {
+      inputs.push(snapshotQwenInput({ context }));
+      const { options, runtime } = context;
+      const streamer = options.streamer instanceof runtime.TextStreamer ? options.streamer : undefined;
+      const put = streamer ? vi.spyOn(streamer, 'put') : undefined;
+      const end = streamer ? vi.spyOn(streamer, 'end') : undefined;
+      try {
       // Exercise the real refusal at the native boundary; never return its
       // result as successful generation, even if this negative control regresses.
-      legacyAttempts.push({ status: 'returned', result: replayRecordedText({ evidence: capture.replay, options }) });
-    } catch (error) {
-      legacyAttempts.push({ status: 'rejected', error });
-    } finally {
-      if (put && end) streamCalls.push({ put: put.mock.calls.length, end: end.mock.calls.length });
-      put?.mockRestore();
-      end?.mockRestore();
-    }
-    throw new Error(stop);
-  },
+        legacyAttempts.push({ status: 'returned', result: replayRecordedText({ evidence: capture.replay, options }) });
+      } catch (error) {
+        legacyAttempts.push({ status: 'rejected', error });
+      } finally {
+        if (put && end) streamCalls.push({ put: put.mock.calls.length, end: end.mock.calls.length });
+        put?.mockRestore();
+        end?.mockRestore();
+      }
+      throw new Error(stop);
+    },
   });
   return {
     harness,
     stop,
     verifyNativeInput() {
-    expect(inputs).toHaveLength(1);
-    const actual = inputs[0];
-    if (!actual?.options.input_ids || !actual.options.attention_mask) throw new Error('Expected actual current native Qwen tensors');
-    const { options, tokenizer } = actual;
-    const thinking = effort === undefined ? {} : { enable_thinking: effort !== 'none' };
-    expect(tokenizer.apply_chat_template(capture.replay.scenario.messages, { tokenize: false, add_generation_prompt: true, ...thinking })).toBe(expectedNativePrompt);
-    const expectedIds = tokenizer.encode(expectedNativePrompt, { add_special_tokens: false });
-    expect(Array.from(actual.options.input_ids.data, Number)).toEqual(expectedIds);
-    expect(Array.from(actual.options.attention_mask.data, BigInt)).toEqual(expectedIds.map(() => 1n));
-    expect(options.past_key_values).toBeNull();
-    expect(actual.streamerIsTextStreamer).toBe(true);
-    expect(legacyAttempts).toHaveLength(1);
-    expect(legacyAttempts[0]).toMatchObject({ status: 'rejected', error: expect.any(Error) });
-    const attempt = legacyAttempts[0];
-    if (attempt?.status !== 'rejected') throw new Error('Historical output unexpectedly passed its causal gate');
-    expect(attempt.error).toHaveProperty('message', expect.stringContaining('Replay causal mismatch: actual source input'));
-    expect(streamCalls).toEqual([{ put: 0, end: 0 }]);
-    expect(harness.observations.inferenceCalls).toHaveLength(1);
-    expect(harness.observations.workers).toHaveLength(1);
-    expect(harness.observations.ortCalls).toHaveLength(2);
-    expect(harness.observations.localImageFetchCalls).toEqual([]);
-    expect(harness.observations.forbiddenTransport).toEqual([]);
-    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  },
+      expect(inputs).toHaveLength(1);
+      const actual = inputs[0];
+      if (!actual?.options.input_ids || !actual.options.attention_mask) throw new Error('Expected actual current native Qwen tensors');
+      const { options, tokenizer } = actual;
+      const thinking = effort === undefined ? {} : { enable_thinking: effort !== 'none' };
+      expect(tokenizer.apply_chat_template(capture.replay.scenario.messages, { tokenize: false, add_generation_prompt: true, ...thinking })).toBe(expectedNativePrompt);
+      const expectedIds = tokenizer.encode(expectedNativePrompt, { add_special_tokens: false });
+      expect(Array.from(actual.options.input_ids.data, Number)).toEqual(expectedIds);
+      expect(Array.from(actual.options.attention_mask.data, BigInt)).toEqual(expectedIds.map(() => 1n));
+      expect(options.past_key_values).toBeNull();
+      expect(actual.streamerIsTextStreamer).toBe(true);
+      expect(legacyAttempts).toHaveLength(1);
+      expect(legacyAttempts[0]).toMatchObject({ status: 'rejected', error: expect.any(Error) });
+      const attempt = legacyAttempts[0];
+      if (attempt?.status !== 'rejected') throw new Error('Historical output unexpectedly passed its causal gate');
+      expect(attempt.error).toHaveProperty('message', expect.stringContaining('Replay causal mismatch: actual source input'));
+      expect(streamCalls).toEqual([{ put: 0, end: 0 }]);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      expect(harness.observations.workers).toHaveLength(1);
+      expect(harness.observations.ortCalls).toHaveLength(2);
+      expect(harness.observations.localImageFetchCalls).toEqual([]);
+      expect(harness.observations.forbiddenTransport).toEqual([]);
+      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    },
   };
 }
 
@@ -2276,12 +2276,12 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({
           ...{
-          replay,
-          messages: scenario.messages,
-          publicTool: replay.publicTool,
-          expectedToolDefinition: strictQwenTools[0],
-          expectedPrompt: strictNativePrompt,
-        },
+            replay,
+            messages: scenario.messages,
+            publicTool: replay.publicTool,
+            expectedToolDefinition: strictQwenTools[0],
+            expectedPrompt: strictNativePrompt,
+          },
           before,
         });
       }
@@ -2322,12 +2322,12 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({
           ...{
-          replay,
-          messages: [{ role: 'user', content: changedContent }],
-          publicTool: { ...replay.publicTool, description: changedDescription },
-          expectedToolDefinition: { ...strictQwenTools[0], function: { ...strictQwenTools[0].function, description: changedDescription } },
-          expectedPrompt: strictNativePrompt.replace(replay.publicTool.description, changedDescription).replace(scenario.messages[0].content, changedContent),
-        },
+            replay,
+            messages: [{ role: 'user', content: changedContent }],
+            publicTool: { ...replay.publicTool, description: changedDescription },
+            expectedToolDefinition: { ...strictQwenTools[0], function: { ...strictQwenTools[0].function, description: changedDescription } },
+            expectedPrompt: strictNativePrompt.replace(replay.publicTool.description, changedDescription).replace(scenario.messages[0].content, changedContent),
+          },
           before,
         });
       }
@@ -2346,10 +2346,10 @@ Use the weather tool for Tokyo.<|im_end|>
         role: 'assistant',
         content: '',
         tool_calls: [{
-        id: toToolCallId({ raw: 'call_template_probe_1' }),
-        type: 'function',
-        function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      }],
+          id: toToolCallId({ raw: 'call_template_probe_1' }),
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        }],
       },
       { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: scenario.messages[2].content },
     ];
@@ -2376,10 +2376,10 @@ Use the weather tool for Tokyo.<|im_end|>
           role: 'assistant',
           content: '',
           tool_calls: [{
-          id: 'call_template_probe_1',
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-        }],
+            id: 'call_template_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+          }],
         },
         scenario.messages[2],
       ];
@@ -2473,12 +2473,12 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({
           ...{
-          replay,
-          messages,
-          publicTool: replay.publicTool,
-          expectedToolDefinition: strictQwenTools[0],
-          expectedPrompt: strictNativeSystem + nativeSuffix,
-        },
+            replay,
+            messages,
+            publicTool: replay.publicTool,
+            expectedToolDefinition: strictQwenTools[0],
+            expectedPrompt: strictNativeSystem + nativeSuffix,
+          },
           before,
         });
       }
@@ -2497,10 +2497,10 @@ Use the weather tool for Tokyo.<|im_end|>
             role: 'assistant',
             content: '',
             tool_calls: [{
-            id: toToolCallId({ raw: 'call_template_probe_1' }),
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: changedArguments },
-          }],
+              id: toToolCallId({ raw: 'call_template_probe_1' }),
+              type: 'function',
+              function: { name: 'lookup_weather', arguments: changedArguments },
+            }],
           },
           { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: changedResult },
         ];
@@ -2532,12 +2532,12 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(replay.execute).not.toHaveBeenCalled();
         verifyQwenToolInput({
           ...{
-          replay,
-          messages: changedMessages,
-          publicTool: replay.publicTool,
-          expectedToolDefinition: strictQwenTools[0],
-          expectedPrompt: (strictNativeSystem + nativeSuffix).replace('\nTokyo\n', '\nOsaka\n').replace(scenario.messages[2].content, changedResult),
-        },
+            replay,
+            messages: changedMessages,
+            publicTool: replay.publicTool,
+            expectedToolDefinition: strictQwenTools[0],
+            expectedPrompt: (strictNativeSystem + nativeSuffix).replace('\nTokyo\n', '\nOsaka\n').replace(scenario.messages[2].content, changedResult),
+          },
           before,
         });
       }
@@ -2579,9 +2579,9 @@ Use the weather tool for Tokyo.<|im_end|>
         role: 'assistant',
         interruption: undefined,
         parts: [{
-        type: 'tool_call',
-        toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
-      }],
+          type: 'tool_call',
+          toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
+        }],
       });
       if (callAssistant?.role !== 'assistant') throw new Error('Expected tool-calling assistant');
       const call = callAssistant.parts[0];
@@ -2589,13 +2589,13 @@ Use the weather tool for Tokyo.<|im_end|>
       expect(toolResult).toMatchObject({
         role: 'tool',
         parts: [{
-        type: 'tool_result',
-        result: {
-        toolCallId: call.toolCall.id,
-        status: 'success',
-        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-      },
-      }],
+          type: 'tool_result',
+          result: {
+            toolCallId: call.toolCall.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
       });
       expect(finalAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{ type: 'text', text: expectedText, completeness: 'complete' }] });
       expect(turn.toolEvents).toEqual([]);
@@ -2692,9 +2692,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     const nativeMessages = [{
       role: 'user' as const,
       content: [
-      { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
-      { type: 'image_url', image_url: { url: imageUrl } },
-    ],
+        { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ],
     }];
     const messages = [imageMessage({ id: 'message_0', text: 'Describe the single synthetic image in one short phrase.', dataUrl: imageUrl })];
     const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -2795,9 +2795,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     const nativeMessages = [{
       role: 'user' as const,
       content: [
-      { type: 'text', text: 'Describe this synthetic Qwen2 image.' },
-      { type: 'image_url', image_url: { url: imageUrl } },
-    ],
+        { type: 'text', text: 'Describe this synthetic Qwen2 image.' },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ],
     }];
     const platform = createProviderReplayTestImagePlatform();
     const generate = vi.fn<ProviderReplayGenerate>(async () => {
@@ -3032,67 +3032,67 @@ const qwen2FullStructuredParts = {
       scenario: 'first-turn',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'It looks like you might be looking for a **prompt template** to use with', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'It looks like you might be looking for a **prompt template** to use with', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'continuity',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: "Got it! I'm ready to continue the conversation. What would you like to", completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: "Got it! I'm ready to continue the conversation. What would you like to", completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'independent-next-input',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'system-user',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Hello', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Hello', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'supplied-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Hello', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Hello', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-none',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'It', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'It', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     ...(['reasoning-low', 'reasoning-medium', 'reasoning-high'] as const).map(scenario => ({
       scenario,
@@ -3100,8 +3100,8 @@ const qwen2FullStructuredParts = {
       events: [{
         kind: 'assistant' as const,
         parts: [
-        { type: 'reasoning' as const, text: 'Okay', completeness: 'partial' as const },
-      ],
+          { type: 'reasoning' as const, text: 'Okay', completeness: 'partial' as const },
+        ],
         terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
       }],
     })),
@@ -3109,59 +3109,59 @@ const qwen2FullStructuredParts = {
       scenario: 'natural-tool-minimal',
       settlement: 'fulfilled',
       events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      {
-        kind: 'assistant',
-        parts: [{
-        type: 'text',
-        text: `\
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        {
+          kind: 'assistant',
+          parts: [{
+            type: 'text',
+            text: `\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
 *   **Condition:** Clear`,
-        completeness: 'complete',
-      }],
-        terminal: { type: 'finished', next: 'user' },
-      },
-    ],
+            completeness: 'complete',
+          }],
+          terminal: { type: 'finished', next: 'user' },
+        },
+      ],
     },
     {
       scenario: 'natural-tool-representative',
       settlement: 'fulfilled',
       events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'Based on the tool result, the weather in Tokyo is **20°C** with **clear** conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ],
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'Based on the tool result, the weather in Tokyo is **20°C** with **clear** conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
     },
     {
       scenario: 'structured-tool-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      {
-        type: 'text',
-        text: `\
+        kind: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: `\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
 *   **Condition:** Clear`,
-        completeness: 'complete',
-      },
-    ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+            completeness: 'complete',
+          },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     {
       scenario: 'image',
       settlement: 'rejected',
       events: [{
-      kind: 'assistant',
-      parts: [],
-      terminal: { type: 'error', errorName: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'error', errorName: 'unknown' },
+      }],
     },
   ],
   legacyInputProjections: [{

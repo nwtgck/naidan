@@ -83,10 +83,10 @@ describe('downloadProbeOutcome', () => {
     expect(downloadProbeOutcome({ evidence: input })).toMatchObject({
       status: 'failed',
       errors: [
-      { name: 'ArtifactObservationError', message: 'Observer unavailable' },
-      { name: 'CacheInspectionError', message: 'Cache inventory unreadable' },
-      { name: 'NetworkError', message: 'Bounded probe failed' },
-    ],
+        { name: 'ArtifactObservationError', message: 'Observer unavailable' },
+        { name: 'CacheInspectionError', message: 'Cache inventory unreadable' },
+        { name: 'NetworkError', message: 'Bounded probe failed' },
+      ],
     });
   });
 

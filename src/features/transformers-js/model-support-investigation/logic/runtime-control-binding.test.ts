@@ -53,8 +53,8 @@ it.each([
   {
     observation: 'throw',
     observeBinding: () => {
-    throw new Error('observer rejection');
-  },
+      throw new Error('observer rejection');
+    },
   },
   { observation: 'reject', observeBinding: () => Promise.reject(new Error('asynchronous observer rejection')) },
   { observation: 'pending', observeBinding: () => Promise.withResolvers<void>().promise },

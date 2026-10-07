@@ -82,8 +82,8 @@ it('ignores observational exceptions without rolling back revocations', async ()
     persist: undefined,
     apply: () => {},
     changed: () => {
-    throw new Error('Observer');
-  },
+      throw new Error('Observer');
+    },
   });
   await controller.update({ allowedMethods: [] }); expect(controller.state().effective).toEqual([]);
 });

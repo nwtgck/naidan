@@ -22,13 +22,13 @@ function channel(): NaidanPipingHandshakeChannel {
   const messages: Uint8Array[] = [], change = new Pulse();
   return {
     async send({ bytes }) {
-    messages.push(bytes.slice()); change.fire();
-  },
+      messages.push(bytes.slice()); change.fire();
+    },
     async receive({ signal }) {
-    for (;;) {
-      const revision = change.revision; signal.throwIfAborted(); const bytes = messages.shift(); if (bytes) return bytes; await change.wait({ revision, signal });
-    }
-  },
+      for (;;) {
+        const revision = change.revision; signal.throwIfAborted(); const bytes = messages.shift(); if (bytes) return bytes; await change.wait({ revision, signal });
+      }
+    },
   };
 }
 async function start({ verifyA, verifyB, known, corruptStatus }: {
@@ -99,8 +99,8 @@ it('a late acceptance of an obsolete dialog cannot resume a cancelled key exchan
     known: false,
     corruptStatus: false,
     verifyA: () => {
-    shown.resolve(); return gate.promise;
-  },
+      shown.resolve(); return gate.promise;
+    },
     verifyB: async () => true,
   });
   await shown.promise; pair.stop.abort(new Error('Dialog closed'));
@@ -127,8 +127,8 @@ it('different handshake transcripts cannot produce the same displayed full compa
       known: false,
       corruptStatus: false,
       verifyA: async ({ comparison }) => {
-      shown.push(comparison); return true;
-    },
+        shown.push(comparison); return true;
+      },
       verifyB: async () => true,
     });
     const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); keys.a.dispose(); keys.b.dispose();

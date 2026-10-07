@@ -95,9 +95,9 @@ describe('bounded generation performance summaries', () => {
       expect(diagnosticSchema.safeParse({
         ...report,
         performance: {
-        ...report.performance!,
-        stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
-      },
+          ...report.performance!,
+          stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
+        },
       }).success).toBe(false);
     } finally {
       log.mockRestore();
@@ -123,16 +123,16 @@ describe('streaming work counters', () => {
     expect(diagnosticSchema.safeParse({
       ...report,
       performance: {
-      ...report.performance!,
-      streaming: { ...streaming, output: 'private' },
-    },
+        ...report.performance!,
+        streaming: { ...streaming, output: 'private' },
+      },
     }).success).toBe(false);
     expect(diagnosticSchema.safeParse({
       ...report,
       performance: {
-      ...report.performance!,
-      streaming: { ...streaming, parsedCodeUnits: -1 },
-    },
+        ...report.performance!,
+        streaming: { ...streaming, parsedCodeUnits: -1 },
+      },
     }).success).toBe(false);
     // Additive version-1 compatibility: 012 summaries have no streaming field.
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, streaming: undefined } }).success).toBe(true);
@@ -203,9 +203,9 @@ describe('generation task yield counters', () => {
       expect(diagnosticSchema.safeParse({
         ...report,
         performance: {
-        ...report.performance!,
-        generationYield: { ...generationYield, ...extra },
-      },
+          ...report.performance!,
+          generationYield: { ...generationYield, ...extra },
+        },
       }).success).toBe(false);
     }
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, generationYield: undefined } }).success).toBe(true);
@@ -359,9 +359,9 @@ describe('post-first-sample throughput', () => {
       expect(diagnosticSchema.safeParse({
         ...report,
         performance: {
-        ...report.performance!,
-        postFirstSample: { ...report.performance!.postFirstSample!, ...extra },
-      },
+          ...report.performance!,
+          postFirstSample: { ...report.performance!.postFirstSample!, ...extra },
+        },
       }).success).toBe(false);
     }
   });

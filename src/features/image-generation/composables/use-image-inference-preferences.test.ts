@@ -51,8 +51,8 @@ function harness({ preferences }: { preferences: BrowserImageGenerationSettings 
       initialized: ref(true),
       inferenceLocation,
       captureStorage() {
-      const captured = generation; return () => captured === generation;
-    },
+        const captured = generation; return () => captured === generation;
+      },
       updateForStorage: update,
       failed,
     });
@@ -65,8 +65,8 @@ function harness({ preferences }: { preferences: BrowserImageGenerationSettings 
     failed,
     scope,
     replaceStorage() {
-    generation++;
-  },
+      generation++;
+    },
   };
 }
 async function settle(): Promise<void> {
@@ -120,10 +120,10 @@ it('resumes new provider edits while an obsolete save still owns its cleanup', a
   const two = preference({ name: 'two' });
   h.settings.value.experimental = {
     browserImageGeneration: {
-    width: 1024,
-    inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } },
-    remoteModelEditors: [two],
-  },
+      width: 1024,
+      inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } },
+      remoteModelEditors: [two],
+    },
   };
   await settle(); expect(h.update).toHaveBeenCalledOnce();
   expect(h.inferenceLocation.connectionId.value).toBe(two.connectionId);

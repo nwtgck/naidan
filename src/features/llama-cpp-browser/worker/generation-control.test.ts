@@ -17,8 +17,8 @@ vi.mock('./native-chat', () => ({ prepareChat: host.chat }));
 vi.mock('./chat-sampler', () => ({ createChatSampler: host.sampler }));
 vi.mock('./multimodal', () => ({
   prepareMultimodal: vi.fn(() => {
-  throw new Error('Unexpected media');
-}),
+    throw new Error('Unexpected media');
+  }),
 }));
 
 // This exercises the real generation loop and its pacing/cache helpers, not
@@ -130,8 +130,8 @@ function fixture() {
     signal,
     onProgress: () => {},
     onEvent: ({ event }) => {
-    if (event.type === 'text') chunks.push(event.text);
-  },
+      if (event.type === 'text') chunks.push(event.text);
+    },
   });
   return {
     core,
@@ -168,8 +168,8 @@ describe('generation loop performance invariants', () => {
     vi.mocked(performance.now).mockImplementation(() => at);
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      at += 30; return 7;
-    }),
+        at += 30; return 7;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {}),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
@@ -193,8 +193,8 @@ describe('generation loop performance invariants', () => {
     const f = fixture(); const controller = new AbortController();
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      controller.abort(); return 7;
-    }),
+        controller.abort(); return 7;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {}),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
@@ -213,8 +213,8 @@ describe('generation loop performance invariants', () => {
     vi.mocked(performance.now).mockImplementation(() => at);
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      at += 20; return 7;
-    }),
+        at += 20; return 7;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {}),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
@@ -242,12 +242,12 @@ describe('generation loop performance invariants', () => {
     vi.mocked(performance.now).mockImplementation(() => at);
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      at += 20; return 7;
-    }),
+        at += 20; return 7;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {
-      at += 1000;
-    }),
+        at += 1000;
+      }),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
     const decode = f.api.llama_decode.getMockImplementation()!;
     f.api.llama_decode.mockImplementationOnce(decode).mockImplementationOnce(decode).mockImplementationOnce(async () => {
@@ -272,12 +272,12 @@ describe('generation loop performance invariants', () => {
     vi.mocked(performance.now).mockImplementation(() => at);
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      at += 20; return 7;
-    }),
+        at += 20; return 7;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {
-      at += 1000;
-    }),
+        at += 1000;
+      }),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
     await f.run({ signal: undefined });
     expect(reports()).toHaveLength(1);
@@ -295,8 +295,8 @@ describe('generation loop performance invariants', () => {
     vi.mocked(performance.now).mockImplementation(() => at);
     host.sampler.mockResolvedValue({
       sample: vi.fn(async () => {
-      at += 20; return at === 20 ? 7 : 99;
-    }),
+        at += 20; return at === 20 ? 7 : 99;
+      }),
       preservedTokens: new Set<number>(),
       dispose: vi.fn(async () => {}),
     } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
@@ -345,14 +345,14 @@ describe('generation loop performance invariants', () => {
     expect(f.allocations.size).toBe(0);
     expect(reports()).toContainEqual(expect.objectContaining({
       performance: expect.objectContaining({
-      outcome: 'completed',
-      sampledTokens: 65,
-      decodedTokens: 64,
-      terminalDecodeDeferred: true,
+        outcome: 'completed',
+        sampledTokens: 65,
+        decodedTokens: 64,
+        terminalDecodeDeferred: true,
         // Length-limited final parsing still uses native partial=true.
-      streaming: expect.objectContaining({ partialParseCalls: 10, finalParseCalls: 0 }),
-      tokenRendering: expect.objectContaining({ cacheHits: 64, pieceCalls: 1 }),
-    }),
+        streaming: expect.objectContaining({ partialParseCalls: 10, finalParseCalls: 0 }),
+        tokenRendering: expect.objectContaining({ cacheHits: 64, pieceCalls: 1 }),
+      }),
     }));
   });
   it('evaluates the deferred token on the next request instead of claiming a decoded prefix', async () => {

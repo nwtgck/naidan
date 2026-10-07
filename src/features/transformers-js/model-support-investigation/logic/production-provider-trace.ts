@@ -264,14 +264,14 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
         if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
         append({
           project: ({ text }) => ({
-          kind: 'part_call',
-          messageId: text({ value: messageId }),
-          partId: text({ value: id }),
-          index,
-          toolCallId: text({ value: rawId }),
-          toolName: text({ value: name }),
-          modelVisibleArguments: text({ value: args }),
-        }),
+            kind: 'part_call',
+            messageId: text({ value: messageId }),
+            partId: text({ value: id }),
+            index,
+            toolCallId: text({ value: rawId }),
+            toolName: text({ value: name }),
+            modelVisibleArguments: text({ value: args }),
+          }),
         });
         if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
         break;

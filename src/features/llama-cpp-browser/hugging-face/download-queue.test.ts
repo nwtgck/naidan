@@ -47,8 +47,8 @@ describe('page-lifetime sequential model download queue', () => {
       repository: selection.repository,
       source: 'suggestion',
       prepare: async () => {
-      throw new SuggestionPlanError();
-    },
+        throw new SuggestionPlanError();
+      },
     });
     await flushPromises(); queue.cancel({ id: first.id }); gate.resolve(selection);
     expect((await first.done).status).toBe('cancelled');

@@ -34,9 +34,9 @@ beforeEach(() => {
     endpoint: { type: 'openai', url: '' },
     experimental: {
       hostModelDirectories: [
-      { id: toHostModelDirectoryId({ raw: 'selected' }), name: 'models' },
-      { id: toHostModelDirectoryId({ raw: 'other' }), name: 'other models' },
-    ],
+        { id: toHostModelDirectoryId({ raw: 'selected' }), name: 'models' },
+        { id: toHostModelDirectoryId({ raw: 'other' }), name: 'other models' },
+      ],
     },
   });
   handles.clear(); handles.set('selected', new MemoryDirectory('models')); handles.set('other', new MemoryDirectory('other models'));

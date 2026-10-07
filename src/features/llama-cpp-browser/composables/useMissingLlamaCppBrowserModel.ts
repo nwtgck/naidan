@@ -60,18 +60,18 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
       timeoutMs: 250,
       fallbackDelayMs: 0,
       task: async () => {
-      const result = await localModelAvailability.check({ modelId: id });
-      if (disposed || request !== generation || current !== context.value) return;
-      if (!isStorageCurrent()) {
-        availability.value = 'unreadable'; verification.value = 'idle'; target.value = undefined; return;
-      }
-      availability.value = result; verification.value = 'idle';
-      switch (result) {
-      case 'available': target.value = undefined; failure.value = false; break;
-      case 'missing': case 'unreadable': break;
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
-      }
-    },
+        const result = await localModelAvailability.check({ modelId: id });
+        if (disposed || request !== generation || current !== context.value) return;
+        if (!isStorageCurrent()) {
+          availability.value = 'unreadable'; verification.value = 'idle'; target.value = undefined; return;
+        }
+        availability.value = result; verification.value = 'idle';
+        switch (result) {
+        case 'available': target.value = undefined; failure.value = false; break;
+        case 'missing': case 'unreadable': break;
+        default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+        }
+      },
     });
   }
   watch(context, () => {
@@ -85,8 +85,8 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => localModelAvailability.invalidate() });
   const unsubscribeState = llamaCppBrowserService.subscribe({
     listener: ({ state }) => {
-    if (state.status === 'error' && state.code === 'missing-model') localModelAvailability.invalidate();
-  },
+      if (state.status === 'error' && state.code === 'missing-model') localModelAvailability.invalidate();
+    },
   });
   function onFocus(): void {
     if (context.value !== undefined && document.visibilityState !== 'hidden') localModelAvailability.invalidate();

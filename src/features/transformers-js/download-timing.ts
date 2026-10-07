@@ -249,19 +249,19 @@ export async function measureDownloadAcceptance<T extends { status: 'accepted' |
     publishDownloadTiming({
       callback,
       observation: {
-      kind: 'acceptance',
-      version: 1,
-      route,
-      revision: selectedRevision,
-      candidate: selectedCandidate,
-      clockId: clock.clockId,
-      timingStatus: hostDurationMs === undefined ? 'unavailable' : 'measured',
-      hostDurationMs,
-      loadOutcome,
-      cleanupOutcome,
-      hostSettlement,
-      attemptCount,
-    },
+        kind: 'acceptance',
+        version: 1,
+        route,
+        revision: selectedRevision,
+        candidate: selectedCandidate,
+        clockId: clock.clockId,
+        timingStatus: hostDurationMs === undefined ? 'unavailable' : 'measured',
+        hostDurationMs,
+        loadOutcome,
+        cleanupOutcome,
+        hostSettlement,
+        attemptCount,
+      },
     });
   }
 }

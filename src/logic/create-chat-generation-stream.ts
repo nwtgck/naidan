@@ -139,12 +139,12 @@ export function createChatGenerationStream({ signal, run }: {
           for (let start = 0; start < text.length; start += 8192) {
             await outer.send({
               value: {
-              type: 'tool_call_draft',
-              partId: position.partId,
-              index: position.index,
-              name: start === 0 ? name : undefined,
-              arguments: { offset: offset + start, text: text.slice(start, start + 8192) },
-            },
+                type: 'tool_call_draft',
+                partId: position.partId,
+                index: position.index,
+                name: start === 0 ? name : undefined,
+                arguments: { offset: offset + start, text: text.slice(start, start + 8192) },
+              },
             });
           }
         },

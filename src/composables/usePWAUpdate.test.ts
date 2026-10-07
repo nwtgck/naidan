@@ -74,12 +74,12 @@ describe('usePWAUpdate', () => {
     const error = new Error('obsolete');
     setUpdateState({
       next: {
-      kind: 'ready',
-      handler: async () => {
-      setUpdateState({ next: { kind: 'preparing' } });
-      throw error;
-    },
-    },
+        kind: 'ready',
+        handler: async () => {
+          setUpdateState({ next: { kind: 'preparing' } });
+          throw error;
+        },
+      },
     });
     await expect(update()).rejects.toBe(error);
     expect(status.value).toBe('preparing');

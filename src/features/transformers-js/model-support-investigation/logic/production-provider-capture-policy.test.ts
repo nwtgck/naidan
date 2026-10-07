@@ -140,11 +140,11 @@ describe('fixed Provider capture policy', () => {
     const policy = createProductionProviderCapturePolicy({ plan: 'full-v2' });
     const capture = captureFixture({
       fill: ({ trace }) => {
-      for (let index = 0; index < 4; ++index) trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
-      for (let index = 4; index < policy.traceLimits.maximumEvents; ++index) {
-        trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } });
-      }
-    },
+        for (let index = 0; index < 4; ++index) trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
+        for (let index = 4; index < policy.traceLimits.maximumEvents; ++index) {
+          trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } });
+        }
+      },
     });
     const json = encode({ capture });
     expect(json.length).toBe(18007892);

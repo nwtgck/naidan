@@ -475,16 +475,16 @@ describe('investigation-owned generation capture client', () => {
     const takeGenerationCapture = vi.fn().mockResolvedValue({
       status: 'captured',
       capture: {
-      runId: 'synthetic-run',
-      workerEpoch: 2,
-      schemaVersion: 1,
-      byteOrder: 'little-endian',
-      limits: captureLimits,
-      calls: [],
-      events: [],
-      incompleteReasons: [],
-      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-    },
+        runId: 'synthetic-run',
+        workerEpoch: 2,
+        schemaVersion: 1,
+        byteOrder: 'little-endian',
+        limits: captureLimits,
+        calls: [],
+        events: [],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
     });
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');
@@ -506,16 +506,16 @@ describe('investigation-owned generation capture client', () => {
     const takeGenerationCapture = vi.fn().mockResolvedValue({
       status: 'captured',
       capture: {
-      runId: 'synthetic-run',
-      workerEpoch: 1,
-      schemaVersion: 1,
-      byteOrder: 'little-endian',
-      limits: { ...captureLimits, maxCalls: 4 },
-      calls: [],
-      events: [],
-      incompleteReasons: [],
-      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-    },
+        runId: 'synthetic-run',
+        workerEpoch: 1,
+        schemaVersion: 1,
+        byteOrder: 'little-endian',
+        limits: { ...captureLimits, maxCalls: 4 },
+        calls: [],
+        events: [],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
     });
     mocks.wrap.mockReturnValue({ takeGenerationCapture });
     const { createTransformersJsGenerationCaptureClient } = await import('./client-hosted');

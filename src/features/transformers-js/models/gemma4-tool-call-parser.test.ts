@@ -322,8 +322,8 @@ Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>`,
       toolCalls: 'enabled',
       ignoredSpecialTokens: [],
       onText: () => {
-      throw failure;
-    },
+        throw failure;
+      },
     });
     parser.feed({ output: `${open}call:probe{}${close}after` });
     expect(() => parser.flush()).toThrow(failure);
@@ -333,9 +333,9 @@ Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>`,
   describe('actual pinned native formatter controls, not sampled generation', () => {
     const NativeTemplate = bundledJinjaTemplate({
       code: applyTransformersJsFixes({
-      code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'),
-      version: '4.2.0',
-    }).code,
+        code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'),
+        version: '4.2.0',
+      }).code,
     });
     const template = new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--gemma-4-e2b-it-onnx/model-chat_template.jinja', 'utf8'));
 

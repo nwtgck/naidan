@@ -39,16 +39,16 @@ it('a rejected semantic transaction does not consume an authenticated record', a
   await expect(rx.accept({
     capsule,
     apply: () => {
-    throw new Error('Semantic rejection');
-  },
+      throw new Error('Semantic rejection');
+    },
   })).rejects.toThrow('Semantic');
   expect(rx.high).toBe(-1n);
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
   expect(await rx.accept({
     capsule,
     apply: () => {
-    throw new Error('Duplicate application');
-  },
+      throw new Error('Duplicate application');
+    },
   })).toBe('stale');
 });
 
@@ -73,8 +73,8 @@ it('invalid outer lengths, types, and sequence bounds never invoke cryptography'
     expect(await rx.accept({
       capsule,
       apply: () => {
-      throw new Error('Invalid outer record');
-    },
+        throw new Error('Invalid outer record');
+      },
     })).toBe('unauthenticated');
   }
   expect(decrypt).not.toHaveBeenCalled(); expect(rx.high).toBe(-1n);
@@ -101,8 +101,8 @@ it('sealing copies the input before asynchronous derivation and rejects a concur
   expect(await rx.accept({
     capsule: await pending,
     apply: ({ snapshot }) => {
-    expect(snapshot.goaway).toBe(false);
-  },
+      expect(snapshot.goaway).toBe(false);
+    },
   })).toBe('accepted');
 });
 
@@ -136,8 +136,8 @@ it('epoch rotation changes the key before reusing the per-epoch nonce', async ()
   expect(await rx.accept({
     capsule: selected.get(16383)!,
     apply: () => {
-    throw new Error('Previous epoch replay');
-  },
+      throw new Error('Previous epoch replay');
+    },
   })).toBe('stale');
 }, 15000);
 

@@ -86,10 +86,10 @@ async function createTransferFixture() {
       exposeWorkerRemote: ({ api, endpoint }: {
       api: WorkerServerApi<ITransformersJsDownloadWorker>, endpoint: Parameters<typeof actual.exposeWorkerRemote>[0]['endpoint'],
     }) => {
-      if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Download entry exposure');
-      actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: activeWorker.endpoint });
-      exposed.resolve(api);
-    },
+        if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Download entry exposure');
+        actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: activeWorker.endpoint });
+        exposed.resolve(api);
+      },
     };
   });
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => fs.root }, hardwareConcurrency: 2, userAgent: 'Vitest', vendor: '' });
@@ -142,30 +142,30 @@ describe('Download progress observation does not control transfer', () => {
     let secondPulled = false;
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       pull(controller) {
-      now = 1_000;
-      controller.enqueue(Uint8Array.of(1, 2, 3, 4));
-      controller.close();
-    },
+        now = 1_000;
+        controller.enqueue(Uint8Array.of(1, 2, 3, 4));
+        controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      if (!secondPulled) {
-        secondPulled = true;
-        now = 4_000;
-        controller.enqueue(Uint8Array.of(5, 6, 7, 8));
-      } else {
-        await releaseBody.promise;
-        controller.close();
-      }
-    },
+        if (!secondPulled) {
+          secondPulled = true;
+          now = 4_000;
+          controller.enqueue(Uint8Array.of(5, 6, 7, 8));
+        } else {
+          await releaseBody.promise;
+          controller.close();
+        }
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     const observations: ProgressInfo[] = [];
     const running = h.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      observations.push(info);
-      if (typeof info.downloadCumulativeTiming === 'object' && info.downloadCumulativeTiming.receivedBytes === 8) observedCumulative.resolve();
-    },
+        observations.push(info);
+        if (typeof info.downloadCumulativeTiming === 'object' && info.downloadCumulativeTiming.receivedBytes === 8) observedCumulative.resolve();
+      },
     });
     try {
       // Hold source EOF, not the transport ACK. Tiny completed files need not
@@ -195,9 +195,9 @@ describe('Download progress observation does not control transfer', () => {
       storage: { getDirectory: async () => h.fs.root },
       locks: {
         request: async (name: string, options: LockOptions, callback: LockGrantedCallback<unknown>) => {
-        requests.push({ name, mode: options.mode });
-        return await callback({ name, mode: options.mode ?? 'exclusive' } as Lock);
-      },
+          requests.push({ name, mode: options.mode });
+          return await callback({ name, mode: options.mode ?? 'exclusive' } as Lock);
+        },
       },
       hardwareConcurrency: 2,
       userAgent: 'Vitest',
@@ -228,25 +228,25 @@ describe('Download progress observation does not control transfer', () => {
       storage: { getDirectory: async () => h.fs.root },
       locks: {
         request: async (name: string, options: LockOptions, callback: LockGrantedCallback<unknown>) => {
-        if (!interposed && options.mode === 'exclusive' && name.endsWith(`:file:${modelPath}`)) {
-          interposed = true;
-          // Entry has released the missing shared probe. A distinct owner wins
-          // the file before its exclusive recheck; no handle is carried across.
-          otherWriter = withOpfsFileLease({
-            path: modelPath,
-            mode: 'exclusive',
-            availability: 'wait',
-            signal: undefined,
-            run: async ({ lease }) => {
-            entered.resolve();
-            await release.promise;
-            await writeIncompleteOpfsFile({ path: modelPath, response: new Response(Uint8Array.of(1, 2, 3, 4)), lease });
-          },
-          });
-          await entered.promise;
-        }
-        return await q.locks.request(name, options, callback);
-      },
+          if (!interposed && options.mode === 'exclusive' && name.endsWith(`:file:${modelPath}`)) {
+            interposed = true;
+            // Entry has released the missing shared probe. A distinct owner wins
+            // the file before its exclusive recheck; no handle is carried across.
+            otherWriter = withOpfsFileLease({
+              path: modelPath,
+              mode: 'exclusive',
+              availability: 'wait',
+              signal: undefined,
+              run: async ({ lease }) => {
+                entered.resolve();
+                await release.promise;
+                await writeIncompleteOpfsFile({ path: modelPath, response: new Response(Uint8Array.of(1, 2, 3, 4)), lease });
+              },
+            });
+            await entered.promise;
+          }
+          return await q.locks.request(name, options, callback);
+        },
       },
       hardwareConcurrency: 2,
       userAgent: 'Vitest',
@@ -289,30 +289,30 @@ describe('Download progress observation does not control transfer', () => {
     function wrapDirectory({ directory }: { directory: FileSystemDirectoryHandle }): FileSystemDirectoryHandle {
       return new Proxy(directory, {
         get(target, key) {
-        if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
-        if (key === 'getFileHandle') return async (name: string, options?: FileSystemGetFileOptions) => {
-          const handle = await target.getFileHandle(name, options);
-          if (name !== 'model_q4.onnx') return handle;
-          return new Proxy(handle, {
-            get(file, property) {
-            if (property === 'createWritable') return async () => {
-              const writer = (await file.createWritable()).getWriter();
-              return new WritableStream<Uint8Array>({
-                write: chunk => writer.write(chunk),
-                async close() {
-                  entered.resolve();
-                  await release.promise;
-                  await writer.close();
-                },
-                abort: reason => writer.abort(reason),
-              });
-            };
-            return Reflect.get(file, property);
-          },
-          });
-        };
-        return Reflect.get(target, key);
-      },
+          if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
+          if (key === 'getFileHandle') return async (name: string, options?: FileSystemGetFileOptions) => {
+            const handle = await target.getFileHandle(name, options);
+            if (name !== 'model_q4.onnx') return handle;
+            return new Proxy(handle, {
+              get(file, property) {
+                if (property === 'createWritable') return async () => {
+                  const writer = (await file.createWritable()).getWriter();
+                  return new WritableStream<Uint8Array>({
+                    write: chunk => writer.write(chunk),
+                    async close() {
+                      entered.resolve();
+                      await release.promise;
+                      await writer.close();
+                    },
+                    abort: reason => writer.abort(reason),
+                  });
+                };
+                return Reflect.get(file, property);
+              },
+            });
+          };
+          return Reflect.get(target, key);
+        },
       });
     }
     vi.stubGlobal('navigator', { locks: q.locks, storage: { getDirectory: async () => wrapDirectory({ directory: h.fs.root }) } });
@@ -358,17 +358,17 @@ describe('Download progress observation does not control transfer', () => {
     function wrapDirectory({ directory }: { directory: FileSystemDirectoryHandle }): FileSystemDirectoryHandle {
       return new Proxy(directory, {
         get(target, key) {
-        if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
-        if (key === 'removeEntry') return async (name: string, options?: FileSystemRemoveOptions) => {
-          if (name === 'model_q4.onnx' && !delayed && h.fs.files.has(modelPath)) {
-            delayed = true;
-            entered.resolve();
-            await release.promise;
-          }
-          return await target.removeEntry(name, options);
-        };
-        return Reflect.get(target, key);
-      },
+          if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
+          if (key === 'removeEntry') return async (name: string, options?: FileSystemRemoveOptions) => {
+            if (name === 'model_q4.onnx' && !delayed && h.fs.files.has(modelPath)) {
+              delayed = true;
+              entered.resolve();
+              await release.promise;
+            }
+            return await target.removeEntry(name, options);
+          };
+          return Reflect.get(target, key);
+        },
       });
     }
     vi.stubGlobal('navigator', { locks: q.locks, storage: { getDirectory: async () => wrapDirectory({ directory: h.fs.root }) } });
@@ -382,9 +382,9 @@ describe('Download progress observation does not control transfer', () => {
         availability: 'wait',
         signal: undefined,
         run: async ({ lease }) => {
-        const response = await h.network(urls[0]!);
-        return await writeIncompleteOpfsFile({ path: modelPath, response, lease });
-      },
+          const response = await h.network(urls[0]!);
+          return await writeIncompleteOpfsFile({ path: modelPath, response, lease });
+        },
       });
       void next.catch(() => undefined);
       await vi.waitFor(() => expect(q.queued.length).toBeGreaterThan(0));
@@ -434,10 +434,10 @@ describe('Download progress observation does not control transfer', () => {
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       pull(controller) {
-      controller.enqueue(Uint8Array.of(1, 2, 3, 4));
-      now = Number.NaN;
-      controller.close();
-    },
+        controller.enqueue(Uint8Array.of(1, 2, 3, 4));
+        now = Number.NaN;
+        controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     const result = await h.client.prefetchUrls({ urls, progressCallback: () => undefined });
     expect(coreResult({ result })).toEqual(expectedResult);
@@ -458,27 +458,27 @@ describe('Download progress observation does not control transfer', () => {
     function wrapDirectory({ directory }: { directory: FileSystemDirectoryHandle }): FileSystemDirectoryHandle {
       return new Proxy(directory, {
         get(target, key) {
-        if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
-        if (key === 'getFileHandle') return async (name: string, options?: FileSystemGetFileOptions) => {
-          if (name === '.model_q4.onnx.complete' && options?.create) {
-            markerEntered.resolve();
-            await releaseMarker.promise;
-            now = 15_000;
-          }
-          return await target.getFileHandle(name, options);
-        };
-        return Reflect.get(target, key);
-      },
+          if (key === 'getDirectoryHandle') return async (name: string, options?: FileSystemGetDirectoryOptions) => wrapDirectory({ directory: await target.getDirectoryHandle(name, options) });
+          if (key === 'getFileHandle') return async (name: string, options?: FileSystemGetFileOptions) => {
+            if (name === '.model_q4.onnx.complete' && options?.create) {
+              markerEntered.resolve();
+              await releaseMarker.promise;
+              now = 15_000;
+            }
+            return await target.getFileHandle(name, options);
+          };
+          return Reflect.get(target, key);
+        },
       });
     }
     const root = wrapDirectory({ directory: h.fs.root });
     vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, hardwareConcurrency: 2, userAgent: 'Vitest', vendor: '' });
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       pull(controller) {
-      now = 10_000;
-      controller.enqueue(Uint8Array.of(1, 2, 3, 4));
-      controller.close();
-    },
+        now = 10_000;
+        controller.enqueue(Uint8Array.of(1, 2, 3, 4));
+        controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     const transport = h.network.getMockImplementation()!;
     h.network.mockImplementationOnce(async (input, init) => {
@@ -522,14 +522,14 @@ describe('Download progress observation does not control transfer', () => {
     const release = Promise.withResolvers<void>();
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      await release.promise; controller.enqueue(Uint8Array.of(1, 2, 3, 4)); controller.close();
-    },
+        await release.promise; controller.enqueue(Uint8Array.of(1, 2, 3, 4)); controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     const running = h.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      samples.push(info);
-    },
+        samples.push(info);
+      },
     });
     try {
       await vi.waitFor(() => expect(samples.some(info => info.downloadTiming === 'unavailable')).toBe(true));
@@ -580,34 +580,34 @@ describe('Download progress observation does not control transfer', () => {
     let stage = 0;
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      const currentStage = stage++;
-      if (currentStage === 0) {
-        await produce.promise; sourceTime = 24_000;
-        controller.enqueue(new Uint8Array(400));
-      } else if (currentStage === 1) {
-        firstChunk.resolve(); await failSampling.promise;
-        controller.enqueue(Uint8Array.of(0));
-      } else {
-        failedChunk.resolve(); await finish.promise;
-        controller.enqueue(new Uint8Array(599)); controller.close();
-      }
-    },
+        const currentStage = stage++;
+        if (currentStage === 0) {
+          await produce.promise; sourceTime = 24_000;
+          controller.enqueue(new Uint8Array(400));
+        } else if (currentStage === 1) {
+          firstChunk.resolve(); await failSampling.promise;
+          controller.enqueue(Uint8Array.of(0));
+        } else {
+          failedChunk.resolve(); await finish.promise;
+          controller.enqueue(new Uint8Array(599)); controller.close();
+        }
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1000' } }));
     const running = h.client.prefetchUrls({
       urls: [urls[0]!],
       progressCallback: ({ info }) => {
-      samples.push(info);
-      inHost = true;
-      try {
-        tracker.observe({ event: { kind: 'file', index: 0, info } });
-      } finally {
-        inHost = false;
-      }
-      if (info.status === 'download') {
-        firstObserved.resolve(); return acknowledgement.promise;
-      }
-      return undefined;
-    },
+        samples.push(info);
+        inHost = true;
+        try {
+          tracker.observe({ event: { kind: 'file', index: 0, info } });
+        } finally {
+          inHost = false;
+        }
+        if (info.status === 'download') {
+          firstObserved.resolve(); return acknowledgement.promise;
+        }
+        return undefined;
+      },
     });
     try {
       await Promise.race([firstObserved.promise, running.then(() => {
@@ -652,8 +652,8 @@ describe('Download progress observation does not control transfer', () => {
     h.responses.push(new Response(Uint8Array.of(1, 2, 3, 4), { headers: { 'Content-Length': '4' } }));
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
-    },
+        entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     let settled = false;
     const running = h.client.prefetchUrls({ urls, progressCallback: ({ info }) => tracker.observe({ event: { kind: 'file', index: 0, info } }) }).finally(() => {
@@ -684,8 +684,8 @@ describe('Download progress observation does not control transfer', () => {
     const release = Promise.withResolvers<void>();
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
-    },
+        entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     let settled = false;
     const running = h.client.prefetchUrls({ urls, progressCallback: ({ info }) => tracker.observe({ event: { kind: 'file', index: 0, info } }) }).finally(() => {
@@ -714,8 +714,8 @@ describe('Download progress observation does not control transfer', () => {
     h.responses.push(new Response('Unavailable', { status: 404 }));
     h.responses.push(new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
-    },
+        entered.resolve(); await release.promise; controller.enqueue(Uint8Array.of(5, 6, 7, 8)); controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } }));
     let settled = false;
     const running = h.client.prefetchUrls({ urls, progressCallback: ({ info }) => tracker.observe({ event: { kind: 'file', index: 0, info } }) }).finally(() => {
@@ -765,9 +765,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = await h.client.prefetchUrls({
       urls,
       progressCallback: () => {
-      notifications++;
-      throw new Error('Synthetic host progress observer throw');
-    },
+        notifications++;
+        throw new Error('Synthetic host progress observer throw');
+      },
     });
     expect(notifications).toBeGreaterThan(0);
     expect(coreResult({ result: result })).toEqual(expectedResult);
@@ -781,9 +781,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = await h.client.prefetchUrls({
       urls,
       progressCallback: async () => {
-      notifications++;
-      throw new Error('Synthetic host progress observer rejection');
-    },
+        notifications++;
+        throw new Error('Synthetic host progress observer rejection');
+      },
     });
     expect(notifications).toBeGreaterThan(0);
     expect(coreResult({ result: result })).toEqual(expectedResult);
@@ -798,9 +798,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = h.client.prefetchUrls({
       urls,
       progressCallback: () => {
-      notifications++;
-      return releaseObserver.promise;
-    },
+        notifications++;
+        return releaseObserver.promise;
+      },
     });
     try {
       expect(coreResult({ result: await result })).toEqual(expectedResult);
@@ -823,8 +823,8 @@ describe('Download progress observation does not control transfer', () => {
     const result = await h.client.prefetchUrls({
       urls,
       progressCallback: () => {
-      throw new Error('Synthetic irrelevant observer failure');
-    },
+        throw new Error('Synthetic irrelevant observer failure');
+      },
     });
     expect(result).toMatchObject({
       complete: false,
@@ -832,9 +832,9 @@ describe('Download progress observation does not control transfer', () => {
       downloadedCount: 1,
       failedCount: 1,
       files: [
-      { status: 'failed', url: urls[0], path: modelPath, failureStage: 'write', error: { name: 'QuotaExceededError', message: 'Synthetic destination quota failure' } },
-      { status: 'downloaded', url: urls[1], path: dataPath, byteLength: 4, expectedByteLength: 4 },
-    ],
+        { status: 'failed', url: urls[0], path: modelPath, failureStage: 'write', error: { name: 'QuotaExceededError', message: 'Synthetic destination quota failure' } },
+        { status: 'downloaded', url: urls[1], path: dataPath, byteLength: 4, expectedByteLength: 4 },
+      ],
     });
     expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
     expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
@@ -846,8 +846,8 @@ describe('Download progress observation does not control transfer', () => {
     const result = await h.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      observations.push(structuredClone(info));
-    },
+        observations.push(structuredClone(info));
+      },
     });
     expect(coreResult({ result: result })).toEqual(expectedResult);
     expect(observations.filter(info => info.status === 'done')).toMatchObject([
@@ -864,9 +864,9 @@ describe('Download progress observation does not control transfer', () => {
     expect(coreResult({ result: baselineResult })).toEqual({
       ...expectedResult,
       files: [
-      { status: 'downloaded', url: urls[0], path: modelPath, byteLength: 4, expectedByteLength: undefined },
-      expectedResult.files[1],
-    ],
+        { status: 'downloaded', url: urls[0], path: modelPath, byteLength: 4, expectedByteLength: undefined },
+        expectedResult.files[1],
+      ],
     });
     expect(fileSnapshot({ fs: baseline.fs })).toEqual(committedFiles);
     await baseline.client.dispose();
@@ -877,9 +877,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = await observed.client.prefetchUrls({
       urls,
       progressCallback: async ({ info }) => {
-      notifications.push(structuredClone(info));
-      throw new Error('Synthetic unknown-length observer rejection');
-    },
+        notifications.push(structuredClone(info));
+        throw new Error('Synthetic unknown-length observer rejection');
+      },
     });
     expect(coreResult({ result: result })).toEqual(coreResult({ result: baselineResult }));
     expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles);
@@ -900,9 +900,9 @@ describe('Download progress observation does not control transfer', () => {
       downloadedCount: 1,
       failedCount: 1,
       files: [
-      { status: 'failed', path: modelPath, failureStage: 'write', transferObservation: { receivedBytes: 4, expectedBytes: 0 } },
-      expectedResult.files[1],
-    ],
+        { status: 'failed', path: modelPath, failureStage: 'write', transferObservation: { receivedBytes: 4, expectedBytes: 0 } },
+        expectedResult.files[1],
+      ],
     });
     expect(fileSnapshot({ fs: baseline.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
     await baseline.client.dispose();
@@ -913,9 +913,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = await observed.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      notifications.push(structuredClone(info));
-      throw new Error('Synthetic zero-length observer failure');
-    },
+        notifications.push(structuredClone(info));
+        throw new Error('Synthetic zero-length observer failure');
+      },
     });
     expect(coreResult({ result: result })).toEqual(coreResult({ result: baselineResult }));
     expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
@@ -935,9 +935,9 @@ describe('Download progress observation does not control transfer', () => {
       downloadedCount: 1,
       failedCount: 1,
       files: [
-      { status: 'failed', path: modelPath, failureStage: 'write', transferObservation: { receivedBytes: 4, expectedBytes: 8 } },
-      expectedResult.files[1],
-    ],
+        { status: 'failed', path: modelPath, failureStage: 'write', transferObservation: { receivedBytes: 4, expectedBytes: 8 } },
+        expectedResult.files[1],
+      ],
     });
     expect(fileSnapshot({ fs: baseline.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
     await baseline.client.dispose();
@@ -949,9 +949,9 @@ describe('Download progress observation does not control transfer', () => {
     const running = observed.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      notifications.push(structuredClone(info));
-      return held.promise;
-    },
+        notifications.push(structuredClone(info));
+        return held.promise;
+      },
     });
     try {
       expect(coreResult({ result: await running })).toEqual(coreResult({ result: baselineResult }));
@@ -985,9 +985,9 @@ describe('Download progress observation does not control transfer', () => {
     const running = h.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      notifications.push(structuredClone(info));
-      return held.promise;
-    },
+        notifications.push(structuredClone(info));
+        return held.promise;
+      },
     });
     try {
       expect(await running).toMatchObject({
@@ -995,9 +995,9 @@ describe('Download progress observation does not control transfer', () => {
         downloadedCount: 1,
         failedCount: 1,
         files: [
-        { status: 'failed', path: modelPath, failureStage: 'write', error: { message: 'Synthetic response interruption' }, transferObservation: { receivedBytes: 2, expectedBytes: 4 } },
-        expectedResult.files[1],
-      ],
+          { status: 'failed', path: modelPath, failureStage: 'write', error: { message: 'Synthetic response interruption' }, transferObservation: { receivedBytes: 2, expectedBytes: 4 } },
+          expectedResult.files[1],
+        ],
       });
       expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
       expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
@@ -1025,9 +1025,9 @@ describe('Download progress observation does not control transfer', () => {
       cachedCount: 1,
       downloadedCount: 1,
       files: [
-      { status: 'cached', url: urls[0], path: modelPath, byteLength: 4, expectedByteLength: undefined },
-      expectedResult.files[1],
-    ],
+        { status: 'cached', url: urls[0], path: modelPath, byteLength: 4, expectedByteLength: undefined },
+        expectedResult.files[1],
+      ],
     });
     expect(fileSnapshot({ fs: baseline.fs })).toEqual(committedFiles);
     await baseline.client.dispose();
@@ -1041,9 +1041,9 @@ describe('Download progress observation does not control transfer', () => {
     const result = await observed.client.prefetchUrls({
       urls,
       progressCallback: async ({ info }) => {
-      notifications.push(structuredClone(info));
-      throw new Error('Synthetic mixed-cache observer rejection');
-    },
+        notifications.push(structuredClone(info));
+        throw new Error('Synthetic mixed-cache observer rejection');
+      },
     });
     expect(coreResult({ result: result })).toEqual(coreResult({ result: baselineResult }));
     expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles);
@@ -1068,8 +1068,8 @@ describe('Download progress observation does not control transfer', () => {
     const result = await h.client.prefetchUrls({
       urls,
       progressCallback: ({ info }) => {
-      observations.push(structuredClone(info));
-    },
+        observations.push(structuredClone(info));
+      },
     });
     expect(coreResult({ result: result })).toEqual({
       complete: true,

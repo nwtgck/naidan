@@ -24,9 +24,9 @@ function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFi
   if (!file) throw new Error('The model file is missing');
   return {
     location: candidate.hostSource
-    ? { kind: 'host', directoryId: candidate.hostSource.directoryId, path: `${candidate.hostSource.repository}/${candidate.path}` }
-    : { kind: 'opfs', path: `models/${candidate.repositoryId}/${candidate.path}` },
-  expected: { size: file.size, lastModified: file.lastModified },
+      ? { kind: 'host', directoryId: candidate.hostSource.directoryId, path: `${candidate.hostSource.repository}/${candidate.path}` }
+      : { kind: 'opfs', path: `models/${candidate.repositoryId}/${candidate.path}` },
+    expected: { size: file.size, lastModified: file.lastModified },
   };
 }
 function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerImageFile }): boolean {
@@ -88,16 +88,16 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         signal,
         onEvent,
         onProgress: ({ progress }) => {
-        let phase: 'computing' | 'loading' | 'decoding';
-        const current = progress.phase;
-        switch (current) {
-        case 'generating': case 'prefill': phase = 'computing'; break;
-        case 'loading': case 'initializing': case 'importing': phase = 'loading'; break;
-        case 'decoding-audio': phase = 'decoding'; break;
-        default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
-        }
-        onProgress({ value: { phase, completed: progress.completed, total: progress.total } });
-      },
+          let phase: 'computing' | 'loading' | 'decoding';
+          const current = progress.phase;
+          switch (current) {
+          case 'generating': case 'prefill': phase = 'computing'; break;
+          case 'loading': case 'initializing': case 'importing': phase = 'loading'; break;
+          case 'decoding-audio': phase = 'decoding'; break;
+          default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+          }
+          onProgress({ value: { phase, completed: progress.completed, total: progress.total } });
+        },
       });
       signal.throwIfAborted(); return result;
     },
@@ -188,19 +188,19 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         const preparedModels = await verifiedModels.prepare({
           signal,
           files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
-          candidate.files.map(({ path, file, receipt }) => ({
-            key: JSON.stringify({ location: selectedFile({ candidate }).location, member: path, publication: receipt?.source }),
-            file,
-            expectedSha256: (() => {
-              const source = receipt?.source;
-              if (!source) return undefined;
-              switch (source.kind) {
-              case 'local': return undefined;
-              case 'hugging-face': return source.sha256;
-              default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
-              }
-            })(),
-          }))),
+            candidate.files.map(({ path, file, receipt }) => ({
+              key: JSON.stringify({ location: selectedFile({ candidate }).location, member: path, publication: receipt?.source }),
+              file,
+              expectedSha256: (() => {
+                const source = receipt?.source;
+                if (!source) return undefined;
+                switch (source.kind) {
+                case 'local': return undefined;
+                case 'hugging-face': return source.sha256;
+                default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
+                }
+              })(),
+            }))),
         });
         const retainedFile = ({ file }: { file: File }): File => {
           const retained = preparedModels.replacements.get(file);
@@ -220,44 +220,44 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           request,
           signal,
           onPreview: ({ frame }) => {
-          signal.throwIfAborted(); onPreview({ frame });
-        },
+            signal.throwIfAborted(); onPreview({ frame });
+          },
           onProgress: ({ event }) => {
-          signal.throwIfAborted();
-          let phase: 'computing' | 'loading' | 'decoding' | 'encoding';
-          const current = event.phase;
-          switch (current) {
-          case 'sampling': phase = 'computing'; break;
-          case 'runtime': case 'model': phase = 'loading'; break;
-          case 'decoding': case 'encoding': phase = current; break;
-          default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
-          }
-          onProgress({ value: { phase, completed: event.step, total: event.steps } });
-        },
-          onDiagnostic: ({ diagnostic }) => {
-          switch (diagnostic.event) {
-          case 'start': case 'complete': case 'progress': stage = diagnostic.stage; break;
-          case 'failed':
-            failedStage ??= (() => {
-              const current = diagnostic.stage;
-              switch (current) {
-              case 'worker': return stage;
-              case 'runtime-fetch': case 'runtime-init': case 'model-header': case 'model-load': case 'generation':
-              case 'sampling': case 'decoding': case 'encoding': case 'cleanup': return current;
-              default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
-              }
-            })();
-            nativeContext ??= readImageGenerationNativeFailureContext({ fields: diagnostic.fields });
-            break;
-          case 'gpu':
-            if (/^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(diagnostic.message ?? '')) {
-              gpu = true; failedStage ??= diagnostic.stage;
+            signal.throwIfAborted();
+            let phase: 'computing' | 'loading' | 'decoding' | 'encoding';
+            const current = event.phase;
+            switch (current) {
+            case 'sampling': phase = 'computing'; break;
+            case 'runtime': case 'model': phase = 'loading'; break;
+            case 'decoding': case 'encoding': phase = current; break;
+            default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
             }
-            break;
-          case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
-          default: { const exhaustive: never = diagnostic.event; throw new Error(String(exhaustive)); }
-          }
-        },
+            onProgress({ value: { phase, completed: event.step, total: event.steps } });
+          },
+          onDiagnostic: ({ diagnostic }) => {
+            switch (diagnostic.event) {
+            case 'start': case 'complete': case 'progress': stage = diagnostic.stage; break;
+            case 'failed':
+              failedStage ??= (() => {
+                const current = diagnostic.stage;
+                switch (current) {
+                case 'worker': return stage;
+                case 'runtime-fetch': case 'runtime-init': case 'model-header': case 'model-load': case 'generation':
+                case 'sampling': case 'decoding': case 'encoding': case 'cleanup': return current;
+                default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+                }
+              })();
+              nativeContext ??= readImageGenerationNativeFailureContext({ fields: diagnostic.fields });
+              break;
+            case 'gpu':
+              if (/^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(diagnostic.message ?? '')) {
+                gpu = true; failedStage ??= diagnostic.stage;
+              }
+              break;
+            case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
+            default: { const exhaustive: never = diagnostic.event; throw new Error(String(exhaustive)); }
+            }
+          },
         });
         signal.throwIfAborted();
         stage = 'output-validation'; reason = 'invalid-output';

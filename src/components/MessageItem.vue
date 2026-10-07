@@ -348,8 +348,8 @@ onMounted(() => {
 
   transformersUnsubscribe = transformersJsService.subscribe({
     listener: ({ status: s }) => {
-    transformersStatus.value = s;
-  },
+      transformersStatus.value = s;
+    },
   });
 
 });

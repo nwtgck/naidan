@@ -132,8 +132,8 @@ export async function listHuggingFaceModels(): Promise<LocalModel[]> {
   const result: LocalModel[] = [];
   await visitRepositories({
     visit: async ({ repository }) => {
-    result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
-  },
+      result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
+    },
   });
   return result;
 }
@@ -141,10 +141,10 @@ export async function listPendingDownloads(): Promise<DownloadJournal[]> {
   const result: DownloadJournal[] = [];
   await visitRepositories({
     visit: async ({ repository, folder }) => {
-    const journal = await readJournal({ folder });
-    if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
-    result.push(journal);
-  },
+      const journal = await readJournal({ folder });
+      if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
+      result.push(journal);
+    },
   });
   return result;
 }

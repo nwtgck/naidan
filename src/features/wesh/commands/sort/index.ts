@@ -1089,10 +1089,10 @@ function resolveSortOptions({
       dictionaryOrder: parsed.optionValues.dictionaryOrder === true,
       ignoreNonprinting: parsed.optionValues.ignoreNonprinting === true,
       checkMode: parsed.optionValues.checkMode === 'silent'
-          ? 'silent'
-          : parsed.optionValues.checkMode === 'strict'
-            ? 'strict'
-            : 'none',
+        ? 'silent'
+        : parsed.optionValues.checkMode === 'strict'
+          ? 'strict'
+          : 'none',
       merge: parsed.optionValues.merge === true,
       zeroTerminated: parsed.optionValues.zeroTerminated === true,
       outputPath: typeof parsed.optionValues.outputPath === 'string' ? parsed.optionValues.outputPath : undefined,

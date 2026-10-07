@@ -79,21 +79,21 @@ function nativeRecords({ runId, modelId }: { runId: string; modelId: string }) {
       status: 'settled',
       notStartedReason: undefined,
       input: {
-      messages: [{ role: 'user', content: 'Template probe user message.' }],
-      tools: [],
-      parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-    },
+        messages: [{ role: 'user', content: 'Template probe user message.' }],
+        tools: [],
+        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+      },
       trace: {
-      format: 'production-provider-trace-v2',
-      requestId: context.requestId,
-      limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
-      completeness: 'complete',
-      failure: undefined,
-      events: [],
-      lateEvents: [],
-      retainedCharacters: 0,
-      settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
-    },
+        format: 'production-provider-trace-v2',
+        requestId: context.requestId,
+        limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
+        completeness: 'complete',
+        failure: undefined,
+        events: [],
+        lateEvents: [],
+        retainedCharacters: 0,
+        settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
+      },
     }],
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
@@ -111,19 +111,19 @@ function nativeRecords({ runId, modelId }: { runId: string; modelId: string }) {
       collection: {
         status: 'returned',
         result: {
-        status: 'captured',
-        capture: {
-        schemaVersion: 1,
-        runId,
-        workerEpoch: 1,
-        byteOrder: 'little-endian',
-        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
-        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [],
-        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      },
-      },
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId,
+            workerEpoch: 1,
+            byteOrder: 'little-endian',
+            limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+            calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+            events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        },
       },
     }],
   };
@@ -147,9 +147,9 @@ describe('native sidecars in generated Evidence ZIPs', () => {
         identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 },
         phase: 'native-kwargs',
         values: [
-        { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[index + 1, index + 2]] } },
-        { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512]] } },
-      ],
+          { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[index + 1, index + 2]] } },
+          { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512]] } },
+        ],
       });
       return { target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, nativeEvidence: await savedNativeEvidence({ run: item.run, native: item.native }), error: undefined };
     }));
@@ -180,10 +180,10 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     }));
     vi.stubGlobal('navigator', {
       storage: {
-      getDirectory: vi.fn(() => {
-      throw new Error('Export must not access OPFS');
-    }),
-    },
+        getDirectory: vi.fn(() => {
+          throw new Error('Export must not access OPFS');
+        }),
+      },
     });
   });
   afterEach(() => {
@@ -217,11 +217,11 @@ describe('native sidecars in generated Evidence ZIPs', () => {
       close.mockImplementation(opened.close);
       return {
         reader: {
-        paths: opened.reader.paths,
-        async read() {
-        throw failure;
-      },
-      },
+          paths: opened.reader.paths,
+          async read() {
+            throw failure;
+          },
+        },
         close,
       };
     });
@@ -460,17 +460,17 @@ describe("createPartialModelSupportEvidence", () => {
       observation: undefined,
       error: undefined,
       partialObservation: {
-      modelId: 'org/nested',
-      resolvedRevision: 'a'.repeat(40),
-      candidate: undefined,
-      route: undefined,
-      isEncoderDecoder: undefined,
-      firstTurn: { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } },
-      continuity: { status: 'not-run', reason: 'First turn did not generate' },
-      toolResultContinuation: undefined,
-      reasoning: undefined,
-      multimodal: undefined,
-    },
+        modelId: 'org/nested',
+        resolvedRevision: 'a'.repeat(40),
+        candidate: undefined,
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } },
+        continuity: { status: 'not-run', reason: 'First turn did not generate' },
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      },
     };
     const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: { ...checkpoint.recovery, status: 'completed' } });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
@@ -488,17 +488,17 @@ describe("createPartialModelSupportEvidence", () => {
     const run: ModelSupportInvestigationRun = {
       ...checkpoint.run,
       freshMetadata: {
-      schemaVersion: 1,
-      modelId: 'org/model',
-      revision: 'a'.repeat(40),
-      source: 'fresh-network-memory',
-      status: 'failed',
-      maximumBytes: 1024,
-      receivedBytes: 2,
-      preparationStage: 'configuration',
-      failureCategory: 'syntax-error',
-      requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', httpStatus: 200, status: 'complete', receivedBytes: 2 }],
-    },
+        schemaVersion: 1,
+        modelId: 'org/model',
+        revision: 'a'.repeat(40),
+        source: 'fresh-network-memory',
+        status: 'failed',
+        maximumBytes: 1024,
+        receivedBytes: 2,
+        preparationStage: 'configuration',
+        failureCategory: 'syntax-error',
+        requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', httpStatus: 200, status: 'complete', receivedBytes: 2 }],
+      },
     };
     const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
@@ -514,16 +514,16 @@ describe("createPartialModelSupportEvidence", () => {
     const run: ModelSupportInvestigationRun = {
       ...checkpoint.run,
       freshMetadata: {
-      schemaVersion: 1,
-      modelId: 'org/model',
-      revision: 'a'.repeat(40),
-      source: 'fresh-network-memory',
-      status: 'prepared',
-      maximumBytes: 1024,
-      receivedBytes: 1,
-      preparation: { processor: 'tokenizer', resourcePlansByCandidate: { 'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] } } },
-      requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'size-probe', httpStatus: 206, contentRange: 'bytes 0-0/100', status: 'cancelled', receivedBytes: 1 }],
-    },
+        schemaVersion: 1,
+        modelId: 'org/model',
+        revision: 'a'.repeat(40),
+        source: 'fresh-network-memory',
+        status: 'prepared',
+        maximumBytes: 1024,
+        receivedBytes: 1,
+        preparation: { processor: 'tokenizer', resourcePlansByCandidate: { 'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] } } },
+        requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'size-probe', httpStatus: 206, contentRange: 'bytes 0-0/100', status: 'cancelled', receivedBytes: 1 }],
+      },
     };
     const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());

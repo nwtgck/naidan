@@ -102,9 +102,9 @@ export async function buildGemma4TemplateInput({
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
       ...(tool_calls === undefined ? {} : {
         tool_calls: tool_calls.map(call => ({
-        ...call,
-        function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
-      })),
+          ...call,
+          function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
+        })),
       }),
     };
 

@@ -19,8 +19,8 @@ function observation({ items, controller }: { items: AsyncIterable<ChatGeneratio
     abortController: controller,
     onChange,
     onToolCallDraftsChange: ({ drafts: current }) => {
-    drafts.push(current.map(draft => ({ ...draft })));
-  },
+      drafts.push(current.map(draft => ({ ...draft })));
+    },
   });
   return { node, result, drafts, onChange };
 }

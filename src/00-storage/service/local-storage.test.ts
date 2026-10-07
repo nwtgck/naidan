@@ -73,18 +73,18 @@ describe('LocalStorageProvider', () => {
           modelId: undefined,
           lmParameters: undefined,
           parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, {
-          type: 'attachment',
-          attachment: {
-          id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
-          binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
-          originalName: 'attachment.txt',
-          mimeType: blob.type,
-          size: blob.size,
-          uploadedAt: 1,
-          status: 'memory',
-          blob,
-        },
-        }],
+            type: 'attachment',
+            attachment: {
+              id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
+              binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
+              originalName: 'attachment.txt',
+              mimeType: blob.type,
+              size: blob.size,
+              uploadedAt: 1,
+              status: 'memory',
+              blob,
+            },
+          }],
           replies: { items: [] },
         }],
       },
@@ -143,11 +143,11 @@ describe('LocalStorageProvider', () => {
     }));
     await provider.saveHierarchy({
       hierarchy: {
-      items: [
-        { type: 'chat', id: chatId },
-        { type: 'chat_group', id: groupId, chat_ids: [] },
-      ],
-    },
+        items: [
+          { type: 'chat', id: chatId },
+          { type: 'chat_group', id: groupId, chat_ids: [] },
+        ],
+      },
     });
 
     const snapshot = await provider.dump();
@@ -250,10 +250,10 @@ describe('LocalStorageProvider', () => {
       // 3. Update hierarchy to include them
       await provider.saveHierarchy({
         hierarchy: {
-        items: [
-          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
-        ],
-      },
+          items: [
+            { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+          ],
+        },
       });
 
       // 4. Verify they ARE now visible

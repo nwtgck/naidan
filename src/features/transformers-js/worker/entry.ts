@@ -111,22 +111,22 @@ function beginGenerationCapture({ request }: { request: GenerationCaptureRequest
   let call: GenerationCaptureCall | undefined;
   recordGenerationCapture({
     record: () => {
-    const parsed = generationCaptureRequestSchema.safeParse(request);
-    if (!parsed.success) {
-      generationCapture?.noteIncomplete({ reason: 'invalid-context' });
-      return;
-    }
-    const { context, limits } = parsed.data;
-    if (generationCapture === undefined) {
-      generationCapture = createGenerationCapture({ run: { runId: context.runId, workerEpoch: context.workerEpoch }, limits, tensorClass: Tensor });
-      generationCaptureLimits = JSON.stringify(limits);
-    }
-    if (generationCaptureLimits !== JSON.stringify(limits)) {
-      generationCapture.noteIncomplete({ reason: 'limits-mismatch' });
-      return;
-    }
-    call = generationCapture.beginCall({ context, loadIdentity: productionLoadIdentity.snapshot() });
-  },
+      const parsed = generationCaptureRequestSchema.safeParse(request);
+      if (!parsed.success) {
+        generationCapture?.noteIncomplete({ reason: 'invalid-context' });
+        return;
+      }
+      const { context, limits } = parsed.data;
+      if (generationCapture === undefined) {
+        generationCapture = createGenerationCapture({ run: { runId: context.runId, workerEpoch: context.workerEpoch }, limits, tensorClass: Tensor });
+        generationCaptureLimits = JSON.stringify(limits);
+      }
+      if (generationCaptureLimits !== JSON.stringify(limits)) {
+        generationCapture.noteIncomplete({ reason: 'limits-mismatch' });
+        return;
+      }
+      call = generationCapture.beginCall({ context, loadIdentity: productionLoadIdentity.snapshot() });
+    },
   });
   return call;
 }
@@ -315,9 +315,9 @@ function clearLoadedRuntimeState({ loadIdentityOperation }: {
   // Diagnostic invalidation never decides whether the actual runtime clears.
   recordGenerationCapture({
     record: () => {
-    if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
-    else loadIdentityOperation.clear();
-  },
+      if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
+      else loadIdentityOperation.clear();
+    },
   });
   model = null;
   gemma4Processor = null;
@@ -580,14 +580,14 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
     const { candidatePlan } = await withDownloadedModelAccessMode({
       modelCache,
       run: ({ assertNotBusy }) => planProductionRuntimeCandidates({
-      cleanModelId,
-      revision,
-      candidates,
-      modelCache,
-      progressCallback: undefined,
-      onRuntimePhase: undefined,
-      assertNotBusy,
-    }),
+        cleanModelId,
+        revision,
+        candidates,
+        modelCache,
+        progressCallback: undefined,
+        onRuntimePhase: undefined,
+        assertNotBusy,
+      }),
     });
     if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) return revision;
     if (!candidatePlan.some(entry => entry.status === 'checked')) {
@@ -642,8 +642,8 @@ async function loadProductionRuntime({
     const receiptRecorder = createProductionLoadReceiptRecorder({ modelId, revision });
     recordGenerationCapture({
       record: () => {
-      loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
-    },
+        loadIdentityOperation = productionLoadIdentity.beginLoad({ source: loadIdentitySource, modelId, revision });
+      },
     });
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
     assertGemma4RuntimeSupport({ modelId: cleanModelId });
@@ -700,8 +700,8 @@ async function loadProductionRuntime({
             const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
             recordGenerationCapture({
               record: () => {
-              diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.beginCandidate({ device: candidate.device, dtype: candidate.dtype, revision });
-            },
+                diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.beginCandidate({ device: candidate.device, dtype: candidate.dtype, revision });
+              },
             });
           }
           // This boundary includes cache reads and session creation. File progress

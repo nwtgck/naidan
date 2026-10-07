@@ -4,8 +4,8 @@ import { readStreamLines } from './read-stream-lines';
 function stream({ chunks }: { chunks: readonly Uint8Array[] }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
-    for (const chunk of chunks) controller.enqueue(chunk); controller.close();
-  },
+      for (const chunk of chunks) controller.enqueue(chunk); controller.close();
+    },
   });
 }
 async function read({ source, maxLineLength }: { source: ReadableStream<Uint8Array>, maxLineLength: number }): Promise<string[]> {
@@ -31,8 +31,8 @@ describe('stream line reader', () => {
     const controller = new AbortController();
     const source = new ReadableStream<Uint8Array>({
       cancel() {
-      cancelled = true;
-    },
+        cancelled = true;
+      },
     });
     const iterator = readStreamLines({ stream: source, signal: controller.signal, maxLineLength: 100 });
     const next = iterator.next(); controller.abort();
@@ -42,14 +42,14 @@ describe('stream line reader', () => {
     let cancelled = false;
     const source = new ReadableStream<Uint8Array>({
       start(controller) {
-      controller.enqueue(new TextEncoder().encode(`\
+        controller.enqueue(new TextEncoder().encode(`\
 first
 second
 `));
-    },
+      },
       cancel() {
-      cancelled = true;
-    },
+        cancelled = true;
+      },
     });
     for await (const _line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength: 100 })) break;
     expect(cancelled).toBe(true); expect(source.locked).toBe(false);

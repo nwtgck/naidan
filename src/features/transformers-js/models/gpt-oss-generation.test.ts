@@ -12,8 +12,8 @@ function setup() {
   const events: InferenceGenerationEvent[] = [];
   const decoder = createGptOssGeneration({
     emit: ({ event }) => {
-    events.push(inferenceGenerationEventSchema.parse(event));
-  },
+      events.push(inferenceGenerationEventSchema.parse(event));
+    },
   });
   return { events, decoder };
 }
@@ -57,8 +57,8 @@ describe('native Harmony generation parts', () => {
       items: createInferenceGeneration({
         signal: controller.signal,
         generate: async ({ onEvent }) => {
-        for (const event of events) await onEvent({ event });
-      },
+          for (const event of events) await onEvent({ event });
+        },
       }),
     });
     expect(result).toEqual({ type: 'finished', next: 'tool_results' });

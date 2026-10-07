@@ -36,10 +36,10 @@ it('cancels traversal before a delayed entry batch can become a stored repositor
     isDirectory: true,
     isFile: false,
     createReader: () => ({
-    readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-    finish = callback;
-  },
-  }),
+      readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
+        finish = callback;
+      },
+    }),
   };
   const transfer = { items: [{ kind: 'file', webkitGetAsEntry: () => folder }], files: [] } as unknown as DataTransfer;
   const pending = imageDirectoriesFromDrop({ transfer, signal: controller.signal }); controller.abort(); finish?.([]);

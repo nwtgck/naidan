@@ -20,9 +20,9 @@ describe('shared browser core adapter', () => {
     if (typeof hook !== 'function') throw new Error('Expected hosted asset hook');
     await hook.call({
       emitFile(file: { type: string, fileName?: string, source?: Uint8Array }) {
-      if (file.type !== 'asset' || !file.fileName || !file.source) throw new Error('Unexpected runtime emission');
-      files.set(file.fileName, file.source); return file.fileName;
-    },
+        if (file.type !== 'asset' || !file.fileName || !file.source) throw new Error('Unexpected runtime emission');
+        files.set(file.fileName, file.source); return file.fileName;
+      },
     } as never, {} as never, {} as never, false);
     expect(files.size).toBe(5);
     for (const profile of profiles) {
@@ -131,8 +131,8 @@ describe('shared browser core adapter', () => {
     const module = new SourceTextModule(source, {
       context,
       initializeImportMeta(meta) {
-      meta.url = 'file:///fixture/core.mjs';
-    },
+        meta.url = 'file:///fixture/core.mjs';
+      },
     });
     await module.link(() => {
       throw new Error('Unexpected core dependency');

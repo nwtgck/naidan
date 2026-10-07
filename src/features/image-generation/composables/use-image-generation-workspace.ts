@@ -165,14 +165,14 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   let seenReceived = 0;
   const unsubscribeRuns = imagePendingRuns.subscribe({
     listener() {
-    if (disposed) return;
-    runRevision.value++;
-    const received = owner?.snapshot().received ?? 0;
-    if (received > 0) hasGeneratedImages.value = true;
-    if (received !== seenReceived && store.value?.storeId === ownerStore?.storeId) {
-      seenReceived = received; void refresh({ append: false });
-    }
-  },
+      if (disposed) return;
+      runRevision.value++;
+      const received = owner?.snapshot().received ?? 0;
+      if (received > 0) hasGeneratedImages.value = true;
+      if (received !== seenReceived && store.value?.storeId === ownerStore?.storeId) {
+        seenReceived = received; void refresh({ append: false });
+      }
+    },
   });
   const reusing = ref(false);
   const busy = computed(() => starting.value || switching.value || mutation.value || reusing.value);
@@ -714,14 +714,14 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     try {
       await generation.generate({
         submission: {
-        ...acceptedOwner.submission,
-        async accepted({ snapshot, seeds }) {
-          await acceptedOwner.submission.accepted({ snapshot, seeds });
-          if (disposed || store.value?.storeId !== target.storeId) return;
-          // An ordering write is not a native failure or a second submission.
-          await retrySessionUse();
+          ...acceptedOwner.submission,
+          async accepted({ snapshot, seeds }) {
+            await acceptedOwner.submission.accepted({ snapshot, seeds });
+            if (disposed || store.value?.storeId !== target.storeId) return;
+            // An ordering write is not a native failure or a second submission.
+            await retrySessionUse();
+          },
         },
-      },
       });
     } catch (error) {
       if (!disposed) failure.value = errorText({ error });
@@ -760,8 +760,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         ...previous,
         revision: previous.revision + 1,
         tags: tagId
-        ? previous.tags.map(tag => tag.id === tagId ? { ...tag, name: label, updatedAt: now } : tag)
-        : [...previous.tags, { id: generateId<ImageGenerationTagId>(), name: label, state: 'active' as const, createdAt: now, updatedAt: now }],
+          ? previous.tags.map(tag => tag.id === tagId ? { ...tag, name: label, updatedAt: now } : tag)
+          : [...previous.tags, { id: generateId<ImageGenerationTagId>(), name: label, state: 'active' as const, createdAt: now, updatedAt: now }],
       };
       await persistence.saveImageGenerationCatalog({ store: target, catalog: next, expectedRevision: previous.revision });
       if (store.value?.storeId === target.storeId) catalog.value = next;
@@ -845,16 +845,16 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         if (!current || !generation.restoreDraft) return 'unavailable';
         await generation.restoreDraft({
           draft: {
-          ...current,
-          request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
-          seedMode: 'fixed',
-          files: [],
-          modelSelection: undefined,
-          remoteModelEditor: undefined,
-          inferenceLocation: undefined,
-          layout: selected.run.request.models.some(model => model.slot === 'model') ? 'checkpoint' : 'components',
-          loraStates: selected.run.request.loras.map(lora => ({ enabled: lora.strength !== 0, strength: lora.strength })),
-        },
+            ...current,
+            request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
+            seedMode: 'fixed',
+            files: [],
+            modelSelection: undefined,
+            remoteModelEditor: undefined,
+            inferenceLocation: undefined,
+            layout: selected.run.request.models.some(model => model.slot === 'model') ? 'checkpoint' : 'components',
+            loraStates: selected.run.request.loras.map(lora => ({ enabled: lora.strength !== 0, strength: lora.strength })),
+          },
         });
         break;
       }
@@ -924,22 +924,22 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   });
   const unsubscribe = storageService.subscribeToChanges({
     listener: ({ event }) => {
-    switch (event.type) {
-    case 'migration': break;
-    case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
-    }
-    initialized.value = false;
-    epoch++; queryEpoch++; detailEpoch++; storageRevision.value++; touchDraft();
-    void queries.dispose(); queries = createImageGenerationQueryClient(); clearTimeout(searchTimer);
-    store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
-    pendingDeletions.value = []; deletedAssetIds.value = []; operationProgress.value = undefined; visibility.value = 'active';
-    hasGeneratedImages.value = false;
-    monitorIntent.value = undefined; monitorRevision++; monitorFailure.value = '';
-    sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
-    drafts.clear(); attempts.clear(); sources.clear(); tiles.value = []; runs.value = []; runsWithAssets.value = []; selection.value = []; closeDetails();
-    clearTimeout(timer); void reload();
-  },
+      switch (event.type) {
+      case 'migration': break;
+      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
+      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+      }
+      initialized.value = false;
+      epoch++; queryEpoch++; detailEpoch++; storageRevision.value++; touchDraft();
+      void queries.dispose(); queries = createImageGenerationQueryClient(); clearTimeout(searchTimer);
+      store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
+      pendingDeletions.value = []; deletedAssetIds.value = []; operationProgress.value = undefined; visibility.value = 'active';
+      hasGeneratedImages.value = false;
+      monitorIntent.value = undefined; monitorRevision++; monitorFailure.value = '';
+      sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
+      drafts.clear(); attempts.clear(); sources.clear(); tiles.value = []; runs.value = []; runsWithAssets.value = []; selection.value = []; closeDetails();
+      clearTimeout(timer); void reload();
+    },
   });
   onMounted(() => {
     void reload();

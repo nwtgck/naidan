@@ -75,9 +75,9 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
         sources,
         persistence,
         changed: () => {
-        const entry = entries.get(id);
-        if (entry) collect({ entry });
-      },
+          const entry = entries.get(id);
+          if (entry) collect({ entry });
+        },
       });
       const entry: PendingRun = { id, store: { ...store }, sessionId, sink, phase: 'running' };
       let finished = false;
@@ -85,9 +85,9 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
         ...sink.submission,
         retry: () => retry({ id }),
         async finished({ completion }) {
-        finished = true;
-        await sink.submission.finished({ completion });
-      },
+          finished = true;
+          await sink.submission.finished({ completion });
+        },
       };
       entries.set(id, entry); changed();
       return {

@@ -18,14 +18,14 @@ const mocks = vi.hoisted(() => {
       kind: 'available',
       sourceCommit: commit,
       artifacts: [{
-      profile,
-      modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
-      wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
-      helpersPath: `stable-diffusion-cpp-runtime/${commit}/examples/runtime/index.mjs`,
-      schemaSha256: 'a'.repeat(64),
-      wasmSha256: 'b'.repeat(64),
-      wasmBytes: 100,
-    }],
+        profile,
+        modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
+        wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
+        helpersPath: `stable-diffusion-cpp-runtime/${commit}/examples/runtime/index.mjs`,
+        schemaSha256: 'a'.repeat(64),
+        wasmSha256: 'b'.repeat(64),
+        wasmBytes: 100,
+      }],
     },
   };
 });
@@ -177,12 +177,12 @@ wasm-function[42]:0xab`;
     onDiagnostic?.({ diagnostic: { event: 'progress', stage: 'sampling', elapsedMs: 1, fields: {} } });
     onDiagnostic?.({
       diagnostic: {
-      event: 'failed',
-      stage: 'worker',
-      elapsedMs: 2,
-      fields: { errorType: 'wasm-trap', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' },
-      message: native.message,
-    },
+        event: 'failed',
+        stage: 'worker',
+        elapsedMs: 2,
+        fields: { errorType: 'wasm-trap', wasmFrames: 'wasm-function[42]:0xab', nativeCall: 'generate_image' },
+        message: native.message,
+      },
     });
     // The Worker boundary can wrap a RuntimeError in an ordinary Error.
     throw new Error(native.message);

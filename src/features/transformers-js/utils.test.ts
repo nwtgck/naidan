@@ -133,7 +133,7 @@ describe('OPFS writes', () => {
       availability: 'wait',
       signal: undefined,
       run: async ({ lease }) =>
-      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2, 3), { headers: { 'Content-Length': '3' } }) }),
+        await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2, 3), { headers: { 'Content-Length': '3' } }) }),
     });
     await closeEntered.promise;
     expect(directory.files.has('.model.onnx.complete')).toBe(false);
@@ -153,7 +153,7 @@ describe('OPFS writes', () => {
       availability: 'wait',
       signal: undefined,
       run: async ({ lease }) =>
-      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '3' } }) }),
+        await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '3' } }) }),
     })).rejects.toThrow('expected 3, received 2');
     expect([...modelDirectory({ root }).files.keys()]).toEqual([]);
   });
@@ -181,7 +181,7 @@ describe('OPFS writes', () => {
         availability: 'wait',
         signal: undefined,
         run: async ({ lease }) =>
-        await writeIncompleteOpfsFile({ path, response, lease }),
+          await writeIncompleteOpfsFile({ path, response, lease }),
       });
       const outcome = operation.catch(error => error);
       await canceled.promise;
@@ -206,9 +206,9 @@ describe('OPFS writes', () => {
     const releaseAbort = Promise.withResolvers<void>();
     vi.spyOn(file, 'createWritable').mockResolvedValue(new WritableStream<Uint8Array>({
       abort: async () => {
-      abortEntered.resolve();
-      await releaseAbort.promise;
-    },
+        abortEntered.resolve();
+        await releaseAbort.promise;
+      },
     }));
     const response = new Response(Uint8Array.of(1));
     const reader = response.body!.getReader();
@@ -220,13 +220,13 @@ describe('OPFS writes', () => {
       availability: 'wait',
       signal: undefined,
       run: async ({ lease }) => {
-      leaseActive = true;
-      try {
-        return await writeIncompleteOpfsFile({ path, response, lease });
-      } finally {
-        leaseActive = false;
-      }
-    },
+        leaseActive = true;
+        try {
+          return await writeIncompleteOpfsFile({ path, response, lease });
+        } finally {
+          leaseActive = false;
+        }
+      },
     });
     const outcome = operation.catch(error => error).finally(() => {
       settled = true;

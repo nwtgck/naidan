@@ -60,10 +60,10 @@ beforeEach(() => {
     modelPath: 'model.gguf',
     projectorPath: 'mmproj.gguf',
     files: ['model.gguf', 'mmproj.gguf'].map(path => ({
-    path,
-    file: new File(['x'], path, { lastModified: 1 }),
-    handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
-  })),
+      path,
+      file: new File(['x'], path, { lastModified: 1 }),
+      handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
+    })),
   };
   host.load.mockImplementation(async ({ debug }) => {
     const release = vi.fn(async () => {}); releases.push(release);
@@ -452,8 +452,8 @@ describe('on-demand generation companions', () => {
       request: request({ debug: 'off' }),
       signal: controller.signal,
       onProgress: ({ progress }) => {
-      if (progress.phase === 'initializing') controller.abort();
-    },
+        if (progress.phase === 'initializing') controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(first.core.api.llama_free).not.toHaveBeenCalled(); expect(host.load).not.toHaveBeenCalled();
   });
@@ -548,8 +548,8 @@ describe('model read-window ownership', () => {
       ...host.directory!.files[0]!,
       file: new File([new Uint8Array(1024)], 'model.gguf'),
       handle: {
-      createSyncAccessHandle: async () => ({ getSize: () => 1024, read: ({ length }: Uint8Array) => length, close }),
-    } as unknown as FileSystemFileHandle,
+        createSyncAccessHandle: async () => ({ getSize: () => 1024, read: ({ length }: Uint8Array) => length, close }),
+      } as unknown as FileSystemFileHandle,
     }];
     let complete: (value: bigint) => void = () => {};
     vi.mocked(core.api.llama_model_load_from_file).mockImplementationOnce(() => new Promise<bigint>(resolve => {

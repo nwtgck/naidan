@@ -140,25 +140,25 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     const guard = createDownloadedModelWorkerFetch({
       ...identity,
       originalFetch: async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (allowedImageUrls.has(url)) {
-        const request = new Request(input, init);
-        if (request.url !== url || request.method !== 'GET' || request.redirect !== 'error') {
-          throw new Error('Unsupported local replay image request');
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (allowedImageUrls.has(url)) {
+          const request = new Request(input, init);
+          if (request.url !== url || request.method !== 'GET' || request.redirect !== 'error') {
+            throw new Error('Unsupported local replay image request');
+          }
+          localImageFetchCalls.push(url);
+          // The real offline guard already ran. Only this snapshotted exact PNG
+          // URL may reach the native local decoder; HTTP/blob/file never do.
+          // Request construction retains headers/signal and init precedence.
+          return nativeLocalFetch(request);
         }
-        localImageFetchCalls.push(url);
-        // The real offline guard already ran. Only this snapshotted exact PNG
-        // URL may reach the native local decoder; HTTP/blob/file never do.
-        // Request construction retains headers/signal and init precedence.
-        return nativeLocalFetch(request);
-      }
-      if (url !== assets.mjsUrl || init?.redirect !== 'error') {
-        forbiddenTransport.push(url);
-        throw new Error(`Unprovided replay transport: ${url}`);
-      }
-      runtimeAssetFetchCalls.push(url);
-      return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
-    },
+        if (url !== assets.mjsUrl || init?.redirect !== 'error') {
+          forbiddenTransport.push(url);
+          throw new Error(`Unprovided replay transport: ${url}`);
+        }
+        runtimeAssetFetchCalls.push(url);
+        return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
+      },
     });
     const fetchPolicy: typeof fetch = (input, init) => {
       fetchCalls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
@@ -264,11 +264,11 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
         exposeWorkerRemote: ({ api, endpoint }: {
         api: WorkerServerApi<ITransformersJsWorker>, endpoint: Parameters<typeof actual.exposeWorkerRemote>[0]['endpoint'],
       }) => {
-        if (endpoint !== undefined || !activeWorker) throw new Error('Unexpected replay Worker exposure');
-        // Only supplies the native Worker-global endpoint. Serialization, callback
-        // transfer, method this binding and RPC completion remain actual Comlink.
-        actual.exposeWorkerRemote<ITransformersJsWorker>({ api, endpoint: activeWorker.endpoint });
-      },
+          if (endpoint !== undefined || !activeWorker) throw new Error('Unexpected replay Worker exposure');
+          // Only supplies the native Worker-global endpoint. Serialization, callback
+          // transfer, method this binding and RPC completion remain actual Comlink.
+          actual.exposeWorkerRemote<ITransformersJsWorker>({ api, endpoint: activeWorker.endpoint });
+        },
       };
     });
     restorations.push(() => vi.doUnmock('@/utils/worker-transport'));
@@ -283,23 +283,23 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     setOwnedGlobal({
       key: 'Worker',
       value: createProviderReplayTestWorkerConstructor({
-      scriptUrl: new URL('../../worker/bootstrap.ts', import.meta.url),
-      onConstructed: ({ worker }) => workers.push(worker),
-      start: async ({ worker }) => {
-        activeWorker = worker;
-        await startProductionWorkerRuntime({
-          loadEntry: async () => {
-          const entry = await import('@/features/transformers-js/worker/entry');
-          const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
-          return entry.initializeProductionWorkerRuntime({
-            requestRuntimeModule,
-            postLoadDiagnostic: ({ message }) => worker.sendFromWorker({ message }),
+        scriptUrl: new URL('../../worker/bootstrap.ts', import.meta.url),
+        onConstructed: ({ worker }) => workers.push(worker),
+        start: async ({ worker }) => {
+          activeWorker = worker;
+          await startProductionWorkerRuntime({
+            loadEntry: async () => {
+              const entry = await import('@/features/transformers-js/worker/entry');
+              const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
+              return entry.initializeProductionWorkerRuntime({
+                requestRuntimeModule,
+                postLoadDiagnostic: ({ message }) => worker.sendFromWorker({ message }),
+              });
+            },
+            postMessage: ({ message }) => worker.sendFromWorker({ message }),
           });
         },
-          postMessage: ({ message }) => worker.sendFromWorker({ message }),
-        });
-      },
-    }),
+      }),
     });
     restorations.push(() => {
       // A host terminal event disposes its real session and module URL lease.

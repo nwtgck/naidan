@@ -29,10 +29,10 @@ describe('Prompt API parts and ownership', () => {
   it('captures the input before reading and starts the model lazily', async () => {
     const b = browser({
       stream: new ReadableStream({
-      start(c) {
-      c.enqueue('<think>literal</think>  '); c.enqueue('  '); c.close();
-    },
-    }),
+        start(c) {
+          c.enqueue('<think>literal</think>  '); c.enqueue('  '); c.close();
+        },
+      }),
     });
     const controller = new AbortController(); const messages = history(); const items = chat({ messages, controller });
     const first = messages[0]?.parts[0]; if (first?.type !== 'text') throw new Error('Expected text fixture.');
@@ -47,11 +47,11 @@ describe('Prompt API parts and ownership', () => {
   it('cancels an uncooperative pending browser read and keeps accepted text partial', async () => {
     const cancel = vi.fn(); const b = browser({
       stream: new ReadableStream({
-      start(c) {
-      c.enqueue('途中');
-    },
-      cancel,
-    }),
+        start(c) {
+          c.enqueue('途中');
+        },
+        cancel,
+      }),
     });
     const controller = new AbortController(); const n = node();
     const result = await consumeChatGeneration({
@@ -60,8 +60,8 @@ describe('Prompt API parts and ownership', () => {
       items: chat({ messages: history(), controller }),
       abortController: controller,
       onChange: () => {
-      if (n.parts.some(p => p.type === 'text' && p.text === '途中')) controller.abort();
-    },
+        if (n.parts.some(p => p.type === 'text' && p.text === '途中')) controller.abort();
+      },
     });
     expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
     expect(n.parts).toMatchObject([{ type: 'text', text: '途中', completeness: 'partial' }]);
@@ -71,10 +71,10 @@ describe('Prompt API parts and ownership', () => {
     let i = 0;
     const b = browser({
       stream: new ReadableStream({
-      pull(c) {
-      if (i++ === 0) c.enqueue('kept'); else c.enqueue(42 as never);
-    },
-    }),
+        pull(c) {
+          if (i++ === 0) c.enqueue('kept'); else c.enqueue(42 as never);
+        },
+      }),
     });
     const n = node(); const controller = new AbortController();
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
@@ -83,10 +83,10 @@ describe('Prompt API parts and ownership', () => {
   it('does not acquire a session for a signal already aborted', async () => {
     const b = browser({
       stream: new ReadableStream({
-      start(c) {
-      c.close();
-    },
-    }),
+        start(c) {
+          c.close();
+        },
+      }),
     });
     const controller = new AbortController(); controller.abort(); const n = node();
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
@@ -105,10 +105,10 @@ describe('Prompt API parts and ownership', () => {
   it('rejects unsupported reasoning before creating a browser session', async () => {
     const b = browser({
       stream: new ReadableStream({
-      start(c) {
-      c.close();
-    },
-    }),
+        start(c) {
+          c.close();
+        },
+      }),
     }); const controller = new AbortController();
     const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }] }, ...history()];
     const n = node(); const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });

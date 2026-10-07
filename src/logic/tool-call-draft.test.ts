@@ -38,12 +38,12 @@ describe('transient tool call drafts', () => {
       items: createChatGenerationStream({
         signal: undefined,
         run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: undefined, arguments: undefined });
-        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo' } });
-        await writer.callDraft({ key: 0, name: undefined, arguments: { offset: 15, text: ' hello' } });
-        await writer.call({ key: 0, toolCall: completed });
-        return { type: 'finished', next: 'tool_results' };
-      },
+          await writer.callDraft({ key: 0, name: undefined, arguments: undefined });
+          await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo' } });
+          await writer.callDraft({ key: 0, name: undefined, arguments: { offset: 15, text: ' hello' } });
+          await writer.call({ key: 0, toolCall: completed });
+          return { type: 'finished', next: 'tool_results' };
+        },
       }),
     });
     expect(snapshots[0]).toEqual([{ partId: 'part_0', index: 0, name: '', arguments: '', beforePartIndex: 0 }]);
@@ -63,12 +63,12 @@ describe('transient tool call drafts', () => {
       },
       items: sequence({
         items: [
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo"}' } },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 15, text: ' hi"}' } },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: undefined },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 10, text: '' } },
-        { type: 'result', result: { type: 'interrupted', reason: 'limit' } },
-      ],
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"echo"}' } },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 15, text: ' hi"}' } },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: undefined },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset: 10, text: '' } },
+          { type: 'result', result: { type: 'interrupted', reason: 'limit' } },
+        ],
       }),
     });
     expect(snapshots).toEqual(['{"script":"echo"}', '{"script":"echo hi"}', '{"script":"echo hi"}', '{"script":']);
@@ -86,12 +86,12 @@ describe('transient tool call drafts', () => {
       items: createChatGenerationStream({
         signal: undefined,
         run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: 'first', arguments: undefined });
-        await writer.text({ type: 'text', text: 'between' });
-        await writer.callDraft({ key: 1, name: 'second', arguments: undefined });
-        await writer.call({ key: 0, toolCall: call() });
-        return { type: 'interrupted', reason: 'limit' };
-      },
+          await writer.callDraft({ key: 0, name: 'first', arguments: undefined });
+          await writer.text({ type: 'text', text: 'between' });
+          await writer.callDraft({ key: 1, name: 'second', arguments: undefined });
+          await writer.call({ key: 0, toolCall: call() });
+          return { type: 'interrupted', reason: 'limit' };
+        },
       }),
     });
     expect(observed).toContainEqual([{ partId: 'part_0', beforePartIndex: 0 }, { partId: 'part_2', beforePartIndex: 1 }]);
@@ -112,9 +112,9 @@ describe('transient tool call drafts', () => {
       },
       items: sequence({
         items: [
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: undefined },
-        { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset, text: 'x' } },
-      ],
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: undefined },
+          { type: 'tool_call_draft', partId: 'd', index: 0, name: undefined, arguments: { offset, text: 'x' } },
+        ],
       }),
     })).rejects.toThrow('Invalid tool call draft argument offset');
     expect(snapshots.at(-1)).toEqual([]);
@@ -129,9 +129,9 @@ describe('transient tool call drafts', () => {
       onToolCallDraftsChange: undefined,
       items: sequence({
         items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
-        { type: 'tool_call_draft', partId: 'b', index: 0, name: undefined, arguments: undefined },
-      ],
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
+          { type: 'tool_call_draft', partId: 'b', index: 0, name: undefined, arguments: undefined },
+        ],
       }),
     })).rejects.toThrow('duplicate generated part position');
   });
@@ -144,9 +144,9 @@ describe('transient tool call drafts', () => {
       onToolCallDraftsChange: undefined,
       items: sequence({
         items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
-        { type: 'result', result: { type: 'finished', next: 'user' } },
-      ],
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: undefined },
+          { type: 'result', result: { type: 'finished', next: 'user' } },
+        ],
       }),
     })).rejects.toThrow('unfinished tool call draft');
   });
@@ -165,10 +165,10 @@ describe('transient tool call drafts', () => {
       },
       items: sequence({
         items: [
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: 'shell', arguments: undefined },
-        { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: { offset: 0, text: 'queued' } },
-        { type: 'result', result: { type: 'interrupted', reason: 'aborted' } },
-      ],
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: 'shell', arguments: undefined },
+          { type: 'tool_call_draft', partId: 'a', index: 0, name: undefined, arguments: { offset: 0, text: 'queued' } },
+          { type: 'result', result: { type: 'interrupted', reason: 'aborted' } },
+        ],
       }),
     });
     expect(snapshots).toHaveLength(2);
@@ -216,10 +216,10 @@ describe('transient tool call drafts', () => {
     const stream = createChatGenerationStream({
       signal: undefined,
       run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', cancelled);
-      await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: 'x'.repeat(1024 * 1024) } });
-      return { type: 'interrupted', reason: 'limit' };
-    },
+        signal.addEventListener('abort', cancelled);
+        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: 'x'.repeat(1024 * 1024) } });
+        return { type: 'interrupted', reason: 'limit' };
+      },
     });
     const iterator = stream[Symbol.asyncIterator]();
     for (let index = 0; index < 2; index++) {

@@ -47,22 +47,22 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
   return withImageGenerationLock({
     storageType,
     operation: async () => {
-    let directory = await imageGenerationRoot({ create: false });
-    if (directory) {
-      const existing = await readImageGenerationCatalogDto({ directory });
-      if (existing) return existing;
-    }
-    switch (creation) {
-    case 'forbid': return undefined;
-    case 'allow': break;
-    default: { const exhaustive: never = creation; throw new Error(String(exhaustive)); }
-    }
-    directory ??= await imageGenerationRoot({ create: true });
-    if (!directory) throw new Error('Image Generation directory is unavailable.');
-    const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
-    await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
-    return catalog;
-  },
+      let directory = await imageGenerationRoot({ create: false });
+      if (directory) {
+        const existing = await readImageGenerationCatalogDto({ directory });
+        if (existing) return existing;
+      }
+      switch (creation) {
+      case 'forbid': return undefined;
+      case 'allow': break;
+      default: { const exhaustive: never = creation; throw new Error(String(exhaustive)); }
+      }
+      directory ??= await imageGenerationRoot({ create: true });
+      if (!directory) throw new Error('Image Generation directory is unavailable.');
+      const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
+      await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
+      return catalog;
+    },
   });
 }
 
@@ -74,11 +74,11 @@ export async function withImageGenerationStore<T>({ store, operation }: {
   return withImageGenerationLock({
     storageType: store.storageType,
     operation: async () => {
-    const directory = await imageGenerationRoot({ create: false });
-    const catalog = directory && await readImageGenerationCatalogDto({ directory });
-    if (!directory || !catalog || catalog.id !== id) throw new Error('Image Generation store changed or was removed. Reopen it before writing.');
-    return operation({ directory, catalog });
-  },
+      const directory = await imageGenerationRoot({ create: false });
+      const catalog = directory && await readImageGenerationCatalogDto({ directory });
+      if (!directory || !catalog || catalog.id !== id) throw new Error('Image Generation store changed or was removed. Reopen it before writing.');
+      return operation({ directory, catalog });
+    },
   });
 }
 

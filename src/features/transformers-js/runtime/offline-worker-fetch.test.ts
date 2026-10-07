@@ -66,12 +66,12 @@ describe('createDownloadedModelWorkerFetch', () => {
     const received: string[] = [];
     const server = await loopbackServer({
       listener: (request, response) => {
-      received.push(request.url ?? '');
-      if (request.url === runtimePath) {
-        response.writeHead(302, { Location: '/forbidden-model' });
-      }
-      response.end('fixture');
-    },
+        received.push(request.url ?? '');
+        if (request.url === runtimePath) {
+          response.writeHead(302, { Location: '/forbidden-model' });
+        }
+        response.end('fixture');
+      },
     });
     try {
       const guarded = createDownloadedModelWorkerFetch({
@@ -98,17 +98,17 @@ describe('createDownloadedModelWorkerFetch', () => {
     const forbiddenRequests: string[] = [];
     const forbidden = await loopbackServer({
       listener: (request, response) => {
-      forbiddenRequests.push(request.url ?? '');
-      response.end('forbidden');
-    },
+        forbiddenRequests.push(request.url ?? '');
+        response.end('forbidden');
+      },
     });
     const received: string[] = [];
     const allowed = await loopbackServer({
       listener: (request, response) => {
-      received.push(request.url ?? '');
-      response.writeHead(302, { Location: `${forbidden.origin}/model.onnx` });
-      response.end();
-    },
+        received.push(request.url ?? '');
+        response.writeHead(302, { Location: `${forbidden.origin}/model.onnx` });
+        response.end();
+      },
     });
     try {
       const guarded = createDownloadedModelWorkerFetch({
@@ -137,9 +137,9 @@ describe('createDownloadedModelWorkerFetch', () => {
     const received: string[] = [];
     const server = await loopbackServer({
       listener: (request, response) => {
-      received.push(request.url ?? '');
-      response.end('runtime');
-    },
+        received.push(request.url ?? '');
+        response.end('runtime');
+      },
     });
     try {
       const guarded = createDownloadedModelWorkerFetch({

@@ -28,8 +28,8 @@ async function* titleItems({ text, ready }: { text: string, ready: Promise<void>
     index: 0,
     partId: 'title',
     chunks: (async function* () {
-    yield text;
-  })(),
+      yield text;
+    })(),
     completeness: Promise.resolve('complete'),
   };
   yield { type: 'result', result: { type: 'finished', next: 'user' } };
@@ -47,14 +47,14 @@ async function savedChat({ name, selected }: { name: string, selected: boolean }
     currentLeafId: messageId,
     root: {
       items: [{
-      id: messageId,
-      role: 'user',
-      createdAt: 1,
-      modelId: undefined,
-      lmParameters: undefined,
-      parts: [{ type: 'text', text: 'A conversation about testing', completeness: 'complete' }],
-      replies: { items: [] },
-    }],
+        id: messageId,
+        role: 'user',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'A conversation about testing', completeness: 'complete' }],
+        replies: { items: [] },
+      }],
     },
   };
   await storageService.updateChatMeta({ id, updater: () => chat });
@@ -179,9 +179,9 @@ describe('title lifecycle with real memory persistence', () => {
     await storageService.updateChatMeta({
       id: chat.id,
       updater: ({ current }) => {
-      if (current === null) throw new Error('Missing persisted metadata');
-      return { ...current, updatedAt: newerTimestamp };
-    },
+        if (current === null) throw new Error('Missing persisted metadata');
+        return { ...current, updatedAt: newerTimestamp };
+      },
     });
     await generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
     const persisted = await storageService.loadChatMeta({ id: chat.id });
@@ -202,10 +202,10 @@ describe('title lifecycle with real memory persistence', () => {
         await update({
           id: chat.id,
           updater: ({ current }) => current === null ? undefined : {
-          ...current,
-          title: chat.title,
-          updatedAt: chat.updatedAt,
-        },
+            ...current,
+            title: chat.title,
+            updatedAt: chat.updatedAt,
+          },
         });
       }
     });
@@ -224,10 +224,10 @@ describe('title lifecycle with real memory persistence', () => {
     const blocking = storageService.updateChatMeta({
       id: chat.id,
       updater: async ({ current }) => {
-      entered.resolve();
-      await unlocked.promise;
-      return current ?? undefined;
-    },
+        entered.resolve();
+        await unlocked.promise;
+        return current ?? undefined;
+      },
     });
     await entered.promise;
     try {

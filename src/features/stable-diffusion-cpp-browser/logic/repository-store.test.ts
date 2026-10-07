@@ -9,10 +9,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
     locks: {
-    request: async (name: string, options: { signal?: AbortSignal }, run: () => Promise<unknown>) => {
-    options.signal?.throwIfAborted(); lock(name); return run();
-  },
-  },
+      request: async (name: string, options: { signal?: AbortSignal }, run: () => Promise<unknown>) => {
+        options.signal?.throwIfAborted(); lock(name); return run();
+      },
+    },
   });
 });
 afterEach(() => {
@@ -21,10 +21,10 @@ afterEach(() => {
 const input = (): { name: string, files: { path: string, file: File }[] } => ({
   name: 'モデル repo',
   files: [
-  { path: 'README.md', file: new File(['model description'], 'README.md') },
-  { path: 'vae/config.json', file: new File(['{}'], 'config.json') },
-  { path: 'diffusion/weights.gguf', file: new File(['unverified bytes'], 'weights.gguf') },
-],
+    { path: 'README.md', file: new File(['model description'], 'README.md') },
+    { path: 'vae/config.json', file: new File(['{}'], 'config.json') },
+    { path: 'diffusion/weights.gguf', file: new File(['unverified bytes'], 'weights.gguf') },
+  ],
 });
 it('streams the working tree into models/user without filtering metadata or altering paths', async () => {
   const source = input(); for (const { file } of source.files) vi.spyOn(file, 'arrayBuffer').mockRejectedValue(new Error('Whole-file copy forbidden'));
@@ -56,8 +56,8 @@ it('cancels an in-flight stream, rolls back owned files, and never publishes a p
     input: input(),
     signal: controller.signal,
     onProgress() {
-    controller.abort();
-  },
+      controller.abort();
+    },
   })).rejects.toThrow();
   expect(await listImageRepositories({ signal: undefined })).toEqual([]);
   const user = await (await root.getDirectoryHandle('models')).getDirectoryHandle('user'); expect(user.children.size).toBe(0);
@@ -68,11 +68,11 @@ it('retains foreign files and keeps the pending marker after an interrupted impo
     input: input(),
     signal: controller.signal,
     onProgress() {
-    const models = root.children.get('models'); if (models?.kind !== 'directory') throw new Error('models');
-    const user = models.children.get('user'); if (user?.kind !== 'directory') throw new Error('user');
-    const repo = user.children.get('モデル repo'); if (repo?.kind !== 'directory') throw new Error('repo');
-    repo.children.set('foreign', new MemoryDirectory('foreign')); controller.abort();
-  },
+      const models = root.children.get('models'); if (models?.kind !== 'directory') throw new Error('models');
+      const user = models.children.get('user'); if (user?.kind !== 'directory') throw new Error('user');
+      const repo = user.children.get('モデル repo'); if (repo?.kind !== 'directory') throw new Error('repo');
+      repo.children.set('foreign', new MemoryDirectory('foreign')); controller.abort();
+    },
   })).rejects.toThrow();
   const repo = await (await (await root.getDirectoryHandle('models')).getDirectoryHandle('user')).getDirectoryHandle('モデル repo');
   expect(repo.children.has('foreign')).toBe(true); expect(repo.children.has('.llama-cpp-import-pending')).toBe(true);

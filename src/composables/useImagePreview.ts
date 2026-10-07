@@ -56,8 +56,8 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
   if (injected) return {
     ...injected,
     ...((__BUILD_MODE_IS_TEST__ && {
-    TEST_ONLY: {},
-  }) || {}),
+      TEST_ONLY: {},
+    }) || {}),
   };
 
   // Fallback to local ref if not provided (allows simple local use in a component)

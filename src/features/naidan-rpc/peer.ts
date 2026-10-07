@@ -185,8 +185,8 @@ export class NaidanRpcPeer {
           plan: prepared.input,
           value: input,
           allocate: () => {
-          const id = next; next += 2; return id;
-        },
+            const id = next; next += 2; return id;
+          },
         });
         this.opening++; reserved = true;
         const duplex = await this.transport.openStream({ signal: stop.signal });
@@ -216,8 +216,8 @@ export class NaidanRpcPeer {
       result: result.promise,
       closed: closed.promise,
       cancel: ({ reason }: { reason: string }) => {
-      void reason; terminate({ code: 'CANCELLED' });
-    },
+        void reason; terminate({ code: 'CANCELLED' });
+      },
     };
   }
   /** Abort is a protocol state, not proof that native work has stopped. The

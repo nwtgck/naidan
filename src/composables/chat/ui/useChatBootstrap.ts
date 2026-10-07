@@ -89,15 +89,15 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           })();
           const unsubscribe = modelService.subscribeModelList({
             listener: async () => {
-            if (currentChatRef.value === null) {
-              return;
-            }
-            try {
-              await chatModels.fetchForChat({ chatId: currentChatRef.value.id });
-            } catch (error) {
-              console.error('Failed to refresh chat models after a local model change:', error);
-            }
-          },
+              if (currentChatRef.value === null) {
+                return;
+              }
+              try {
+                await chatModels.fetchForChat({ chatId: currentChatRef.value.id });
+              } catch (error) {
+                console.error('Failed to refresh chat models after a local model change:', error);
+              }
+            },
           });
           onCleanup(() => {
             unsubscribe();

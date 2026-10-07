@@ -12,8 +12,8 @@ function setup({ declarations, history }: { declarations: WorkerToolDefinition[]
   const events: InferenceGenerationEvent[] = [];
   const codec = createStandardGeneration({
     emit: ({ event }) => {
-    events.push(event);
-  },
+      events.push(event);
+    },
     endTokens: ['<eos>'],
     handling: { ...handling, historyEncoding: history },
     tools: declarations,

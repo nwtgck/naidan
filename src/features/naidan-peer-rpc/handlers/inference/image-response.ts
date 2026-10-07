@@ -62,19 +62,19 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     const reader = imageReader;
     if (reader) void track({
       run: async () => {
-      try {
-        await reader.cancel(reason);
-      } finally {
-        reader.releaseLock(); if (imageReader === reader) imageReader = undefined;
-      }
-    },
+        try {
+          await reader.cancel(reason);
+        } finally {
+          reader.releaseLock(); if (imageReader === reader) imageReader = undefined;
+        }
+      },
     });
     // Closing an errored ReadableStream does not close its async generator.
     // return() also waits for a pending preview arrayBuffer()/next() to finish.
     void track({
       run: async () => {
-      await iterator.return(undefined);
-    },
+        await iterator.return(undefined);
+      },
     });
     changed(); cleanup();
   };
@@ -91,10 +91,10 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
       const result = await run({
         signal: stop.signal,
         onPreview({ frame }) {
-        if (stop.signal.aborted || nativeDone || frame.png.type !== 'image/png' || frame.png.size < 1 || frame.png.size > MAX_PREVIEW_BYTES ||
+          if (stop.signal.aborted || nativeDone || frame.png.type !== 'image/png' || frame.png.size < 1 || frame.png.size > MAX_PREVIEW_BYTES ||
           frame.width < 1 || frame.height < 1 || frame.width > 1024 || frame.height > 1024) return;
-        pendingPreview = frame; changed();
-      },
+          pendingPreview = frame; changed();
+        },
       });
       stop.signal.throwIfAborted();
       validating = true;
@@ -170,19 +170,19 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     pull(controller) {
       return track({
         run: async () => {
-        try {
-          const result = await start();
-          stop.signal.throwIfAborted();
-          imageReader ??= result.png.stream().getReader();
-          const item = await imageReader.read();
-          if (imageDone) return;
-          if (item.done) {
-            imageDone = true; controller.close(); imageReader.releaseLock(); imageReader = undefined; cleanup();
-          } else controller.enqueue(item.value);
-        } catch (error) {
-          abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'image-delivery', reason: 'image-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
-        }
-      },
+          try {
+            const result = await start();
+            stop.signal.throwIfAborted();
+            imageReader ??= result.png.stream().getReader();
+            const item = await imageReader.read();
+            if (imageDone) return;
+            if (item.done) {
+              imageDone = true; controller.close(); imageReader.releaseLock(); imageReader = undefined; cleanup();
+            } else controller.enqueue(item.value);
+          } catch (error) {
+            abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'image-delivery', reason: 'image-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
+          }
+        },
       });
     },
     cancel: reason => cancel({ reason }),
@@ -194,16 +194,16 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     pull(controller) {
       return track({
         run: async () => {
-        try {
-          const item = await iterator.next();
-          if (eventsDone) return;
-          if (item.done) {
-            eventsDone = true; controller.close(); cleanup();
-          } else controller.enqueue(item.value);
-        } catch (error) {
-          abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'preview-delivery', reason: 'preview-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
-        }
-      },
+          try {
+            const item = await iterator.next();
+            if (eventsDone) return;
+            if (item.done) {
+              eventsDone = true; controller.close(); cleanup();
+            } else controller.enqueue(item.value);
+          } catch (error) {
+            abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'preview-delivery', reason: 'preview-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
+          }
+        },
       });
     },
     cancel: reason => cancel({ reason }),

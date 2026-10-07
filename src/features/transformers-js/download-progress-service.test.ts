@@ -25,8 +25,8 @@ it('bounds a held Download subscriber and retains terminal state without waiting
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(owner);
   const held = Promise.withResolvers<void>();
@@ -53,13 +53,13 @@ it('retains ordinary Download timing in its owning service without mutating a ca
   const { createTransformersJsService } = await import('./index-hosted');
   const first = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   const second = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(first, second);
   transfer.reuse.mockResolvedValue({ reused: false });
@@ -83,8 +83,8 @@ it('does not record success or late timing while a cancelled Download is still s
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(owner);
   const entered = Promise.withResolvers<void>();
@@ -118,8 +118,8 @@ it('drops a disposed service owner timing callback without resurrecting retained
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(owner);
   const entered = Promise.withResolvers<void>();
@@ -164,14 +164,14 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   const healthy = vi.fn();
   owner.service.subscribe({
     listener: ({ status }) => {
-    if (status === 'loading') throw new Error('Synthetic failed progress renderer');
-  },
+      if (status === 'loading') throw new Error('Synthetic failed progress renderer');
+    },
   });
   owner.service.subscribe({ listener: healthy });
   owner.service.subscribeModelList({
     listener: () => {
-    throw new Error('Broken list renderer');
-  },
+      throw new Error('Broken list renderer');
+    },
   });
   const healthyList = vi.fn();
   owner.service.subscribeModelList({ listener: healthyList });
@@ -189,8 +189,8 @@ it('does not turn a completed raw cache or metadata read into early Download com
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('This scalar progress control must not load weights');
-  },
+      throw new Error('This scalar progress control must not load weights');
+    },
   });
   owners.push(owner);
   transfer.reuse.mockResolvedValue({ reused: false });
@@ -245,8 +245,8 @@ it('ignores a previous Download callback while a new operation owns the service'
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(owner);
   transfer.reuse.mockResolvedValue({ reused: false });
@@ -285,8 +285,8 @@ it('drops the old buffered snapshot when the same listener is unsubscribed and r
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   });
   owners.push(owner);
   const held = Promise.withResolvers<void>();
@@ -316,8 +316,8 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  },
+      throw new Error('No runtime expected');
+    },
   }); owners.push(owner);
   // The existing subscriber is an invalidation signal; Manager reads getState.
   const snapshots: ReturnType<typeof owner.service.getState>[] = [];

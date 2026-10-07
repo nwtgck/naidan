@@ -29,16 +29,16 @@ describe('generation, execution, and persisted model history', () => {
     const provider: LmProvider = {
       chat: vi.fn<LmProvider['chat']>().mockImplementationOnce(() => items({
         values: [
-        { type: 'reasoning', partId: 'r', index: 0, chunks: strings({ values: ['  Check', '\n'] }), completeness: Promise.resolve('complete') },
-        { type: 'text', partId: 't', index: 1, chunks: strings({ values: ['<think>literal</think>', '  '] }), completeness: Promise.resolve('complete') },
-        { type: 'tool_call', partId: 'c', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'double', arguments: ' { } ' } } },
-        { type: 'result', result: { type: 'finished', next: 'tool_results' } },
-      ],
+          { type: 'reasoning', partId: 'r', index: 0, chunks: strings({ values: ['  Check', '\n'] }), completeness: Promise.resolve('complete') },
+          { type: 'text', partId: 't', index: 1, chunks: strings({ values: ['<think>literal</think>', '  '] }), completeness: Promise.resolve('complete') },
+          { type: 'tool_call', partId: 'c', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'double', arguments: ' { } ' } } },
+          { type: 'result', result: { type: 'finished', next: 'tool_results' } },
+        ],
       })).mockImplementationOnce(() => items({
         values: [
-        { type: 'text', partId: 't', index: 0, chunks: strings({ values: ['8', 'です。'] }), completeness: Promise.resolve('complete') },
-        { type: 'result', result: { type: 'finished', next: 'user' } },
-      ],
+          { type: 'text', partId: 't', index: 0, chunks: strings({ values: ['8', 'です。'] }), completeness: Promise.resolve('complete') },
+          { type: 'result', result: { type: 'finished', next: 'user' } },
+        ],
       })),
       listModels: async () => ['fixture'],
     };
@@ -87,11 +87,11 @@ describe('generation, execution, and persisted model history', () => {
       abortController: controller,
       onChange: () => {},
       items: items({
-      values: [
-      { type: 'text', partId: 'p', index: 0, chunks: strings({ values: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'] }), completeness: Promise.resolve('partial') },
-      { type: 'result', result: { type: 'error', error: new Error('offline') } },
-    ],
-    }),
+        values: [
+          { type: 'text', partId: 'p', index: 0, chunks: strings({ values: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'] }), completeness: Promise.resolve('partial') },
+          { type: 'result', result: { type: 'error', error: new Error('offline') } },
+        ],
+      }),
     });
     // The caller owns cause attribution and the recorded display language.
     stopped.interruption = { type: 'error', message: '記録済みの説明: offline' };

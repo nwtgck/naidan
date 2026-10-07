@@ -59,8 +59,8 @@ describe('inference input snapshots', () => {
     expect(copy).toEqual([{
       role: 'user',
       content: [
-      { type: 'text', text: '' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }, { type: 'text', text: '  after\r\n' },
-    ],
+        { type: 'text', text: '' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }, { type: 'text', text: '  after\r\n' },
+      ],
     }]);
   });
 

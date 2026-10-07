@@ -13,8 +13,8 @@ vi.mock('..', async () => {
   const { createTransformersJsService } = await import('@/features/transformers-js/index-hosted');
   const owner = createTransformersJsService({
     createWorkerClient: () => {
-    throw new Error('This UI control must not create an inference Worker');
-  },
+      throw new Error('This UI control must not create an inference Worker');
+    },
   });
   preparation.dispose.mockImplementation(owner.dispose);
   return { transformersJsService: owner.service };

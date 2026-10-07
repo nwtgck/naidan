@@ -153,9 +153,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     const result = take({ capture });
     expect(result.events[0]).toMatchObject({
       values: [
-      { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[1, 2], [3, 4]] } },
-      { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512], [768, 1024]] } },
-    ],
+        { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[1, 2], [3, 4]] } },
+        { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512], [768, 1024]] } },
+      ],
     });
     expect(result.incompleteReasons).toEqual([]);
   });
@@ -332,10 +332,10 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     invocation.recordInputs({
       phase: 'native-kwargs',
       inputs: {
-      input_ids: new runtime.Tensor('int64', BigInt64Array.of(1n, 2n), [1, 2]),
-      pixel_values: new runtime.Tensor('float32', Float32Array.of(1), [1]),
-      attention_mask: new runtime.Tensor('int64', BigInt64Array.of(1n), [1]),
-    },
+        input_ids: new runtime.Tensor('int64', BigInt64Array.of(1n, 2n), [1, 2]),
+        pixel_values: new runtime.Tensor('float32', Float32Array.of(1), [1]),
+        attention_mask: new runtime.Tensor('int64', BigInt64Array.of(1n), [1]),
+      },
     });
     call.finish({ outcome: 'fulfilled' });
     const result = take({ capture });
@@ -370,10 +370,10 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     invocation.recordInputs({
       phase: 'native-kwargs',
       inputs: new Proxy({}, {
-      ownKeys() {
-      throw new Error('Synthetic proxy');
-    },
-    }),
+        ownKeys() {
+          throw new Error('Synthetic proxy');
+        },
+      }),
     });
     invocation.recordSequence({ result: Object.defineProperty({}, 'sequences', { get: getter }) });
     call.finish({ outcome: 'rejected' });

@@ -56,15 +56,15 @@ function recordSyntheticAppliedPartBoundary() {
     // Worker callback. This is a late-event integrity fixture, not inference.
     callbacks.push(({ chunk }) => trace.observeAssistant({
       message: {
-      id: toMessageId({ raw: 'capture_assistant_0' }),
-      role: 'assistant',
-      createdAt: 0,
-      parts: [{ type: 'text', text: chunk, completeness: 'partial' }],
-      replies: { items: [] },
-      modelId: undefined,
-      lmParameters: undefined,
-      interruption: undefined,
-    },
+        id: toMessageId({ raw: 'capture_assistant_0' }),
+        role: 'assistant',
+        createdAt: 0,
+        parts: [{ type: 'text', text: chunk, completeness: 'partial' }],
+        replies: { items: [] },
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
+      },
     }));
     return trace;
   });
@@ -515,10 +515,10 @@ describe('versioned parts observation evidence', () => {
     expect(captured.requests[1]?.input?.messages[1]).toEqual({
       role: 'assistant',
       parts: [
-      { id: 'part_0', type: 'reasoning', text: '  R\r\n', completeness: 'complete' },
-      { id: 'part_1', type: 'text', text: '', completeness: 'complete' },
-      { id: 'part_2', type: 'text', text: '<think>literal</think>🙂', completeness: 'partial' },
-    ],
+        { id: 'part_0', type: 'reasoning', text: '  R\r\n', completeness: 'complete' },
+        { id: 'part_1', type: 'text', text: '', completeness: 'complete' },
+        { id: 'part_2', type: 'text', text: '<think>literal</think>🙂', completeness: 'partial' },
+      ],
     });
     const artifact = exportCapture({ capture: captured });
     const parsed = readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' });

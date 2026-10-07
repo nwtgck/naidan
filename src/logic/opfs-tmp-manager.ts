@@ -70,23 +70,23 @@ class OPFSTmpManager {
 
     this.activeFlush = this.synchronizer.withLock({
       fn: async () => {
-      const pending = this.readPendingOwnerCleanups();
-      if (pending.ownerScopeIds.length === 0) {
-        return;
-      }
-
-      const remainingOwnerScopeIds: OPFSTmpOwnerScopeId[] = [];
-      for (const ownerScopeId of pending.ownerScopeIds) {
-        const deleted = await this.deleteOwnerScopeDirectory({ ownerScopeId });
-        if (!deleted) {
-          remainingOwnerScopeIds.push(ownerScopeId);
+        const pending = this.readPendingOwnerCleanups();
+        if (pending.ownerScopeIds.length === 0) {
+          return;
         }
-      }
 
-      this.writePendingOwnerCleanups({
-        ownerScopeIds: remainingOwnerScopeIds,
-      });
-    },
+        const remainingOwnerScopeIds: OPFSTmpOwnerScopeId[] = [];
+        for (const ownerScopeId of pending.ownerScopeIds) {
+          const deleted = await this.deleteOwnerScopeDirectory({ ownerScopeId });
+          if (!deleted) {
+            remainingOwnerScopeIds.push(ownerScopeId);
+          }
+        }
+
+        this.writePendingOwnerCleanups({
+          ownerScopeIds: remainingOwnerScopeIds,
+        });
+      },
       lockKey: OPFS_TMP_CLEANUP_LOCK_KEY,
     }).finally(() => {
       this.activeFlush = null;

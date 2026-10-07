@@ -75,10 +75,10 @@ export function cloneChatMessages({ messages }: { messages: readonly InferenceMe
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
       ...(reasoning === undefined ? {} : {
         reasoning: (() => {
-        const { text, completeness, ...unhandledReasoning } = reasoning;
+          const { text, completeness, ...unhandledReasoning } = reasoning;
         unhandledReasoning satisfies Record<PropertyKey, never>;
         return { text, completeness };
-      })(),
+        })(),
       }),
     });
   });

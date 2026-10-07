@@ -206,38 +206,38 @@ onMounted(async () => {
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe({
     listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
-    status.value = s;
-    progress.value = p;
-    error.value = e;
-    isCached.value = c;
-    isLoadingFromCache.value = l;
-    progressItems.value = items;
-    const state = transformersJsService.getState();
-    downloadProgress.value = state.downloadProgress;
-    const downloadPhase = state.downloadProgress?.phase;
-    switch (downloadPhase) {
-    case 'failed': break;
-    case undefined:
-    case 'resolving-revision':
-    case 'checking-cache':
-    case 'preparing-metadata':
-    case 'observing-candidate':
-    case 'transferring':
-    case 'saving':
-    case 'checking-runtime':
-    case 'complete': isDownloadFailureDismissed.value = false; break;
-    default: { const exhaustive: never = downloadPhase; throw new Error(String(exhaustive)); }
-    }
-    activeModelId.value = state.activeModelId;
-    device.value = state.device;
-    totalLoadedAmount.value = state.totalLoadedAmount;
-    totalSizeAmount.value = state.totalSizeAmount;
-  },
+      status.value = s;
+      progress.value = p;
+      error.value = e;
+      isCached.value = c;
+      isLoadingFromCache.value = l;
+      progressItems.value = items;
+      const state = transformersJsService.getState();
+      downloadProgress.value = state.downloadProgress;
+      const downloadPhase = state.downloadProgress?.phase;
+      switch (downloadPhase) {
+      case 'failed': break;
+      case undefined:
+      case 'resolving-revision':
+      case 'checking-cache':
+      case 'preparing-metadata':
+      case 'observing-candidate':
+      case 'transferring':
+      case 'saving':
+      case 'checking-runtime':
+      case 'complete': isDownloadFailureDismissed.value = false; break;
+      default: { const exhaustive: never = downloadPhase; throw new Error(String(exhaustive)); }
+      }
+      activeModelId.value = state.activeModelId;
+      device.value = state.device;
+      totalLoadedAmount.value = state.totalLoadedAmount;
+      totalSizeAmount.value = state.totalSizeAmount;
+    },
   });
   unsubscribeList = transformersJsService.subscribeModelList({
     listener: () => {
-    refreshLocalModels();
-  },
+      refreshLocalModels();
+    },
   });
 });
 

@@ -143,8 +143,8 @@ describe('download investigation batch budget', () => {
     await expect(withInvestigationTargetBudget({ start: async () => 'result', stop, timeoutMs: 100 })).resolves.toBe('result');
     await expect(withInvestigationTargetBudget({
       start: async () => {
-      throw new Error('original');
-    },
+        throw new Error('original');
+      },
       stop,
       timeoutMs: 100,
     })).rejects.toThrow('original');

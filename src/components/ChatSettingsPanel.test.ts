@@ -726,8 +726,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://persisted-url:1234' }),
-      }),
+          endpoint: expect.objectContaining({ url: 'http://persisted-url:1234' }),
+        }),
       });
     });
 
@@ -745,8 +745,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        modelId: 'model-1',
-      }),
+          modelId: 'model-1',
+        }),
       });
     });
 
@@ -768,9 +768,9 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-        modelId: undefined,
-      }),
+          endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+          modelId: undefined,
+        }),
       });
     });
 
@@ -788,8 +788,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://ollama:11434' },
-      }),
+          endpoint: { type: 'ollama', url: 'http://ollama:11434' },
+        }),
       });
     });
   });
@@ -881,8 +881,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
-      }),
+          endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
+        }),
       });
     });
   });
@@ -909,8 +909,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
-      }),
+          endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
+        }),
       });
 
       // Remove
@@ -921,8 +921,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: [] }),
-      }),
+          endpoint: expect.objectContaining({ httpHeaders: [] }),
+        }),
       });
     });
   });
@@ -941,8 +941,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-      }),
+          endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+        }),
       });
     });
 
@@ -959,8 +959,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
-      }),
+          endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
+        }),
       });
     });
   });
@@ -979,8 +979,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ type: 'ollama' }),
-      }),
+          endpoint: expect.objectContaining({ type: 'ollama' }),
+        }),
       });
     });
 
@@ -997,8 +997,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://custom-api:8000' }),
-      }),
+          endpoint: expect.objectContaining({ url: 'http://custom-api:8000' }),
+        }),
       });
     });
 
@@ -1017,8 +1017,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://changed:8888' }),
-      }),
+          endpoint: expect.objectContaining({ url: 'http://changed:8888' }),
+        }),
       });
     });
 
@@ -1063,8 +1063,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://new-url-for-A' }),
-      }),
+          endpoint: expect.objectContaining({ url: 'http://new-url-for-A' }),
+        }),
       });
     });
 
@@ -1144,8 +1144,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://closing-save' }),
-      }),
+          endpoint: expect.objectContaining({ url: 'http://closing-save' }),
+        }),
       });
     });
 
@@ -1231,8 +1231,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: undefined,
-      }),
+          endpoint: undefined,
+        }),
       });
     });
 
@@ -1250,8 +1250,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        endpoint: undefined,
-      }),
+          endpoint: undefined,
+        }),
       });
     });
   });
@@ -1314,8 +1314,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Edited chat prompt' },
-      }),
+          systemPrompt: { behavior: 'override', content: 'Edited chat prompt' },
+        }),
       });
     });
 
@@ -1332,8 +1332,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: null },
-      }),
+          systemPrompt: { behavior: 'override', content: null },
+        }),
       });
 
       const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
@@ -1343,8 +1343,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Prompt after none' },
-      }),
+          systemPrompt: { behavior: 'override', content: 'Prompt after none' },
+        }),
       });
     });
 
@@ -1403,8 +1403,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Inherited prompt' },
-      }),
+          systemPrompt: { behavior: 'override', content: 'Inherited prompt' },
+        }),
       });
     });
 
@@ -1426,8 +1426,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: { behavior: 'append', content: 'Append only prompt' },
-      }),
+          systemPrompt: { behavior: 'append', content: 'Append only prompt' },
+        }),
       });
     });
 
@@ -1628,8 +1628,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        systemPrompt: undefined,
-      }),
+          systemPrompt: undefined,
+        }),
       });
       expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
       expect(wrapper.get('[data-testid="chat-setting-system-prompt-caption"]').text()).toBe('Chat Group: Not set');
@@ -1793,8 +1793,8 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-        modelId: undefined,
-      }),
+          modelId: undefined,
+        }),
       });
     });
   });

@@ -81,8 +81,8 @@ it('discovers the ERNIE default using the case-sensitive path in its pinned repo
     policyName: 'huggingface_models',
     body: new ReadableStream({
       start(controller) {
-      controller.enqueue(new TextEncoder().encode(JSON.stringify([published]))); controller.close();
-    },
+        controller.enqueue(new TextEncoder().encode(JSON.stringify([published]))); controller.close();
+      },
     }),
   }));
   const identity = await imageFileIdentity({ file, signal: new AbortController().signal, fetch });

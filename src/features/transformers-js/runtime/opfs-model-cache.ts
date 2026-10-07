@@ -69,7 +69,7 @@ async function matchOpfsPath({ urlString, allowMutation }: {
     availability: allowMutation ? 'wait' : 'immediate',
     signal: undefined,
     run: async () =>
-    await matchOpfsPathUnderLease({ urlString, allowMutation: false }),
+      await matchOpfsPathUnderLease({ urlString, allowMutation: false }),
   });
   if (found !== undefined || !allowMutation) return found;
   // Never upgrade a shared lease. Recheck after acquiring exclusive ownership
@@ -80,7 +80,7 @@ async function matchOpfsPath({ urlString, allowMutation }: {
     availability: 'wait',
     signal: undefined,
     run: async () =>
-    await matchOpfsPathUnderLease({ urlString, allowMutation: true }),
+      await matchOpfsPathUnderLease({ urlString, allowMutation: true }),
   });
 }
 

@@ -20,10 +20,10 @@ describe('bounded advisory GGUF inspection', () => {
     const values = Array.from({ length: 2100 }, (_, i) => ggufString({ value: `token-${i}` }));
     const file = ggufFixture({
       entries: [
-      { key: 'tokenizer.ggml.tokens', type: 9, value: concatenateGguf({ parts: [ggufInteger({ value: 8, bytes: 4 }), ggufInteger({ value: values.length, bytes: 8 }), ...values] }) },
-      { key: 'tokenizer.ggml.scores', type: 9, value: concatenateGguf({ parts: [ggufInteger({ value: 6, bytes: 4 }), ggufInteger({ value: 3, bytes: 8 }), new Uint8Array(12)] }) },
-      textMetadata({ key: 'general.description', value: 'x'.repeat(200000) }), architecture,
-    ],
+        { key: 'tokenizer.ggml.tokens', type: 9, value: concatenateGguf({ parts: [ggufInteger({ value: 8, bytes: 4 }), ggufInteger({ value: values.length, bytes: 8 }), ...values] }) },
+        { key: 'tokenizer.ggml.scores', type: 9, value: concatenateGguf({ parts: [ggufInteger({ value: 6, bytes: 4 }), ggufInteger({ value: 3, bytes: 8 }), new Uint8Array(12)] }) },
+        textMetadata({ key: 'general.description', value: 'x'.repeat(200000) }), architecture,
+      ],
     });
     const slice = vi.spyOn(file, 'slice');
     expect([...await read({ file })]).toEqual([['general.architecture', 'qwen3tts']]);

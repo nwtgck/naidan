@@ -90,15 +90,15 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       try {
         await updateExperimental({
           updater: ({ experimental }) => {
-          const directories = experimental?.hostModelDirectories ?? [];
-          if (existingId && !directories.some(entry => entry.id === id)) throw new Error('Model directory registration was removed');
-          return {
-            ...experimental,
-            hostModelDirectories: existingId
-            ? directories.map(entry => entry.id === id ? { id, name: handle.name } : entry)
-            : [...directories, { id, name: handle.name }],
-          };
-        },
+            const directories = experimental?.hostModelDirectories ?? [];
+            if (existingId && !directories.some(entry => entry.id === id)) throw new Error('Model directory registration was removed');
+            return {
+              ...experimental,
+              hostModelDirectories: existingId
+                ? directories.map(entry => entry.id === id ? { id, name: handle.name } : entry)
+                : [...directories, { id, name: handle.name }],
+            };
+          },
         });
       } catch (error) {
         // A failed settings save must preserve the previous usable registration.
@@ -111,40 +111,40 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
   async function reconnect({ id }: { id: string }): Promise<void> {
     await perform({
       operation: async () => {
-      const handle = handles.get(id);
-      if (handle) {
-        if (!hostModelPermissionGranted({ permission: await handle.requestPermission({ mode: 'readwrite' }) })) throw new Error('Model directory needs read and write permission');
-      } else await pick({ existingId: id });
-    },
+        const handle = handles.get(id);
+        if (handle) {
+          if (!hostModelPermissionGranted({ permission: await handle.requestPermission({ mode: 'readwrite' }) })) throw new Error('Model directory needs read and write permission');
+        } else await pick({ existingId: id });
+      },
     });
   }
   async function remove({ id: raw }: { id: string }): Promise<void> {
     await perform({
       operation: async () => {
-      await stopDownload({ id: raw });
-      const id = toHostModelDirectoryId({ raw });
-      let removed: NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number] | undefined;
-      await unregisterHostModelDirectory({
-        id,
-        save: async () => {
-        await updateExperimental({
-          updater: ({ experimental }) => {
-          const directories = experimental?.hostModelDirectories ?? [];
-          removed = directories.find(entry => entry.id === id);
-          return { ...experimental, hostModelDirectories: directories.filter(entry => entry.id !== id) };
-        },
+        await stopDownload({ id: raw });
+        const id = toHostModelDirectoryId({ raw });
+        let removed: NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number] | undefined;
+        await unregisterHostModelDirectory({
+          id,
+          save: async () => {
+            await updateExperimental({
+              updater: ({ experimental }) => {
+                const directories = experimental?.hostModelDirectories ?? [];
+                removed = directories.find(entry => entry.id === id);
+                return { ...experimental, hostModelDirectories: directories.filter(entry => entry.id !== id) };
+              },
+            });
+          },
+          restore: async () => {
+            await updateExperimental({
+              updater: ({ experimental }) => {
+                const directories = experimental?.hostModelDirectories ?? [];
+                return { ...experimental, hostModelDirectories: removed && !directories.some(entry => entry.id === id) ? [...directories, removed] : directories };
+              },
+            });
+          },
         });
       },
-        restore: async () => {
-        await updateExperimental({
-          updater: ({ experimental }) => {
-          const directories = experimental?.hostModelDirectories ?? [];
-          return { ...experimental, hostModelDirectories: removed && !directories.some(entry => entry.id === id) ? [...directories, removed] : directories };
-        },
-        });
-      },
-      });
-    },
     });
   }
   async function downloadDestination({ id }: { id: string }): Promise<ImageDownloadDestination> {
@@ -161,26 +161,26 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     refresh,
     downloadDestination,
     view: {
-    supported,
-    entries,
-    busy,
-    destination,
-    async add() {
-      await perform({ operation: () => pick({ existingId: undefined }) });
+      supported,
+      entries,
+      busy,
+      destination,
+      async add() {
+        await perform({ operation: () => pick({ existingId: undefined }) });
+      },
+      reconnect,
+      remove,
+      selectDestination({ id }) {
+        if (busy.value) return;
+        if (id === 'opfs' || supported.value && registrations().some(entry => entry.id === id)) destination.value = id;
+      },
     },
-    reconnect,
-    remove,
-    selectDestination({ id }) {
-      if (busy.value) return;
-      if (id === 'opfs' || supported.value && registrations().some(entry => entry.id === id)) destination.value = id;
-    },
-  },
-  ...((__BUILD_MODE_IS_TEST__ && {
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-      // ESLint-required for useXxx return objects.
-    },
-  }) || {}),
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+        // ESLint-required for useXxx return objects.
+      },
+    }) || {}),
   };
 }
 

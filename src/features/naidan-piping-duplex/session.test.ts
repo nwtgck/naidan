@@ -15,9 +15,9 @@ it('dynamic duplex transfer and independent half-closes release all claimed buff
     b,
     limit: 100,
     operation: async () => {
-    await Promise.all([wa.write(left), wb.write(right)]);
-    await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
-  },
+      await Promise.all([wa.write(left), wb.write(right)]);
+      await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
+    },
   });
   const output = await promiseAllKeyed({ left: aRead, right: bRead });
   expect(output.left).toEqual(right); expect(output.right).toEqual(left);
@@ -43,8 +43,8 @@ it('completed unread data survives stopping the session until the application re
     b,
     limit: 40,
     operation: async () => {
-    await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
-  },
+      await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
+    },
   });
   expect(b.debug()).toMatchObject({ retained: 1 });
   b.abort({ reason: 'Stop transport without losing completed bytes' });
@@ -60,8 +60,8 @@ it('cancelling a completed readable discards private bytes without converting co
     a,
     b,
     operation: async () => {
-    await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
-  },
+      await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
+    },
     limit: 40,
   });
   await bStream.readable.cancel(); expect(b.debug()).toMatchObject({ retained: 0 }); await bStream.closed;
@@ -157,18 +157,18 @@ it('standard pipeTo handles arbitrarily fragmented finite writes without a separ
   const chunks = [0, 1, 65535, 65536, 65537, 262145].map((size, seed) => pattern({ size, seed: seed + 13 }));
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
-    for (const chunk of chunks) controller.enqueue(chunk); controller.close();
-  },
+      for (const chunk of chunks) controller.enqueue(chunk); controller.close();
+    },
   });
   const received = await drive({
     a,
     b,
     limit: 240,
     operation: async () => {
-    const reading = readAll({ readable: bStream.readable });
-    await Promise.all([source.pipeTo(aStream.writable), bStream.writable.getWriter().close(), aStream.closed, bStream.closed]);
-    return reading;
-  },
+      const reading = readAll({ readable: bStream.readable });
+      await Promise.all([source.pipeTo(aStream.writable), bStream.writable.getWriter().close(), aStream.closed, bStream.closed]);
+      return reading;
+    },
   });
   expect(Buffer.from(received)).toEqual(Buffer.concat(chunks));
 });
@@ -218,8 +218,8 @@ it('duplicate and lost acceptance snapshots preserve exactly the intended byte p
     a,
     b,
     operation: async () => {
-    await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
-  },
+      await Promise.all([wa.close(), wb.close(), aStream.closed, bStream.closed]);
+    },
     limit: 40,
   });
   expect(await received).toEqual(data);
@@ -242,8 +242,8 @@ it('an errored pipeTo source resets the stream without stopping the session or r
   const failure = new Error('Input producer failed');
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
-    controller.error(failure);
-  },
+      controller.error(failure);
+    },
   });
   await expect(source.pipeTo(aStream.writable)).rejects.toBe(failure);
   await expect(aStream.closed).rejects.toThrow('reset');
@@ -258,8 +258,8 @@ it('an errored pipeTo destination cancels reception and wakes a peer write block
   const failure = new Error('Output consumer failed');
   const sink = new WritableStream<Uint8Array>({
     write() {
-    throw failure;
-  },
+      throw failure;
+    },
   });
   const reader = expect(bStream.readable.pipeTo(sink)).rejects.toBe(failure);
   const writer = aStream.writable.getWriter();
@@ -270,8 +270,8 @@ it('an errored pipeTo destination cancels reception and wakes a peer write block
       b,
       limit: 30,
       operation: async () => {
-      await Promise.all([reader, writing]);
-    },
+        await Promise.all([reader, writing]);
+      },
     });
     await expect(aStream.closed).rejects.toThrow('reset'); await expect(bStream.closed).rejects.toThrow('reset');
     expect(a.debug()).toMatchObject({ retained: 0 }); expect(b.debug()).toMatchObject({ retained: 0 });

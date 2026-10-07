@@ -65,8 +65,8 @@ function response({ signal }: Parameters<LmProvider['chat']>[0]) {
   return createChatGenerationStream({
     signal,
     run: async ({ writer }) => {
-    await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-  },
+      await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+    },
   });
 }
 
@@ -89,14 +89,14 @@ describe('chat runtime operation ownership', () => {
     const scoped: LmProvider['chat'] = ({ signal, messages, debug }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
-      expect(open).toBe(true); expect(debug).toBe('on'); trace.push(`generate:${messages.length}`);
-      if (calls++ === 0) {
-        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
-        return { type: 'finished', next: 'tool_results' };
-      }
-      expect(messages.map(message => message.role)).toEqual(['assistant', 'tool']);
-      await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-    },
+        expect(open).toBe(true); expect(debug).toBe('on'); trace.push(`generate:${messages.length}`);
+        if (calls++ === 0) {
+          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
+          return { type: 'finished', next: 'tool_results' };
+        }
+        expect(messages.map(message => message.role)).toEqual(['assistant', 'tool']);
+        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+      },
     });
     const hook = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
       open = true; trace.push('open');
@@ -129,14 +129,14 @@ describe('chat runtime operation ownership', () => {
       chat: response,
       listModels: async () => [],
       runChatOperation: async ({ operation, signal }) => {
-      entered.resolve(); await release.promise;
-      await operation({
-        signal: signal ?? new AbortController().signal,
-        chat: args => {
-        received.push(args); return response(args);
+        entered.resolve(); await release.promise;
+        await operation({
+          signal: signal ?? new AbortController().signal,
+          chat: args => {
+            received.push(args); return response(args);
+          },
+        });
       },
-      });
-    },
     };
     const tool: Tool = { name: 'f', description: 'before', parametersSchema: z.object({}), execute: async () => ({ status: 'success', content: '' }) };
     const f = fixture({ provider, tools: [tool] }); const pending = f.run();
@@ -150,17 +150,17 @@ describe('chat runtime operation ownership', () => {
       chat: response,
       listModels: async () => [],
       runChatOperation: async ({ operation }) => {
-      await operation({
-        signal: owner.signal,
-        chat: ({ signal }) => createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        count++; await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-        return { type: 'finished', next: 'tool_results' };
+        await operation({
+          signal: owner.signal,
+          chat: ({ signal }) => createChatGenerationStream({
+            signal,
+            run: async ({ writer }) => {
+              count++; await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+              return { type: 'finished', next: 'tool_results' };
+            },
+          }),
+        });
       },
-      }),
-      });
-    },
     };
     const failure = new Error('runtime replaced');
     const tool: Tool = {
@@ -168,8 +168,8 @@ describe('chat runtime operation ownership', () => {
       description: '',
       parametersSchema: z.object({}),
       execute: async ({ signal }) => {
-      owner.abort(failure); expect(signal?.aborted).toBe(true); return { status: 'success', content: 'observed' };
-    },
+        owner.abort(failure); expect(signal?.aborted).toBe(true); return { status: 'success', content: 'observed' };
+      },
     };
     const f = fixture({ provider, tools: [tool] }); await expect(f.run()).rejects.toBe(failure);
     expect(count).toBe(1); expect(f.abortController.signal.aborted).toBe(false);
@@ -184,13 +184,13 @@ describe('chat runtime operation ownership', () => {
   it('rejects a duplicated operation callback before creating a second assistant', async () => {
     const f = fixture({
       provider: {
-      chat: response,
-      listModels: async () => [],
-      runChatOperation: async ({ operation, signal }) => {
-      const scoped = { chat: response, signal: signal ?? new AbortController().signal };
-      await operation(scoped); await operation(scoped);
-    },
-    },
+        chat: response,
+        listModels: async () => [],
+        runChatOperation: async ({ operation, signal }) => {
+          const scoped = { chat: response, signal: signal ?? new AbortController().signal };
+          await operation(scoped); await operation(scoped);
+        },
+      },
       tools: [],
     });
     await expect(f.run()).rejects.toThrow('exactly once'); expect(f.history).toHaveLength(1);

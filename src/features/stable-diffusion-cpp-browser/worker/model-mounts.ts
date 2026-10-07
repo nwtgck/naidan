@@ -80,10 +80,10 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     path,
     files: files.filter(entry => required.has(entry.path)),
     summary: {
-    tensorCount,
-    dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),
-    largestElements,
-  },
+      tensorCount,
+      dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),
+      largestElements,
+    },
   };
 }
 export const TEST_ONLY = {

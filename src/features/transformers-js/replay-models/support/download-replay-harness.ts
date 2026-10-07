@@ -121,12 +121,12 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         const guard = createDownloadedModelWorkerFetch({
           ...identity,
           originalFetch: async (input, init) => {
-          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          if (url !== assets.mjsUrl) return forbiddenTransport(input, init);
-          expect(init?.redirect).toBe('error');
-          runtimeAssetFetchCalls.push(url);
-          return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
-        },
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            if (url !== assets.mjsUrl) return forbiddenTransport(input, init);
+            expect(init?.redirect).toBe('error');
+            runtimeAssetFetchCalls.push(url);
+            return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
+          },
         });
         const observedGuard: typeof fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

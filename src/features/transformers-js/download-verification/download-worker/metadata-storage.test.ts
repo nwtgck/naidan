@@ -107,10 +107,10 @@ it('preserves permission failures rather than converting them to cache misses', 
   const failure = new DOMException('Fixture permission denied', 'NotAllowedError');
   vi.stubGlobal('navigator', {
     storage: {
-    getDirectory: async () => {
-    throw failure;
-  },
-  },
+      getDirectory: async () => {
+        throw failure;
+      },
+    },
   });
   const storage = createRuntimeMetadataStorage();
   await expect(storage.stat({ url })).rejects.toBe(failure);

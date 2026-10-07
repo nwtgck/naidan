@@ -97,12 +97,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Start' });
-      accepted.resolve();
-      await finish.promise;
-      await writer.text({ type: 'text', text: 'End' });
-      return { type: 'finished', next: 'user' };
-    },
+        await writer.text({ type: 'text', text: 'Start' });
+        accepted.resolve();
+        await finish.promise;
+        await writer.text({ type: 'text', text: 'End' });
+        return { type: 'finished', next: 'user' };
+      },
     }));
     const sendPromise = sendMessage({ content: 'Hello' });
     try {
@@ -130,13 +130,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
-      await writer.text({ type: 'text', text: 'Unfinished' });
-      signal.addEventListener('abort', () => sawAbort.resolve(), { once: true });
-      started.resolve();
-      // A stop request is not permission to release an uncooperative producer early.
-      await finish.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    },
+        await writer.text({ type: 'text', text: 'Unfinished' });
+        signal.addEventListener('abort', () => sawAbort.resolve(), { once: true });
+        started.resolve();
+        // A stop request is not permission to release an uncooperative producer early.
+        await finish.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
     }));
     const sendPromise = sendMessage({ content: 'Hello' });
     try {

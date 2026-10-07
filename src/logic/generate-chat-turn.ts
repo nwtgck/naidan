@@ -116,22 +116,22 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   await provider.runChatOperation({
     signal: abortController.signal,
     operation: async ({ chat, signal }) => {
-    if (entered) throw new Error('A chat operation must be entered exactly once.');
-    entered = true;
-    const controller = new AbortController();
-    const sources = [...new Set([signal, abortController.signal])];
-    const removers = sources.map(source => {
-      const abort = () => controller.abort(source.reason);
-      source.addEventListener('abort', abort, { once: true });
-      if (source.aborted) abort();
-      return () => source.removeEventListener('abort', abort);
-    });
-    try {
-      result = await generate({ chat, controller });
-    } finally {
-      for (const remove of removers) remove();
-    }
-  },
+      if (entered) throw new Error('A chat operation must be entered exactly once.');
+      entered = true;
+      const controller = new AbortController();
+      const sources = [...new Set([signal, abortController.signal])];
+      const removers = sources.map(source => {
+        const abort = () => controller.abort(source.reason);
+        source.addEventListener('abort', abort, { once: true });
+        if (source.aborted) abort();
+        return () => source.removeEventListener('abort', abort);
+      });
+      try {
+        result = await generate({ chat, controller });
+      } finally {
+        for (const remove of removers) remove();
+      }
+    },
   });
   if (result === undefined) throw new Error('The Provider did not run the chat operation.');
   return result;

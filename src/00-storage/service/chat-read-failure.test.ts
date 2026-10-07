@@ -11,21 +11,21 @@ const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:${rawId}`;
 const meta = JSON.stringify({ id: rawId, title: 'Saved chat', createdAt: 0, updatedAt: 1, debugEnabled: false });
 const content = JSON.stringify({
   root: {
-  items: [{
-  id: 'answer',
-  role: 'assistant',
-  createdAt: 0,
-  parts: [{
-    type: 'text',
-    text: `\
+    items: [{
+      id: 'answer',
+      role: 'assistant',
+      createdAt: 0,
+      parts: [{
+        type: 'text',
+        text: `\
   <think>原文</think>\\r
 🙂`,
-    completeness: 'partial',
-  }],
-  interruption: { type: 'cancelled' },
-  replies: { items: [] },
-}],
-},
+        completeness: 'partial',
+      }],
+      interruption: { type: 'cancelled' },
+      replies: { items: [] },
+    }],
+  },
   currentLeafId: 'answer',
 });
 const invalidContents = [
@@ -127,11 +127,11 @@ for (const backend of ['local', 'opfs'] as const) {
         const loaded = await provider.loadChat({ id });
         expect(loaded?.root.items[0]).toMatchObject({
           parts: [{
-          text: `\
+            text: `\
   <think>原文</think>\\r
 🙂`,
-          completeness: 'partial',
-        }],
+            completeness: 'partial',
+          }],
           interruption: { type: 'cancelled' },
         });
       });
@@ -168,24 +168,24 @@ for (const backend of ['local', 'opfs'] as const) {
       const { provider, write, read } = await setup();
       const legacy = JSON.stringify({
         root: {
-        items: [{
-        id: 'old',
-        role: 'assistant',
-        timestamp: 7,
-        thinking: '  Thought ',
-        content: '<think>literal</think> [Generation Aborted]',
-        replies: { items: [] },
-      }],
-      },
+          items: [{
+            id: 'old',
+            role: 'assistant',
+            timestamp: 7,
+            thinking: '  Thought ',
+            content: '<think>literal</think> [Generation Aborted]',
+            replies: { items: [] },
+          }],
+        },
       });
       write({ kind: 'meta', value: meta }); write({ kind: 'content', value: legacy });
       const loaded = await provider.loadChatContentWithoutAttachments({ id });
       expect(loaded?.root.items[0]).toMatchObject({
         createdAt: 7,
         parts: [
-        { type: 'reasoning', text: '  Thought ', completeness: 'complete' },
-        { type: 'text', text: '<think>literal</think> [Generation Aborted]', completeness: 'complete' },
-      ],
+          { type: 'reasoning', text: '  Thought ', completeness: 'complete' },
+          { type: 'text', text: '<think>literal</think> [Generation Aborted]', completeness: 'complete' },
+        ],
       });
       expect(await read({ kind: 'content' })).toBe(legacy);
     });

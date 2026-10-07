@@ -355,11 +355,11 @@ describe('OnboardingModal.vue', () => {
     ]);
     const wrapper = mount(OnboardingModal, {
       global: {
-      stubs: {
-      LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
-      TransformersJsManager: true,
-    },
-    },
+        stubs: {
+          LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
+          TransformersJsManager: true,
+        },
+      },
     });
     try {
       await flushPromises();

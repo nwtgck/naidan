@@ -38,10 +38,10 @@ describe("inspectRuntimeEnvironment", () => {
     const result = await inspectRuntimeEnvironment({
       navigatorValue: {
         gpu: {
-        requestAdapter: async () => {
-        throw new Error("adapter denied");
-      },
-      },
+          requestAdapter: async () => {
+            throw new Error("adapter denied");
+          },
+        },
       },
       crossOriginIsolatedValue: false,
     });

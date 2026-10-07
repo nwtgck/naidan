@@ -46,11 +46,11 @@ describe('host model handles database', () => {
       kind: 'directory',
       getDirectoryHandle() {},
       async queryPermission() {
-      return 'granted';
-    },
+        return 'granted';
+      },
       async requestPermission() {
-      return 'granted';
-    },
+        return 'granted';
+      },
     };
     const settled = vi.fn();
     const operation = hostModelHandles.put({ id, handle: handle as unknown as FileSystemDirectoryHandle }).then(settled);

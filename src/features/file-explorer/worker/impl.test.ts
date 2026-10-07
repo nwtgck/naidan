@@ -67,12 +67,12 @@ describe('file-explorer.worker.impl', () => {
     handle.content = new Uint8Array([1, 2, 3]);
     const { sessionId } = await worker.prepareSession({
       request: {
-      root: {
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false }],
-    },
-    },
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false }],
+        },
+      },
     });
     vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const open = vi.spyOn(WeshVFS.prototype, 'open');
@@ -495,17 +495,17 @@ describe('file-explorer.worker.impl', () => {
     }
     const { sessionId } = await worker.prepareSession({
       request: {
-      root: {
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      mounts: [{
-        type: 'directory',
-        path: '/preview',
-        handle: root as unknown as FileSystemDirectoryHandle,
-        readOnly: true,
-      }],
-    },
-    },
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'directory',
+            path: '/preview',
+            handle: root as unknown as FileSystemDirectoryHandle,
+            readOnly: true,
+          }],
+        },
+      },
     });
     const nativeHandle = vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const originalOpen = WeshVFS.prototype.open;
@@ -667,12 +667,12 @@ describe('file-explorer.worker.impl', () => {
     await provider.saveChatGroup({ chatGroup });
     await provider.saveHierarchy({
       hierarchy: {
-      items: [{
-        type: 'chat_group',
-        id: 'chat-group-1',
-        chat_ids: ['chat-1'],
-      }],
-    },
+        items: [{
+          type: 'chat_group',
+          id: 'chat-group-1',
+          chat_ids: ['chat-1'],
+        }],
+      },
     });
     const storedChatMeta = await provider.loadChatMeta({ id: toChatId({ raw: 'chat-1' }) });
 

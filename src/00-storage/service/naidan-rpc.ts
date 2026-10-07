@@ -28,13 +28,13 @@ export const naidanRpcStorage = {
     return storageService.updateNaidanRpcRegistry({
       access,
       updater: async ({ connections }) => {
-      if (connections.some(current => current.id === normalized.id)) throw new Error('The RPC connection already exists');
-      if (connections.length >= 32) throw new Error('Too many RPC connection records');
-      // Commit the nonextractable key first. JSON publication is the commit
-      // point for remembered trust; a failed write never rolls the key back.
-      await rememberRpcIdentity({ identity });
-      return [...connections, normalized];
-    },
+        if (connections.some(current => current.id === normalized.id)) throw new Error('The RPC connection already exists');
+        if (connections.length >= 32) throw new Error('Too many RPC connection records');
+        // Commit the nonextractable key first. JSON publication is the commit
+        // point for remembered trust; a failed write never rolls the key back.
+        await rememberRpcIdentity({ identity });
+        return [...connections, normalized];
+      },
     });
   },
   async update({ access, connection, expectedRevision }: {
@@ -45,11 +45,11 @@ export const naidanRpcStorage = {
     await storageService.updateNaidanRpcRegistry({
       access,
       updater: async ({ connections }) => {
-      const current = connections.find(current => current.id === normalized.id);
-      if (!current || current.revision !== expectedRevision) throw new Error('RPC connection changed in another operation');
-      if (current.peerId !== normalized.peerId || current.localPublicKey !== normalized.localPublicKey) throw new Error('RPC identity changes require a new connection');
-      return connections.map(current => current.id === normalized.id ? normalized : current);
-    },
+        const current = connections.find(current => current.id === normalized.id);
+        if (!current || current.revision !== expectedRevision) throw new Error('RPC connection changed in another operation');
+        if (current.peerId !== normalized.peerId || current.localPublicKey !== normalized.localPublicKey) throw new Error('RPC identity changes require a new connection');
+        return connections.map(current => current.id === normalized.id ? normalized : current);
+      },
     });
     return normalized.revision;
   },
@@ -59,10 +59,10 @@ export const naidanRpcStorage = {
     await storageService.updateNaidanRpcRegistry({
       access,
       updater: async ({ connections }) => {
-      const current = connections.find(current => current.id === id);
-      if (!current || current.revision !== expectedRevision) throw new Error('RPC connection changed in another operation');
-      return connections.filter(current => current.id !== id);
-    },
+        const current = connections.find(current => current.id === id);
+        if (!current || current.revision !== expectedRevision) throw new Error('RPC connection changed in another operation');
+        return connections.filter(current => current.id !== id);
+      },
     });
   },
 };

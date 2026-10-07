@@ -38,8 +38,8 @@ function response({ bytes, status, headers }: { bytes: Uint8Array<ArrayBuffer>, 
     policyName: 'huggingface_models',
     body: new ReadableStream({
       start(controller) {
-      controller.enqueue(bytes); controller.close();
-    },
+        controller.enqueue(bytes); controller.close();
+      },
     }),
   };
 }
@@ -61,10 +61,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
     locks: {
-    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-    options.signal?.throwIfAborted(); await run();
-  },
-  },
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); await run();
+      },
+    },
   });
 });
 afterEach(() => {
@@ -119,8 +119,8 @@ it('pauses with an unpublished checkpoint and supports an explicit retry', async
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'transferring') abort.abort();
-  },
+      if (progress.phase === 'transferring') abort.abort();
+    },
   })).rejects.toThrow();
   expect((await listImageRepositories({ signal: undefined })).flatMap(repo => repo.files)).toEqual([]);
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
@@ -191,8 +191,8 @@ it('resumes only recorded bytes with Range and rehashes the entire prefix plus s
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
-  },
+      if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
+    },
   })).rejects.toThrow();
   const folder = await (await stored()).getDirectoryHandle('weights');
   const partial = (await (await folder.getFileHandle('model.gguf')).getFile()).size;
@@ -211,8 +211,8 @@ it('restarts an owned partial file when the server ignores Range with a valid fu
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
-  },
+      if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
+    },
   })).rejects.toThrow();
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
   const payloadCalls = calls.fetch.mock.calls.filter(([{ request }]) => !request.url.includes('/api/'));
@@ -229,8 +229,8 @@ it('rejects an invalid Content-Range without publishing and retains its pending 
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
-  },
+      if (progress.phase === 'transferring' && progress.fileCompleted > 0) abort.abort();
+    },
   })).rejects.toThrow();
   calls.fetch.mockImplementation(async ({ request }: { request: { url: string } }) => request.url.includes('/api/')
     ? response({ bytes: metadata({ bytes, path: file.path }), status: 200, headers: {} })
@@ -244,8 +244,8 @@ it('reverifies a full pending file locally after a publication interruption, nev
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'verifying' && progress.fileCompleted === progress.fileTotal) abort.abort();
-  },
+      if (progress.phase === 'verifying' && progress.fileCompleted === progress.fileTotal) abort.abort();
+    },
   })).rejects.toThrow();
   const count = calls.fetch.mock.calls.filter(([{ request }]) => !request.url.includes('/api/')).length;
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
@@ -273,8 +273,8 @@ it('keeps partial image downloads hidden from the existing llama.cpp reader as w
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'verifying') abort.abort();
-  },
+      if (progress.phase === 'verifying') abort.abort();
+    },
   })).rejects.toThrow();
   const folder = await stored();
   expect(await readModelFiles({ folder: folder as unknown as FileSystemDirectoryHandle, prefix: '' })).toEqual([]);
@@ -304,8 +304,8 @@ it('preserves foreign pending intent and existing bytes instead of overwriting a
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'verifying') abort.abort();
-  },
+      if (progress.phase === 'verifying') abort.abort();
+    },
   })).rejects.toThrow();
   const directory = await (await stored()).getDirectoryHandle('weights');
   const handle = await directory.getFileHandle('model.gguf'), snapshot = handle.data.slice();
@@ -319,8 +319,8 @@ it('detects corrupted checkpoint bytes on resume and never promotes a full-size 
     files: [file],
     signal: abort.signal,
     onProgress({ progress }) {
-    if (progress.phase === 'verifying') abort.abort();
-  },
+      if (progress.phase === 'verifying') abort.abort();
+    },
   })).rejects.toThrow();
   const directory = await (await stored()).getDirectoryHandle('weights');
   const handle = await directory.getFileHandle('model.gguf'); handle.data[31] = 99;

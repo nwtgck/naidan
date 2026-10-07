@@ -27,8 +27,8 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: f
 vi.mock('../runtime/feature', () => ({
   getRpcManager: async () => ({ ...fixture, list: () => fixture.rows }),
   subscribeRpcState: ({ listener }: { listener(): void }) => {
-  fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
-},
+    fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
+  },
 }));
 const wrappers: ReturnType<typeof mount>[] = [];
 function panel() {
@@ -38,16 +38,16 @@ const id = toNaidanRpcConnectionId({ raw: 'connection-1' });
 function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcConnectionView['phase'], persistence?: RpcConnectionView['persistence'] } = {}): RpcConnectionView {
   return {
     connection: {
-    id,
-    peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
-    autoConnect: 'disabled',
-    localPublicKey: 'A'.repeat(43),
-    label: 'Peer 1234',
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] },
-    allowedMethods: [],
-    revision: 0,
-  },
-  phase,
+      id,
+      peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+      autoConnect: 'disabled',
+      localPublicKey: 'A'.repeat(43),
+      label: 'Peer 1234',
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] },
+      allowedMethods: [],
+      revision: 0,
+    },
+    phase,
     persistence,
     registryPersistence: persistence === 'saved' ? 'durable' : undefined,
     access: { effective: [], desired: [], saved: [], revision: 0, persistence },

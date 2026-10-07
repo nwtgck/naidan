@@ -90,19 +90,19 @@ function nativeResult({ workerEpoch }: { workerEpoch: number }): GenerationCaptu
   return {
     status: 'captured',
     capture: {
-    schemaVersion: 1,
-    runId: context.runId,
-    workerEpoch,
-    byteOrder: 'little-endian',
-    limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144, maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
-    calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-    events: [
-      { kind: 'inputs', identity, phase: 'native-kwargs', values: [{ name: 'input_ids', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }] },
-      { kind: 'chunk', identity, phase: 'strategy-raw', text: 'Synthetic raw capture content.' },
-    ],
-    incompleteReasons: [],
-    unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-  },
+      schemaVersion: 1,
+      runId: context.runId,
+      workerEpoch,
+      byteOrder: 'little-endian',
+      limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144, maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
+      calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+      events: [
+        { kind: 'inputs', identity, phase: 'native-kwargs', values: [{ name: 'input_ids', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }] },
+        { kind: 'chunk', identity, phase: 'strategy-raw', text: 'Synthetic raw capture content.' },
+      ],
+      incompleteReasons: [],
+      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+    },
   };
 }
 

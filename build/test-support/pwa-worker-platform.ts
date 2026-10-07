@@ -222,8 +222,8 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
       source: clients.clients.get(clientId),
       ports: replyPort ? [{
         postMessage(value: unknown) {
-        reply = value;
-      },
+          reply = value;
+        },
         close() {},
       }] : [],
     });

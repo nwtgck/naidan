@@ -78,13 +78,13 @@ describe('context-compact', () => {
           id: toMessageId({ raw: 'msg-1' }),
           role: 'user',
           parts: [{
-          type: 'text',
-          text: `\
+            type: 'text',
+            text: `\
 messageId=msg-1
 
 Question`,
-          completeness: 'complete',
-        }],
+            completeness: 'complete',
+          }],
         },
       ],
       promptMode: 'with_message_ids',
@@ -96,13 +96,13 @@ Question`,
         id: toMessageId({ raw: 'msg-1' }),
         role: 'user',
         parts: [{
-        type: 'text',
-        text: `\
+          type: 'text',
+          text: `\
 messageId=msg-1
 
 Question`,
-        completeness: 'complete',
-      }],
+          completeness: 'complete',
+        }],
       },
       {
         id: toMessageId({ raw: 'compact_instruction' }),

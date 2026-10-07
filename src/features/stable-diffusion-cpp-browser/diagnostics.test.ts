@@ -58,8 +58,8 @@ it('does not let a throwing observer break a native callback', () => {
     debug: 'on',
     secrets: [],
     listener() {
-    throw new Error('renderer gone');
-  },
+      throw new Error('renderer gone');
+    },
     now: () => 0,
   });
   expect(() => trace.native({ message: 'ok', level: 0 })).not.toThrow();
@@ -119,8 +119,8 @@ it('does not let a throwing stack accessor replace the original error', () => {
   const error = new Error('original');
   Object.defineProperty(error, 'stack', {
     get() {
-    throw new Error('unreadable stack');
-  },
+      throw new Error('unreadable stack');
+    },
   });
   expect(imageErrorContext({ error })).toEqual({ errorType: 'error', wasmFrames: '' });
 });

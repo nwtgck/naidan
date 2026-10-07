@@ -29,11 +29,11 @@ function harness({ initial }: { initial: LocalImageRepository[] }) {
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list: async () => entries,
-    scan: scanImageRepositories,
-    import: vi.fn(),
-    download,
-  },
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
   }))!;
   return {
     library,

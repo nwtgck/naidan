@@ -7,13 +7,13 @@ import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 const tools: WorkerToolDefinition[] = [{
   type: 'function',
   function: {
-  name: 'f',
-  description: '',
-  parameters: {
-  type: 'object',
-  properties: { s: { type: 'string' }, n: { type: 'number' }, o: { type: 'object' } },
-},
-},
+    name: 'f',
+    description: '',
+    parameters: {
+      type: 'object',
+      properties: { s: { type: 'string' }, n: { type: 'number' }, o: { type: 'object' } },
+    },
+  },
 }];
 const enabled = `\
 <|im_start|>assistant
@@ -38,8 +38,8 @@ function setup({ prompt, declarations }: { prompt: string, declarations: WorkerT
     prompt,
     tools: declarations,
     emit: ({ event }) => {
-    events.push(event);
-  },
+      events.push(event);
+    },
   });
   return { codec, events };
 }

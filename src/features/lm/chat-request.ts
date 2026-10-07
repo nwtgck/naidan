@@ -24,10 +24,10 @@ export function snapshotChatRequest({ messages, parameters, tools }: Pick<Parame
     messages: copy,
     parameters: settings,
     tools: tools?.map(tool => {
-    const { name, description, parameters, ...unhandled } = tool;
+      const { name, description, parameters, ...unhandled } = tool;
     unhandled satisfies Record<PropertyKey, never>;
     return { name, description, parameters: z.record(z.string(), z.json()).parse(parameters) };
-  }),
+    }),
   };
 }
 
@@ -104,12 +104,12 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
       result.push({
         role,
         content: content.some(part => part.type === 'image_url') ? content : content.map(part => {
-        switch (part.type) {
-        case 'text': return part.text;
-        case 'image_url': throw new Error('Expected text-only content.');
-        default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
-        }
-      }).join(''),
+          switch (part.type) {
+          case 'text': return part.text;
+          case 'image_url': throw new Error('Expected text-only content.');
+          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          }
+        }).join(''),
         reasoning_content: undefined,
         tool_calls: undefined,
         tool_call_id: undefined,

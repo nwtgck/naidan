@@ -32,10 +32,10 @@ export async function addReplayMetadataToEvidenceFiles({ files, summary, sidecar
     files,
     path: 'replay-metadata/index.json',
     content: JSON.stringify({
-    ...validated,
-    replayScope: 'Allowlisted metadata only; not a completeness certificate for tokenizer/model runtime inputs. No model weights, past network events, or GPU execution state.',
-    files: validated.files.map(file => ({ ...file, archived: paths.has(file.path) })),
-  }, undefined, 2),
+      ...validated,
+      replayScope: 'Allowlisted metadata only; not a completeness certificate for tokenizer/model runtime inputs. No model weights, past network events, or GPU execution state.',
+      files: validated.files.map(file => ({ ...file, archived: paths.has(file.path) })),
+    }, undefined, 2),
   });
 }
 

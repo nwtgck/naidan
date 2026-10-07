@@ -22,10 +22,10 @@ export function ggufFixture({ entries, version = 3 }: { entries: readonly Metada
   // global browser polyfill that could hide missing platform functionality.
   return new NativeBlob([concatenateGguf({
     parts: [
-    ggufInteger({ value: 0x46554747, bytes: 4 }), ggufInteger({ value: version, bytes: 4 }),
-    ggufInteger({ value: 0, bytes: 8 }), ggufInteger({ value: entries.length, bytes: 8 }),
-    ...entries.flatMap(entry => [ggufString({ value: entry.key }), ggufInteger({ value: entry.type, bytes: 4 }), entry.value]),
-  ],
+      ggufInteger({ value: 0x46554747, bytes: 4 }), ggufInteger({ value: version, bytes: 4 }),
+      ggufInteger({ value: 0, bytes: 8 }), ggufInteger({ value: entries.length, bytes: 8 }),
+      ...entries.flatMap(entry => [ggufString({ value: entry.key }), ggufInteger({ value: entry.type, bytes: 4 }), entry.value]),
+    ],
   })]);
 }
 export function textMetadata({ key, value }: { key: string, value: string }): MetadataFixtureEntry {

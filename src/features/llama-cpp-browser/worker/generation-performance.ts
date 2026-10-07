@@ -83,11 +83,11 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       return {
         event: 'generation-progress',
         generationThroughput: {
-        sampledTokens: counters.sampledTokens,
-        firstSampleMs,
-        postFirstSample: postFirstSample(),
-        interval,
-      },
+          sampledTokens: counters.sampledTokens,
+          firstSampleMs,
+          postFirstSample: postFirstSample(),
+          interval,
+        },
       };
     },
     delivered(): void {

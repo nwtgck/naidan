@@ -32,9 +32,9 @@ async function start({ context, path }: { context: 'present' | 'absent', path: s
   let state: ReturnType<typeof useRestoredModelLaunch> | undefined;
   const host = mount(defineComponent({
     setup() {
-    state = useRestoredModelLaunch({ chat: computed(() => current.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId })) });
-    return {};
-  },
+      state = useRestoredModelLaunch({ chat: computed(() => current.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId })) });
+      return {};
+    },
     template: '<div />',
   }), { global: { plugins: [router] } });
   hosts.push(host);

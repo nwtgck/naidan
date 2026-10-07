@@ -199,14 +199,14 @@ export class OllamaProvider implements LmProvider {
     return createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
-      const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
-      const projected = await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal });
-      const callNames = new Map<string, string>();
-      const body: OllamaChatRequest = {
-        model,
-        stream: true,
-        messages: projected.map(message => {
-          const { role, content, reasoning_content, tool_calls, tool_call_id, ...unhandled } = message;
+        const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
+        const projected = await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal });
+        const callNames = new Map<string, string>();
+        const body: OllamaChatRequest = {
+          model,
+          stream: true,
+          messages: projected.map(message => {
+            const { role, content, reasoning_content, tool_calls, tool_call_id, ...unhandled } = message;
           unhandled satisfies Record<PropertyKey, never>;
           const images: string[] = [];
           let text = '';
@@ -241,11 +241,11 @@ export class OllamaProvider implements LmProvider {
             tool_call_id,
             tool_name: tool_call_id === undefined ? undefined : callNames.get(tool_call_id),
           };
-        }),
-      };
-      if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
-      if (snapshot.parameters) {
-        const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
+          }),
+        };
+        if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+        if (snapshot.parameters) {
+          const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
         unhandled satisfies Record<PropertyKey, never>;
         body.options = { temperature, top_p: topP, num_predict: maxCompletionTokens, presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty, stop };
         switch (reasoning.effort) {
@@ -256,85 +256,85 @@ export class OllamaProvider implements LmProvider {
         case 'high': body.think = reasoning.effort; break;
         default: { const _ex: never = reasoning.effort; throw new Error(`Unhandled effort: ${_ex}`); }
         }
-      }
-      async function request(): Promise<Response> {
-        signal.throwIfAborted();
-        try {
-          return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])], body: JSON.stringify(body), signal });
-        } catch (error) {
-          if (signal.aborted) throw error;
-          const message = createOllamaNetworkErrorMessage({ error });
-          addErrorEvent({ source: 'OllamaProvider', message, details: { error, url, method: 'POST' } });
+        }
+        async function request(): Promise<Response> {
+          signal.throwIfAborted();
+          try {
+            return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])], body: JSON.stringify(body), signal });
+          } catch (error) {
+            if (signal.aborted) throw error;
+            const message = createOllamaNetworkErrorMessage({ error });
+            addErrorEvent({ source: 'OllamaProvider', message, details: { error, url, method: 'POST' } });
+            throw new Error(message);
+          }
+        }
+        let response = await request();
+        if (!response.ok && typeof body.think === 'string') {
+          const details = await readApiErrorDetails({ response: response.clone() });
+          if (details.includes('think value') && details.includes('is not supported')) {
+            await response.body?.cancel();
+            body.think = true;
+            response = await request();
+          }
+        }
+        if (!response.ok) {
+          const unsupportedReasoning = body.think === false && await isReasoningRejection({ response, parameter: 'think' });
+          const message = `Ollama API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
+          if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
+          addErrorEvent({ source: 'OllamaProvider', message, details: { status: response.status, url } });
           throw new Error(message);
         }
-      }
-      let response = await request();
-      if (!response.ok && typeof body.think === 'string') {
-        const details = await readApiErrorDetails({ response: response.clone() });
-        if (details.includes('think value') && details.includes('is not supported')) {
-          await response.body?.cancel();
-          body.think = true;
-          response = await request();
-        }
-      }
-      if (!response.ok) {
-        const unsupportedReasoning = body.think === false && await isReasoningRejection({ response, parameter: 'think' });
-        const message = `Ollama API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
-        if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
-        addErrorEvent({ source: 'OllamaProvider', message, details: { status: response.status, url } });
-        throw new Error(message);
-      }
-      if (!response.body) throw new Error('No response body');
-      let calls = 0;
-      const ids = new Set<string>();
-      try {
-        for await (const line of readStreamLines({ stream: response.body, signal, maxLineLength: 8 * 1024 * 1024 })) {
-          if (!line.trim()) continue;
-          const chunk = OllamaChatChunkSchema.parse(JSON.parse(line));
-          if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
-            throw new Error('Ollama returned neither generation content nor a completion state.');
-          }
-          if (chunk.error !== undefined) {
-            if (body.think === false && isReasoningErrorEnvelope({ value: { error: chunk.error }, parameter: 'think' })) {
-              throw new UnsupportedReasoningError({ message: chunk.error });
+        if (!response.body) throw new Error('No response body');
+        let calls = 0;
+        const ids = new Set<string>();
+        try {
+          for await (const line of readStreamLines({ stream: response.body, signal, maxLineLength: 8 * 1024 * 1024 })) {
+            if (!line.trim()) continue;
+            const chunk = OllamaChatChunkSchema.parse(JSON.parse(line));
+            if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
+              throw new Error('Ollama returned neither generation content nor a completion state.');
             }
-            throw new Error(chunk.error);
-          }
-          if (chunk.message?.thinking) await writer.text({ type: 'reasoning', text: chunk.message.thinking });
-          if (chunk.message?.content) await writer.text({ type: 'text', text: chunk.message.content });
-          for (const call of chunk.message?.tool_calls ?? []) {
-            if (!call.function.name) throw new Error('The tool call has no function name.');
-            const id = call.id || nanoid();
-            if (ids.has(id)) throw new Error('Duplicate completed tool call ID.');
-            ids.add(id);
-            // An Ollama tool_calls item carries the complete call, not token deltas.
-            await writer.call({
-              key: calls++,
-              toolCall: {
-              id: toToolCallId({ raw: id }),
-              type: 'function',
-              function: {
-              name: call.function.name,
-              arguments: typeof call.function.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function.arguments),
-            },
-            },
-            });
-          }
-          if (chunk.done) {
-            switch (chunk.done_reason) {
-            case undefined:
-            case 'stop': return { type: 'finished', next: calls ? 'tool_results' : 'user' };
-            case 'length': return { type: 'interrupted', reason: 'limit' };
-            default: return { type: 'interrupted', reason: 'unknown' };
+            if (chunk.error !== undefined) {
+              if (body.think === false && isReasoningErrorEnvelope({ value: { error: chunk.error }, parameter: 'think' })) {
+                throw new UnsupportedReasoningError({ message: chunk.error });
+              }
+              throw new Error(chunk.error);
+            }
+            if (chunk.message?.thinking) await writer.text({ type: 'reasoning', text: chunk.message.thinking });
+            if (chunk.message?.content) await writer.text({ type: 'text', text: chunk.message.content });
+            for (const call of chunk.message?.tool_calls ?? []) {
+              if (!call.function.name) throw new Error('The tool call has no function name.');
+              const id = call.id || nanoid();
+              if (ids.has(id)) throw new Error('Duplicate completed tool call ID.');
+              ids.add(id);
+              // An Ollama tool_calls item carries the complete call, not token deltas.
+              await writer.call({
+                key: calls++,
+                toolCall: {
+                  id: toToolCallId({ raw: id }),
+                  type: 'function',
+                  function: {
+                    name: call.function.name,
+                    arguments: typeof call.function.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function.arguments),
+                  },
+                },
+              });
+            }
+            if (chunk.done) {
+              switch (chunk.done_reason) {
+              case undefined:
+              case 'stop': return { type: 'finished', next: calls ? 'tool_results' : 'user' };
+              case 'length': return { type: 'interrupted', reason: 'limit' };
+              default: return { type: 'interrupted', reason: 'unknown' };
+              }
             }
           }
+          return { type: 'interrupted', reason: 'unknown' };
+        } catch (error) {
+          if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
+          throw error;
         }
-        return { type: 'interrupted', reason: 'unknown' };
-      } catch (error) {
-        if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
-        throw error;
-      }
-    },
+      },
     });
   }
 

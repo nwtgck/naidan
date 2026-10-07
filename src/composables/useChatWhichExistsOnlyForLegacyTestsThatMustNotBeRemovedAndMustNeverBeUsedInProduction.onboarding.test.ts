@@ -88,14 +88,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
     __testOnlySetCurrentChat({
       chat: reactive({
-      id: 'chat-1',
-      title: 'Test',
-      root: { items: [] },
-      modelId: '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    }) as any,
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
     });
 
     await sendMessage({ content: 'Hello' });
@@ -107,14 +107,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
     __testOnlySetCurrentChat({
       chat: reactive({
-      id: 'chat-1',
-      title: 'Test',
-      root: { items: [] },
-      modelId: '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    }) as any,
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
     });
 
     await sendMessage({ content: 'Hello' });
@@ -133,14 +133,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // No default model in settings and no model in chat
     __testOnlySetCurrentChat({
       chat: reactive({
-      id: 'chat-1',
-      title: 'Test',
-      root: { items: [] },
-      modelId: '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    }) as any,
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
     });
 
     await sendMessage({ content: 'Hello' });

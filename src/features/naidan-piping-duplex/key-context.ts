@@ -48,7 +48,7 @@ export class NaidanPipingKeyDomain {
     requireValue({
       condition: (direction === 1 || direction === 2) &&
             (usage === 'encrypt' || usage === 'decrypt') && equalBytes({ left: context, right: this.internalContext }),
-    message: 'Invalid record ownership scope',
+      message: 'Invalid record ownership scope',
     });
     const scope = `${direction}/${usage}`;
     requireValue({ condition: !this.recordOwners.has(scope), message: 'Record ownership already consumed' });
@@ -241,11 +241,11 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const confirmation = async ({ direction }: {
             direction: NaidanPipingDirection;
         }) => crypto.subtle.deriveKey({
-          name: 'HKDF',
-          hash: 'SHA-256',
+      name: 'HKDF',
+      hash: 'SHA-256',
       salt: sessionBinding,
-          info: fields({ parts: [ascii({ text: 'peer-key-confirm/v1' }), new Uint8Array([direction])] }),
-        }, root, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign', 'verify']);
+      info: fields({ parts: [ascii({ text: 'peer-key-confirm/v1' }), new Uint8Array([direction])] }),
+    }, root, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign', 'verify']);
     const sendKey = await confirmation({ direction: isInitiator({ role: role }) ? 1 : 2 });
     const receiveKey = await confirmation({ direction: isInitiator({ role: role }) ? 2 : 1 });
     const confirmInput = fields({ parts: [sessionBinding, contextId] });

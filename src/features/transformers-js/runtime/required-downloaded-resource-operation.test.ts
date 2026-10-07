@@ -35,8 +35,8 @@ it('retains a busy lookup as a terminal busy error after upstream catches it', a
   const busy = new OpfsResourceBusyError();
   const { operation, fetch } = setup({
     match: async () => {
-    throw busy;
-  },
+      throw busy;
+    },
   });
   try {
     await expect(operation.cache.match(requiredUrl)).rejects.toBe(busy);
@@ -69,8 +69,8 @@ it('retains an own-scope optional metadata lookup I/O failure after the consumer
   const cause = new DOMException('Optional metadata permission denied', 'NotAllowedError');
   const { operation } = setup({
     match: async () => {
-    throw cause;
-  },
+      throw cause;
+    },
   });
   const error = await operation.cache.match(url).catch((error: unknown) => error);
   await operation.close();
@@ -82,8 +82,8 @@ it('does not treat an optional NotFound lookup as an operation I/O failure', asy
   const cause = new DOMException('Optional metadata absent', 'NotFoundError');
   const { operation } = setup({
     match: async () => {
-    throw cause;
-  },
+      throw cause;
+    },
   });
   await operation.cache.match(`https://huggingface.co/${modelId}/resolve/${revision}/generation_config.json`).catch(() => undefined);
   expect(operation.assertHealthy).not.toThrow();
@@ -122,8 +122,8 @@ it('records a known main metadata alias lookup I/O against its canonical exact i
   const cause = new DOMException('Canonical metadata unavailable', 'NotReadableError');
   const { operation } = setup({
     match: async () => {
-    throw cause;
-  },
+      throw cause;
+    },
   });
   const error = await operation.cache.match(`https://huggingface.co/${modelId}/resolve/main/tokenizer_config.json`).catch((error: unknown) => error);
   await operation.close();
@@ -141,8 +141,8 @@ it('stops on true I/O during an own-scope unselected ONNX metadata prepass', asy
   const cause = new DOMException('Prepass storage failure', 'NotReadableError');
   const { operation } = setup({
     match: async () => {
-    throw cause;
-  },
+      throw cause;
+    },
   });
   const error = await operation.cache.match(url).catch((error: unknown) => error);
   await operation.close();
@@ -157,10 +157,10 @@ it('retains an optional metadata body read I/O failure even when its consumer ca
   const cause = new DOMException('Optional file disappeared mid-read', 'NotFoundError');
   const { operation } = setup({
     match: async () => new Response(new ReadableStream({
-    pull(controller) {
-      controller.error(cause);
-    },
-  }, { highWaterMark: 0 })),
+      pull(controller) {
+        controller.error(cause);
+      },
+    }, { highWaterMark: 0 })),
   });
   const response = await operation.cache.match(url);
   const error = await response!.text().catch((error: unknown) => error);
@@ -176,11 +176,11 @@ it('retains optional metadata cancellation I/O discovered during cleanup without
   const pull = vi.fn();
   const { operation } = setup({
     match: async () => new Response(new ReadableStream({
-    pull,
-    cancel() {
-      throw cause;
-    },
-  }, { highWaterMark: 0 })),
+      pull,
+      cancel() {
+        throw cause;
+      },
+    }, { highWaterMark: 0 })),
   });
   await operation.cache.match(url);
   await operation.close();
@@ -212,8 +212,8 @@ it('retains optional reader release I/O after end-of-stream', async () => {
   const cause = new Error('Release lock failed');
   const source = new ReadableStream<Uint8Array>({
     pull(controller) {
-    controller.close();
-  },
+      controller.close();
+    },
   }, { highWaterMark: 0 });
   const getReader = source.getReader.bind(source);
   const getReaderSpy = vi.spyOn(source, 'getReader').mockImplementation(() => {
@@ -244,8 +244,8 @@ it('retains cancellation I/O from an optional response arriving after close bega
   const closing = operation.close();
   pending.resolve(new Response(new ReadableStream({
     cancel() {
-    throw cause;
-  },
+      throw cause;
+    },
   }, { highWaterMark: 0 })));
   await closing;
   expect(await matching).toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'io', url, cause });
@@ -285,9 +285,9 @@ it('propagates local-probe I/O without classifying it as an exact required failu
   const cause = new DOMException('Local namespace is inaccessible', 'NotReadableError');
   const { operation } = setup({
     match: async request => {
-    if (request !== requiredUrl) throw cause;
-    return new Response('core');
-  },
+      if (request !== requiredUrl) throw cause;
+      return new Response('core');
+    },
   });
   await expect(operation.cache.match(`/models/${modelId}/${requiredPath}`)).rejects.toBe(cause);
   const response = await operation.cache.match(requiredUrl);
@@ -341,8 +341,8 @@ it('permits metadata-only inspection and cancellation of an unplanned ONNX cache
   const cancel = vi.fn();
   const { operation, fetch } = setup({
     match: async () => new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-    headers: { 'Content-Length': '3' },
-  }),
+      headers: { 'Content-Length': '3' },
+    }),
   });
   try {
     const response = await operation.cache.match(url);
@@ -483,10 +483,10 @@ it('retains a body read I/O failure even if the runtime swallows its rejection',
   const cause = new DOMException('File disappeared during reading', 'NotReadableError');
   const { operation } = setup({
     match: async () => new Response(new ReadableStream({
-    pull(controller) {
-      controller.error(cause);
-    },
-  }, { highWaterMark: 0 })),
+      pull(controller) {
+        controller.error(cause);
+      },
+    }, { highWaterMark: 0 })),
   });
   const response = await operation.cache.match(requiredUrl);
   await response!.arrayBuffer().catch(() => undefined);
@@ -504,10 +504,10 @@ it('records required cancellation I/O discovered only during final cleanup', asy
   const cause = new Error('Cancel failed');
   const { operation } = setup({
     match: async () => new Response(new ReadableStream({
-    cancel() {
-      throw cause;
-    },
-  }, { highWaterMark: 0 })),
+      cancel() {
+        throw cause;
+      },
+    }, { highWaterMark: 0 })),
   });
   await operation.cache.match(requiredUrl);
   expect(operation.assertHealthy).not.toThrow();
@@ -559,8 +559,8 @@ it('fails cleanup rather than certifying success when source cancellation never 
   const cancellation = Promise.withResolvers<void>();
   const { operation } = setup({
     match: async () => new Response(new ReadableStream({
-    cancel: () => cancellation.promise,
-  }, { highWaterMark: 0 })),
+      cancel: () => cancellation.promise,
+    }, { highWaterMark: 0 })),
   });
   await operation.cache.match(requiredUrl);
   const closed = operation.close().catch((error: unknown) => error);

@@ -31,11 +31,11 @@ export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByte
       return {
         byteLength: file.size,
         response: new Response(file.stream(), {
-        headers: {
-        'Content-Length': String(file.size),
-        'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain',
-      },
-      }),
+          headers: {
+            'Content-Length': String(file.size),
+            'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain',
+          },
+        }),
       };
     },
     async write({ url, response }) {

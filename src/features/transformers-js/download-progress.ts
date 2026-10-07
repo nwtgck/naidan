@@ -61,10 +61,10 @@ export function publishDownloadProgress({ callback, event }: { callback: Downloa
     case 'file': return {
       ...event,
       info: {
-      ...event.info,
-      ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming },
-      ...event.info.downloadCumulativeTiming === undefined ? {} : { downloadCumulativeTiming: typeof event.info.downloadCumulativeTiming === 'object' ? { ...event.info.downloadCumulativeTiming } : event.info.downloadCumulativeTiming },
-    },
+        ...event.info,
+        ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming },
+        ...event.info.downloadCumulativeTiming === undefined ? {} : { downloadCumulativeTiming: typeof event.info.downloadCumulativeTiming === 'object' ? { ...event.info.downloadCumulativeTiming } : event.info.downloadCumulativeTiming },
+      },
     };
     case 'sizes': return { ...event, sizes: event.sizes.map(size => ({ ...size })) };
     case 'phase': case 'metadata': case 'acceptance': case 'prefetch-complete': case 'cached-acceptance': return { ...event };

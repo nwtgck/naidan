@@ -30,10 +30,10 @@ vi.mock('../logic/run-production-download-preparation', async importOriginal => 
   return {
     ...original,
     runProductionDownloadPreparation: (args: Parameters<typeof original.runProductionDownloadPreparation>[0]) => {
-    const running = original.runProductionDownloadPreparation(args);
-    preparations.push(running.then(value => ({ status: 'fulfilled' as const, value }), (error: unknown) => ({ status: 'rejected' as const, error })));
-    return running;
-  },
+      const running = original.runProductionDownloadPreparation(args);
+      preparations.push(running.then(value => ({ status: 'fulfilled' as const, value }), (error: unknown) => ({ status: 'rejected' as const, error })));
+      return running;
+    },
   };
 });
 
@@ -120,13 +120,13 @@ beforeEach(() => {
   vi.mocked(prepareProductionModelCandidate).mockResolvedValue({
     status: 'ready',
     prefetch: {
-    requestedCount: 0,
-    cachedCount: 0,
-    downloadedCount: 0,
-    failedCount: 0,
-    complete: true,
-    files: [],
-  },
+      requestedCount: 0,
+      cachedCount: 0,
+      downloadedCount: 0,
+      failedCount: 0,
+      complete: true,
+      files: [],
+    },
   });
 });
 
@@ -169,8 +169,8 @@ it('stops Production Download after accepted verification when the actual client
     modelId,
     revision,
     onTiming: ({ observation }) => {
-    observations.push(observation);
-  },
+      observations.push(observation);
+    },
   }).then(
     value => ({ status: 'fulfilled' as const, value }),
     (error: unknown) => ({ status: 'rejected' as const, error }),
@@ -198,8 +198,8 @@ it('stops Production Download after rejected verification when the actual client
     modelId,
     revision,
     onTiming: ({ observation }) => {
-    observations.push(observation);
-  },
+      observations.push(observation);
+    },
   }).then(
     value => ({ status: 'fulfilled' as const, value }),
     (error: unknown) => ({ status: 'rejected' as const, error }),
@@ -284,8 +284,8 @@ it('retains the original session failure when its physical termination also fail
     modelId,
     revision,
     onTiming: ({ observation }) => {
-    observations.push(observation);
-  },
+      observations.push(observation);
+    },
   });
   const settled = running.then(() => undefined, (error: unknown) => error);
   await barrier.entered.promise;

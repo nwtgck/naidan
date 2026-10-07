@@ -1329,18 +1329,18 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(mockCreateChatGroup).toHaveBeenCalledWith({
         name: 'Recipe 1',
         options: expect.objectContaining({
-        modelId: 'm1',
-        systemPrompt: { content: 'p1', behavior: 'override' },
-        lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } }),
-      }),
+          modelId: 'm1',
+          systemPrompt: { content: 'p1', behavior: 'override' },
+          lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } }),
+        }),
       });
       expect(mockCreateChatGroup).toHaveBeenCalledWith({
         name: 'Recipe 2',
         options: expect.objectContaining({
-        modelId: undefined,
-        systemPrompt: undefined,
-        lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }),
-      }),
+          modelId: undefined,
+          systemPrompt: undefined,
+          lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }),
+        }),
       });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({

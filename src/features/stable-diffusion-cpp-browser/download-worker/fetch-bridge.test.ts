@@ -19,10 +19,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
     locks: {
-    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-    options.signal?.throwIfAborted(); return run();
-  },
-  },
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); return run();
+      },
+    },
   });
 });
 afterEach(() => {
@@ -47,8 +47,8 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
       headers: new Headers(),
       body: new ReadableStream({
         start(controller) {
-        controller.enqueue(bytes); controller.close();
-      },
+          controller.enqueue(bytes); controller.close();
+        },
       }),
     };
   });

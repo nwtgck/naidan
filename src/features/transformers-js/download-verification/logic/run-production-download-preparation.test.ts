@@ -74,14 +74,14 @@ describe('runProductionDownloadPreparation', () => {
       modelId: MODEL_ID,
       revision: REVISION,
       progressCallback: () => {
-      throw new Error('Broken raw progress sink');
-    },
+        throw new Error('Broken raw progress sink');
+      },
       onDownloadProgress: ({ event }) => {
-      events.push(event.kind);
-      if (event.kind === 'candidate') event.candidate.dtype = 'q4';
-      if (event.kind === 'plan') (event.paths as string[]).push('vision/not-requested.onnx');
-      throw new Error('Broken work-progress sink');
-    },
+        events.push(event.kind);
+        if (event.kind === 'candidate') event.candidate.dtype = 'q4';
+        if (event.kind === 'plan') (event.paths as string[]).push('vision/not-requested.onnx');
+        throw new Error('Broken work-progress sink');
+      },
     });
     expect(observed).toEqual(baseline);
     expect(vi.mocked(prepareProductionModelCandidate).mock.calls.map(([args]) => ({ candidate: args.candidate, paths: args.requiredModelPaths }))).toEqual(baselinePlans);

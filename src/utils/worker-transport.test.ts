@@ -56,10 +56,10 @@ describe('worker transport', () => {
     };
     await api.consume({
       stream: new ReadableStream({
-      start(controller) {
-      controller.enqueue(new Uint8Array([7])); controller.close();
-    },
-    }),
+        start(controller) {
+          controller.enqueue(new Uint8Array([7])); controller.close();
+        },
+      }),
     });
   });
 

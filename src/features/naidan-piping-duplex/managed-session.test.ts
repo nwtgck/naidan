@@ -252,10 +252,10 @@ it('a successful POST without peer acceptance leaves the write pending', async (
   let dropped = 0;
   relay.transformReplies({
     transform: ({ bytes }) => {
-    if (bytes[0] !== 2) return bytes;
-    dropped++;
-    return new Uint8Array();
-  },
+      if (bytes[0] !== 2) return bytes;
+      dropped++;
+      return new Uint8Array();
+    },
   });
   const writer = stream.writable.getWriter();
   let completed = false;
@@ -286,20 +286,20 @@ it('concurrent streams recover from relay state loss, corrupt bytes, and replaye
   let target: string | undefined, recorded: Uint8Array | undefined, altered = 0, replayed = 0;
   relay.transformReplies({
     transform: ({ route, bytes }) => {
-    if (bytes[0] !== 2) return bytes;
-    if (!target) {
-      target = route; recorded = bytes.slice(); return bytes;
-    }
-    if (route !== target) return bytes;
-    if (!altered) {
-      const corrupt = bytes.slice(); corrupt[corrupt.length - 1] = corrupt[corrupt.length - 1]! ^ 1;
-      altered++; return corrupt;
-    }
-    if (!replayed && recorded) {
-      replayed++; return recorded.slice();
-    }
-    return bytes;
-  },
+      if (bytes[0] !== 2) return bytes;
+      if (!target) {
+        target = route; recorded = bytes.slice(); return bytes;
+      }
+      if (route !== target) return bytes;
+      if (!altered) {
+        const corrupt = bytes.slice(); corrupt[corrupt.length - 1] = corrupt[corrupt.length - 1]! ^ 1;
+        altered++; return corrupt;
+      }
+      if (!replayed && recorded) {
+        replayed++; return recorded.slice();
+      }
+      return bytes;
+    },
   });
   const allowReading = Promise.withResolvers<void>();
   const transfers = pairs.map(async ({ left, right }, index) => {
@@ -376,9 +376,9 @@ it('a lost final key-confirmation flight is repeated without restarting the hand
   const { relay, stop } = setup(); let lost = 0;
   relay.transformReplies({
     transform: ({ bytes }) => {
-    if (lost || bytes.length < 99 || bytes[32] !== 1 || bytes[33] !== 2 || bytes[98] !== 4) return bytes;
-    lost++; return withholdFinalResponderFlight({ bytes });
-  },
+      if (lost || bytes.length < 99 || bytes[32] !== 1 || bytes[33] !== 2 || bytes[98] !== 4) return bytes;
+      lost++; return withholdFinalResponderFlight({ bytes });
+    },
   });
   const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000, completionLeaseMs: 100 });
   const keys = await promiseAllKeyed({ a: tasks.a.ready, b: tasks.b.ready });
@@ -394,10 +394,10 @@ it('permanent final-flight loss cannot be reported as mutual connection success'
   const { relay, stop } = setup(); let lost = 0;
   relay.transformReplies({
     transform: ({ bytes }) => {
-    const prefix = withholdFinalResponderFlight({ bytes });
-    if (prefix !== bytes) lost++;
-    return prefix;
-  },
+      const prefix = withholdFinalResponderFlight({ bytes });
+      if (prefix !== bytes) lost++;
+      return prefix;
+    },
   });
   const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 600, completionLeaseMs: 100 });
   try {

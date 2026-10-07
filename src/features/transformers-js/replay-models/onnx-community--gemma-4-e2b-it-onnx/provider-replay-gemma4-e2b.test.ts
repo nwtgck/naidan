@@ -103,10 +103,10 @@ const inputEvidence = z.object({
     tools: z.array(z.object({
       type: z.literal('function'),
       function: z.object({
-      name: z.string(),
-      description: z.string(),
-      parameters: z.record(z.string(), z.json()),
-    }).strict(),
+        name: z.string(),
+        description: z.string(),
+        parameters: z.record(z.string(), z.json()),
+      }).strict(),
     }).strict()),
     addGenerationPrompt: z.literal(true),
     renderedText: z.string(),
@@ -245,21 +245,21 @@ async function createGemmaInputReplay() {
     harness,
     inputs,
     verifyNativeInput() {
-    expect(nativeInputs).toHaveLength(1);
-    expect(harness.observations.inferenceCalls).toHaveLength(1);
-    const native = nativeInputs[0];
-    expect(native?.tensors.input_ids.isTensor).toBe(true);
-    expect(native?.tensors.attention_mask.isTensor).toBe(true);
-    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
-    const { input_ids: input, attention_mask: mask } = native.tensors;
-    expect(input.type).toBe('int64');
-    expect(input.location).toBe('cpu');
-    expect(input.dims).toEqual([1, input.data.length]);
-    expect(mask.type).toBe('int64');
-    expect(mask.location).toBe('cpu');
-    expect(mask.dims).toEqual(input.dims);
-    expect(Array.from(mask.data, BigInt)).toEqual(Array.from(input.data, () => 1n));
-  },
+      expect(nativeInputs).toHaveLength(1);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      const native = nativeInputs[0];
+      expect(native?.tensors.input_ids.isTensor).toBe(true);
+      expect(native?.tensors.attention_mask.isTensor).toBe(true);
+      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
+      const { input_ids: input, attention_mask: mask } = native.tensors;
+      expect(input.type).toBe('int64');
+      expect(input.location).toBe('cpu');
+      expect(input.dims).toEqual([1, input.data.length]);
+      expect(mask.type).toBe('int64');
+      expect(mask.location).toBe('cpu');
+      expect(mask.dims).toEqual(input.dims);
+      expect(Array.from(mask.data, BigInt)).toEqual(Array.from(input.data, () => 1n));
+    },
   };
 }
 
@@ -279,9 +279,9 @@ const imageEvidence = z.object({
   messages: z.tuple([z.object({
     role: z.literal('user'),
     content: z.tuple([
-    z.object({ type: z.literal('text'), text: z.literal('Describe the single synthetic image in one short phrase.') }).strict(),
-    z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string().startsWith('data:image/png;base64,') }).strict() }).strict(),
-  ]),
+      z.object({ type: z.literal('text'), text: z.literal('Describe the single synthetic image in one short phrase.') }).strict(),
+      z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string().startsWith('data:image/png;base64,') }).strict() }).strict(),
+    ]),
   }).strict()]),
   inputKeys: z.array(z.string()).length(5),
   inputTensors: z.array(z.object({
@@ -346,53 +346,53 @@ async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPi
   return {
     harness,
     verifyNativeInput() {
-    expect(nativeInputs).toHaveLength(1);
-    const native = nativeInputs[0];
-    if (!native) throw new Error('Expected actual Gemma image inference');
-    const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
-    for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
-    if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
-    const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
-    expect(native.softTokens).toEqual([256]);
-    expect(native.optionKeys.sort()).toEqual([
-      ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
-      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-    ].sort());
-    for (const fact of imageEvidence.inputTensors) {
-      const tensor = tensors[fact.name];
-      expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
-    }
-    expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
-    expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
-    expect(findGemmaPixelMismatch({ actual: tensors.pixel_values.data, expected: expectedPixels })).toBeUndefined();
+      expect(nativeInputs).toHaveLength(1);
+      const native = nativeInputs[0];
+      if (!native) throw new Error('Expected actual Gemma image inference');
+      const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
+      for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
+      if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
+      const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
+      expect(native.softTokens).toEqual([256]);
+      expect(native.optionKeys.sort()).toEqual([
+        ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
+        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+      ].sort());
+      for (const fact of imageEvidence.inputTensors) {
+        const tensor = tensors[fact.name];
+        expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
+      }
+      expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
+      expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
+      expect(findGemmaPixelMismatch({ actual: tensors.pixel_values.data, expected: expectedPixels })).toBeUndefined();
 
-    // These values are independently derived from the fixed 1x1 geometry:
-    // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
-    // The original browser capture recorded shapes, not these tensor values.
-    const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
-    for (let patch = 0; patch < 2304; ++patch) {
-      expectedPositions[patch * 2] = BigInt(patch % 48);
-      expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
-    }
-    expect(tensors.image_position_ids.data).toEqual(expectedPositions);
-    expect(native.settings).toEqual(imageEvidence.generationSettings);
-    expect(native.pastIsNull).toBe(true);
-    expect(native.returnDict).toBe(true);
-    expect(harness.observations.processors).toHaveLength(1);
-    expect(harness.observations.inferenceCalls).toHaveLength(1);
-    expect(platform.observations.decodes).toEqual([{
-      bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
-      rgba: expectedRgba,
-    }]);
-    expect(platform.observations.draws).toEqual([
-      { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
-      { sourceWidth: 1, sourceHeight: 1, targetWidth: 768, targetHeight: 768 },
-    ]);
-    expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
-    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-    expect(harness.observations.forbiddenTransport).toEqual([]);
-    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  },
+      // These values are independently derived from the fixed 1x1 geometry:
+      // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
+      // The original browser capture recorded shapes, not these tensor values.
+      const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
+      for (let patch = 0; patch < 2304; ++patch) {
+        expectedPositions[patch * 2] = BigInt(patch % 48);
+        expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
+      }
+      expect(tensors.image_position_ids.data).toEqual(expectedPositions);
+      expect(native.settings).toEqual(imageEvidence.generationSettings);
+      expect(native.pastIsNull).toBe(true);
+      expect(native.returnDict).toBe(true);
+      expect(harness.observations.processors).toHaveLength(1);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      expect(platform.observations.decodes).toEqual([{
+        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+        rgba: expectedRgba,
+      }]);
+      expect(platform.observations.draws).toEqual([
+        { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
+        { sourceWidth: 1, sourceHeight: 1, targetWidth: 768, targetHeight: 768 },
+      ]);
+      expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
+      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+      expect(harness.observations.forbiddenTransport).toEqual([]);
+      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    },
   };
 }
 
@@ -1351,37 +1351,37 @@ describe('Gemma source-derived thinking controls, not recorded inference', () =>
     const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      inputs.push(captureGemmaNativeInput(context));
-      emitSyntheticGemmaProtocol({
-        context,
-        text: `\
+        inputs.push(captureGemmaNativeInput(context));
+        emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
 Partial`,
-      });
-      throw new Error('Synthetic native failure after partial thought');
-    },
+        });
+        throw new Error('Synthetic native failure after partial thought');
+      },
     });
     let capture: ProviderChatCapture | undefined;
     try {
       capture = captureProviderChat({
         provider: harness.provider,
         request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
-        tools: [],
-        parameters: {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 128,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: { effort: 'high' },
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'high' },
+          },
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
-        signal: undefined,
-        readBinaryObject: undefined,
-        debug: undefined,
-      },
       });
       await capture.completion;
       const observed = capture.snapshot();
@@ -1404,12 +1404,12 @@ Partial`,
     const captures: ProviderChatCapture[] = [];
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      nativeInputs.push(captureGemmaNativeInput(context));
-      if (nativeInputs.length !== 1) {
-        const declaration = toolMode === 'disabled' ? '' : '<|tool>declaration:probe{description:<|"|>Must not execute.<|"|>,parameters:{type:<|"|>OBJECT<|"|>}}<tool|>';
-        // The original template excludes thinking from this historical turn.
-        // The adapter receives the actually delivered inline public content.
-        expectedNextInputs.push(context.tokenizer.encode(`\
+        nativeInputs.push(captureGemmaNativeInput(context));
+        if (nativeInputs.length !== 1) {
+          const declaration = toolMode === 'disabled' ? '' : '<|tool>declaration:probe{description:<|"|>Must not execute.<|"|>,parameters:{type:<|"|>OBJECT<|"|>}}<tool|>';
+          // The original template excludes thinking from this historical turn.
+          // The adapter receives the actually delivered inline public content.
+          expectedNextInputs.push(context.tokenizer.encode(`\
 <bos><|turn>system
 <|think|>
 ${declaration}<turn|>
@@ -1421,15 +1421,15 @@ Answer<turn|>
 Continue.<turn|>
 <|turn>model
 `, { add_special_tokens: false }));
-        throw new Error('Synthetic next-input boundary; no continuation output');
-      }
-      return emitSyntheticGemmaProtocol({
-        context,
-        text: `\
+          throw new Error('Synthetic next-input boundary; no continuation output');
+        }
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
 Reason<channel|>Answer<turn|>`,
-      });
-    },
+        });
+      },
     });
     try {
       const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
@@ -1449,14 +1449,14 @@ Reason<channel|>Answer<turn|>`,
       const capture = captureProviderChat({
         provider: harness.provider,
         request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
-        tools,
-        parameters,
-        signal: undefined,
-        readBinaryObject: undefined,
-        debug: undefined,
-      },
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
+          tools,
+          parameters,
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
       });
       captures.push(capture);
       await capture.completion;
@@ -1474,25 +1474,25 @@ Reason<channel|>Answer<turn|>`,
       const nextCapture = captureProviderChat({
         provider: harness.provider,
         request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [
-          textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
-          {
-            id: toMessageId({ raw: 'message_1' }),
-            role: 'assistant',
-            parts: [
-            { type: 'reasoning', text: 'Reason', completeness: 'complete' },
-            { type: 'text', text: 'Answer', completeness: 'complete' },
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [
+                { type: 'reasoning', text: 'Reason', completeness: 'complete' },
+                { type: 'text', text: 'Answer', completeness: 'complete' },
+              ],
+            },
+            textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
           ],
-          },
-          textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
-        ],
-        tools,
-        parameters,
-        signal: undefined,
-        readBinaryObject: undefined,
-        debug: undefined,
-      },
+          tools,
+          parameters,
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
       });
       captures.push(nextCapture);
       await nextCapture.completion;
@@ -1569,10 +1569,10 @@ describe('Gemma4 E2B Provider / tools', () => {
       const publicToolDefinition = [{
         type: 'function',
         function: {
-        name: 'lookup_weather',
-        description: 'Return deterministic weather fixture data.',
-        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-      },
+          name: 'lookup_weather',
+          description: 'Return deterministic weather fixture data.',
+          parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+        },
       }];
       const nativePrompt = z.string().parse(processor.apply_chat_template(scenario.messages, {
         add_generation_prompt: true,
@@ -1614,30 +1614,30 @@ describe('Gemma4 E2B Provider / tools', () => {
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',
         parts: [
-        { type: 'text', text: '', completeness: 'complete' },
-        {
-          type: 'tool_call',
-          toolCall: {
-          id: toToolCallId({ raw: 'call_template_probe_1' }),
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        },
-        },
-      ],
+          { type: 'text', text: '', completeness: 'complete' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: toToolCallId({ raw: 'call_template_probe_1' }),
+              type: 'function',
+              function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+            },
+          },
+        ],
       },
       {
         id: toMessageId({ raw: 'message_2' }),
         role: 'tool',
         parts: [
-        {
-          type: 'tool_result',
-          result: {
-          toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
-          status: 'success',
-          content: { type: 'text', text: scenario.messages[2].content },
-        },
-        },
-      ],
+          {
+            type: 'tool_result',
+            result: {
+              toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
+              status: 'success',
+              content: { type: 'text', text: scenario.messages[2].content },
+            },
+          },
+        ],
       },
     ];
     const replay = await createGemmaInputReplay();
@@ -1673,10 +1673,10 @@ describe('Gemma4 E2B Provider / tools', () => {
           role: 'assistant',
           content: '',
           tool_calls: [{
-          id: 'call_template_probe_1',
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-        }],
+            id: 'call_template_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+          }],
         },
         scenario.messages[2],
       ];
@@ -1767,35 +1767,35 @@ describe('Gemma4 E2B Provider / tools', () => {
     const definition = {
       type: 'function',
       function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-    },
+        name: tool.name,
+        description: tool.description,
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+      },
     };
     let turns = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      const { tokenizer, options, runtime } = context;
-      ++turns;
-      if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-      const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
-      if (turns === 1) {
-        const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
-        expect(decoded).toBe(expected);
-      } else {
-        expect(turns).toBe(2);
-        expect(execute).toHaveBeenCalledOnce();
-        expect(decoded).toContain('call:lookup_weather{city:<|"|>Tokyo<|"|>}');
-        expect(decoded).toContain('response:lookup_weather{value:<|"|>Synthetic weather result: clear.<|"|>}');
-      }
-      expect(options.past_key_values).toBeNull();
-      return emitSyntheticGemmaProtocol({
-        context,
-        text: turns === 1
-        ? '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>'
-        : 'Synthetic final answer.<turn|>',
-      });
-    },
+        const { tokenizer, options, runtime } = context;
+        ++turns;
+        if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+        const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
+        if (turns === 1) {
+          const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
+          expect(decoded).toBe(expected);
+        } else {
+          expect(turns).toBe(2);
+          expect(execute).toHaveBeenCalledOnce();
+          expect(decoded).toContain('call:lookup_weather{city:<|"|>Tokyo<|"|>}');
+          expect(decoded).toContain('response:lookup_weather{value:<|"|>Synthetic weather result: clear.<|"|>}');
+        }
+        expect(options.past_key_values).toBeNull();
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: turns === 1
+            ? '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>'
+            : 'Synthetic final answer.<turn|>',
+        });
+      },
     });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
       temperature: 0,
@@ -1826,20 +1826,20 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ],
+          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
       });
       expect(turn.generated[1]).toMatchObject({
         role: 'tool',
         parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
-      ],
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
+        ],
       });
       expect(turn.generated[2]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
+        ],
       });
       expect(turns).toBe(2);
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
@@ -1862,9 +1862,9 @@ describe('Gemma4 E2B Provider / tools', () => {
     };
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:',
-    }),
+        context,
+        text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:',
+      }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
@@ -1895,8 +1895,8 @@ describe('Gemma4 E2B Provider / tools', () => {
         role: 'assistant',
         interruption: undefined,
         parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ],
+          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
       });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1922,9 +1922,9 @@ describe('Gemma4 E2B Provider / tools', () => {
     expect(tool.parametersSchema.strict().safeParse({}).success).toBe(true);
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>`,
-    }),
+        context,
+        text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>`,
+      }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
@@ -1958,8 +1958,8 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
-      ],
+          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
+        ],
       });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1979,20 +1979,20 @@ describe('Gemma4 E2B Provider / tools', () => {
     let turns = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      ++turns;
-      if (turns === 2) {
-        const { options, runtime, tokenizer } = context;
-        if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-        expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
-          .toContain('Tool "unknown_tool" not found.');
-      }
-      expect(turns).toBeLessThanOrEqual(2);
-      return emitSyntheticGemmaProtocol({
-        context,
-        text: turns === 1
-        ? '<|tool_call>call:unknown_tool{value:1}<tool_call|><|tool_response>' : 'Synthetic unavailable tool answer.<turn|>',
-      });
-    },
+        ++turns;
+        if (turns === 2) {
+          const { options, runtime, tokenizer } = context;
+          if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+          expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
+            .toContain('Tool "unknown_tool" not found.');
+        }
+        expect(turns).toBeLessThanOrEqual(2);
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: turns === 1
+            ? '<|tool_call>call:unknown_tool{value:1}<tool_call|><|tool_response>' : 'Synthetic unavailable tool answer.<turn|>',
+        });
+      },
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
@@ -2022,20 +2022,20 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
-      ],
+          { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
+        ],
       });
       expect(turn.generated[1]).toMatchObject({
         role: 'tool',
         parts: [
-        { type: 'tool_result', result: { status: 'error' } },
-      ],
+          { type: 'tool_result', result: { status: 'error' } },
+        ],
       });
       expect(turn.generated[2]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
+        ],
       });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(2);
@@ -2054,9 +2054,9 @@ describe('Gemma4 E2B Provider / tools', () => {
     };
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: '<|tool_call>call:capture_value{value:1}<tool_call|><|tool_response>',
-    }),
+        context,
+        text: '<|tool_call>call:capture_value{value:1}<tool_call|><|tool_response>',
+      }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
@@ -2086,14 +2086,14 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
-      ],
+          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
+        ],
       });
       expect(turn.generated[1]).toMatchObject({
         role: 'tool',
         parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
-      ],
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
+        ],
       });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(execute).toHaveBeenCalledOnce();
@@ -2169,9 +2169,9 @@ describe('Gemma4 E2B Provider / tools', () => {
         parts: [{
           type: 'tool_call',
           toolCall: {
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        },
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          },
         }],
       });
       if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
@@ -2182,10 +2182,10 @@ describe('Gemma4 E2B Provider / tools', () => {
         parts: [{
           type: 'tool_result',
           result: {
-          toolCallId: callPart.toolCall.id,
-          status: 'success',
-          content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-        },
+            toolCallId: callPart.toolCall.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
         }],
       });
       expect(finalAssistant).toMatchObject({
@@ -2247,30 +2247,30 @@ describe('Gemma4 E2B Provider / tools', () => {
               id: toMessageId({ raw: 'message_1' }),
               role: 'assistant',
               parts: [
-              { type: 'text', text: '', completeness: 'complete' },
-              {
-                type: 'tool_call',
-                toolCall: {
-                id: toToolCallId({ raw: "call_model_support_probe_1" }),
-                type: 'function',
-                function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
-              },
-              },
-            ],
+                { type: 'text', text: '', completeness: 'complete' },
+                {
+                  type: 'tool_call',
+                  toolCall: {
+                    id: toToolCallId({ raw: "call_model_support_probe_1" }),
+                    type: 'function',
+                    function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
+                  },
+                },
+              ],
             },
             {
               id: toMessageId({ raw: 'message_2' }),
               role: 'tool',
               parts: [
-              {
-                type: 'tool_result',
-                result: {
-                toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }),
-                status: 'success',
-                content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
-              },
-              },
-            ],
+                {
+                  type: 'tool_result',
+                  result: {
+                    toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }),
+                    status: 'success',
+                    content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
+                  },
+                },
+              ],
             },
           ],
           tools: tools,
@@ -2304,9 +2304,9 @@ describe('Gemma source-derived tool/history controls, not recorded inference', (
     const executions: unknown[] = [];
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      inputs.push(captureGemmaNativeInput(context));
-      if (inputs.length !== 1) {
-        expectedInputs.push(context.tokenizer.encode(`\
+        inputs.push(captureGemmaNativeInput(context));
+        if (inputs.length !== 1) {
+          expectedInputs.push(context.tokenizer.encode(`\
 <bos><|turn>system
 <|tool>declaration:probe{description:<|"|>Synthetic tool thought control.<|"|>,parameters:{properties:{value:{type:<|"|>STRING<|"|>}},required:[<|"|>value<|"|>],type:<|"|>OBJECT<|"|>}}<tool|><turn|>
 <|turn>user
@@ -2315,16 +2315,16 @@ Use the synthetic tool.<turn|>
 <|channel>thought
  Reason${' '}
 <channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>response:probe{value:<|"|>Synthetic result.<|"|>}<tool_response|>`, { add_special_tokens: false }));
-        throw new Error('Canonical tool-thought input observed; no continuation output');
-      }
-      return emitSyntheticGemmaProtocol({
-        context,
-        text: `\
+          throw new Error('Canonical tool-thought input observed; no continuation output');
+        }
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
  Reason${' '}
 <channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>`,
-      });
-    },
+        });
+      },
     });
     const tool: Tool = {
       name: 'probe',
@@ -2363,15 +2363,15 @@ Use the synthetic tool.<turn|>
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
-        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
-      ],
+          { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
+          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
+        ],
       });
       expect(turn.generated[1]).toMatchObject({
         role: 'tool',
         parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-      ],
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+        ],
       });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(executions).toEqual([{ value: 'Tokyo' }]);
@@ -2393,20 +2393,20 @@ Use the synthetic tool.<turn|>
     let nativeCalls = 0;
     const harness = await createGemmaSyntheticProtocolRuntime({
       generate: async context => {
-      nativeCalls++;
-      nativeInputs.push(captureGemmaNativeInput(context));
-      if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
-      if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
-      return emitSyntheticGemmaProtocol({
-        context,
-        text: nativeCalls === 1
-        ? `\
+        nativeCalls++;
+        nativeInputs.push(captureGemmaNativeInput(context));
+        if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
+        if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: nativeCalls === 1
+            ? `\
 <|channel>thought
 Use the quoted value.
 <channel|><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><|tool_response>`
-        : 'Synthetic completion.<turn|>',
-      });
-    },
+            : 'Synthetic completion.<turn|>',
+        });
+      },
     });
     const tools: Tool[] = [{
       name: 'probe',
@@ -2447,21 +2447,21 @@ Use the quoted value.
       expect(turn.generated[0]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
-      ],
+          { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
+        ],
       });
       expect(turn.generated[1]).toMatchObject({
         role: 'tool',
         parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-      ],
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+        ],
       });
       expect(turn.generated[2]).toMatchObject({
         role: 'assistant',
         parts: [
-        { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
+        ],
       });
       expect(executions).toEqual([{ value: '<bos><pad>' }]);
       const history = [
@@ -2564,9 +2564,9 @@ describe('Gemma4 E2B Provider / images', () => {
               id: toMessageId({ raw: 'message_0' }),
               role: 'user',
               parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-            ],
+                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+              ],
             }],
             tools: [],
             parameters: {
@@ -2621,14 +2621,14 @@ describe('Gemma4 E2B Provider / images', () => {
               id: toMessageId({ raw: 'message_0' }),
               role: 'user',
               parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              {
-                type: 'attachment',
-                attachment: createReplayImageAttachment({
-                dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-              }),
-              },
-            ],
+                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                {
+                  type: 'attachment',
+                  attachment: createReplayImageAttachment({
+                    dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+                  }),
+                },
+              ],
             }],
             tools: [],
             parameters: {
@@ -2695,14 +2695,14 @@ describe('Gemma4 E2B Provider / images', () => {
             id: toMessageId({ raw: 'message_0' }),
             role: 'user',
             parts: [
-            { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-            {
-              type: 'attachment',
-              attachment: createReplayImageAttachment({
-              dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            }),
-            },
-          ],
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              {
+                type: 'attachment',
+                attachment: createReplayImageAttachment({
+                  dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                }),
+              },
+            ],
           }],
           tools: [],
           parameters: parameters,
@@ -2739,23 +2739,23 @@ const gemma4FullStructuredParts = {
       scenario: 'first-turn',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Please provide the **context** or **purpose** of the "template probe user', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Please provide the **context** or **purpose** of the "template probe user', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'continuity',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Please provide the **previous part of the conversation** or the **topic** you', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Please provide the **previous part of the conversation** or the **topic** you', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     ...(['independent-next-input', 'system-user', 'supplied-history', 'reasoning-none'] as const).map(scenario => ({
       scenario,
@@ -2763,8 +2763,8 @@ const gemma4FullStructuredParts = {
       events: [{
         kind: 'assistant' as const,
         parts: [
-        { type: 'text' as const, text: 'Please', completeness: 'partial' as const },
-      ],
+          { type: 'text' as const, text: 'Please', completeness: 'partial' as const },
+        ],
         terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
       }],
     })),
@@ -2786,31 +2786,31 @@ const gemma4FullStructuredParts = {
       scenario: 'structured-tool-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
-    ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     {
       scenario: 'image',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'The', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
   ],
   legacyInputProjections: [{
     scenario: 'continuity',
     assistant: {
-    role: 'assistant',
-    content: 'Please provide the **context** or **purpose** of the "template probe user',
-  },
+      role: 'assistant',
+      content: 'Please provide the **context** or **purpose** of the "template probe user',
+    },
   }],
 } satisfies StructuredPartsReplayContract;
 
@@ -3066,12 +3066,12 @@ describe('Gemma4 E2B Provider / sequences', () => {
       expectedLoadReceipt: {
         ...fullEvidenceJson.loadReceipt,
         plannedRequiredPaths: [
-        'config.json', 'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
-        'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
-        'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-        'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
-        'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
-      ],
+          'config.json', 'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
+          'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
+          'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+          'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
+          'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
+        ],
       },
       evidence: fullEvidenceJson,
       reviewedPublicContract: {

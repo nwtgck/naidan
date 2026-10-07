@@ -17,25 +17,25 @@ vi.mock('./state', () => ({ createRpcManager: fixture.create }));
 vi.mock('@/00-storage/service/naidan-rpc', () => ({ naidanRpcStorage: { list: fixture.list } }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  subscribeNaidanRpcRegistryChanges: ({ listener }: { listener(): void }) => {
-  fixture.registryListeners.add(listener); return () => fixture.registryListeners.delete(listener);
-},
-},
+    subscribeNaidanRpcRegistryChanges: ({ listener }: { listener(): void }) => {
+      fixture.registryListeners.add(listener); return () => fixture.registryListeners.delete(listener);
+    },
+  },
 }));
 const automaticDisposers: (() => void)[] = [];
 function automaticRegistry(): NaidanRpcRegistrySnapshot {
   return {
     access: { providerGeneration: 1, registryId: undefined, persistence: 'durable' },
     connections: [{
-    id: toNaidanRpcConnectionId({ raw: 'automatic-connection' }),
-    peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
-    localPublicKey: 'A'.repeat(43),
-    label: 'Peer',
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] },
-    allowedMethods: [],
-    autoConnect: 'enabled',
-    revision: 0,
-  }],
+      id: toNaidanRpcConnectionId({ raw: 'automatic-connection' }),
+      peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+      localPublicKey: 'A'.repeat(43),
+      label: 'Peer',
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] },
+      allowedMethods: [],
+      autoConnect: 'enabled',
+      revision: 0,
+    }],
   };
 }
 let control: ReturnType<typeof createRpcStopControl> | undefined;

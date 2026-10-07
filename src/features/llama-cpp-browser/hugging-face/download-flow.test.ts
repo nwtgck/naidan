@@ -14,13 +14,13 @@ vi.mock('@/utils/worker-transport', async importOriginal => {
   return {
     ...original,
     wrapWorkerRemote: () => {
-    const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
-      await state.appendGate; return append({ bytes });
-    }; return writer;
-  },
+      const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
+        await state.appendGate; return append({ bytes });
+      }; return writer;
+    },
     releaseWorkerRemote: () => {},
     workerTransfer: ({ value }: { value: object }) => value,
-  workerProxy: ({ value }: { value: object }) => value,
+    workerProxy: ({ value }: { value: object }) => value,
     workerCapability: vi.fn(({ value }: { value: object }) => value),
     getReadableStreamTransferSupport: async () => state.support,
   };
@@ -38,8 +38,8 @@ function response({ status, offset, bytes }: { status: number, offset: number, b
     headers: new Headers(status === 206 ? { 'content-range': `bytes ${offset}-127/128` } : {}),
     body: new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull(controller) {
-      const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
-    },
+        const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
+      },
     }, { highWaterMark: 0 }),
   };
 }
@@ -105,8 +105,8 @@ describe('download orchestration', () => {
       selection,
       signal: controller.signal,
       onProgress: ({ progress }) => {
-      if (progress.completed === 64) controller.abort();
-    },
+        if (progress.completed === 64) controller.abort();
+      },
     })).rejects.toThrow();
     expect((await listPendingDownloads())[0]?.bytes).toEqual([64]);
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 206, offset: 64, bytes: [ggufBytes().slice(64)] }));
@@ -144,10 +144,10 @@ describe('download orchestration', () => {
     const source = response({ status: 200, offset: 0, bytes: [] });
     source.body = new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull(controller) {
-      pulls++; if (pulls === 1) {
-        controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
-      } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
-    },
+        pulls++; if (pulls === 1) {
+          controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
+        } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
+      },
     }, { highWaterMark: 0 });
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(source);
     const download = downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
@@ -170,8 +170,8 @@ it('can cancel when the next file is reported before any network request is made
     selection,
     signal: controller.signal,
     onProgress: ({ progress }) => {
-    if (progress.currentFileIndex === 0) controller.abort();
-  },
+      if (progress.currentFileIndex === 0) controller.abort();
+    },
   })).rejects.toMatchObject({ name: 'AbortError' });
   expect(privacyFetchStream).not.toHaveBeenCalled();
 });

@@ -29,10 +29,10 @@ export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, 
   return {
     requests,
     request: () => {
-    if (version === Number.MAX_SAFE_INTEGER) throw new Error('Audio preview request limit reached');
-    version++;
-    for (const listener of [...listeners]) listener();
-  },
+      if (version === Number.MAX_SAFE_INTEGER) throw new Error('Audio preview request limit reached');
+      version++;
+      for (const listener of [...listeners]) listener();
+    },
   };
 }
 export const TEST_ONLY = {

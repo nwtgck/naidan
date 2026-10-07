@@ -37,8 +37,8 @@ it('discovers the current owner and separates admission acknowledgement from ret
   b.registerOwner({
     ownerId: 'epoch-b',
     stop: () => {
-    admission = 'closed'; return retired.promise;
-  },
+      admission = 'closed'; return retired.promise;
+    },
   });
   a.requestStop(); expect(a.status()).toBe('checking'); deliver();
   expect(admission).toBe('closed'); expect(a.status()).toBe('applied');
@@ -75,8 +75,8 @@ it('never claims retirement when native cleanup fails', async () => {
   const { a } = setup(); a.registerOwner({
     ownerId: 'a',
     stop: async () => {
-    throw new Error('cleanup failed');
-  },
+      throw new Error('cleanup failed');
+    },
   });
   a.requestStop(); await Promise.resolve(); expect(a.status()).toBe('unconfirmed');
   a.requestStop(); expect(a.status()).toBe('unconfirmed');
@@ -85,8 +85,8 @@ it('does not acknowledge a stop whose synchronous admission boundary threw', asy
   vi.useFakeTimers(); const { a } = setup(); a.registerOwner({
     ownerId: 'a',
     stop: () => {
-    throw new Error('not applied');
-  },
+      throw new Error('not applied');
+    },
   });
   a.requestStop(); await vi.advanceTimersByTimeAsync(101); expect(a.status()).toBe('unconfirmed');
 });

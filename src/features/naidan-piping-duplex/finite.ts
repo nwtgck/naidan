@@ -114,7 +114,7 @@ export class FiniteEndpoint implements FiniteTransport {
     requireValue({
       condition: Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 2147483647 &&
                 Number.isInteger(repairTimeoutMs) && repairTimeoutMs > 0 && repairTimeoutMs <= 2147483647,
-    message: 'Invalid attempt deadlines',
+      message: 'Invalid attempt deadlines',
     });
     const url = new URL(baseUrl);
     requireValue({ condition: !url.username && !url.password && !url.search && !url.hash && url.pathname === '/', message: 'Relay base must be an origin' });
@@ -163,7 +163,7 @@ export class FiniteEndpoint implements FiniteTransport {
         await response.body?.cancel().catch(() => {});
         throw new AttemptError({
           kind: response.status === 408 || response.status === 429 || response.status >= 500
-          ? 'transient' : 'fatal',
+            ? 'transient' : 'fatal',
         });
       }
       const bytes = await readBounded({ response, maxBytes: response.status === 200 ? limit : 8192 });

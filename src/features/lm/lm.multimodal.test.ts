@@ -16,15 +16,15 @@ function request({ text, model }: { text: string, model: string }): Parameters<L
       {
         type: 'attachment',
         attachment: {
-        id: toAttachmentId({ raw: 'a' }),
-        binaryObjectId: toBinaryObjectId({ raw: 'b' }),
-        originalName: 'image.png',
-        mimeType: 'image/png',
-        size: 3,
-        uploadedAt: 1,
-        status: 'memory',
-        blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),
-      },
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+          originalName: 'image.png',
+          mimeType: 'image/png',
+          size: 3,
+          uploadedAt: 1,
+          status: 'memory',
+          blob: new Blob([Uint8Array.of(1, 2, 3)], { type: 'image/png' }),
+        },
       },
     ],
   }];
@@ -44,8 +44,8 @@ describe('LM Providers - Multimodal Requests', () => {
     expect(body({ fetcher }).messages).toEqual([{
       role: 'user',
       content: [
-      { type: 'text', text: 'Analyze this:' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
-    ],
+        { type: 'text', text: 'Analyze this:' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } },
+      ],
     }]);
     expect(result).toEqual({ type: 'finished', next: 'user' });
   });

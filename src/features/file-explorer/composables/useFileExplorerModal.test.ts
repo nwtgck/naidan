@@ -18,26 +18,26 @@ describe('useFileExplorerModal', () => {
 
     openFileExplorer({
       options: {
-      kind: 'wesh-mounts',
-      title: 'Files',
-      rootName: 'Files',
-      mounts: [{
-        type: 'directory',
-        path: '/home/user/project',
-        handle: mountHandle as unknown as FileSystemDirectoryHandle,
-        readOnly: false,
-      }, {
-        type: 'naidan_sysfs',
-        path: '/sys/fs/naidan',
-        readOnly: true,
-        storageType: 'opfs',
-        visibility: 'current_chat_with_chat_group',
-        binaryObjectAccess: 'data',
-        currentChatId: toChatId({ raw: 'chat-1' }),
-        currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
-      }],
-      initialPath: ['home', 'user', 'project'],
-    },
+        kind: 'wesh-mounts',
+        title: 'Files',
+        rootName: 'Files',
+        mounts: [{
+          type: 'directory',
+          path: '/home/user/project',
+          handle: mountHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        }, {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'current_chat_with_chat_group',
+          binaryObjectAccess: 'data',
+          currentChatId: toChatId({ raw: 'chat-1' }),
+          currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+        }],
+        initialPath: ['home', 'user', 'project'],
+      },
     });
 
     expect(() => structuredClone(fileExplorerOptions.value)).not.toThrow();

@@ -35,10 +35,10 @@ describe('renderMessageJson', () => {
       parts: [{
         type: 'tool_result',
         result: {
-        toolCallId: 'call-1',
-        status: 'success',
-        content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
-      },
+          toolCallId: 'call-1',
+          status: 'success',
+          content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
+        },
       }],
     }, null, 2));
   });

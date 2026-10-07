@@ -9,9 +9,9 @@ const args = () => ({
   a cat 🐈
 (weight:1.2)  `,
   language: 'ja' as const,
-endpoint: { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: undefined },
+  endpoint: { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: undefined },
   modelId: 'translator',
-parameters: undefined,
+  parameters: undefined,
   signal: new AbortController().signal,
   fakeLmDebugModeStatus: 'disabled' as const,
 });
@@ -19,9 +19,9 @@ function providerWith({ result, output }: { result: ChatGenerationResult, output
   const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
     signal,
     run: async ({ writer }) => {
-    await writer.text({ type: 'reasoning', text: 'not part of the translation' });
-    await writer.text({ type: 'text', text: output }); return result;
-  },
+      await writer.text({ type: 'reasoning', text: 'not part of the translation' });
+      await writer.text({ type: 'text', text: output }); return result;
+    },
   }));
   const provider: LmProvider = { chat, listModels: vi.fn(async () => []) };
   mocks.provider.mockResolvedValue(provider);
@@ -125,8 +125,8 @@ it('streams escaped text without reasoning and isolates a failing display observ
   expect(await translateImagePrompt({
     ...args(),
     onText({ text: value }) {
-    text.push(value); throw new Error('renderer failed');
-  },
+      text.push(value); throw new Error('renderer failed');
+    },
   })).toBe('<cat>');
   expect(text).toContain('<cat>'); expect(text.join('')).not.toContain('not part of the translation');
 });

@@ -16,14 +16,14 @@ function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloa
   const preferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
   wrapper = mount(ImageDownloadMenu, {
     props: {
-    active: true,
-    disabled: false,
-    preferences,
-    onPreferencesChange: ({ preferences: next }) => {
-    preferences.value = { ...next };
-  },
-    onDownload,
-  },
+      active: true,
+      disabled: false,
+      preferences,
+      onPreferencesChange: ({ preferences: next }) => {
+        preferences.value = { ...next };
+      },
+      onDownload,
+    },
     global: { stubs: { Teleport: true } },
   });
   return wrapper;
@@ -100,8 +100,8 @@ it('closes on Escape, pane changes, and outside pointer events without downloadi
 it('handles rejected and cancelled operations without a false success or unhandled rejection', async () => {
   const ui = openMenu({
     onDownload: async () => {
-    throw new Error('Encode failed');
-  },
+      throw new Error('Encode failed');
+    },
   });
   await ui.get('[data-testid="image-download-default"]').trigger('click'); await flushPromises();
   expect(ui.get('[data-testid="image-download-error"]').text()).toBe('Encode failed');

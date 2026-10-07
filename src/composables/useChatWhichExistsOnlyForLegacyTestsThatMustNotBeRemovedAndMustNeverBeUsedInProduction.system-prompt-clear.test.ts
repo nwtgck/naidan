@@ -70,14 +70,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'http://global' },
-      defaultModelId: 'gpt',
-      systemPrompt: 'Global System Prompt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-    },
+        endpoint: { type: 'openai', url: 'http://global' },
+        defaultModelId: 'gpt',
+        systemPrompt: 'Global System Prompt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+      },
     });
   });
 
@@ -97,8 +97,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await updateChatSettings({
       id: idToRaw({ id }),
       updates: {
-      systemPrompt: { behavior: 'override', content: null },
-    },
+        systemPrompt: { behavior: 'override', content: null },
+      },
     });
     await sendMessage({ content: 'Hello again' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
@@ -120,8 +120,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await updateChatSettings({
       id: idToRaw({ id }),
       updates: {
-      systemPrompt: { behavior: 'override', content: '' },
-    },
+        systemPrompt: { behavior: 'override', content: '' },
+      },
     });
     await sendMessage({ content: 'Empty string override' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
@@ -178,8 +178,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await updateChatSettings({
       id: idToRaw({ id }),
       updates: {
-      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' },
-    },
+        systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' },
+      },
     });
 
     await sendMessage({ content: 'Override' });

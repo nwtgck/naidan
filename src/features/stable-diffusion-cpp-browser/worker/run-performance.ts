@@ -100,15 +100,15 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     report({
       metric,
       fields: {
-      phase,
-      step,
-      ...counts,
-      uninspectedBf16WeightMatmuls: counts.bf16WeightMatmuls - counts.inspectedBf16WeightMatmuls,
-      coverage: counts.invalidReports || counts.bf16WeightMatmuls !== counts.inspectedBf16WeightMatmuls ? 'partial' : counts.allocationReports ? 'observed-allocations' : 'not-observed',
-      observation: 'allocation-metadata',
-      weightBytesMeaning: 'operand-uses-not-unique-residency',
-      actualTransfersMeasured: false,
-    },
+        phase,
+        step,
+        ...counts,
+        uninspectedBf16WeightMatmuls: counts.bf16WeightMatmuls - counts.inspectedBf16WeightMatmuls,
+        coverage: counts.invalidReports || counts.bf16WeightMatmuls !== counts.inspectedBf16WeightMatmuls ? 'partial' : counts.allocationReports ? 'observed-allocations' : 'not-observed',
+        observation: 'allocation-metadata',
+        weightBytesMeaning: 'operand-uses-not-unique-residency',
+        actualTransfersMeasured: false,
+      },
     });
   }
   function flushPlacement(): void {
@@ -124,16 +124,16 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     flushPlacement();
     checkpoint({
       point: {
-      phase: next,
-      step: (() => {
-      switch (next) {
-      case 'sampling': return step;
-      case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'decoding': case 'encoding': case 'cleanup': return 0;
-      default: { const exhaustive: never = next; throw new Error(String(exhaustive)); }
-      }
-    })(),
-      reason: 'phase',
-    },
+        phase: next,
+        step: (() => {
+          switch (next) {
+          case 'sampling': return step;
+          case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'decoding': case 'encoding': case 'cleanup': return 0;
+          default: { const exhaustive: never = next; throw new Error(String(exhaustive)); }
+          }
+        })(),
+        reason: 'phase',
+      },
     });
     phase = next; phaseStart = time;
   }
@@ -147,30 +147,30 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       report({
         metric: 'run-settings',
         fields: {
-        appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__.slice(0, 128) : 'not-available',
-        previewStartStep: request.preview.startStep,
-        previewMaxEdge: request.preview.maxEdge,
-        conditioningCacheSize: p.conditioningCacheSize,
-        qwenVaePolicy: p.qwenVaePolicy,
-        distilledGuidance: p.distilledGuidance,
-        bf16WeightType: p.bf16WeightType,
-        modelArgumentsPresent: !!arg,
-        qwenPrefixCacheRequested: cacheFlag ?? (arg ? 'not-disclosed' : 'native-default'),
-        modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((a, c) => a + c.file.size, 0), 0),
-        gpuTimestampMeasured: false,
-        semanticBackendTrace: false,
-        backendPlacementObservation: 'native-allocation-summary-when-available',
-        previewNativeTime: 'rounded-native-log-when-available',
-      },
+          appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__.slice(0, 128) : 'not-available',
+          previewStartStep: request.preview.startStep,
+          previewMaxEdge: request.preview.maxEdge,
+          conditioningCacheSize: p.conditioningCacheSize,
+          qwenVaePolicy: p.qwenVaePolicy,
+          distilledGuidance: p.distilledGuidance,
+          bf16WeightType: p.bf16WeightType,
+          modelArgumentsPresent: !!arg,
+          qwenPrefixCacheRequested: cacheFlag ?? (arg ? 'not-disclosed' : 'native-default'),
+          modelBytes: request.models.reduce((n, model) => n + model.file.size + (model.companions ?? []).reduce((a, c) => a + c.file.size, 0), 0),
+          gpuTimestampMeasured: false,
+          semanticBackendTrace: false,
+          backendPlacementObservation: 'native-allocation-summary-when-available',
+          previewNativeTime: 'rounded-native-log-when-available',
+        },
       });
       if (typeof navigator !== 'undefined') {
         const match = /(?:Chrome|Chromium|Firefox)\/(\d+(?:\.\d+){0,3})/.exec(navigator.userAgent ?? '');
         report({
           metric: 'run-environment',
           fields: {
-          browserVersion: match?.[0] ?? 'not-disclosed',
-          hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
-        },
+            browserVersion: match?.[0] ?? 'not-disclosed',
+            hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
+          },
         });
       }
     },
@@ -193,13 +193,13 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       report({
         metric: 'step-wall',
         fields: {
-        step: next,
-        previousStep: step,
-        steps,
-        milliseconds: ms,
-        includesPreviewWork: true,
-        previewReportedMs: previewMs - stepPreviewMs,
-      },
+          step: next,
+          previousStep: step,
+          steps,
+          milliseconds: ms,
+          includesPreviewWork: true,
+          previewReportedMs: previewMs - stepPreviewMs,
+        },
       });
       flushPlacement();
       checkpoint({ point: { phase: 'sampling', step: next, reason: 'completed-step' } });
@@ -268,29 +268,29 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       report({
         metric: 'run-wall',
         fields: {
-        outcome,
-        milliseconds: Math.max(0, time - began),
-        ...phases,
-        partialStepWallMs,
-        completedStepIntervals: stepsSeen,
-        stepWallSumMs: stepSum,
-        stepMinMs: stepsSeen ? stepMin : 0,
-        stepMaxMs: stepMax,
-        nativeConditionMs: conditionMs,
-        nativeConditionReports: conditionReports,
-        nativeSamplingMs: samplingMs,
-        nativeSamplingReports: samplingReports,
-        nativeFinalDecodeMs: finalDecodeMs,
-        nativeFinalDecodeReports: finalDecodeReports,
-        nativePreviewDecodeMs: previewMs,
-        nativePreviewDecodeReports: previewReports,
-        diffusionGraphStarts: diffusionGraphs,
-        textGraphStarts: textGraphs,
-        vaeGraphStarts: vaeGraphs,
-        otherGraphStarts: otherGraphs,
-        nativeTimesOverlapWall: true,
-        nativeTimesAreRounded: true,
-      },
+          outcome,
+          milliseconds: Math.max(0, time - began),
+          ...phases,
+          partialStepWallMs,
+          completedStepIntervals: stepsSeen,
+          stepWallSumMs: stepSum,
+          stepMinMs: stepsSeen ? stepMin : 0,
+          stepMaxMs: stepMax,
+          nativeConditionMs: conditionMs,
+          nativeConditionReports: conditionReports,
+          nativeSamplingMs: samplingMs,
+          nativeSamplingReports: samplingReports,
+          nativeFinalDecodeMs: finalDecodeMs,
+          nativeFinalDecodeReports: finalDecodeReports,
+          nativePreviewDecodeMs: previewMs,
+          nativePreviewDecodeReports: previewReports,
+          diffusionGraphStarts: diffusionGraphs,
+          textGraphStarts: textGraphs,
+          vaeGraphStarts: vaeGraphs,
+          otherGraphStarts: otherGraphs,
+          nativeTimesOverlapWall: true,
+          nativeTimesAreRounded: true,
+        },
       });
       closed = true;
     },

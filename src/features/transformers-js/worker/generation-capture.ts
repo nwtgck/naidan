@@ -562,19 +562,19 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
               if (taken || call.outcome !== 'active') return;
               recordGenerationCapture({
                 record: () => {
-                invocationState.stream = streamAvailabilitySchema.parse(availability);
-                if (availability.status === 'unavailable' || (availability.status === 'available' && availability.restoration !== 'pending' && availability.restoration !== 'restored')) {
-                  incompleteReasons.add('stream-hook-failed');
-                }
-              },
+                  invocationState.stream = streamAvailabilitySchema.parse(availability);
+                  if (availability.status === 'unavailable' || (availability.status === 'available' && availability.restoration !== 'pending' && availability.restoration !== 'restored')) {
+                    incompleteReasons.add('stream-hook-failed');
+                  }
+                },
               });
             },
             recordNativeStream({ operation, phase, streamCallOrdinal, args }: Parameters<NativeStreamRecorder['recordNativeStream']>[0]) {
               append({
                 create: () => {
-                if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');
-                return { kind: 'native-stream', identity, operation, phase, streamCallOrdinal, detail: snapshotStream({ operation, phase, streamCallOrdinal, args }) };
-              },
+                  if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');
+                  return { kind: 'native-stream', identity, operation, phase, streamCallOrdinal, detail: snapshotStream({ operation, phase, streamCallOrdinal, args }) };
+                },
               });
             },
             recordNativeCall({ phase }: { phase: 'entering' | 'fulfilled' | 'rejected' }) {
@@ -583,15 +583,15 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
             recordInputs({ phase, inputs }: { phase: 'full-conversation' | 'pre-budget' | 'native-kwargs'; inputs: Record<string, unknown> }) {
               append({
                 create: () => {
-                const values: Extract<Event, { kind: 'inputs' }>['values'] = [];
-                for (const name of Reflect.ownKeys(inputs)) {
-                  if (typeof name !== 'string' || name.length > 128 || values.length >= 64) {
-                    incompleteReasons.add('input-key-limit'); continue;
+                  const values: Extract<Event, { kind: 'inputs' }>['values'] = [];
+                  for (const name of Reflect.ownKeys(inputs)) {
+                    if (typeof name !== 'string' || name.length > 128 || values.length >= 64) {
+                      incompleteReasons.add('input-key-limit'); continue;
+                    }
+                    values.push({ name, snapshot: snapshotInput({ inputs, name }) });
                   }
-                  values.push({ name, snapshot: snapshotInput({ inputs, name }) });
-                }
-                return { kind: 'inputs', identity, phase, values };
-              },
+                  return { kind: 'inputs', identity, phase, values };
+                },
               });
             },
             recordSettings({ observation }: { observation: GenerationInvocationObservation }) {
@@ -600,36 +600,36 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
             recordSequence({ result }: { result: unknown }) {
               append({
                 create: () => {
-                let resultShape: Extract<Event, { kind: 'sequence' }>['resultShape'];
-                let value: unknown;
-                if (result instanceof tensorClass) {
-                  resultShape = 'tensor';
-                  value = result;
-                } else if (result !== null && typeof result === 'object') {
-                  resultShape = 'dictionary';
-                  value = ownValue({ object: result, key: 'sequences' });
-                } else {
-                  resultShape = 'unknown';
-                  value = undefined;
-                }
-                return { kind: 'sequence', identity, resultShape, snapshot: snapshotTensor({ value }) };
-              },
+                  let resultShape: Extract<Event, { kind: 'sequence' }>['resultShape'];
+                  let value: unknown;
+                  if (result instanceof tensorClass) {
+                    resultShape = 'tensor';
+                    value = result;
+                  } else if (result !== null && typeof result === 'object') {
+                    resultShape = 'dictionary';
+                    value = ownValue({ object: result, key: 'sequences' });
+                  } else {
+                    resultShape = 'unknown';
+                    value = undefined;
+                  }
+                  return { kind: 'sequence', identity, resultShape, snapshot: snapshotTensor({ value }) };
+                },
               });
             },
             recordChunk({ phase, chunk }: { phase: 'strategy-output' | 'worker-send' | 'strategy-raw'; chunk: string }) {
               append({
                 create: () => {
-                const remaining = limits.maxTextBytes - retainedTextBytes;
-                if (chunk.length > remaining) {
-                  incompleteReasons.add('text-limit'); return undefined;
-                }
-                const byteLength = new TextEncoder().encode(chunk).byteLength;
-                if (byteLength > remaining) {
-                  incompleteReasons.add('text-limit'); return undefined;
-                }
-                retainedTextBytes += byteLength;
-                return { kind: 'chunk', identity, phase, text: chunk };
-              },
+                  const remaining = limits.maxTextBytes - retainedTextBytes;
+                  if (chunk.length > remaining) {
+                    incompleteReasons.add('text-limit'); return undefined;
+                  }
+                  const byteLength = new TextEncoder().encode(chunk).byteLength;
+                  if (byteLength > remaining) {
+                    incompleteReasons.add('text-limit'); return undefined;
+                  }
+                  retainedTextBytes += byteLength;
+                  return { kind: 'chunk', identity, phase, text: chunk };
+                },
               });
             },
           };

@@ -181,11 +181,11 @@ int unrelated;`;
                   archiveDirectory,
                   version: 'fixture',
                   packages: variants.map(variant => ({
-                  zipFileName: `${variant.id}.zip`,
-                  folderName: 'fixture',
-                  excludedFileNames: new Set(variant.excludedFileNames),
-                  fileOverrides: new Map([['index.html', variant.indexHtml]]),
-                })),
+                    zipFileName: `${variant.id}.zip`,
+                    folderName: 'fixture',
+                    excludedFileNames: new Set(variant.excludedFileNames),
+                    fileOverrides: new Map([['index.html', variant.indexHtml]]),
+                  })),
                 });
                 for (const variant of variants) {
                   const zip = await JSZip.loadAsync(readFileSync(path.join(archiveDirectory, `${variant.id}.zip`)));

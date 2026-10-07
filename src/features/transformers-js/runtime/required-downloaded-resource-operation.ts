@@ -160,19 +160,19 @@ export function createRequiredDownloadedResourceOperation({
     const cancel = () => {
       cancellation ??= track({
         operation: (async () => {
-        try {
-          if (reader) await reader.cancel();
-          else await source.cancel();
-        } catch (cause) {
-          throw bodyFailure({ cause });
-        } finally {
           try {
-            releaseReader();
+            if (reader) await reader.cancel();
+            else await source.cancel();
+          } catch (cause) {
+            throw bodyFailure({ cause });
           } finally {
-            bodies.delete(cancel);
+            try {
+              releaseReader();
+            } finally {
+              bodies.delete(cancel);
+            }
           }
-        }
-      })(),
+        })(),
       });
       return cancellation;
     };
@@ -193,12 +193,12 @@ export function createRequiredDownloadedResourceOperation({
           }
           const result = await track({
             operation: (async () => {
-            try {
-              return await reader!.read();
-            } catch (cause) {
-              throw bodyFailure({ cause });
-            }
-          })(),
+              try {
+                return await reader!.read();
+              } catch (cause) {
+                throw bodyFailure({ cause });
+              }
+            })(),
           });
           assertActive();
           // A concurrent failure also forbids delivering a read that was already

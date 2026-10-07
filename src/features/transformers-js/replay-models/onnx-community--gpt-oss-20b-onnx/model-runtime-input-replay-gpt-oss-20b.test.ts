@@ -10,18 +10,18 @@ const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
 installRawReplay({
   evidence: {
-  modelId,
-  revision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
-  files: {
-    // Additional exact-revision inputs used by fresh investigation replay supplements.
-    'special_tokens_map.json': { sha256: '9ee667e324910c037718c9251f2ec97cec5530b6789a52a4d95328e61f110512', byteLength: 463 },
-    'chat_template.jinja': { sha256: 'e381f0b98be3c3714676ec4102bc75a885d75b9002feb02fb6f25ad0e641bce3', byteLength: 16330 },
-    'config.json': { sha256: 'dc54cf872c059cb8f510f38770176b29211d1d83a9bebb7de0d759fe77d80948', byteLength: 2096 },
-    'tokenizer_config.json': { sha256: '0b27d36b62a2a939e5f8e52ebb1798be181a5f8b35685f81c142b14690d3d4b4', byteLength: 20918 },
-    'generation_config.json': { sha256: '912bb474f36eb600f91a5a32f70f5dd2534313423adfc3d6726cb123e3b1de9d', byteLength: 175 },
-    'tokenizer.json': { sha256: '0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3', byteLength: 27868174 },
+    modelId,
+    revision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
+    files: {
+      // Additional exact-revision inputs used by fresh investigation replay supplements.
+      'special_tokens_map.json': { sha256: '9ee667e324910c037718c9251f2ec97cec5530b6789a52a4d95328e61f110512', byteLength: 463 },
+      'chat_template.jinja': { sha256: 'e381f0b98be3c3714676ec4102bc75a885d75b9002feb02fb6f25ad0e641bce3', byteLength: 16330 },
+      'config.json': { sha256: 'dc54cf872c059cb8f510f38770176b29211d1d83a9bebb7de0d759fe77d80948', byteLength: 2096 },
+      'tokenizer_config.json': { sha256: '0b27d36b62a2a939e5f8e52ebb1798be181a5f8b35685f81c142b14690d3d4b4', byteLength: 20918 },
+      'generation_config.json': { sha256: '912bb474f36eb600f91a5a32f70f5dd2534313423adfc3d6726cb123e3b1de9d', byteLength: 175 },
+      'tokenizer.json': { sha256: '0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3', byteLength: 27868174 },
+    },
   },
-},
 });
 
 describe('GPT-OSS 20B raw metadata replay', () => {
@@ -68,10 +68,10 @@ describe('GPT-OSS structured reasoning in native model inputs', () => {
     const prefix = tokenizer.apply_chat_template([question], { tokenize: false, add_generation_prompt: false });
     const mapped = buildGptOssPromptMessages({
       messages: [
-      question,
-      { role: 'assistant', content: '', reasoning: { text: '  Reason\n', completeness: 'complete' }, tool_calls: [{ id: callId, type: 'function', function: { name: 'calculator', arguments: '{}' } }] },
-      { role: 'tool', tool_call_id: callId, content: '391' },
-    ],
+        question,
+        { role: 'assistant', content: '', reasoning: { text: '  Reason\n', completeness: 'complete' }, tool_calls: [{ id: callId, type: 'function', function: { name: 'calculator', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: callId, content: '391' },
+      ],
       tools: undefined,
     });
     expect(mapped[1]?.thinking).toBe('  Reason\n');
@@ -82,9 +82,9 @@ describe('GPT-OSS structured reasoning in native model inputs', () => {
     expect(tokenizer.encode(prompt, { add_special_tokens: false })).toEqual(tokenizer.encode(expected, { add_special_tokens: false }));
     const later = buildGptOssPromptMessages({
       messages: [question,
-      { role: 'assistant', content: '<think>literal</think>Answer', reasoning: { text: 'Reason', completeness: 'complete' } },
-      { role: 'user', content: 'Next.' },
-    ],
+        { role: 'assistant', content: '<think>literal</think>Answer', reasoning: { text: 'Reason', completeness: 'complete' } },
+        { role: 'user', content: 'Next.' },
+      ],
       tools: undefined,
     });
     const followUp = tokenizer.apply_chat_template(later, { tokenize: false, add_generation_prompt: true });

@@ -62,15 +62,15 @@ describe('parts in read-only sysfs projections', () => {
     expect(JSON.parse(rendered).parts[0]).toEqual({
       type: 'attachment',
       attachment: {
-      id: 'att',
-      binaryObjectId: 'bin',
-      name: 'sample.bin',
-      mimeType: 'application/octet-stream',
-      size: 6,
-      uploadedAt: 3,
-      status: 'memory',
-      note: '[binary attachment hidden]',
-    },
+        id: 'att',
+        binaryObjectId: 'bin',
+        name: 'sample.bin',
+        mimeType: 'application/octet-stream',
+        size: 6,
+        uploadedAt: 3,
+        status: 'memory',
+        note: '[binary attachment hidden]',
+      },
     });
     for (const value of ['blob', 'SECRET', '日本語の記録', 'replies']) expect(rendered).not.toContain(value);
   });
@@ -90,11 +90,11 @@ describe('parts in read-only sysfs projections', () => {
       lmParameters: undefined,
       replies: { items: [] },
       parts: [
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'execution_failed', message: { type: 'text', text } } } },
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'd' }), status: 'executing' } },
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'e' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'result' }) } } },
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'f' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
-    ],
+        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'execution_failed', message: { type: 'text', text } } } },
+        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'd' }), status: 'executing' } },
+        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'e' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'result' }) } } },
+        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'f' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
+      ],
     };
     const before = structuredClone(node); const json = JSON.parse(renderMessageJson({ node }));
     expect(json.parts[0].result.error.message.text).toBe(`${'x'.repeat(4000)}\n[truncated]`);

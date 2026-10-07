@@ -16,11 +16,11 @@ import { TEST_ONLY } from '@/utils/stream-download';
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  getFile: vi.fn(),
-  getBinaryObject: vi.fn(),
-  deleteBinaryObject: vi.fn(),
-  subscribeToChanges: vi.fn(() => () => {}),
-},
+    getFile: vi.fn(),
+    getBinaryObject: vi.fn(),
+    deleteBinaryObject: vi.fn(),
+    subscribeToChanges: vi.fn(() => () => {}),
+  },
 }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));

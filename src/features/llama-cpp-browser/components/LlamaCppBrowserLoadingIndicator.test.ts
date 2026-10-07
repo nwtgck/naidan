@@ -8,13 +8,13 @@ import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.v
 const listeners = vi.hoisted(() => new Set<(event: { state: EngineState }) => void>());
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
-  getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
-  subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
-    listeners.add(listener); return () => {
-      listeners.delete(listener);
-    };
-  }),
-},
+    getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
+    subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
+      listeners.add(listener); return () => {
+        listeners.delete(listener);
+      };
+    }),
+  },
 }));
 beforeEach(async () => {
   vi.clearAllMocks(); listeners.clear(); await ensureAllStringsForTest({ locale: 'en' });

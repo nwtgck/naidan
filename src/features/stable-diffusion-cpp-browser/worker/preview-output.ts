@@ -27,21 +27,21 @@ export function createPreviewOutput({ publish, valid, onError, onMeasure, now = 
         if (!closed && onMeasure) try {
           onMeasure({
             fields: {
-            step: capture.frame.step,
-            revision: capture.frame.revision,
-            mode: capture.frame.mode,
-            nativeWidth: capture.image.width,
-            nativeHeight: capture.image.height,
-            outputWidth: image.width,
-            outputHeight: image.height,
-            maxEdge: capture.maxEdge,
-            pngBytes: image.png.size,
-            queueWallMs: Math.max(0, started - capture.queuedAt),
-            encodeWallMs: Math.max(0, encodedAt - started),
-            delivered,
-            overwrittenFrames: dropped,
-            includesNativeDecode: false,
-          },
+              step: capture.frame.step,
+              revision: capture.frame.revision,
+              mode: capture.frame.mode,
+              nativeWidth: capture.image.width,
+              nativeHeight: capture.image.height,
+              outputWidth: image.width,
+              outputHeight: image.height,
+              maxEdge: capture.maxEdge,
+              pngBytes: image.png.size,
+              queueWallMs: Math.max(0, started - capture.queuedAt),
+              encodeWallMs: Math.max(0, encodedAt - started),
+              delivered,
+              overwrittenFrames: dropped,
+              includesNativeDecode: false,
+            },
           });
         } catch { /* measurement only */ }
       } catch (error) {

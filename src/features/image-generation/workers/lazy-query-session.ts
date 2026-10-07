@@ -33,8 +33,8 @@ export function createLazyImageQuerySession<Api extends object>({ createWorker, 
           worker,
           remote: createRemote({ worker }),
           onFailure: () => {
-          if (state === target) retire({ cause: new Error('Image query Worker communication failed') });
-        },
+            if (state === target) retire({ cause: new Error('Image query Worker communication failed') });
+          },
         };
         worker.addEventListener('error', target.onFailure); worker.addEventListener('messageerror', target.onFailure);
         state = target; return target;

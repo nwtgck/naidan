@@ -209,10 +209,10 @@ it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle',
   const tools = ['image_generation_get_context', 'image_generation_set_prompt'];
   const wrapper = mount(AssistantProcessSequence, {
     props: {
-    items: makeItems(),
-    isProcessing: false,
-    stats: makeStats({ thinkingSteps: 3, toolCallCount: 2, toolNames: tools }),
-  },
+      items: makeItems(),
+      isProcessing: false,
+      stats: makeStats({ thinkingSteps: 3, toolCallCount: 2, toolNames: tools }),
+    },
   });
   try {
     const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');

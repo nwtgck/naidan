@@ -58,11 +58,11 @@ export function providerCaseSourceDigest({ provenance: value, caseId }: { proven
   if (matches.length !== 1) throw new Error('Missing or duplicate request source attribution');
   return providerEvidenceDigest({
     value: {
-    sourceDigests: matches[0]!.sourceDigests,
-    requestPresent: provenance.requestOrder.includes(caseId),
-    invocations: provenance.invocations.filter(row => row.caseId === caseId),
-    inputGaps: provenance.inputGaps.filter(row => row.caseId === caseId),
-  },
+      sourceDigests: matches[0]!.sourceDigests,
+      requestPresent: provenance.requestOrder.includes(caseId),
+      invocations: provenance.invocations.filter(row => row.caseId === caseId),
+      inputGaps: provenance.inputGaps.filter(row => row.caseId === caseId),
+    },
   });
 }
 
@@ -140,14 +140,14 @@ export function assembleProviderSequenceEvidence({ catalog }: { catalog: Provide
   const unavailableRecordedCalls = provenance.invocations.filter(item => selected.find(source => source.evidence.caseId === item.caseId)!.evidence.unavailableOutputOrdinals.includes(item.localOrdinal)).map(item => item.sourceCallOrdinal);
   return parseCapturedFullReplay({
     value: {
-    format: 'captured-production-full-replay-v1',
-    ...resources,
-    sourceDigests: provenance.sourceDigests,
-    requests,
-    invocations,
-    ...(provenance.optionalFields.unavailableRecordedCalls ? { unavailableRecordedCalls } : {}),
-    ...(provenance.optionalFields.nativeInputGaps ? { nativeInputGaps } : {}),
-  },
+      format: 'captured-production-full-replay-v1',
+      ...resources,
+      sourceDigests: provenance.sourceDigests,
+      requests,
+      invocations,
+      ...(provenance.optionalFields.unavailableRecordedCalls ? { unavailableRecordedCalls } : {}),
+      ...(provenance.optionalFields.nativeInputGaps ? { nativeInputGaps } : {}),
+    },
   });
 }
 

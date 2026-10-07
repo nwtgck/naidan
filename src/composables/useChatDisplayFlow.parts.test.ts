@@ -110,12 +110,12 @@ describe('parts-based display flow', () => {
   it('keeps a later part key stable when an earlier empty part receives content', () => {
     const { chat, chatFlow } = createFlow({
       message: assistant({
-      parts: [
-      { type: 'text', text: '', completeness: 'partial' },
-      { type: 'reasoning', text: 'R', completeness: 'partial' },
-    ],
-      interruption: undefined,
-    }),
+        parts: [
+          { type: 'text', text: '', completeness: 'partial' },
+          { type: 'reasoning', text: 'R', completeness: 'partial' },
+        ],
+        interruption: undefined,
+      }),
       processing: true,
     });
     const prior = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
@@ -128,11 +128,11 @@ describe('parts-based display flow', () => {
   it('keeps reactive body identity when a late tool call is inserted before it', () => {
     const { chat, chatFlow } = createFlow({
       message: assistant({
-      parts: [
-      { type: 'text', text: 'body', completeness: 'partial' },
-    ],
-      interruption: undefined,
-    }),
+        parts: [
+          { type: 'text', text: 'body', completeness: 'partial' },
+        ],
+        interruption: undefined,
+      }),
       processing: true,
     });
     const before = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body');

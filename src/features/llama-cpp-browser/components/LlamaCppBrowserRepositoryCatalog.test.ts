@@ -42,13 +42,13 @@ function render(): VueWrapper {
     props: { suggestions: 'none' },
     slots: {
       catalog: ({ disabled, inspect }: { disabled: boolean, inspect: ({ input }: { input: string }) => Promise<void> }) =>
-      h(LlamaCppBrowserRepositoryCatalog, {
-        entries: repositoryCatalog,
-        disabled,
-        onInspect: input => {
-        void inspect({ input });
-      },
-      }),
+        h(LlamaCppBrowserRepositoryCatalog, {
+          entries: repositoryCatalog,
+          disabled,
+          onInspect: input => {
+            void inspect({ input });
+          },
+        }),
     },
   });
   return wrapper;

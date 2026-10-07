@@ -97,8 +97,8 @@ for (const [status, kind] of [[200, 'transient'], [403, 'fatal'], [503, 'transie
       const cleanup = Promise.withResolvers<void>(), cancel = vi.fn(() => cleanup.promise);
       const response = new Response(new ReadableStream<Uint8Array>({
         start(controller) {
-        if (status === 200) controller.enqueue(new Uint8Array(8193));
-      },
+          if (status === 200) controller.enqueue(new Uint8Array(8193));
+        },
         cancel,
       }), { status });
       vi.mocked(fetch).mockResolvedValueOnce(response);

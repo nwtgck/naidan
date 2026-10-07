@@ -41,15 +41,15 @@ const productionLoadEnvelope = z.object({ type: z.literal('APPLY'), path: z.tupl
 const nativeLoadIndexSchema = z.object({
   runId: z.string(),
   epochs: z.array(z.object({
-  workerEpoch: z.number(),
-  collection: z.object({
-    status: z.literal('returned'),
-    result: z.object({
-    status: z.enum(['captured', 'not-started']),
-    loadObservation: productionLoadObservationSchema,
-  }),
-  }),
-})),
+    workerEpoch: z.number(),
+    collection: z.object({
+      status: z.literal('returned'),
+      result: z.object({
+        status: z.enum(['captured', 'not-started']),
+        loadObservation: productionLoadObservationSchema,
+      }),
+    }),
+  })),
 });
 const archivedAcceptanceSchema = z.object({
   status: z.enum(['accepted', 'failed', 'exhausted']),
@@ -271,10 +271,10 @@ describe('complete Full collection through Session and actual Worker transports'
         return {
           ...actual,
           exposeWorkerRemote: ({ api, endpoint }: Parameters<typeof actual.exposeWorkerRemote>[0]) => {
-          startupStages.push('expose');
-          if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Worker-global exposure');
-          actual.exposeWorkerRemote({ api, endpoint: activeWorker.endpoint });
-        },
+            startupStages.push('expose');
+            if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Worker-global exposure');
+            actual.exposeWorkerRemote({ api, endpoint: activeWorker.endpoint });
+          },
         };
       });
       vi.stubGlobal('Worker', class extends ProviderReplayTestWorker {
@@ -290,57 +290,57 @@ describe('complete Full collection through Session and actual Worker transports'
           expect(options?.type).toBe('module');
           super({
             start: async ({ worker }) => {
-            startupStages.push('start-' + kind);
-            if (kind === 'planning' && workers.filter(item => item.kind === 'planning').length === 1) {
-              firstPlanningStarted.resolve();
-              await releaseFirstPlanning.promise;
-            }
-            activeWorker = worker;
-            if (kind !== 'evidence') {
+              startupStages.push('start-' + kind);
+              if (kind === 'planning' && workers.filter(item => item.kind === 'planning').length === 1) {
+                firstPlanningStarted.resolve();
+                await releaseFirstPlanning.promise;
+              }
+              activeWorker = worker;
+              if (kind !== 'evidence') {
               // This sequential in-process platform reuses its browser image
               // globals, but each entry must capture a fresh base fetch, never
               // the preceding Production Worker's OPFS interception wrapper.
-              if (kind === 'production') nativeSelf.fetch = originalFetch;
-              vi.stubGlobal('self', kind === 'production' ? nativeSelf : { fetch: planningFetch, location: new NodeUrl(`http://localhost/assets/${kind}-worker.js`) });
-              // Independent runtime modules are essential: request observation
-              // intentionally holds fetch promises until its Worker is killed.
-              const runtime = await loadWorkerRuntime({ kind });
-              vi.doMock('@huggingface/transformers', () => runtime);
-            }
-            // Only module state is fresh; native ports and real one-shot startup
-            // still decide when the host is allowed to use each Worker.
-            vi.resetModules();
-            switch (kind) {
-            case 'planning':
-              vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/planning-worker.js') });
-              await import('@/features/transformers-js/model-support-investigation/worker/entry');
-              startupStages.push('planning-imported');
-              break;
-            case 'production': {
-              vi.stubGlobal('self', nativeSelf); vi.stubGlobal('fetch', originalFetch);
-              const { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } = await import('@/features/transformers-js/worker/production-worker-startup');
-              await startProductionWorkerRuntime({
-                loadEntry: async () => {
-                const entry = await import('@/features/transformers-js/worker/entry');
-                const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
-                return entry.initializeProductionWorkerRuntime({ requestRuntimeModule });
-              },
-                postMessage: ({ message }) => worker.sendFromWorker({ message }),
-              });
-              break;
-            }
-            case 'evidence': await import('@/features/transformers-js/model-support-investigation/evidence-worker/entry'); break;
-            case 'fresh-metadata':
-              vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/fresh-metadata-worker.js') });
-              await import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/entry');
-              break;
-            case 'request-observer':
-              vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/request-observer-worker.js') });
-              await import('@/features/transformers-js/download-verification/model-artifact-request-worker/entry');
-              break;
-            default: { const exhaustive: never = kind; throw new Error('Unexpected Worker: ' + exhaustive); }
-            }
-          },
+                if (kind === 'production') nativeSelf.fetch = originalFetch;
+                vi.stubGlobal('self', kind === 'production' ? nativeSelf : { fetch: planningFetch, location: new NodeUrl(`http://localhost/assets/${kind}-worker.js`) });
+                // Independent runtime modules are essential: request observation
+                // intentionally holds fetch promises until its Worker is killed.
+                const runtime = await loadWorkerRuntime({ kind });
+                vi.doMock('@huggingface/transformers', () => runtime);
+              }
+              // Only module state is fresh; native ports and real one-shot startup
+              // still decide when the host is allowed to use each Worker.
+              vi.resetModules();
+              switch (kind) {
+              case 'planning':
+                vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/planning-worker.js') });
+                await import('@/features/transformers-js/model-support-investigation/worker/entry');
+                startupStages.push('planning-imported');
+                break;
+              case 'production': {
+                vi.stubGlobal('self', nativeSelf); vi.stubGlobal('fetch', originalFetch);
+                const { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } = await import('@/features/transformers-js/worker/production-worker-startup');
+                await startProductionWorkerRuntime({
+                  loadEntry: async () => {
+                    const entry = await import('@/features/transformers-js/worker/entry');
+                    const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
+                    return entry.initializeProductionWorkerRuntime({ requestRuntimeModule });
+                  },
+                  postMessage: ({ message }) => worker.sendFromWorker({ message }),
+                });
+                break;
+              }
+              case 'evidence': await import('@/features/transformers-js/model-support-investigation/evidence-worker/entry'); break;
+              case 'fresh-metadata':
+                vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/fresh-metadata-worker.js') });
+                await import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/entry');
+                break;
+              case 'request-observer':
+                vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/request-observer-worker.js') });
+                await import('@/features/transformers-js/download-verification/model-artifact-request-worker/entry');
+                break;
+              default: { const exhaustive: never = kind; throw new Error('Unexpected Worker: ' + exhaustive); }
+              }
+            },
           });
           this.kind = kind; workers.push(this);
           this.addEventListener('error', event => {
@@ -548,10 +548,10 @@ describe('complete Full collection through Session and actual Worker transports'
       const runStepsSchema = z.object({
         runId: z.string(),
         steps: z.array(z.object({
-        id: z.string(),
-        status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
-        detail: z.string().optional(),
-      })),
+          id: z.string(),
+          status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
+          detail: z.string().optional(),
+        })),
       });
       for (const archive of archives) {
         for (const path of paths.filter(path => path.endsWith('/run.json'))) {

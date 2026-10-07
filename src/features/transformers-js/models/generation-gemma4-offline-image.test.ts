@@ -44,9 +44,9 @@ describe('Gemma 4 offline image preparation', () => {
       messages: [{
         role: 'user',
         content: [
-        { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
-        { type: 'image_url', image_url: { url: imageUrl } },
-      ],
+          { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ],
       }],
     });
 

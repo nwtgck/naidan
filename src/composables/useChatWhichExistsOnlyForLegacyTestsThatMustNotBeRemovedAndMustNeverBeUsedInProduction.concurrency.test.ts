@@ -275,9 +275,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 3. Simulate Tab B moving Chat A into a group
     await storageService.updateHierarchy({
       updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'group-g' }), chat_ids: [chatAId] }];
-      return curr;
-    },
+        curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'group-g' }), chat_ids: [chatAId] }];
+        return curr;
+      },
     });
 
     // 4. Finish background generation
@@ -524,17 +524,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 2. Move to Group B
     await storageService.updateHierarchy({
       updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-b' }), chat_ids: [chatAId] }];
-      return curr;
-    },
+        curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-b' }), chat_ids: [chatAId] }];
+        return curr;
+      },
     });
 
     // 3. Move to Group C
     await storageService.updateHierarchy({
       updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-c' }), chat_ids: [chatAId] }];
-      return curr;
-    },
+        curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-c' }), chat_ids: [chatAId] }];
+        return curr;
+      },
     });
 
     // 4. Finish generation

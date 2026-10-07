@@ -92,8 +92,8 @@ function matchesRangeEndAddress({
     const targetLine = addSedUnsigned64({
       left: startLineValue,
       right: remainder === 0n
-          ? endAddress.modulus
-          : endAddress.modulus - remainder,
+        ? endAddress.modulus
+        : endAddress.modulus - remainder,
     });
     return BigInt(lineNumber) >= targetLine;
   }

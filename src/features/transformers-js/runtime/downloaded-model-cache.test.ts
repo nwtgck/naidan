@@ -99,15 +99,15 @@ describe('createDownloadedModelReadOnlyCache', () => {
   it('preserves an explicitly selected user model while excluding another local model', async () => {
     const root = opfsDirectory({
       node: {
-      models: {
-      user: {
-      uploaded: {
-      'config.json': file({ bytes: '{"source":"uploaded-user"}' }),
-      '.config.json.complete': file({ bytes: '' }),
-    },
-    },
-    },
-    },
+        models: {
+          user: {
+            uploaded: {
+              'config.json': file({ bytes: '{"source":"uploaded-user"}' }),
+              '.config.json.complete': file({ bytes: '' }),
+            },
+          },
+        },
+      },
     });
     vi.stubGlobal('self', { location: new URL('https://app.example.test/assets/worker.js') });
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(root) } });
@@ -123,15 +123,15 @@ describe('createDownloadedModelReadOnlyCache', () => {
   it('preserves an explicitly selected local model through its existing OPFS user mapping', async () => {
     const root = opfsDirectory({
       node: {
-      models: {
-      user: {
-      uploaded: {
-      'config.json': file({ bytes: '{"source":"uploaded-local"}' }),
-      '.config.json.complete': file({ bytes: '' }),
-    },
-    },
-    },
-    },
+        models: {
+          user: {
+            uploaded: {
+              'config.json': file({ bytes: '{"source":"uploaded-local"}' }),
+              '.config.json.complete': file({ bytes: '' }),
+            },
+          },
+        },
+      },
     });
     vi.stubGlobal('self', { location: new URL('https://app.example.test/assets/worker.js') });
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(root) } });

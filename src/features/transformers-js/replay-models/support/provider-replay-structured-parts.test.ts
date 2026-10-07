@@ -23,9 +23,9 @@ describe('structured parts Full replay contract', () => {
       {
         kind: 'assistant',
         parts: [
-        { type: 'reasoning', text: 'private', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup', arguments: '{"city":"Tokyo"}' },
-      ],
+          { type: 'reasoning', text: 'private', completeness: 'complete' },
+          { type: 'tool_call', name: 'lookup', arguments: '{"city":"Tokyo"}' },
+        ],
         terminal: { type: 'none' },
       },
       { kind: 'tool-success', call: 1, content: 'clear' },
@@ -53,19 +53,19 @@ describe('structured parts Full replay contract', () => {
       scenario: 'first-turn' as const,
       settlement: 'fulfilled' as const,
       events: [{
-      kind: 'assistant' as const,
-      parts: [{ type: 'text' as const, text: 'partial', completeness: 'partial' as const }],
-      terminal: { type: 'none' as const },
-    }],
+        kind: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'partial', completeness: 'partial' as const }],
+        terminal: { type: 'none' as const },
+      }],
     };
     verifyStructuredPartsObservation({ events: noResult, expected: fulfilled, settlement: 'fulfilled' });
     verifyStructuredPartsObservation({ events: noResult, expected: { ...fulfilled, settlement: 'rejected' }, settlement: 'rejected' });
     expect(() => verifyStructuredPartsObservation({ events: noResult, expected: fulfilled, settlement: 'rejected' })).toThrow(/settlement/);
     expect(TEST_ONLY.projectStructuredEvents({
       events: [
-      ...noResult,
-      { kind: 'generation_error', errorName: 'Error', sequence: 2, phase: 'before-settlement' },
-    ],
+        ...noResult,
+        { kind: 'generation_error', errorName: 'Error', sequence: 2, phase: 'before-settlement' },
+      ],
     })).toEqual([{ kind: 'assistant', parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], terminal: { type: 'error', errorName: 'Error' } }]);
   });
 
@@ -143,32 +143,32 @@ describe('structured parts Full replay contract', () => {
     expect(() => validateStructuredPartsContract({
       evidence,
       contract: {
-      completionTokenIds: ['2', '2'],
-      endTokenIds: ['2'],
-      invocations: [],
-      requests: [],
-    },
+        completionTokenIds: ['2', '2'],
+        endTokenIds: ['2'],
+        invocations: [],
+        requests: [],
+      },
     })).toThrow(/Duplicate/);
     expect(() => validateStructuredPartsContract({
       evidence,
       contract: {
-      completionTokenIds: ['2'],
-      endTokenIds: ['2'],
-      invocations: [{ callOrdinal: 999, terminal: { kind: 'control', tokenId: '2' } }],
-      requests: [],
-    },
+        completionTokenIds: ['2'],
+        endTokenIds: ['2'],
+        invocations: [{ callOrdinal: 999, terminal: { kind: 'control', tokenId: '2' } }],
+        requests: [],
+      },
     })).toThrow(/Unknown/);
     expect(() => validateStructuredPartsContract({
       evidence,
       contract: {
-      completionTokenIds: ['2'],
-      endTokenIds: ['2'],
-      invocations: [{
-        callOrdinal: evidence.invocations[0]!.callOrdinal,
-        terminal: { kind: 'control', tokenId: '2', trailerTokenIds: ['not-a-token-id'] },
-      }],
-      requests: [],
-    },
+        completionTokenIds: ['2'],
+        endTokenIds: ['2'],
+        invocations: [{
+          callOrdinal: evidence.invocations[0]!.callOrdinal,
+          terminal: { kind: 'control', tokenId: '2', trailerTokenIds: ['not-a-token-id'] },
+        }],
+        requests: [],
+      },
     })).toThrow();
     expect(evidence).toEqual(before);
   });

@@ -28,8 +28,8 @@ it('rejects a non-byte chunk rather than silently dropping it', async () => {
   const cancel = vi.fn();
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
-    controller.enqueue('not bytes' as unknown as Uint8Array);
-  },
+      controller.enqueue('not bytes' as unknown as Uint8Array);
+    },
     cancel,
   });
   await expect(collectBytes({ readable, limit: 32, signal: new AbortController().signal })).rejects.toThrow('byte');
@@ -59,15 +59,15 @@ it('bounds a local tool schema before recursive Zod validation, including cyclic
   const input = {
     model: 'local/model',
     messages: [{
-    role: 'user' as const,
-    content: 'hello',
-    reasoning_content: undefined,
-    tool_calls: undefined,
-    tool_call_id: undefined,
-    name: undefined,
-  }],
+      role: 'user' as const,
+      content: 'hello',
+      reasoning_content: undefined,
+      tool_calls: undefined,
+      tool_call_id: undefined,
+      name: undefined,
+    }],
     tools: undefined,
-  temperature: 0.7,
+    temperature: 0.7,
     topP: 0.9,
     maxTokens: 10,
     reasoningEffort: undefined,

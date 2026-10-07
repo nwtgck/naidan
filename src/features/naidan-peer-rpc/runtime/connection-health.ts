@@ -67,15 +67,15 @@ export async function monitorRpcConnection({ signal, confirmResponse, idleRevisi
         await confirmResponse({
           signal: controller.signal,
           onRequestStarted: () => {
-          if (started || controller.signal.aborted) return;
-          started = true;
-          const monotonic = performance.now(), wall = Date.now();
-          timer = setTimeout(() => {
-            const elapsed = performance.now() - monotonic, elapsedWall = Date.now() - wall;
-            const delayed = elapsed < 0 || elapsedWall < 0 || elapsed > responseMs + suspensionToleranceMs || elapsedWall > responseMs + suspensionToleranceMs || Math.abs(elapsed - elapsedWall) > suspensionToleranceMs;
-            controller.abort(delayed ? suspension : timeout);
-          }, responseMs);
-        },
+            if (started || controller.signal.aborted) return;
+            started = true;
+            const monotonic = performance.now(), wall = Date.now();
+            timer = setTimeout(() => {
+              const elapsed = performance.now() - monotonic, elapsedWall = Date.now() - wall;
+              const delayed = elapsed < 0 || elapsedWall < 0 || elapsed > responseMs + suspensionToleranceMs || elapsedWall > responseMs + suspensionToleranceMs || Math.abs(elapsed - elapsedWall) > suspensionToleranceMs;
+              controller.abort(delayed ? suspension : timeout);
+            }, responseMs);
+          },
         });
         misses = 0; changed({ state: 'responsive' });
       } catch (error) {

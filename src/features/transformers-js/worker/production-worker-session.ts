@@ -116,9 +116,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
       }).catch(error => {
         if (!terminalError) terminate({
           error: new ProductionWorkerLifecycleError({
-          reason: 'initialization-failed',
-          message: error instanceof Error ? error.message : String(error),
-        }),
+            reason: 'initialization-failed',
+            message: error instanceof Error ? error.message : String(error),
+          }),
           releaseIdleRemote: false,
         });
       });

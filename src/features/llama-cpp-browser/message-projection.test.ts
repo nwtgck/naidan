@@ -100,18 +100,18 @@ describe('parts to llama.cpp input', () => {
     const raw = '\uFEFF  🙂\r\n';
     const prepared = await prepareLlamaCppRequest({
       ...request({
-      messages: [
-      { id, role: 'assistant', parts: [call()] },
-      {
-        id,
-        role: 'tool',
-        parts: [
-        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
-        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
-      ],
-      },
-    ],
-    }),
+        messages: [
+          { id, role: 'assistant', parts: [call()] },
+          {
+            id,
+            role: 'tool',
+            parts: [
+              { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
+              { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+            ],
+          },
+        ],
+      }),
       readBinaryObject: async () => new Blob([raw]),
     });
     expect(prepared.messages.slice(1)).toEqual([{ role: 'tool', tool_call_id: 'call', name: 'calculator', content: raw }, { role: 'tool', tool_call_id: 'call', name: 'calculator', content: 'Error [other]: 失敗' }]);
@@ -129,8 +129,8 @@ describe('parts to llama.cpp input', () => {
       ...request({ messages: [{ id, role: 'user', parts: [image({ status: 'persisted' })] }] }),
       signal: controller.signal,
       readBinaryObject: async () => {
-      controller.abort(); return new Blob();
-    },
+        controller.abort(); return new Blob();
+      },
     })).rejects.toThrow();
   });
 });

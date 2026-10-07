@@ -29,8 +29,8 @@ describe('window and Blob Worker OPFS agreement', () => {
     const entered = Promise.withResolvers<void>(); const controller = new AbortController();
     const operation = verifySharedStorage({
       verify: () => {
-      entered.resolve(); return new Promise(() => {});
-    },
+        entered.resolve(); return new Promise(() => {});
+      },
       signal: controller.signal,
     });
     const rejection = expect(operation).rejects.toThrow('aborted');
@@ -42,8 +42,8 @@ describe('window and Blob Worker OPFS agreement', () => {
     const entered = Promise.withResolvers<void>();
     const operation = verifySharedStorage({
       verify: () => {
-      entered.resolve(); return new Promise(() => {});
-    },
+        entered.resolve(); return new Promise(() => {});
+      },
       signal: undefined,
     });
     const rejection = expect(operation).rejects.toThrow('worker-failed');

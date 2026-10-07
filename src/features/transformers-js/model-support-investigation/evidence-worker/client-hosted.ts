@@ -167,8 +167,8 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       if (disposed || workerTerminated) throw new Error('Model Support Investigation Evidence Worker client is disposed');
       return await runExportOperation({
         operation: remote.createRetainedDownloadTimingEvidence({
-        request: createOrdinaryDownloadTimingEvidenceFile({ snapshot, association: { kind: 'retained-export', exportId, investigation: 'not-run' } }),
-      }),
+          request: createOrdinaryDownloadTimingEvidenceFile({ snapshot, association: { kind: 'retained-export', exportId, investigation: 'not-run' } }),
+        }),
       });
     },
     async dispose() {

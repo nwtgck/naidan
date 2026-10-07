@@ -80,10 +80,10 @@ export async function applyImageGenerationPromptEdit({ target, edit, signal, rea
   const approval = await ensureApproval({
     chatId: accepted.chatId,
     change: {
-    field: acceptedEdit.field,
-    before: accepted[acceptedEdit.field],
-    after: acceptedEdit.value,
-  },
+      field: acceptedEdit.field,
+      before: accepted[acceptedEdit.field],
+      after: acceptedEdit.value,
+    },
     signal,
   });
   // This check also runs for a previously stored allow-for-chat/global grant.

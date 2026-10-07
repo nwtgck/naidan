@@ -19,8 +19,8 @@ function harness() {
     modelResident,
     supported,
     setClient({ value }: { value: ImageClient | undefined }) {
-    current = value;
-  },
+      current = value;
+    },
   };
 }
 it('does not inspect before opening or during closed lifecycle events, and never creates a missing client', async () => {

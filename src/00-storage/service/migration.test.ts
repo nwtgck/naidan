@@ -153,10 +153,10 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.saveChatMeta({ meta: mockChat });
     await provider.saveHierarchy({
       hierarchy: {
-      items: [
-        { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
-      ],
-    },
+        items: [
+          { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+        ],
+      },
     });
 
     // 2. Dump
@@ -183,9 +183,9 @@ describe('Storage Migration (Round-Trip)', () => {
     }
     await provider.restore({
       snapshot: {
-      structure: snapshot.structure,
-      contentStream: arrayToGenerator(chunks),
-    },
+        structure: snapshot.structure,
+        contentStream: arrayToGenerator(chunks),
+      },
     });
 
     // 5. Verify Data Integrity

@@ -46,8 +46,8 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
       settings,
       initialized: ready,
       captureStorage() {
-      const captured = generation; return () => captured === generation;
-    },
+        const captured = generation; return () => captured === generation;
+      },
       updateForStorage,
       form,
       seedMode,
@@ -77,8 +77,8 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
       onSelection,
       list,
       replaceStorage() {
-      generation++;
-    },
+        generation++;
+      },
     };
   })!;
 }
@@ -165,10 +165,10 @@ it('restores exact host/OPFS locations, explicit component none and LoRA control
   const sameNamed = { ...entries[0]!, id: 'other', hostSource: { directoryId: 'other-root', directoryName: 'Other', repository: 'org/image' } };
   const saved: BrowserImageGenerationSettings = {
     modelSelection: {
-    primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
-    components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/2/text.gguf' } } }],
-    loras: [{ location: { kind: 'opfs', path: 'models/user/3/adapter.gguf' }, enabled: 'disabled', strength: 0.7 }],
-  },
+      primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
+      components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/2/text.gguf' } } }],
+      loras: [{ location: { kind: 'opfs', path: 'models/user/3/adapter.gguf' }, enabled: 'disabled', strength: 0.7 }],
+    },
     preview: { enabled: 'enabled', mode: 'projection' },
     width: 768,
   };

@@ -52,9 +52,9 @@ describe('explicit Causal planner prepass control', () => {
       fixture,
       dtype,
       expectedConsumedPaths: [
-      `onnx/decoder_model_merged_${dtype}.onnx`, `onnx/decoder_model_merged_${dtype}.onnx_data`,
-      `onnx/embed_tokens_${dtype}.onnx`, `onnx/embed_tokens_${dtype}.onnx_data`,
-    ],
+        `onnx/decoder_model_merged_${dtype}.onnx`, `onnx/decoder_model_merged_${dtype}.onnx_data`,
+        `onnx/embed_tokens_${dtype}.onnx`, `onnx/embed_tokens_${dtype}.onnx_data`,
+      ],
     });
   });
 });

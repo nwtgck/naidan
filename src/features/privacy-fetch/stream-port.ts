@@ -124,10 +124,10 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
   return {
     response,
     dispose: () => {
-    fail({ code: 'broker_disposed' });
-    // The iframe may already be gone; disposal cannot wait for a remote acknowledgement.
-    release();
-  },
+      fail({ code: 'broker_disposed' });
+      // The iframe may already be gone; disposal cannot wait for a remote acknowledgement.
+      release();
+    },
   };
 }
 

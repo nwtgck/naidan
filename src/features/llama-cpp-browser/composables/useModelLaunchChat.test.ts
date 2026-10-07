@@ -34,21 +34,21 @@ const currentChat = shallowRef<Chat | null>(null);
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, captureModelLaunchDefaults: capture, initializeModelLaunchDefaults: initialize }) }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
-  prepareModel: (args: unknown) => prepareModel(args),
-  getState: () => getState(),
-  subscribe: vi.fn(() => () => {}),
-  subscribeModelList: ({ listener }: { listener: () => void }) => {
-  modelListListener = listener; return () => {
-    modelListListener = undefined;
-  };
-},
-},
+    prepareModel: (args: unknown) => prepareModel(args),
+    getState: () => getState(),
+    subscribe: vi.fn(() => () => {}),
+    subscribeModelList: ({ listener }: { listener: () => void }) => {
+      modelListListener = listener; return () => {
+        modelListListener = undefined;
+      };
+    },
+  },
 }));
 vi.mock('../hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => queue }));
 vi.mock('../hugging-face/storage', () => ({
   repositoryFolder: vi.fn(async () => {
-  throw new Error('missing');
-}),
+    throw new Error('missing');
+  }),
   readJournal: vi.fn(),
   isMissing: () => true,
 }));
@@ -56,19 +56,19 @@ vi.mock('../model-launch/readiness', async importOriginal => ({ ...await importO
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-  getModelLaunch: () => launchEnabled ? activeLaunch : undefined,
-  prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
-  captureModelLaunchStorage: () => {
-  const version = storageVersion; return () => version === storageVersion;
-},
-  loadChat: async () => currentChat.value,
-},
+    getModelLaunch: () => launchEnabled ? activeLaunch : undefined,
+    prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
+    captureModelLaunchStorage: () => {
+      const version = storageVersion; return () => version === storageVersion;
+    },
+    loadChat: async () => currentChat.value,
+  },
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   loadData: vi.fn(async () => {}),
   registerLiveInstance: ({ chat }: { chat: Chat }) => {
-  currentChat.value = chat;
-},
+    currentChat.value = chat;
+  },
 }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M','Q8_0'].map(quant => ({ label: quant, size: 256, files: [{ path: `Model-${quant}.gguf`, size: 256 }] })) };
 const base = resolveModelLaunchTarget({ input: catalog.repository, catalog });

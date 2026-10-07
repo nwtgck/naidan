@@ -35,12 +35,12 @@ export function createTransformersJsFixesPlugin({ projectRoot }: { projectRoot: 
         code: result.code,
         map: result.map,
         meta: {
-        naidanTransformersJsFixes: {
-        patchId: TRANSFORMERS_JS_FIXES_PROVENANCE.patchId,
-        originalSha256: result.originalSha256,
-        transformedSha256: result.transformedSha256,
-      },
-      },
+          naidanTransformersJsFixes: {
+            patchId: TRANSFORMERS_JS_FIXES_PROVENANCE.patchId,
+            originalSha256: result.originalSha256,
+            transformedSha256: result.transformedSha256,
+          },
+        },
       };
     },
   };

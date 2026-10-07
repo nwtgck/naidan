@@ -23,8 +23,8 @@ function fixture() {
       signal,
       start: onRequestStarted,
       confirm: () => {
-      cleanup(); resolve();
-    },
+        cleanup(); resolve();
+      },
     });
     if (signal.aborted) abort();
   }));
@@ -44,8 +44,8 @@ function fixture() {
     changed,
     unresponsive,
     idle: ({ revision }: { revision: number | undefined }) => {
-    idle = revision;
-  },
+      idle = revision;
+    },
   };
 }
 

@@ -382,9 +382,9 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(duringContinuity).toEqual({
       assistant: [],
       firstEvents: [
-      { kind: 'assistant_message', messageId: 'capture_assistant_0', phase: 'before-settlement', sequence: 0 },
-      { kind: 'generation_finished', next: 'user', phase: 'before-settlement', sequence: 1 },
-    ],
+        { kind: 'assistant_message', messageId: 'capture_assistant_0', phase: 'before-settlement', sequence: 0 },
+        { kind: 'generation_finished', next: 'user', phase: 'before-settlement', sequence: 1 },
+      ],
     });
     expect(result.run).toEqual({ status: 'completed' });
     expect(result.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', parts: [] });

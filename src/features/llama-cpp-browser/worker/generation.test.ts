@@ -35,46 +35,46 @@ const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ??
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), companion: false, openCompanion: vi.fn(), core: undefined as Core | undefined }));
 vi.mock('../runtime/model-store', () => ({
   storedModelDirectory: async () => ({
-  id: 'user/private-local-name-GGUF',
-  name: 'fixture',
-  modelPath: 'fixture.gguf',
-  projectorPath: host.companion ? 'mmproj.gguf' : undefined,
-  files: [{
-  path: 'fixture.gguf',
-  file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }),
-  handle: {
-  isSameEntry: async () => host.sameFile,
-  createSyncAccessHandle: async () => ({
-  getSize: () => host.bytes.length,
-  read: (target: Uint8Array, { at }: { at: number }) => {
-    host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
-  },
-  close: host.close,
-}),
-},
-}, ...(host.companion ? [{ path: 'mmproj.gguf', file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }), handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } }] : [])],
-}),
+    id: 'user/private-local-name-GGUF',
+    name: 'fixture',
+    modelPath: 'fixture.gguf',
+    projectorPath: host.companion ? 'mmproj.gguf' : undefined,
+    files: [{
+      path: 'fixture.gguf',
+      file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }),
+      handle: {
+        isSameEntry: async () => host.sameFile,
+        createSyncAccessHandle: async () => ({
+          getSize: () => host.bytes.length,
+          read: (target: Uint8Array, { at }: { at: number }) => {
+            host.reads++; host.maxRead = Math.max(host.maxRead, target.length); const n = Math.min(target.length, host.bytes.length - at); target.set(host.bytes.subarray(at, at + n)); return n;
+          },
+          close: host.close,
+        }),
+      },
+    }, ...(host.companion ? [{ path: 'mmproj.gguf', file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }), handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } }] : [])],
+  }),
 }));
 vi.mock('../runtime/load-runtime', () => ({
   loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
-  const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
-  host.modelLoads++;
-  host.core = await createCore({
-    profile: integrationProfile,
-    baseURL: pathToFileURL(folder + '/profiles/'),
-    moduleOptions: {
-    wasmBinary: await readFile(path.join(folder, `profiles/${integrationProfile}/browser/core.wasm`)),
-    print() {},
-    printErr() {},
+    const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
+    host.modelLoads++;
+    host.core = await createCore({
+      profile: integrationProfile,
+      baseURL: pathToFileURL(folder + '/profiles/'),
+      moduleOptions: {
+        wasmBinary: await readFile(path.join(folder, `profiles/${integrationProfile}/browser/core.wasm`)),
+        print() {},
+        printErr() {},
+      },
+    });
+    expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm32-jspi': 4, 'webgpu-wasm64-jspi': 8, 'webgpu-wasm32-asyncify': 4 }[integrationProfile]);
+    const setField = host.core.setField;
+    host.core.setField = args => setField({ ...args, value: args.name === 'llama_model_params' && args.field === 'n_gpu_layers' ? 0 : args.value });
+    await host.core.api.llama_backend_init();
+    return host.core;
   },
-  });
-  expect(host.core.pointerBytes).toBe({ 'cpu-wasm32': 4, 'cpu-wasm64': 8, 'webgpu-wasm32-jspi': 4, 'webgpu-wasm64-jspi': 8, 'webgpu-wasm32-asyncify': 4 }[integrationProfile]);
-  const setField = host.core.setField;
-  host.core.setField = args => setField({ ...args, value: args.name === 'llama_model_params' && args.field === 'n_gpu_layers' ? 0 : args.value });
-  await host.core.api.llama_backend_init();
-  return host.core;
-},
 }));
 afterAll(async () => {
   await releaseSession({ releaseRuntime: true });
@@ -171,10 +171,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       core: {
         ...core,
         bytes({ pointer, length }) {
-        const view = core.bytes({ pointer, length });
-        view.slice = copy;
-        return view;
-      },
+          const view = core.bytes({ pointer, length });
+          view.slice = copy;
+          return view;
+        },
       },
       vocab,
       cacheMode,
@@ -304,7 +304,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(await sequencePosition()).toBe(10 + limit - 2);
     const next = request({
       messages: [{ role: 'user', content: 'aaaaaaaaX' },
-      { role: 'assistant', content: result.content }, { role: 'user', content: 'XX' }],
+        { role: 'assistant', content: result.content }, { role: 'user', content: 'XX' }],
     });
     next.stop = ['A', 'B'];
     const batch = vi.spyOn(session.core.api, 'llama_batch_get_one');
@@ -340,8 +340,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
         signal: controller.signal,
         onEvent: () => {},
         onProgress: ({ progress }) => {
-        if (progress.phase === 'generating') controller.abort();
-      },
+          if (progress.phase === 'generating') controller.abort();
+        },
       })).rejects.toThrow('aborted');
       expect(decode).toHaveBeenCalledOnce();
       expect(session.cache.validity).toBe('invalid');
@@ -434,10 +434,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
         request: req,
         signal: undefined,
         onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        chunks.push(chunk);
-      },
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          chunks.push(chunk);
+        },
         onProgress: () => {},
       });
       expect(chunks.join('')).toBe('AAAAA');
@@ -463,13 +463,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       request: next,
       signal: undefined,
       onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      reused.push(chunk);
-    },
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        reused.push(chunk);
+      },
       onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    },
+        phases.push(progress.phase);
+      },
     });
     expect(host.reads).toBe(reads); expect(host.close).toHaveBeenCalledTimes(closes);
     expect(sessionTesting.residentContext()).toBe(initialContext);
@@ -481,10 +481,10 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       request: next,
       signal: undefined,
       onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      cold.push(chunk);
-    },
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        cold.push(chunk);
+      },
       onProgress: () => {},
     });
     expect(cold).toEqual(reused); expect(host.reads).toBeGreaterThan(reads);
@@ -499,8 +499,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       signal: undefined,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    },
+        phases.push(progress.phase);
+      },
     });
     expect(host.reads).toBe(reads); expect(phases).not.toContain('initializing'); expect(phases).not.toContain('loading');
     expect(await host.core!.api.llama_n_ctx(sessionTesting.residentContext()!)).toBe(256);
@@ -513,8 +513,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       signal: undefined,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    },
+        phases.push(progress.phase);
+      },
     });
     expect(host.reads).toBeGreaterThan(reads); expect(phases).toContain('loading');
   }, 30000);
@@ -526,8 +526,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       signal: controller.signal,
       onEvent: chunks,
       onProgress: ({ progress }) => {
-      if (progress.phase === 'prefill' && progress.completed > 0) controller.abort();
-    },
+        if (progress.phase === 'prefill' && progress.completed > 0) controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(chunks).not.toHaveBeenCalled(); expect(host.reads).toBe(reads);
     const generated: string[] = []; const phases: string[] = [];
@@ -535,13 +535,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       request: req,
       signal: undefined,
       onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      const chunk = event.text;
-      generated.push(chunk);
-    },
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        generated.push(chunk);
+      },
       onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    },
+        phases.push(progress.phase);
+      },
     });
     expect(generated.length).toBeGreaterThan(0); expect(host.reads).toBe(reads); expect(phases).not.toContain('loading');
   }, 30000);
@@ -606,8 +606,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       signal: controller.signal,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      if (progress.phase === 'loading') controller.abort();
-    },
+        if (progress.phase === 'loading') controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(host.close).toHaveBeenCalledTimes(closes + 1);
     const phases: string[] = [];
@@ -616,8 +616,8 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       signal: undefined,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      phases.push(progress.phase);
-    },
+        phases.push(progress.phase);
+      },
     });
     expect(host.reads).toBeGreaterThan(reads); expect(phases).toContain('loading');
     expect(host.close).toHaveBeenCalledTimes(closes + 2);
@@ -1121,8 +1121,8 @@ user:Q ;assistant: R
         request: req,
         signal: controller.signal,
         onEvent: () => {
-        if (failure === 'cancelled') controller.abort();
-      },
+          if (failure === 'cancelled') controller.abort();
+        },
         onProgress: () => {},
       })).rejects.toThrow();
       decode.mockClear(); batch.mockClear(); clear.mockClear();
@@ -1160,10 +1160,10 @@ user:Q ;assistant: R
         request: req,
         signal: undefined,
         onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        chunks.push(chunk);
-      },
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          chunks.push(chunk);
+        },
         onProgress: () => {},
       });
       expect(chunks.join('').length).toBeGreaterThan(1024);
@@ -1175,10 +1175,10 @@ user:Q ;assistant: R
         request: { ...req, maxTokens: 3 },
         signal: undefined,
         onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        limited.push(chunk);
-      },
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          limited.push(chunk);
+        },
         onProgress: () => {},
       });
       expect(limited.join('')).toBe('AAA');
@@ -1187,10 +1187,10 @@ user:Q ;assistant: R
         request: { ...req, maxTokens: 65536 },
         signal: undefined,
         onEvent: ({ event }) => {
-        if (event.type !== 'text') return;
-        const chunk = event.text;
-        oversized.push(chunk);
-      },
+          if (event.type !== 'text') return;
+          const chunk = event.text;
+          oversized.push(chunk);
+        },
         onProgress: () => {},
       });
       expect(oversized.join('')).toBe(chunks.join(''));
@@ -1347,15 +1347,15 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       tools: [{
         type: 'function',
         function: {
-        name: 'lookup',
-        description: 'Look up a city',
-        parameters: {
-        type: 'object',
-        properties: { city: { type: 'string' } },
-        required: ['city'],
-        additionalProperties: false,
-      },
-      },
+          name: 'lookup',
+          description: 'Look up a city',
+          parameters: {
+            type: 'object',
+            properties: { city: { type: 'string' } },
+            required: ['city'],
+            additionalProperties: false,
+          },
+        },
       }],
     };
     // A valid JSON object still does not confirm a call without a native stop.
@@ -1374,15 +1374,15 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         signal: controller.signal,
         onProgress: () => {},
         onEvent: ({ event }) => {
-        events.push(event);
-        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-          expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
-          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-          previews.push(argumentsText);
-          expect(events.some(value => value.type === 'tool_call')).toBe(false);
-          if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
-        }
-      },
+          events.push(event);
+          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+            expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
+            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+            previews.push(argumentsText);
+            expect(events.some(value => value.type === 'tool_call')).toBe(false);
+            if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
+          }
+        },
       });
       if (termination === 'aborted') await expect(pending).rejects.toThrow();
       else {
@@ -1421,10 +1421,10 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         content: '',
         reasoningContent: '',
         toolCalls: [{
-        id: '',
-        type: 'function',
-        function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
-      }],
+          id: '',
+          type: 'function',
+          function: { name: text.length < 2 ? 'look' : 'lookup', arguments: text.length < 2 ? firstArguments : finalArguments },
+        }],
       }),
     }));
     let count = 0;
@@ -1438,13 +1438,13 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         signal: undefined,
         onProgress: () => {},
         onEvent: ({ event }) => {
-        events.push(event);
-        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-          expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
-          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-          snapshots.push(argumentsText);
-        }
-      },
+          events.push(event);
+          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+            expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
+            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+            snapshots.push(argumentsText);
+          }
+        },
       });
       expect(snapshots).toContain(firstArguments);
       expect(argumentsText).toBe(finalArguments);
@@ -1469,8 +1469,8 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         signal: undefined,
         onProgress: () => {},
         onEvent: async () => {
-        entered = true;await gate.promise;
-      },
+          entered = true;await gate.promise;
+        },
       });
       await vi.waitFor(() => expect(entered).toBe(true));expect(sample).toHaveBeenCalledOnce();
       await new Promise<void>(resolve => setTimeout(resolve, 10));expect(sample).toHaveBeenCalledOnce();
@@ -1496,8 +1496,8 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         signal: undefined,
         onProgress: () => {},
         onEvent: ({ event }) => {
-        events.push(event);
-      },
+          events.push(event);
+        },
       })).rejects.toThrow('controlled decode failure');
       expect(events).toEqual([{ type: 'text', text: 'A' }]);
     } finally {
@@ -1539,8 +1539,8 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         signal: undefined,
         onProgress: () => {},
         onEvent: ({ event }) => {
-        events.push(event);
-      },
+          events.push(event);
+        },
       });
       expect(result).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
       expect(events.filter(e => e.type === 'reasoning').map(e => e.text).join('')).toBe('Reason');
@@ -1627,8 +1627,8 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     expect(checkpoint.tokens).toEqual([1, ...byteTokens({ text: scenario === 'shortened-header' ? 'aaaaaaa' : 'aaaaaaaa' })]);
     const next = request({
       messages: scenario === 'reasoning-omission'
-      ? [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: '', reasoning_content: old.content }, { role: 'user', content: 'bbbb' }]
-      : [{ role: 'user', content: scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaa' }],
+        ? [{ role: 'user', content: 'aaaaaaaa' }, { role: 'assistant', content: '', reasoning_content: old.content }, { role: 'user', content: 'bbbb' }]
+        : [{ role: 'user', content: scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaa' }],
     });
     next.stop = ['A', 'B'];
     const expectedText = scenario === 'reasoning-omission' ? 'aaaaaaaabbbbGG' : scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaaGG';
@@ -1840,10 +1840,10 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
-      chunks.push(event.text);
-    },
+        if (event.type !== 'text') return;
+        if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
+        chunks.push(event.text);
+      },
     });
     const tokens = session.cache.tokens.slice();
     const position = await sequencePosition();
@@ -1870,8 +1870,8 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') reference.push(event.text);
-    },
+        if (event.type === 'text') reference.push(event.text);
+      },
     });
     expect(perToken).toEqual(result);
     expect(reference).toHaveLength(33);
@@ -1895,8 +1895,8 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    },
+        if (event.type === 'text') chunks.push(event.text);
+      },
     });
     expect(chunks).toEqual(['A', 'AAA', 'A']);
   }, 30000);
@@ -1914,8 +1914,8 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    },
+        if (event.type === 'text') chunks.push(event.text);
+      },
     });
     expect(result.content).toBe(text);
     expect(chunks.join('')).toBe(text);
@@ -1935,8 +1935,8 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    },
+        if (event.type === 'text') chunks.push(event.text);
+      },
     });
     expect(result.content).toBe('axy'); expect(result.finishReason).toBe('stop_sequence');
     expect(sampled).toBe(7); expect(chunks).toEqual(['a', 'xy']);
@@ -1964,11 +1964,11 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       request: req,
       signal: controller.signal,
       onProgress: ({ progress }) => {
-      if (failure === 'aborted' && progress.phase === 'generating' && progress.completed === 3) controller.abort();
-    },
+        if (failure === 'aborted' && progress.phase === 'generating' && progress.completed === 3) controller.abort();
+      },
       onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    },
+        if (event.type === 'text') chunks.push(event.text);
+      },
     })).rejects.toThrow(failure === 'aborted' ? 'aborted' : failure === 'decode-failure' ? 'runtime-error' : 'controlled sample failure');
     expect(chunks).toEqual(['A', 'AA']);
     expect(sample).toHaveBeenCalledTimes(failure === 'sample-failure' ? 4 : 3);
@@ -1990,13 +1990,13 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: controller.signal,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type !== 'text') return;
-      chunks.push(event.text);
-      if (chunks.length === 2) {
-        if (failure === 'reject') throw new Error('controlled delivery failure');
-        controller.abort();
-      }
-    },
+        if (event.type !== 'text') return;
+        chunks.push(event.text);
+        if (chunks.length === 2) {
+          if (failure === 'reject') throw new Error('controlled delivery failure');
+          controller.abort();
+        }
+      },
     })).rejects.toThrow(failure === 'reject' ? 'controlled delivery failure' : 'aborted');
     expect(chunks).toEqual(['A', 'AAAAAAAA']);
     expect(sample).toHaveBeenCalledTimes(9);
@@ -2014,10 +2014,10 @@ describe('bounded partial-output parsing in the native generation loop', () => {
       signal: controller.signal,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') {
-        chunks.push(event.text); controller.abort();
-      }
-    },
+        if (event.type === 'text') {
+          chunks.push(event.text); controller.abort();
+        }
+      },
     })).rejects.toThrow('aborted');
     expect(chunks).toEqual(['A']); expect(session.cache.validity).toBe('invalid');
   }, 30000);
@@ -2276,11 +2276,11 @@ describe('bounded task yields through the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') {
-        if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
-        chunks.push(event.text);
-      }
-    },
+        if (event.type === 'text') {
+          if (chunks.length === 0) expect(sample).toHaveBeenCalledOnce();
+          chunks.push(event.text);
+        }
+      },
     });
     const state = { tokens: session.cache.tokens.slice(), position: await sequencePosition(), logits: await readNativeLogits() };
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
@@ -2340,11 +2340,11 @@ describe('bounded task yields through the native generation loop', () => {
         request: req,
         signal: controller.signal,
         onEvent: ({ event }) => {
-        if (event.type === 'text') chunks.push(event.text);
-      },
+          if (event.type === 'text') chunks.push(event.text);
+        },
         onProgress: ({ progress }) => {
-        if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
-      },
+          if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
+        },
       })).rejects.toThrow('aborted');
       const expectedDecodes = scheduleAt === 1 ? 1 : 5;
       expect(sample).toHaveBeenCalledTimes(expectedDecodes);
@@ -2369,8 +2369,8 @@ describe('bounded task yields through the native generation loop', () => {
       signal: controller.signal,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      if (progress.phase === 'generating' && progress.completed === 2) controller.abort();
-    },
+        if (progress.phase === 'generating' && progress.completed === 2) controller.abort();
+      },
     })).rejects.toThrow('aborted');
     expect(sample).toHaveBeenCalledTimes(2); expect(session.cache.validity).toBe('invalid');
   }, 30000);
@@ -2387,10 +2387,10 @@ describe('bounded task yields through the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: async ({ event }) => {
-      if (event.type === 'text' && ++events === 2) {
-        entered.resolve(); await gate.promise;
-      }
-    },
+        if (event.type === 'text' && ++events === 2) {
+          entered.resolve(); await gate.promise;
+        }
+      },
     });
     try {
       await entered.promise;
@@ -2411,8 +2411,8 @@ describe('bounded task yields through the native generation loop', () => {
       signal: undefined,
       onEvent: () => {},
       onProgress: ({ progress }) => {
-      if (progress.phase === 'generating') yieldTime += 8;
-    },
+        if (progress.phase === 'generating') yieldTime += 8;
+      },
     });
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
     expect(report.generationYield).toMatchObject({ checks: 32, requestedYields: 32, completedYields: 32, coalescedYields: 0, maximumDecodesBetweenYields: 1 });
@@ -2422,9 +2422,9 @@ describe('bounded task yields through the native generation loop', () => {
     const req = {
       ...workload(),
       tools: [{
-      type: 'function' as const,
-      function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } },
-    }],
+        type: 'function' as const,
+        function: { name: 'lookup', description: 'Look up a value', parameters: { type: 'object', properties: {} } },
+      }],
     };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
@@ -2455,8 +2455,8 @@ describe('bounded task yields through the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text') chunks.push(event.text);
-    },
+        if (event.type === 'text') chunks.push(event.text);
+      },
     })).rejects.toThrow(failure === 'trap' ? 'controlled decode trap' : 'runtime-error');
     expect(sample).toHaveBeenCalledTimes(2); expect(chunks.join('')).toBe('AA');
     expect(session.cache.validity).toBe('invalid');
@@ -2478,8 +2478,8 @@ describe('bounded task yields through the native generation loop', () => {
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      if (event.type === 'text' && ++deliveries === 2) throw new Error('fixture consumer failure');
-    },
+        if (event.type === 'text' && ++deliveries === 2) throw new Error('fixture consumer failure');
+      },
     })).rejects.toThrow('fixture consumer failure');
     expect(deliveries).toBe(2); expect(sample).toHaveBeenCalledTimes(9);
     expect(session.cache.validity).toBe('invalid');
@@ -2590,8 +2590,8 @@ describe('verified initial-memory reset elision with the supplied native runtime
         signal: controller.signal,
         onProgress: () => {},
         onEvent: () => {
-        if (failure === 'delivery') throw new Error('delivery fixture');
-      },
+          if (failure === 'delivery') throw new Error('delivery fixture');
+        },
       })).rejects.toThrow();
       expect(session.cache.initialMemoryState).toBe('unknown'); expect(session.cache.validity).toBe('invalid');
       clear.mockClear();
@@ -2689,12 +2689,12 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       signal: undefined,
       onProgress: () => {},
       onEvent: ({ event }) => {
-      events.push(event); samplesAtDelivery.push(sample.mock.calls.length);
-      if (events.length === 1) {
-        expect(generationDecodes).toBe(0); return delivery.promise;
-      }
-      return undefined;
-    },
+        events.push(event); samplesAtDelivery.push(sample.mock.calls.length);
+        if (events.length === 1) {
+          expect(generationDecodes).toBe(0); return delivery.promise;
+        }
+        return undefined;
+      },
     });
     try {
       await decoded.promise;
@@ -2730,14 +2730,14 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       if (typeof raw !== 'function') throw new Error('Missing native decode export');
       Object.defineProperty(module, '_lcb_llama_decode', {
         value: async (context: bigint, batch: bigint) => {
-        const status: unknown = raw(context, batch);
-        if (sampled > 0 && !held) {
-          held = true; entered.resolve(); await nativeGate.promise;
-          if (failure === 'decode-trap-first') throw new Error('controlled native trap');
-          if (failure === 'decode-status-first') return -1;
-        }
-        return status;
-      },
+          const status: unknown = raw(context, batch);
+          if (sampled > 0 && !held) {
+            held = true; entered.resolve(); await nativeGate.promise;
+            if (failure === 'decode-trap-first') throw new Error('controlled native trap');
+            if (failure === 'decode-status-first') return -1;
+          }
+          return status;
+        },
       });
       Object.assign(core, attachCore({ module, callMode: 'direct' }));
       const rawSample = core.api.llama_sampler_sample;
@@ -2751,8 +2751,8 @@ describe('bounded delivery/decode overlap through the native generation loop', (
         signal: controller.signal,
         onProgress: () => {},
         onEvent: ({ event }) => {
-        events.push(event); return deliveryGate.promise;
-      },
+          events.push(event); return deliveryGate.promise;
+        },
       });
       const outcome = task.then(() => new Error('unexpected success'), error => error as Error).finally(() => {
         settled = true;
@@ -2793,8 +2793,8 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       signal: controller.signal,
       onProgress: () => {},
       onEvent: () => {
-      if (failure === 'cancel') controller.abort(); else throw new Error('controlled delivery failure');
-    },
+        if (failure === 'cancel') controller.abort(); else throw new Error('controlled delivery failure');
+      },
     })).rejects.toThrow(failure === 'cancel' ? 'aborted' : 'controlled delivery failure');
     expect(sample).toHaveBeenCalledOnce(); expect(generationDecodes).toBe(0); expect(session.cache.validity).toBe('invalid');
   }, 30000);
@@ -2821,9 +2821,9 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       return {
         ...chat,
         parse(params) {
-        const value = chat.parse(params);
-        return ++parsed === 2 ? { ...value, content: 'BBBB' } : value;
-      },
+          const value = chat.parse(params);
+          return ++parsed === 2 ? { ...value, content: 'BBBB' } : value;
+        },
       };
     });
     const sample = vi.spyOn(session.core.api, 'llama_sampler_sample');

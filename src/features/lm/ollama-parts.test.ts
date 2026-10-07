@@ -22,9 +22,9 @@ describe('Ollama structured generation contract', () => {
     const { node, result } = await run({
       messages: [],
       records: [
-      { message: { thinking: '  理由\n', content: '<think>literal</think>' } },
-      { done: true, done_reason: 'stop', message: { content: '\n回答' } },
-    ],
+        { message: { thinking: '  理由\n', content: '<think>literal</think>' } },
+        { done: true, done_reason: 'stop', message: { content: '\n回答' } },
+      ],
     });
     expect(node.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, {
       type: 'text',
@@ -70,8 +70,8 @@ describe('Ollama structured generation contract', () => {
     const provider: LmProvider = new OllamaProvider({
       endpoint: 'https://example.invalid',
       fetcher: async (_url, init) => {
-      request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
-    },
+        request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
+      },
     });
     const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
     await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined }), abortController: new AbortController(), onChange: () => {} });

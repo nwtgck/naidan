@@ -52,13 +52,13 @@ it('requests release of all fulfilled siblings exactly once after construction f
   const completed: string[] = [];
   const first = {
     release: vi.fn(async () => {
-    completed.push('first');
-  }),
+      completed.push('first');
+    }),
   };
   const second = {
     release: vi.fn(async () => {
-    completed.push('second');
-  }),
+      completed.push('second');
+    }),
   };
   const failure = new Error('Last session creation failed');
   const create = vi.fn<() => Promise<Session>>()

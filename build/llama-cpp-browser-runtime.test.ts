@@ -50,14 +50,14 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
       worker: {
         format: 'es',
         plugins: () => [createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: 'hosted' }).corePlugin, {
-        name: 'llama-worker-provenance-fixture',
-        generateBundle(_options, output) {
-          for (const file of Object.values(output)) {
-            if (file.type !== 'chunk') continue;
-            for (const id of Object.keys(file.modules)) if (id.includes('llama-cpp-browser-core/profiles/')) workerCores.add(id);
-          }
-        },
-      }],
+          name: 'llama-worker-provenance-fixture',
+          generateBundle(_options, output) {
+            for (const file of Object.values(output)) {
+              if (file.type !== 'chunk') continue;
+              for (const id of Object.keys(file.modules)) if (id.includes('llama-cpp-browser-core/profiles/')) workerCores.add(id);
+            }
+          },
+        }],
       },
       build: {
         write: false,

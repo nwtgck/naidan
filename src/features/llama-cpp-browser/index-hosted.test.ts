@@ -17,8 +17,8 @@ beforeEach(async () => {
   worker.probeProfiles.mockResolvedValue({
     recommended: 'cpu-wasm32',
     profiles: [
-    { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
-  ],
+      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+    ],
   });
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
   worker.prepareModel.mockResolvedValue(undefined); worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
@@ -176,8 +176,8 @@ describe('serialized hosted model service', () => {
     worker.removeModel.mockResolvedValue('deleted');
     const unsubscribe = service.subscribeModelList({
       listener: () => {
-      throw new Error('private observer details');
-    },
+        throw new Error('private observer details');
+      },
     });
     await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
@@ -193,8 +193,8 @@ describe('resident Worker reuse at the service boundary', () => {
     const states: string[] = [];
     const stop = service.subscribe({
       listener: ({ state }) => {
-      if (state.status === 'working') states.push(state.progress.phase);
-    },
+        if (state.status === 'working') states.push(state.progress.phase);
+      },
     });
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('aborted');
     expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getState()).toEqual({ status: 'idle' });
@@ -240,10 +240,10 @@ describe('tool work holds the generation lane', () => {
     const first = service.runGenerationOperation({
       signal: undefined,
       operation: async ({ scope }) => {
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-      turns++; await blocked;
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    },
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+        turns++; await blocked;
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      },
     });
     await vi.waitFor(() => expect(turns).toBe(1));
     expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
@@ -262,10 +262,10 @@ describe('tool work holds the generation lane', () => {
     const first = service.runGenerationOperation({
       signal: undefined,
       operation: async ({ scope }) => {
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-      toolSignal = scope.signal; await blocked;
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    },
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+        toolSignal = scope.signal; await blocked;
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      },
     });
     const rejected = expect(first).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(toolSignal).toBeDefined());
@@ -340,8 +340,8 @@ describe('explicit runtime recovery', () => {
     const running = service.runGenerationOperation({
       signal: new AbortController().signal,
       operation: async ({ scope }) => {
-      ownerSignal = scope.signal; entered.resolve(); await gate.promise;
-    },
+        ownerSignal = scope.signal; entered.resolve(); await gate.promise;
+      },
     });
     await entered.promise;
     expect(service.getState().status).toBe('idle');

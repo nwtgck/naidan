@@ -11,9 +11,9 @@ import { createMemoryFiles } from '@/features/transformers-js/replay-models/supp
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), accept: vi.fn() }));
 vi.mock('../logic/prepare-production-runtime-artifacts', () => ({
   prepareProductionRuntimeArtifacts: async () => ({
-  status: 'prepared',
-  resourcePlansByCandidate: { 'wasm/q4': { status: 'ready', paths: ['onnx/a', 'onnx/b'] } },
-}),
+    status: 'prepared',
+    resourcePlansByCandidate: { 'wasm/q4': { status: 'ready', paths: ['onnx/a', 'onnx/b'] } },
+  }),
 }));
 vi.mock('../logic/prepare-production-model-candidate', () => ({ prepareProductionModelCandidate: mocks.prepare }));
 vi.mock('../logic/accept-downloaded-production-candidate', () => ({ acceptDownloadedProductionCandidate: mocks.accept }));
@@ -27,9 +27,9 @@ async function installSizeWorker({ network }: { network: typeof fetch }) {
     return {
       ...actual,
       exposeWorkerRemote: ({ api }: { api: WorkerServerApi<DownloadSizeWorkerApi> }) => {
-      if (active === undefined) throw new Error('No size Worker endpoint');
-      actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: active.endpoint });
-    },
+        if (active === undefined) throw new Error('No size Worker endpoint');
+        actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: active.endpoint });
+      },
     };
   });
   vi.stubGlobal('fetch', network);
@@ -152,11 +152,11 @@ it('commits real prefetch bytes and markers in original order while the independ
     artifactRequests.push(request.url);
     return new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
-      if (index === 0) {
-        firstBodyStarted.resolve(); await releaseBody.promise;
-      }
-      controller.enqueue(index === 0 ? Uint8Array.of(1, 2, 3, 4) : Uint8Array.of(5, 6, 7, 8)); controller.close();
-    },
+        if (index === 0) {
+          firstBodyStarted.resolve(); await releaseBody.promise;
+        }
+        controller.enqueue(index === 0 ? Uint8Array.of(1, 2, 3, 4) : Uint8Array.of(5, 6, 7, 8)); controller.close();
+      },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } });
   });
   const unexpectedRuntime = vi.fn(async () => {
@@ -172,10 +172,10 @@ it('commits real prefetch bytes and markers in original order while the independ
       exposeWorkerRemote: ({ api }: { api: WorkerServerApi<DownloadSizeWorkerApi> | WorkerServerApi<ITransformersJsDownloadWorker> }) => {
       // Two exact entries have distinct native endpoints, not a mutable active
       // Realm selector. Unknown exposed APIs cannot borrow either endpoint.
-      if ('prefetchUrls' in api && downloadWorker !== undefined) actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: downloadWorker.endpoint });
-      else if ('collect' in api && sizeWorker !== undefined) actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: sizeWorker.endpoint });
-      else throw new Error('Unexpected integration exposure');
-    },
+        if ('prefetchUrls' in api && downloadWorker !== undefined) actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: downloadWorker.endpoint });
+        else if ('collect' in api && sizeWorker !== undefined) actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: sizeWorker.endpoint });
+        else throw new Error('Unexpected integration exposure');
+      },
     };
   });
   const sizeEntry = new URL('./entry.ts', import.meta.url);
@@ -183,20 +183,20 @@ it('commits real prefetch bytes and markers in original order while the independ
   const SizeWorker = createProviderReplayTestWorkerConstructor({
     scriptUrl: sizeEntry,
     onConstructed: ({ worker }) => {
-    sizeWorker = worker; workers.push(worker);
-  },
+      sizeWorker = worker; workers.push(worker);
+    },
     start: async () => {
-    await import('./entry');
-  },
+      await import('./entry');
+    },
   });
   const DownloadWorker = createProviderReplayTestWorkerConstructor({
     scriptUrl: downloadEntry,
     onConstructed: ({ worker }) => {
-    downloadWorker = worker; workers.push(worker);
-  },
+      downloadWorker = worker; workers.push(worker);
+    },
     start: async () => {
-    await import('@/features/transformers-js/download-verification/download-worker/entry');
-  },
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
+    },
   });
   vi.stubGlobal('Worker', function Worker(url: string | URL, options: WorkerOptions | undefined) {
     if (String(url) === sizeEntry.href) return new SizeWorker(url, options);
@@ -241,8 +241,8 @@ it('commits real prefetch bytes and markers in original order while the independ
     await vi.advanceTimersByTimeAsync(2_000);
     optionalResponse.resolve(new Response(new ReadableStream({
       cancel() {
-      lateCanceled.resolve();
-    },
+        lateCanceled.resolve();
+      },
     })));
     await lateCanceled.promise;
     expect(tracker.snapshot()).toEqual(final);

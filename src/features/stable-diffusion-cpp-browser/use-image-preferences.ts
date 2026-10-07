@@ -84,9 +84,9 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
       const outcome = await updateForStorage({
         isCurrent: owner,
         updater: ({ experimental }) => ({
-        ...experimental,
-        browserImageGeneration: merge({ base: experimental?.browserImageGeneration, patch }),
-      }),
+          ...experimental,
+          browserImageGeneration: merge({ base: experimental?.browserImageGeneration, patch }),
+        }),
       });
       switch (outcome) {
       case 'saved': if (!owner()) invalidate({ owner }); break;

@@ -88,14 +88,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => {
-        firstGenAborted = true; stopped.resolve();
-      }, { once: true });
-      await writer.text({ type: 'text', text: 'First chunk' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    },
+        signal.addEventListener('abort', () => {
+          firstGenAborted = true; stopped.resolve();
+        }, { once: true });
+        await writer.text({ type: 'text', text: 'First chunk' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
     }));
     try {
       expect(await sendMessage({ content: 'Hello' })).toBe(true);
@@ -106,9 +106,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'Second Response' });
-        return { type: 'finished', next: 'user' };
-      },
+          await writer.text({ type: 'text', text: 'Second Response' });
+          return { type: 'finished', next: 'user' };
+        },
       }));
       await regenerateMessage({ failedMessageId: idToRaw({ id: first.id }) });
       await vi.waitUntil(() => !streaming.value);
@@ -145,14 +145,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => {
-        firstGenAborted = true; stopped.resolve();
-      }, { once: true });
-      await writer.text({ type: 'text', text: 'First chunk' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    },
+        signal.addEventListener('abort', () => {
+          firstGenAborted = true; stopped.resolve();
+        }, { once: true });
+        await writer.text({ type: 'text', text: 'First chunk' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
     }));
     try {
       await sendMessage({ content: 'Hello' });
@@ -162,9 +162,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'Edited Response' });
-        return { type: 'finished', next: 'user' };
-      },
+          await writer.text({ type: 'text', text: 'Edited Response' });
+          return { type: 'finished', next: 'user' };
+        },
       }));
       await editMessage({ messageId: idToRaw({ id: user.id }), newContent: 'Hello Again' });
       await vi.waitUntil(() => !streaming.value);

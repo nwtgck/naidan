@@ -78,30 +78,30 @@ function records() {
       lifetime: {
         status: 'observed',
         value: {
-        runId: context.runId,
-        workerEpoch: 1,
-        session: 'active',
-        issuedCalls: [context],
-        loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }],
-        incompleteReasons: [],
-      },
+          runId: context.runId,
+          workerEpoch: 1,
+          session: 'active',
+          issuedCalls: [context],
+          loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }],
+          incompleteReasons: [],
+        },
       },
       collection: {
         status: 'returned',
         result: {
-        status: 'captured',
-        capture: {
-        schemaVersion: 1,
-        runId: context.runId,
-        workerEpoch: 1,
-        byteOrder: 'little-endian',
-        limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
-        calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-        events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [],
-        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      },
-      },
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId: context.runId,
+            workerEpoch: 1,
+            byteOrder: 'little-endian',
+            limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
+            calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+            events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        },
       },
     }],
   };
@@ -148,18 +148,18 @@ describe('Native evidence references beyond the outer archive manifest', () => {
     const blob = await archive({
       extraBinary: 'none',
       changeIndex: ({ json }) => {
-      const envelope = JSON.parse(json);
-      const capture = envelope.epochs[0].collection.result.capture;
-      capture.events.push({
-        kind: 'inputs',
-        identity: capture.events[0].identity,
-        phase: 'native-kwargs',
-        values: [
-        { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[height, 2]] } },
-      ],
-      });
-      return JSON.stringify(envelope);
-    },
+        const envelope = JSON.parse(json);
+        const capture = envelope.epochs[0].collection.result.capture;
+        capture.events.push({
+          kind: 'inputs',
+          identity: capture.events[0].identity,
+          phase: 'native-kwargs',
+          values: [
+            { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[height, 2]] } },
+          ],
+        });
+        return JSON.stringify(envelope);
+      },
     });
     if (height === 0) await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
     else await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: 'native-archive' });
@@ -176,9 +176,9 @@ describe('Native evidence references beyond the outer archive manifest', () => {
     const blob = await archive({
       extraBinary: 'none',
       changeIndex: ({ json, sha256 }) => {
-      expect(json.split(sha256)).toHaveLength(2);
-      return json.replace(sha256, '0'.repeat(64));
-    },
+        expect(json.split(sha256)).toHaveLength(2);
+        return json.replace(sha256, '0'.repeat(64));
+      },
     });
     await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
   });
@@ -187,9 +187,9 @@ describe('Native evidence references beyond the outer archive manifest', () => {
     const blob = await archive({
       extraBinary: 'none',
       changeIndex: ({ json, path }) => {
-      expect(json.split(path)).toHaveLength(2);
-      return json.replace(path, 'generation-native/tensors/000002.bin');
-    },
+        expect(json.split(path)).toHaveLength(2);
+        return json.replace(path, 'generation-native/tensors/000002.bin');
+      },
     });
     await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
   });

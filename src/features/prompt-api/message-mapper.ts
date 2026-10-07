@@ -68,12 +68,12 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
       conversation.push({
         role: 'user',
         content: hasImage ? content : content.map(part => {
-        switch (part.type) {
-        case 'text': return part.value;
-        case 'image': throw new Error('Expected text-only content.');
-        default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
-        }
-      }).join(''),
+          switch (part.type) {
+          case 'text': return part.value;
+          case 'image': throw new Error('Expected text-only content.');
+          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          }
+        }).join(''),
       });
       break;
     }

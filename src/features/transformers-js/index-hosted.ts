@@ -878,49 +878,49 @@ export function createTransformersJsService({ createWorkerClient }: {
         availability: 'wait',
         signal: undefined,
         run: async () => {
-        const root = await navigator.storage.getDirectory();
-        const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-        const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-        const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
+          const root = await navigator.storage.getDirectory();
+          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+          const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+          const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
-        const parts = fileName.split('/').filter(p => !!p);
-        let currentDir = modelDir;
-        for (let i = 0; i < parts.length - 1; i++) {
-          currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
-        }
-
-        const lastPart = parts[parts.length - 1]!;
-        const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
-
-        if (!('createWritable' in fileHandle)) {
-          throw new Error('FileSystemFileHandle.createWritable is not supported');
-        }
-
-        try {
-          await currentDir.removeEntry(`.${lastPart}.complete`);
-        } catch (error) {
-          if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
-        }
-
-        const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-
-        try {
-          if (data instanceof ReadableStream) {
-            await data.pipeTo(writable);
-          } else {
-            await writable.write(data);
-            await writable.close();
+          const parts = fileName.split('/').filter(p => !!p);
+          let currentDir = modelDir;
+          for (let i = 0; i < parts.length - 1; i++) {
+            currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
           }
-        } catch (error) {
-          try {
-            await writable.abort(error);
-          } catch { /* Preserve the import failure. */ }
-          throw error;
-        }
 
-        // Create per-file completion marker
-        await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
-      },
+          const lastPart = parts[parts.length - 1]!;
+          const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
+
+          if (!('createWritable' in fileHandle)) {
+            throw new Error('FileSystemFileHandle.createWritable is not supported');
+          }
+
+          try {
+            await currentDir.removeEntry(`.${lastPart}.complete`);
+          } catch (error) {
+            if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+          }
+
+          const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
+
+          try {
+            if (data instanceof ReadableStream) {
+              await data.pipeTo(writable);
+            } else {
+              await writable.write(data);
+              await writable.close();
+            }
+          } catch (error) {
+            try {
+              await writable.abort(error);
+            } catch { /* Preserve the import failure. */ }
+            throw error;
+          }
+
+          // Create per-file completion marker
+          await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+        },
       });
       notifyModelListChange();
     },
@@ -932,27 +932,27 @@ export function createTransformersJsService({ createWorkerClient }: {
         const removed = await withOpfsModelDeletion({
           modelPath: `${OPFS_MODELS_DIR}/user/${name}`,
           run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-            await removeTransformersModelFiles({ parent: userDir, name });
-            return true;
-          } catch {
-            return false;
-          }
-        },
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+              await removeTransformersModelFiles({ parent: userDir, name });
+              return true;
+            } catch {
+              return false;
+            }
+          },
         });
         if (!removed) await withOpfsModelDeletion({
           modelPath: `${OPFS_MODELS_DIR}/local/${name}`,
           run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await removeTransformersModelFiles({ parent: localDir, name });
-          } catch { /* Preserve the legacy absent-local fallback. */ }
-        },
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+              await removeTransformersModelFiles({ parent: localDir, name });
+            } catch { /* Preserve the legacy absent-local fallback. */ }
+          },
         });
       } else if (modelId.startsWith('hf.co/')) {
         const [org, repo] = modelId.substring(6).split('/');
@@ -960,37 +960,37 @@ export function createTransformersJsService({ createWorkerClient }: {
           await withOpfsModelDeletion({
             modelPath: `${OPFS_MODELS_DIR}/huggingface.co/${org}/${repo}`,
             run: async () => {
-            const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-            await removeTransformersModelFiles({ parent: orgDir, name: repo });
-          },
+              const root = await navigator.storage.getDirectory();
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+              await removeTransformersModelFiles({ parent: orgDir, name: repo });
+            },
           });
           // Release model/root shared ownership before acquiring root exclusive.
           // Re-resolve the directory and recheck emptiness under the parent lease.
           await withOpfsRootDeletion({
             run: async () => {
-            const root = await navigator.storage.getDirectory();
-            try {
-              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
-              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
-              const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-              for await (const _ of orgDir.entries()) return;
-              await hfDir.removeEntry(org);
-            } catch (error) {
-              if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
-            }
-          },
+              const root = await navigator.storage.getDirectory();
+              try {
+                const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
+                const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
+                const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+                for await (const _ of orgDir.entries()) return;
+                await hfDir.removeEntry(org);
+              } catch (error) {
+                if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+              }
+            },
           });
         } else if (org) {
           await withOpfsRootDeletion({
             run: async () => {
-            const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await removeTransformersModelFiles({ parent: hfDir, name: org });
-          },
+              const root = await navigator.storage.getDirectory();
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              await removeTransformersModelFiles({ parent: hfDir, name: org });
+            },
           });
         }
       } else {
@@ -998,16 +998,16 @@ export function createTransformersJsService({ createWorkerClient }: {
         // namespace rather than guessing a single model key.
         await withOpfsRootDeletion({
           run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await removeTransformersModelFiles({ parent: localDir, name: modelId });
-          } catch {
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await removeTransformersModelFiles({ parent: hfDir, name: modelId });
-          }
-        },
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+              await removeTransformersModelFiles({ parent: localDir, name: modelId });
+            } catch {
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              await removeTransformersModelFiles({ parent: hfDir, name: modelId });
+            }
+          },
         });
       }
       downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
@@ -1203,13 +1203,13 @@ export function createTransformersJsService({ createWorkerClient }: {
         if (!isCurrent() || owner.signal.aborted) return;
         observeDownloadSafely({
           observe: () => {
-          tracker.observe({ event });
-          downloadProgress = tracker.snapshot();
-          loadingProgress = downloadProgress.overallProgress ?? 0;
-          totalLoadedAmount = downloadProgress.receivedBytes;
-          totalSizeAmount = downloadProgress.knownTotalBytes;
-          notify();
-        },
+            tracker.observe({ event });
+            downloadProgress = tracker.snapshot();
+            loadingProgress = downloadProgress.overallProgress ?? 0;
+            totalLoadedAmount = downloadProgress.receivedBytes;
+            totalSizeAmount = downloadProgress.knownTotalBytes;
+            notify();
+          },
         });
       };
       downloadProgress = tracker.snapshot();
@@ -1217,8 +1217,8 @@ export function createTransformersJsService({ createWorkerClient }: {
         if (!isCurrent() || owner.signal.aborted) return;
         observeDownloadSafely({
           observe: () => {
-          downloadProgress = tracker.snapshot(); notify();
-        },
+            downloadProgress = tracker.snapshot(); notify();
+          },
         });
       }, 1_000);
       const stopEstimate = () => clearInterval(refreshEstimate);
@@ -1257,10 +1257,10 @@ export function createTransformersJsService({ createWorkerClient }: {
           onProgress: ({ progress }) => {
           // The runtime emits model-session only after admitting a locally
           // complete candidate. Inventory/revision selection alone is not 95%.
-          if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
-            onDownloadProgress({ event: { kind: 'cached-acceptance' } });
-          }
-        },
+            if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
+              onDownloadProgress({ event: { kind: 'cached-acceptance' } });
+            }
+          },
         });
         assertCurrent();
         if (cachedReuse.reused) {
@@ -1548,15 +1548,15 @@ export function createTransformersJsService({ createWorkerClient }: {
         };
         return runChild({
           execute: () => generateForOwner({
-          ...snapshot,
-          signal: owner.signal,
-          delivery: {
-            type: 'structured',
-            onEvent: ({ event }) => {
-            if (open) return onEvent({ event });
-          },
-          },
-        }),
+            ...snapshot,
+            signal: owner.signal,
+            delivery: {
+              type: 'structured',
+              onEvent: ({ event }) => {
+                if (open) return onEvent({ event });
+              },
+            },
+          }),
         });
       },
     };
@@ -1632,11 +1632,11 @@ export function createTransformersJsService({ createWorkerClient }: {
       return enqueue({
         signal,
         operation: ({ owner }) => {
-        if (activeModelId !== requestedModelId || loadingStatus !== 'ready') {
-          throw new Error('The requested Transformers.js model is no longer loaded');
-        }
-        return rawService.generateText({ ...snapshot, signal: owner.signal });
-      },
+          if (activeModelId !== requestedModelId || loadingStatus !== 'ready') {
+            throw new Error('The requested Transformers.js model is no longer loaded');
+          }
+          return rawService.generateText({ ...snapshot, signal: owner.signal });
+        },
       });
     },
     async interrupt(): Promise<void> {

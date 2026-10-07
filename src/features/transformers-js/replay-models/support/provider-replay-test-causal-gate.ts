@@ -90,11 +90,11 @@ export function parseProviderReplayTextEvidence({ value }: { value: unknown }): 
     label: 'recorded request settings',
     actual: inputContract.effectiveGenerationConfig,
     expected: {
-    maxNewTokens: scenario.lmParameters.maxCompletionTokens,
-    temperature: scenario.lmParameters.temperature,
-    topP: scenario.lmParameters.topP,
-    doSample: scenario.lmParameters.temperature > 0,
-  },
+      maxNewTokens: scenario.lmParameters.maxCompletionTokens,
+      temperature: scenario.lmParameters.temperature,
+      topP: scenario.lmParameters.topP,
+      doSample: scenario.lmParameters.temperature > 0,
+    },
   });
   const boundary = scenario.boundary;
   switch (boundary.kind) {
@@ -143,9 +143,9 @@ export function replayRecordedText({ evidence, options }: {
     label: 'unrecorded generation options',
     actual: Object.keys(options).sort(),
     expected: [
-    'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-    'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-  ].sort(),
+      'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort(),
   });
   const input = nativeTensorSchema.parse(options['input_ids']);
   const mask = nativeTensorSchema.parse(options['attention_mask']);
@@ -162,11 +162,11 @@ export function replayRecordedText({ evidence, options }: {
   requireExact({
     label: 'actual requested settings',
     actual: {
-    maxNewTokens: options['max_new_tokens'],
-    temperature: options['temperature'],
-    topP: options['top_p'],
-    doSample: options['do_sample'],
-  },
+      maxNewTokens: options['max_new_tokens'],
+      temperature: options['temperature'],
+      topP: options['top_p'],
+      doSample: options['do_sample'],
+    },
     expected: checked.inputContract.effectiveGenerationConfig,
   });
   if (options['past_key_values'] !== undefined && options['past_key_values'] !== null) throw new Error('Replay evidence gap: KV-cache input');

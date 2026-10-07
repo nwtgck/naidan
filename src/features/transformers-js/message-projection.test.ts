@@ -18,14 +18,14 @@ function image({ state }: { state: { status: 'memory', blob: Blob } | { status: 
   return {
     type: 'attachment',
     attachment: {
-    id: toAttachmentId({ raw: 'attachment-1' }),
-    binaryObjectId: binaryId,
-    originalName: 'image.png',
-    mimeType: 'image/png',
-    size: 3,
-    uploadedAt: 1,
-    ...state,
-  },
+      id: toAttachmentId({ raw: 'attachment-1' }),
+      binaryObjectId: binaryId,
+      originalName: 'image.png',
+      mimeType: 'image/png',
+      size: 3,
+      uploadedAt: 1,
+      ...state,
+    },
   };
 }
 function prepare({ messages, readBinaryObject, signal }: {
@@ -111,9 +111,9 @@ describe('parts to Transformers.js inference input', () => {
     const read = vi.fn();
     await expect(prepare({
       messages: [
-      { id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] },
-      { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { type: 'reasoning', text: '', completeness: 'partial' }] },
-    ],
+        { id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] },
+        { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { type: 'reasoning', text: '', completeness: 'partial' }] },
+      ],
       readBinaryObject: read,
       signal: undefined,
     })).rejects.toThrow('single leading reasoning');
@@ -125,12 +125,12 @@ describe('parts to Transformers.js inference input', () => {
     const read = vi.fn();
     const result = await prepare({
       messages: [{
-      id: messageId,
-      role: 'user',
-      parts: [
-      makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }) },
-    ],
-    }],
+        id: messageId,
+        role: 'user',
+        parts: [
+          makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }) },
+        ],
+      }],
       readBinaryObject: read,
       signal: undefined,
     });
@@ -193,13 +193,13 @@ describe('parts to Transformers.js inference input', () => {
   it('preserves inline tool success and error text and expands each result in order', async () => {
     const result = await prepare({
       messages: [{
-      id: messageId,
-      role: 'tool',
-      parts: [
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
-    ],
-    }],
+        id: messageId,
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
+          { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
+        ],
+      }],
       readBinaryObject: undefined,
       signal: undefined,
     });
@@ -232,8 +232,8 @@ describe('parts to Transformers.js inference input', () => {
     await expect(prepare({
       messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }],
       readBinaryObject: async () => {
-      throw error;
-    },
+        throw error;
+      },
       signal: undefined,
     })).rejects.toBe(error);
   });

@@ -91,8 +91,8 @@ function releaseRuntime(): void {
 onMounted(() => {
   unsubscribeProfiles = llamaCppBrowserService.subscribeProfiles({
     listener: ({ state: next }) => {
-    profileState.value = next;
-  },
+      profileState.value = next;
+    },
   });
   void probeProfiles();
 });

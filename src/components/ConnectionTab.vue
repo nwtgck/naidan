@@ -720,8 +720,8 @@ function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
       url: preset.url,
     },
     defaultModelId: form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID
-        ? ''
-        : form.value.defaultModelId,
+      ? ''
+      : form.value.defaultModelId,
     titleGeneration: currentSettingsTitleGeneration(),
   };
   resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });

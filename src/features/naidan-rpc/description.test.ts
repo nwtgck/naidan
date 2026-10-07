@@ -8,12 +8,12 @@ it('derives structural input, stream result and notifications from the callable 
   const api = contract({
     name: 'describe',
     methods: {
-    generate: procedure({
-      input: z.object({ prompt: z.string().max(100), seed: z.number().int().optional() }),
-      result: z.object({ image: rpc.byteStream(), events: rpc.stream({ item: z.object({ type: z.literal('complete'), bytes: z.number().int() }) }) }),
-      notifications: { progress: z.object({ completed: z.number().int() }) },
-    }),
-  },
+      generate: procedure({
+        input: z.object({ prompt: z.string().max(100), seed: z.number().int().optional() }),
+        result: z.object({ image: rpc.byteStream(), events: rpc.stream({ item: z.object({ type: z.literal('complete'), bytes: z.number().int() }) }) }),
+        notifications: { progress: z.object({ completed: z.number().int() }) },
+      }),
+    },
   });
   const methods = describeMethods({ contract: api, names: ['generate'] });
   expect(methods[0]).toMatchObject({
@@ -29,8 +29,8 @@ it('describes optional and array capabilities without claiming they are plain JS
   const api = contract({
     name: 'describe',
     methods: {
-    use: procedure({ input: z.object({ files: z.array(rpc.byteStream()), answer: rpc.callback({ input: z.string(), result: z.boolean() }).optional() }), result: z.void(), notifications: {} }),
-  },
+      use: procedure({ input: z.object({ files: z.array(rpc.byteStream()), answer: rpc.callback({ input: z.string(), result: z.boolean() }).optional() }), result: z.void(), notifications: {} }),
+    },
   });
   expect(describeMethods({ contract: api, names: ['use'] })[0]).toMatchObject({
     input: { kind: 'object', required: ['files'], properties: { files: { kind: 'array', item: { kind: 'byte-stream' } }, answer: { kind: 'optional', value: { kind: 'callback', input: { type: 'string' }, result: { type: 'boolean' } } } } },

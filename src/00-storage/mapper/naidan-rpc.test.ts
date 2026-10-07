@@ -24,10 +24,10 @@ it('reads additional connection, transport and header fields while preserving kn
   const dto = rpcConnectionToDto({ connection });
   const restored = rpcConnectionFromDto({
     value: {
-    ...dto,
-    future: true,
-    transport: { ...dto.transport, future: true, headers: dto.transport.headers.map(header => ({ ...header, future: true })) },
-  },
+      ...dto,
+      future: true,
+      transport: { ...dto.transport, future: true, headers: dto.transport.headers.map(header => ({ ...header, future: true })) },
+    },
   });
   expect(restored).toEqual(connection);
 });

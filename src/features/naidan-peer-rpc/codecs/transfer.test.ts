@@ -33,13 +33,13 @@ it('bounds byte-buffer allocation overhead independently of tiny chunk count', a
   let at = 0, allocations = 0;
   const readable = new ReadableStream<Uint8Array>({
     pull(controller) {
-    if (at++ === length) controller.close(); else controller.enqueue(chunk);
-  },
+      if (at++ === length) controller.close(); else controller.enqueue(chunk);
+    },
   }, { highWaterMark: 0 });
   vi.stubGlobal('Uint8Array', new Proxy(original, {
     construct(constructor, args, newTarget) {
-    allocations++; return Reflect.construct(constructor, args, newTarget);
-  },
+      allocations++; return Reflect.construct(constructor, args, newTarget);
+    },
   }));
   try {
     const bytes = await collectBytes({ readable, limit: length, signal: signal() });
@@ -56,10 +56,10 @@ it('snapshots reused mutable byte chunks without including spare buffer capacity
   const chunk = new Uint8Array(3); let at = 0;
   const readable = new ReadableStream<Uint8Array>({
     pull(controller) {
-    if (at === 3) controller.close(); else {
-      chunk.fill(++at); controller.enqueue(chunk);
-    }
-  },
+      if (at === 3) controller.close(); else {
+        chunk.fill(++at); controller.enqueue(chunk);
+      }
+    },
   }, { highWaterMark: 0 });
   expect(await collectBytes({ readable, limit: 100, signal: signal() }))
     .toEqual(new Uint8Array([1, 1, 1, 2, 2, 2, 3, 3, 3]));
@@ -68,8 +68,8 @@ it('bounded reads reject overflow and cancel producers', async () => {
   const cancel = vi.fn();
   const readable = new ReadableStream<Uint8Array>({
     start(c) {
-    c.enqueue(new Uint8Array(33));
-  },
+      c.enqueue(new Uint8Array(33));
+    },
     cancel,
   });
   await expect(collectBytes({ readable, limit: 32, signal: signal() })).rejects.toThrow(); expect(cancel).toHaveBeenCalledOnce();
@@ -126,8 +126,8 @@ it('computation errors reach the reader and do not become successful empty outpu
   const output = computationSource({
     signal: signal(),
     run: async () => {
-    throw new Error('Native computation failed');
-  },
+      throw new Error('Native computation failed');
+    },
   });
   await expect(output.getReader().read()).rejects.toThrow('Native computation failed');
 });
@@ -155,10 +155,10 @@ it('events preserve reasoning, large tool arguments and terminal metadata across
     eventBytes({ event: { type: 'tool_call', index: 0, toolCall } }), eventBytes({ event: { type: 'finish', reason: 'stop' } })];
   const source = new ReadableStream<Uint8Array>({
     start(c) {
-    for (const bytes of chunks) {
-      c.enqueue(bytes.slice(0,2)); c.enqueue(bytes.slice(2));
-    } c.close();
-  },
+      for (const bytes of chunks) {
+        c.enqueue(bytes.slice(0,2)); c.enqueue(bytes.slice(2));
+      } c.close();
+    },
   });
   const onEvent = vi.fn(); const result = await receiveEvents({ readable: source, onEvent, signal: signal() });
   expect(result).toEqual({ content: 'answer', reasoningContent: 'thinking', toolCalls: [toolCall], finishReason: 'stop' }); expect(onEvent).toHaveBeenCalledTimes(3);

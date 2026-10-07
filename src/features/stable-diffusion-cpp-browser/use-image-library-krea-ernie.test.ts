@@ -34,12 +34,12 @@ it.each([
         path: entry.path,
         file,
         receipt: {
-        version: 1 as const,
-        kind: 'naidan-model-file' as const,
-        size: file.size,
-        lastModified: file.lastModified,
-        source: { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
-      },
+          version: 1 as const,
+          kind: 'naidan-model-file' as const,
+          size: file.size,
+          lastModified: file.lastModified,
+          source: { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
+        },
       }],
     };
   });
@@ -55,11 +55,11 @@ it.each([
       blocked: () => false,
       onSelection() {},
       dependencies: {
-      list,
-      scan: scanImageRepositories,
-      import: vi.fn(),
-      download,
-    },
+        list,
+        scan: scanImageRepositories,
+        import: vi.fn(),
+        download,
+      },
     }))!;
     library.hostDirectories.destination.value = destination;
     await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });

@@ -105,16 +105,16 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ messages, signal }) => {
-      expect(messages.map(message => message.role)).toEqual(['user']);
-      return createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"' } });
-        await release.promise;
-        return { type: 'interrupted', reason: 'aborted' };
+        expect(messages.map(message => message.role)).toEqual(['user']);
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"' } });
+            await release.promise;
+            return { type: 'interrupted', reason: 'aborted' };
+          },
+        });
       },
-      });
-    },
     };
     const pending = run(fixture);
     await visible.promise;
@@ -138,17 +138,17 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ debug, signal }) => createChatGenerationStream({
-      signal,
-      run: async ({ writer }) => {
-      preferences.push(debug);
-      if (preferences.length === 1) {
-        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'debug-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-        return { type: 'finished', next: 'tool_results' };
-      }
-      await writer.text({ type: 'text', text: 'answer' });
-      return { type: 'finished', next: 'user' };
-    },
-    }),
+        signal,
+        run: async ({ writer }) => {
+          preferences.push(debug);
+          if (preferences.length === 1) {
+            await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'debug-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+            return { type: 'finished', next: 'tool_results' };
+          }
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
+        },
+      }),
     };
     await run(fixture);
     expect(preferences).toEqual([enabled ? 'on' : 'off', enabled ? 'on' : 'off']);
@@ -158,16 +158,16 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: vi.fn<LmProvider['chat']>(({ messages, signal }) => {
-      expect(messages.map(m => m.role)).toEqual(['user']);
-      return createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        await writer.text({ type: 'reasoning', text: '  理由\n' });
-        await writer.text({ type: 'text', text: '<think>literal</think>answer' });
-        return { type: 'finished', next: 'user' };
-      },
-      });
-    }),
+        expect(messages.map(m => m.role)).toEqual(['user']);
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'reasoning', text: '  理由\n' });
+            await writer.text({ type: 'text', text: '<think>literal</think>answer' });
+            return { type: 'finished', next: 'user' };
+          },
+        });
+      }),
     };
     await run(fixture);
     expect(fixture.assistant.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>answer', completeness: 'complete' }]);
@@ -182,19 +182,19 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ messages, signal }) => {
-      inputs.push(messages.map(m => m.role));
-      return createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        if (rounds++ === 0) {
-          const { toToolCallId } = await import('@/01-models/ids');
-          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
-          return { type: 'finished', next: 'tool_results' };
-        }
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+        inputs.push(messages.map(m => m.role));
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            if (rounds++ === 0) {
+              const { toToolCallId } = await import('@/01-models/ids');
+              await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
+              return { type: 'finished', next: 'tool_results' };
+            }
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        });
       },
-      });
-    },
     };
     await run(fixture);
     expect(inputs).toEqual([['user'], ['user', 'assistant', 'tool']]); expect(execute).toHaveBeenCalledOnce();
@@ -209,13 +209,13 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ signal }) => createChatGenerationStream({
-      signal,
-      run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: '<think>途中' });
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: '<think>途中' });
       state.active.get(fixture.chat.id)!.controller.abort();
       return { type: 'interrupted', reason: 'aborted' };
-    },
-    }),
+        },
+      }),
     };
     await run(fixture);
     expect(fixture.assistant.parts[0]).toMatchObject({ text: '<think>途中', completeness: 'partial' });
@@ -226,11 +226,11 @@ describe('chat generation flow with message parts', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ signal }) => createChatGenerationStream({
-      signal,
-      run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'prefix' }); throw new Error('通信失敗');
-    },
-    }),
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'prefix' }); throw new Error('通信失敗');
+        },
+      }),
     };
     await run(fixture);
     expect(getMessageText({ message: fixture.assistant })).toBe('prefix'); expect(fixture.assistant.interruption).toEqual({ type: 'error', message: '通信失敗' });
@@ -243,11 +243,11 @@ describe('chat generation flow with message parts', () => {
       state.provider = {
         listModels: async () => ['m'],
         chat: ({ signal }) => createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-      },
-      }),
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        }),
       };
       await run(fixture);
       expect(fixture.assistant.interruption).toBeUndefined(); expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
@@ -279,11 +279,11 @@ describe('chat generation ownership and failure boundaries', () => {
       state.provider = {
         listModels: async () => ['m'],
         chat: ({ signal }) => createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-      },
-      }),
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        }),
       };
       await run(fixture);
       expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
@@ -301,16 +301,16 @@ describe('chat generation ownership and failure boundaries', () => {
       parametersSchema: z.object({}),
       execute: async () => {
       state.active.get(fixture.chat.id)!.controller.abort(); return { status: 'success', content: 'observed success' };
-    },
+      },
       dispose,
     }];
     const { toToolCallId } = await import('@/01-models/ids');
     const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
-      await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-      return { type: 'finished', next: 'tool_results' };
-    },
+        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+        return { type: 'finished', next: 'tool_results' };
+      },
     }));
     state.provider = { listModels: async () => ['m'], chat };
     await run(fixture);
@@ -379,18 +379,18 @@ describe('regeneration after tool results', () => {
       return createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-        if (iteration === 0) {
-          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'calculation' }), type: 'function', function: { name: 'calculator', arguments: ' {} ' } } });
-          return { type: 'finished', next: 'tool_results' };
-        }
-        if (iteration === 1) {
-          await writer.text({ type: 'reasoning', text: '  結果を確認する。\n' });
-          await writer.text({ type: 'text', text: '<think>literal answer prefix' });
-          throw new Error('Answer failed after the tool completed');
-        }
-        await writer.text({ type: 'text', text: '  Fresh answer\n' });
-        return { type: 'finished', next: 'user' };
-      },
+          if (iteration === 0) {
+            await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'calculation' }), type: 'function', function: { name: 'calculator', arguments: ' {} ' } } });
+            return { type: 'finished', next: 'tool_results' };
+          }
+          if (iteration === 1) {
+            await writer.text({ type: 'reasoning', text: '  結果を確認する。\n' });
+            await writer.text({ type: 'text', text: '<think>literal answer prefix' });
+            throw new Error('Answer failed after the tool completed');
+          }
+          await writer.text({ type: 'text', text: '  Fresh answer\n' });
+          return { type: 'finished', next: 'user' };
+        },
       });
     });
     state.provider = { listModels: async () => ['m'], chat };
@@ -448,9 +448,9 @@ describe('regeneration after tool results', () => {
     const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'A completely new answer' });
-      return { type: 'finished', next: 'user' };
-    },
+        await writer.text({ type: 'text', text: 'A completely new answer' });
+        return { type: 'finished', next: 'user' };
+      },
     }));
     state.provider = { listModels: async () => ['m'], chat };
     await regenerateMessageForChat({ chatId: fixture.chat.id, failedMessageId: fixture.stopped.id });
@@ -476,12 +476,12 @@ describe('regeneration after tool results', () => {
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ signal }) => createChatGenerationStream({
-      signal,
-      run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Another incomplete answer' });
-      throw new Error('Retry failed');
-    },
-    }),
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Another incomplete answer' });
+          throw new Error('Retry failed');
+        },
+      }),
     };
     await regenerateMessageForChat({ chatId: fixture.chat.id, failedMessageId: fixture.stopped.id });
     await vi.waitUntil(() => !state.active.has(fixture.chat.id));

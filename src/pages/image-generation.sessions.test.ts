@@ -28,27 +28,27 @@ vi.mock('@/features/image-generation/use-image-generation', async () => {
   const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view');
   return {
     useImageGeneration(): ImageGenerationView {
-    mocks.owners++; onScopeDispose(() => {
-      mocks.disposed++;
-    });
-    const form = useImageGeneration();
-    const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
-    return {
-      ...form,
-      supported: computed(() => true),
-      formDisabled: computed(() => false),
-      draftDisabled: computed(() => false),
-      captureDraft(): ImageGenerationDraft {
-        return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
-      },
-      async restoreDraft({ draft }) {
-        await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
-      },
-      resetDraft() {
-        form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
-      },
-    };
-  },
+      mocks.owners++; onScopeDispose(() => {
+        mocks.disposed++;
+      });
+      const form = useImageGeneration();
+      const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
+      return {
+        ...form,
+        supported: computed(() => true),
+        formDisabled: computed(() => false),
+        draftDisabled: computed(() => false),
+        captureDraft(): ImageGenerationDraft {
+          return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
+        },
+        async restoreDraft({ draft }) {
+          await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
+        },
+        resetDraft() {
+          form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
+        },
+      };
+    },
   };
 });
 const a = generationSessionFixture({ id: 'session-aa' }), b = { ...generationSessionFixture({ id: 'session-bb' }), title: 'Second purpose', updatedAt: 10 };
@@ -78,9 +78,9 @@ async function open({ path }: { path: string }) {
   await router.push(path); await router.isReady();
   wrapper = mount(defineComponent({
     setup() {
-    const { active } = useImageGenerationWorkspaceNavigation();
-    return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
-  },
+      const { active } = useImageGenerationWorkspaceNavigation();
+      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+    },
   }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises();
   const view = useImageGenerationWorkspaceNavigation().active.value?.view;

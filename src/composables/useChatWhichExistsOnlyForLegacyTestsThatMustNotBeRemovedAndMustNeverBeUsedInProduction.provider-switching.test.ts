@@ -65,13 +65,13 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     // Reset Settings
     __testOnlySetSettings({
       newSettings: {
-      endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
-      defaultModelId: 'gpt-4',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-    },
+        endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
+        defaultModelId: 'gpt-4',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+      },
     });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
@@ -102,9 +102,9 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
     __testOnlySetSettings({
       newSettings: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-    },
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+      },
     });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
@@ -121,22 +121,22 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   it('should fallback to first available model if defaultModelId is also missing', async () => {
     __testOnlySetSettings({
       newSettings: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-      defaultModelId: 'missing-default',
-    },
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+        defaultModelId: 'missing-default',
+      },
     });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
     __testOnlySetCurrentChat({
       chat: reactive({
-      id: 'fallback-test',
-      title: 'Fallback Test',
-      root: { items: [] },
-      createdAt: 0,
-      updatedAt: 0,
-      debugEnabled: false,
-    }) as any,
+        id: 'fallback-test',
+        title: 'Fallback Test',
+        root: { items: [] },
+        createdAt: 0,
+        updatedAt: 0,
+        debugEnabled: false,
+      }) as any,
     });
 
     await sendMessage({ content: 'Test' });

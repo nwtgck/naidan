@@ -105,8 +105,8 @@ async function detectReadableStreamTransferSupport(): Promise<'supported' | 'uns
   if (typeof ReadableStream === 'undefined' || typeof structuredClone === 'undefined') return 'unsupported';
   const probe = new ReadableStream<Uint8Array<ArrayBuffer>>({
     start(controller) {
-    controller.enqueue(new Uint8Array([78])); controller.close();
-  },
+      controller.enqueue(new Uint8Array([78])); controller.close();
+    },
   });
   try {
     const transferred = structuredClone(probe, { transfer: [probe] });

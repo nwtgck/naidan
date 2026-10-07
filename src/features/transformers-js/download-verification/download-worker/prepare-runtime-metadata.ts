@@ -43,10 +43,10 @@ export async function prepareRuntimeMetadata({ modelId, revision, runtime, downl
         resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = {
           status: 'ready',
           paths: selectProductionModelResources({
-          autoClass: selectTransformersJsProductionAutoClass({ modelId, modelType }),
-          config,
-          candidate,
-        }).paths,
+            autoClass: selectTransformersJsProductionAutoClass({ modelId, modelType }),
+            config,
+            candidate,
+          }).paths,
         };
       } catch (error) {
         if (!(error instanceof ProductionResourceCandidateError)) throw error;

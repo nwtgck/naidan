@@ -48,8 +48,8 @@ async function transact<T>({ mode, run }: {
         run({
           transaction,
           result: ({ value }) => {
-          outcome = { value };
-        },
+            outcome = { value };
+          },
           fail,
         });
       } catch (error) {
@@ -65,15 +65,15 @@ export async function readRpcIdentity(): Promise<NaidanRpcIdentity | undefined> 
   return transact({
     mode: 'readonly',
     run: ({ transaction, result, fail }) => {
-    const request = transaction.objectStore(identityStore).get('self');
-    request.onsuccess = () => {
-      try {
-        result({ value: request.result === undefined ? undefined : ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result) });
-      } catch (error) {
-        fail({ error });
-      }
-    };
-  },
+      const request = transaction.objectStore(identityStore).get('self');
+      request.onsuccess = () => {
+        try {
+          result({ value: request.result === undefined ? undefined : ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result) });
+        } catch (error) {
+          fail({ error });
+        }
+      };
+    },
   });
 }
 /** Insert once. A registry save failure leaves this committed key available for
@@ -83,17 +83,17 @@ export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIde
   return transact({
     mode: 'readwrite',
     run: ({ transaction, result, fail }) => {
-    const store = transaction.objectStore(identityStore), request = store.get('self');
-    request.onsuccess = () => {
-      try {
-        if (request.result === undefined) store.add(key, 'self');
-        else if (ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result).publicKey !== key.publicKey) throw new Error('The local RPC identity changed');
-        result({ value: undefined });
-      } catch (error) {
-        fail({ error });
-      }
-    };
-  },
+      const store = transaction.objectStore(identityStore), request = store.get('self');
+      request.onsuccess = () => {
+        try {
+          if (request.result === undefined) store.add(key, 'self');
+          else if (ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result).publicKey !== key.publicKey) throw new Error('The local RPC identity changed');
+          result({ value: undefined });
+        } catch (error) {
+          fail({ error });
+        }
+      };
+    },
   });
 }
 export const TEST_ONLY = {

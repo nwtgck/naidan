@@ -6,8 +6,8 @@ vi.mock('@/features/syntax-highlight/stream', () => ({
   highlightSyntaxStream: () => ({
     [Symbol.asyncIterator]: () => ({
       next: async () => {
-      throw new Error('Failed lexer');
-    },
+        throw new Error('Failed lexer');
+      },
     }),
   }),
 }));

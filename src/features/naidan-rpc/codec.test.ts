@@ -34,8 +34,8 @@ it('non-finite values, accessors, prototypes, sparse arrays, aliases and unsuppo
   const getter = Object.defineProperty({}, 'value', {
     enumerable: true,
     get() {
-    calls++; return 2;
-  },
+      calls++; return 2;
+    },
   });
   const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
   const shared = new Uint8Array(new SharedArrayBuffer(3));

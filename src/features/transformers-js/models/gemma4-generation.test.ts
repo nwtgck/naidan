@@ -7,8 +7,8 @@ function setup({ toolCalls }: { toolCalls: 'enabled' | 'disabled' }) {
   const decoder = createGemma4Generation({
     toolCalls,
     emit: ({ event }) => {
-    events.push(inferenceGenerationEventSchema.parse(event));
-  },
+      events.push(inferenceGenerationEventSchema.parse(event));
+    },
   });
   return { decoder, events };
 }

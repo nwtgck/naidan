@@ -89,15 +89,15 @@ function semanticMessages({ messages }: { messages: unknown }) {
 const strictTools = [{
   type: 'function',
   function: {
-  name: 'lookup_weather',
-  description: 'Return deterministic weather fixture data.',
-  parameters: {
-    type: 'object',
-    properties: { city: { type: 'string' } },
-    required: ['city'],
-    additionalProperties: false,
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+      additionalProperties: false,
+    },
   },
-},
 }];
 // Independently written current-template expectations, NOT source render data.
 const strictToolPrelude = `\
@@ -166,9 +166,9 @@ async function createLfm230InputReplay() {
     seen,
     templateSpy,
     async close() {
-    templateSpy.mockRestore();
-    await harness.close();
-  },
+      templateSpy.mockRestore();
+      await harness.close();
+    },
   };
 }
 
@@ -1956,136 +1956,136 @@ const lfm230FullStructuredParts = {
       scenario: 'first-turn',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: "I'm sorry, but I can't help with that.", completeness: 'complete' },
-    ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: "I'm sorry, but I can't help with that.", completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     {
       scenario: 'continuity',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: "I'm sorry for any confusion, but I'm unable to continue the conversation with", completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: "I'm sorry for any confusion, but I'm unable to continue the conversation with", completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'independent-next-input',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'system-user',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Here', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Here', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'supplied-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Template', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Template', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-none',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-low',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-medium',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-high',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'I', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'I', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'natural-tool-minimal',
       settlement: 'fulfilled',
       events: [
-      {
-        kind: 'assistant',
-        parts: [
-        { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'text', text: "I'll retrieve the weather data for Tokyo using the available tool.", completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
       ],
-        terminal: { type: 'none' },
-      },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ],
     },
     {
       scenario: 'natural-tool-representative',
       settlement: 'fulfilled',
       events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ],
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo today is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
     },
     {
       scenario: 'structured-tool-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' },
-    ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The current weather in Tokyo is 20°C with clear conditions.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
@@ -2214,12 +2214,12 @@ describe('LFM2.5 230M Provider / sequences', () => {
     expect(fullEvidenceJson.observedCacheRevision).toBe('c6f46e4e3f885ebcad164d14059a49f90e27eb4d');
     await verifyCapturedFullReplay({
       reviewedPublicContract: {
-      correctedEvents: [],
-      correctedFinalizedStreams: undefined,
-      invalidatedOutputs: [],
-      preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
-      structuredParts: lfm230FullStructuredParts,
-    },
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
+        structuredParts: lfm230FullStructuredParts,
+      },
       unavailableOutputs: [],
       completeResult: undefined,
       expectedLoadReceipt: undefined,

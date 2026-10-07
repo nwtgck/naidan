@@ -34,12 +34,12 @@ function repositories({ id, storageRevision }: { id: 'flux2-klein-4b' | 'anima-t
         path: entry.path,
         file,
         receipt: {
-        version: 1,
-        kind: 'naidan-model-file',
-        size: file.size,
-        lastModified: file.lastModified,
-        source: { kind: 'hugging-face', repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
-      },
+          version: 1,
+          kind: 'naidan-model-file',
+          size: file.size,
+          lastModified: file.lastModified,
+          source: { kind: 'hugging-face', repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
+        },
       }],
     };
   });
@@ -54,11 +54,11 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list: async () => entries,
-    scan: scanImageRepositories,
-    import: vi.fn(),
-    download,
-  },
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
   }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(true);
@@ -92,11 +92,11 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list,
-    scan: scanImageRepositories,
-    import: vi.fn(),
-    download,
-  },
+      list,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
   }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(false);
@@ -120,11 +120,11 @@ it('rejects cross-family companion overrides in main and diagnostics', async () 
     blocked: () => false,
     onSelection() {},
     dependencies: {
-    list: async () => entries,
-    scan: scanImageRepositories,
-    import: vi.fn(),
-    download: vi.fn(),
-  },
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download: vi.fn(),
+    },
   }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });
   const original = library.selectedModels();

@@ -188,8 +188,8 @@ it('observer exceptions stop the runner, abort outstanding requests, and reach i
     signal: stop.signal,
     pacing,
     onEvent: () => {
-    throw failure;
-  },
+      throw failure;
+    },
   })).rejects.toBe(failure);
   expect(a.stopped).toBe(true);
 });
@@ -278,8 +278,8 @@ it('repeated receipt requests cannot interrupt an unreceived DATA POST or starve
     signal: stop.signal,
     pacing,
     onEvent: ({ event }) => {
-    if (event.kind === 'received' && ++requests === 3) requestsReceived.resolve();
-  },
+      if (event.kind === 'received' && ++requests === 3) requestsReceived.resolve();
+    },
   });
   try {
     const sending = await entered.promise;

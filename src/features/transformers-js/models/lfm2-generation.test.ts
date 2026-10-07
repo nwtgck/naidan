@@ -30,9 +30,9 @@ describe('LFM2 prompt-open structured generation', () => {
     expect(formatLfm2MessagesForToolHandling({
       handling,
       messages: [
-      { role: 'user', content: '<think>literal user text</think>' },
-      { role: 'assistant', content: 'visible', reasoning: { text: 'private', completeness: 'complete' } },
-    ],
+        { role: 'user', content: '<think>literal user text</think>' },
+        { role: 'assistant', content: 'visible', reasoning: { text: 'private', completeness: 'complete' } },
+      ],
     })).toEqual([
       { role: 'user', content: '<think>literal user text</think>' },
       { role: 'assistant', content: 'visible', reasoning: 'private' },
@@ -40,14 +40,14 @@ describe('LFM2 prompt-open structured generation', () => {
     expect(() => formatLfm2MessagesForToolHandling({
       handling,
       messages: [
-      { role: 'user', content: '', reasoning: { text: 'invalid', completeness: 'complete' } },
-    ],
+        { role: 'user', content: '', reasoning: { text: 'invalid', completeness: 'complete' } },
+      ],
     })).toThrow(/assistant/);
     expect(() => formatLfm2MessagesForToolHandling({
       handling,
       messages: [
-      { role: 'assistant', content: '', reasoning: { text: 'unfinished', completeness: 'partial' } },
-    ],
+        { role: 'assistant', content: '', reasoning: { text: 'unfinished', completeness: 'partial' } },
+      ],
     })).toThrow(/partial reasoning/);
   });
 

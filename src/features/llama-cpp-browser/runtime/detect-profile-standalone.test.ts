@@ -44,9 +44,9 @@ describe('standalone Worker capability detection', () => {
     await expect(probeRuntimeProfiles()).resolves.toEqual({
       recommended: 'webgpu-wasm32-jspi',
       profiles: [
-      { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
-      { profile: 'webgpu-wasm32-jspi', status: 'available' },
-    ],
+        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
+        { profile: 'webgpu-wasm32-jspi', status: 'available' },
+      ],
     });
   });
   it('reports a shared JSPI failure for both embedded choices without CPU fallback', async () => {
@@ -56,9 +56,9 @@ describe('standalone Worker capability detection', () => {
     await expect(probeRuntimeProfiles()).resolves.toEqual({
       recommended: undefined,
       profiles: [
-      { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'jspi' },
-      { profile: 'webgpu-wasm32-jspi', status: 'unavailable', reason: 'jspi' },
-    ],
+        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'jspi' },
+        { profile: 'webgpu-wasm32-jspi', status: 'unavailable', reason: 'jspi' },
+      ],
     });
   });
   it('validates the actual small suspension probe independently of mocked capabilities', async () => {
@@ -71,8 +71,8 @@ describe('standalone Worker capability detection', () => {
   it('checks JSPI suspension and actual OPFS operations without reading User-Agent', async () => {
     Object.defineProperty(environment.nav, 'userAgent', {
       get() {
-      throw new Error('Do not sniff browsers');
-    },
+        throw new Error('Do not sniff browsers');
+      },
     });
     await expect(resolveRuntimeProfile({ profile: 'webgpu-wasm64-jspi' })).resolves.toBe('webgpu-wasm64-jspi');
     expect(environment.wasm.promising).toHaveBeenCalledOnce();
@@ -94,8 +94,8 @@ describe('standalone Worker capability detection', () => {
     environment.wasm.validate.mockReturnValue(memory64);
     Object.defineProperty(environment.nav, 'userAgent', {
       get() {
-      throw new Error('Do not sniff browsers');
-    },
+        throw new Error('Do not sniff browsers');
+      },
     });
     await expect(resolveRuntimeProfile({ profile: 'auto' })).resolves.toBe(expected);
     expect(environment.wasm.promising).toHaveBeenCalledOnce();
@@ -140,8 +140,8 @@ describe('standalone Worker capability detection', () => {
       // Accepts the format but decodes the known probe to the wrong byte.
       readonly readable = new ReadableStream<Uint8Array>({
         start(controller) {
-        controller.enqueue(new Uint8Array([72])); controller.close();
-      },
+          controller.enqueue(new Uint8Array([72])); controller.close();
+        },
       });
       readonly writable = new WritableStream();
     }); break;

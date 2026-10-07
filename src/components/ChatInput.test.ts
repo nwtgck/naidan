@@ -539,9 +539,9 @@ describe('ChatInput Integration', () => {
       autoTitleScheduler.schedule({
         chatId: toChatId({ raw: 'title-chat' }),
         run: ({ signal }) => {
-        titleSignal = signal;
-        return finished.promise;
-      },
+          titleSignal = signal;
+          return finished.promise;
+        },
       });
       await vi.advanceTimersByTimeAsync(2500);
       expect(titleSignal?.aborted).toBe(false);
@@ -734,11 +734,11 @@ describe('ChatInput Integration', () => {
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({
       options: expect.objectContaining({
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      initialPath: ['home', 'user', 'work'],
-      title: 'Files',
-    }),
+        kind: 'wesh-mounts',
+        rootName: 'Files',
+        initialPath: ['home', 'user', 'work'],
+        title: 'Files',
+      }),
     });
   });
 
@@ -795,10 +795,10 @@ describe('ChatInput Integration', () => {
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({
       options: expect.objectContaining({
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      title: 'Files',
-    }),
+        kind: 'wesh-mounts',
+        rootName: 'Files',
+        title: 'Files',
+      }),
     });
   });
 

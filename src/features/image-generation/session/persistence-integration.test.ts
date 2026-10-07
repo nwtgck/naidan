@@ -132,8 +132,8 @@ describe('immutable generation records and explicit state', () => {
       store,
       run,
       writeInputs: async () => {
-      throw new Error('input bytes failed');
-    },
+        throw new Error('input bytes failed');
+      },
     })).rejects.toThrow('input bytes failed');
     expect(await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id })).toBeUndefined();
   });
@@ -143,8 +143,8 @@ describe('immutable generation records and explicit state', () => {
       store,
       asset,
       writeImages: async () => {
-      throw new Error('disk full');
-    },
+        throw new Error('disk full');
+      },
     })).rejects.toThrow('disk full');
     expect(await loadImageGenerationAsset({ store, sessionId: session.id, assetId: asset.id })).toBeUndefined();
   });

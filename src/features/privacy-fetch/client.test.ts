@@ -572,10 +572,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     dispatchBrokerMessage({
       source: brokerWindow,
       data: {
-      protocol: PRIVACY_FETCH_PROTOCOL,
-      type: 'ready',
-      capabilities: { responseBody: 'arrayBuffer', transferArrayBuffer: true, headers: 'entries' },
-    },
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: { responseBody: 'arrayBuffer', transferArrayBuffer: true, headers: 'entries' },
+      },
     });
     const streamed = await client.fetchStream({ request: { url, headers: [['Range', 'bytes=3-']] } });
     expect(streamed.status).toBe(206);
@@ -590,9 +590,9 @@ describe('createPrivacyFetchBrokerClient', () => {
     const controller = new AbortController();
     const response = client.fetchStream({
       request: {
-      url: 'https://huggingface.co/api/models/owner/model',
-      signal: controller.signal,
-    },
+        url: 'https://huggingface.co/api/models/owner/model',
+        signal: controller.signal,
+      },
     });
     controller.abort();
     await expect(response).rejects.toMatchObject({ code: 'aborted' });

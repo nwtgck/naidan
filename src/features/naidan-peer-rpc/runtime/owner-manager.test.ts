@@ -47,27 +47,27 @@ function endpoint() {
   });
   const manager = new NaidanPeerManager({
     dependencies: {
-    storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
+      storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
       // Lock ownership is production code. Identity/native/transport/storage are
       // deliberate fixtures: this is not a multiple-browser integration test.
-    identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
-    acquireOwner: acquireRpcOwner,
-    open,
-    retireResources,
-    changed: () => {},
-    inference: {
-      inputBudget: createInferenceBudget({ capacity: 1024 }),
-      deliveryBudget: createInferenceBudget({ capacity: 1024 }),
-      resources: {
-        listChatModels: async () => [],
-        listImageModels: async () => [],
-        generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
-        generateImage: async () => {
-          throw new Error('Not used');
+      identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
+      acquireOwner: acquireRpcOwner,
+      open,
+      retireResources,
+      changed: () => {},
+      inference: {
+        inputBudget: createInferenceBudget({ capacity: 1024 }),
+        deliveryBudget: createInferenceBudget({ capacity: 1024 }),
+        resources: {
+          listChatModels: async () => [],
+          listImageModels: async () => [],
+          generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
+          generateImage: async () => {
+            throw new Error('Not used');
+          },
         },
       },
     },
-  },
   });
   cleanups.push(async () => {
     released.resolve(); for (const pair of links) pair.close();

@@ -16,10 +16,10 @@ const REVISION = 'a'.repeat(40);
 const MODEL_ID = 'fixture/replay';
 const corpus = z.object({
   models: z.array(z.object({
-  modelId: z.string(),
-  revision: z.string(),
-  declarations: z.array(z.object({ path: z.string(), value: z.record(z.string(), z.unknown()) })),
-})),
+    modelId: z.string(),
+    revision: z.string(),
+    declarations: z.array(z.object({ path: z.string(), value: z.record(z.string(), z.unknown()) })),
+  })),
 }).parse(corpusJson).models;
 
 // Entirely synthetic, deliberately tiny. This proves the ZIP-to-runtime
@@ -155,8 +155,8 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
       return {
         getFile: async () => blob,
         createWritable: () => {
-        mutations(); throw new Error('Writes forbidden');
-      },
+          mutations(); throw new Error('Writes forbidden');
+        },
       };
     },
     removeEntry: () => {

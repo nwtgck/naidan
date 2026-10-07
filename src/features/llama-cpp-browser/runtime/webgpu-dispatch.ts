@@ -115,107 +115,107 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
     return facade({
       target: pass,
       overrides: {
-      setPipeline(pipeline) {
-        pass.setPipeline(pipeline); current = pipeline;
-      },
+        setPipeline(pipeline) {
+          pass.setPipeline(pipeline); current = pipeline;
+        },
 
-      setBindGroup(index: number, group: GPUBindGroup | null, data?: number[] | Uint32Array, start?: number, length?: number) {
-        if (data instanceof Uint32Array && (start !== undefined || length !== undefined)) {
-          pass.setBindGroup(index, group, data, start!, length!);
-          // Emscripten reuses its heap view. Snapshot the selected range now.
-          bindings.set(index, { group, offsets: Array.from(data.subarray(start, start! + length!)) });
-        } else {
-          const offsets = data ? Array.from(data) : [];
-          pass.setBindGroup(index, group, offsets);
-          bindings.set(index, { group, offsets });
-        }
-      },
-
-      dispatchWorkgroups(x: number, y?: number, z?: number) {
-        const grid: Grid = [x, y ?? 1, z ?? 1];
-        if (grid.every(value => value <= limit)) {
-          pass.dispatchWorkgroups(x, y, z); return;
-        }
-        const chunks = planDispatch({ grid, limit });
-        if (chunks.length === 0) {
-          pass.dispatchWorkgroups(0, 0, 0); return;
-        }
-        const state = current && pipelines.get(current);
-        if (!state || !current) throw new Error('Untracked WebGPU pipeline for oversized dispatch');
-        const original = current;
-        // Resolve every descriptor before encoding: an unsupported shader or
-        // resource must not leave a partly encoded split operation.
-        const prepared = chunks.map(chunk => {
-          const selected = variant({ state, original, offset: chunk.offset, grid });
-          const selectedBindings = [...bindings].map(([index, binding]) => ({
-            index,
-            ...binding,
-            group: binding.group && selected.pipeline !== original && state.shader!.bindingGroups.includes(index) ? compatibleGroup({ variant: selected, index, original: binding.group }) : binding.group,
-          }));
-          return { ...chunk, pipeline: selected.pipeline, bindings: selectedBindings };
-        });
-        try {
-          for (const chunk of prepared) {
-            pass.setPipeline(chunk.pipeline);
-            for (const binding of chunk.bindings) pass.setBindGroup(binding.index, binding.group, binding.offsets);
-            pass.dispatchWorkgroups(...chunk.count);
+        setBindGroup(index: number, group: GPUBindGroup | null, data?: number[] | Uint32Array, start?: number, length?: number) {
+          if (data instanceof Uint32Array && (start !== undefined || length !== undefined)) {
+            pass.setBindGroup(index, group, data, start!, length!);
+            // Emscripten reuses its heap view. Snapshot the selected range now.
+            bindings.set(index, { group, offsets: Array.from(data.subarray(start, start! + length!)) });
+          } else {
+            const offsets = data ? Array.from(data) : [];
+            pass.setBindGroup(index, group, offsets);
+            bindings.set(index, { group, offsets });
           }
-        } finally {
+        },
+
+        dispatchWorkgroups(x: number, y?: number, z?: number) {
+          const grid: Grid = [x, y ?? 1, z ?? 1];
+          if (grid.every(value => value <= limit)) {
+            pass.dispatchWorkgroups(x, y, z); return;
+          }
+          const chunks = planDispatch({ grid, limit });
+          if (chunks.length === 0) {
+            pass.dispatchWorkgroups(0, 0, 0); return;
+          }
+          const state = current && pipelines.get(current);
+          if (!state || !current) throw new Error('Untracked WebGPU pipeline for oversized dispatch');
+          const original = current;
+          // Resolve every descriptor before encoding: an unsupported shader or
+          // resource must not leave a partly encoded split operation.
+          const prepared = chunks.map(chunk => {
+            const selected = variant({ state, original, offset: chunk.offset, grid });
+            const selectedBindings = [...bindings].map(([index, binding]) => ({
+              index,
+              ...binding,
+              group: binding.group && selected.pipeline !== original && state.shader!.bindingGroups.includes(index) ? compatibleGroup({ variant: selected, index, original: binding.group }) : binding.group,
+            }));
+            return { ...chunk, pipeline: selected.pipeline, bindings: selectedBindings };
+          });
+          try {
+            for (const chunk of prepared) {
+              pass.setPipeline(chunk.pipeline);
+              for (const binding of chunk.bindings) pass.setBindGroup(binding.index, binding.group, binding.offsets);
+              pass.dispatchWorkgroups(...chunk.count);
+            }
+          } finally {
           // Native code can reuse a pipeline, use indirect dispatch, or omit a
           // redundant setBindGroup next time. Never leak the specialized state.
-          pass.setPipeline(original);
-          for (const [index, binding] of bindings) pass.setBindGroup(index, binding.group, binding.offsets);
-        }
-        if (!state.reported) {
-          state.reported = true;
-          for (const [index, axis] of axes.entries()) if (grid[index]! > limit) {
-            try {
-              report({ axis, count: grid[index]!, limit, chunks: chunks.length });
-            } catch { /* Diagnostics are not inference. */ }
+            pass.setPipeline(original);
+            for (const [index, binding] of bindings) pass.setBindGroup(index, binding.group, binding.offsets);
           }
-        }
+          if (!state.reported) {
+            state.reported = true;
+            for (const [index, axis] of axes.entries()) if (grid[index]! > limit) {
+              try {
+                report({ axis, count: grid[index]!, limit, chunks: chunks.length });
+              } catch { /* Diagnostics are not inference. */ }
+            }
+          }
+        },
       },
-    },
     });
   }
   return facade({
     target: device,
     overrides: {
-    createShaderModule(descriptor) {
-      const module = device.createShaderModule(descriptor);
-      shaders.set(module, { ...descriptor }); return module;
-    },
-    createComputePipeline(descriptor) {
-      return rememberPipeline({ pipeline: device.createComputePipeline(descriptor), descriptor });
-    },
-    async createComputePipelineAsync(descriptor) {
+      createShaderModule(descriptor) {
+        const module = device.createShaderModule(descriptor);
+        shaders.set(module, { ...descriptor }); return module;
+      },
+      createComputePipeline(descriptor) {
+        return rememberPipeline({ pipeline: device.createComputePipeline(descriptor), descriptor });
+      },
+      async createComputePipelineAsync(descriptor) {
       // Snapshot before awaiting: WebIDL consumes the descriptor at call time.
-      const snapshot = { ...descriptor, compute: { ...descriptor.compute, constants: { ...descriptor.compute.constants } } };
-      return rememberPipeline({ pipeline: await device.createComputePipelineAsync(descriptor), descriptor: snapshot });
-    },
-    createBindGroup(descriptor) {
-      const group = device.createBindGroup(descriptor);
-      groups.set(group, {
-        ...descriptor,
-        entries: descriptor.entries.map(entry => ({
-        ...entry,
-        resource: 'buffer' in entry.resource ? { ...entry.resource } : entry.resource,
-      })),
-      });
-      return group;
-    },
-    createCommandEncoder(descriptor) {
-      const encoder = device.createCommandEncoder(descriptor);
-      return facade({
-        target: encoder,
-        overrides: {
-        beginComputePass(passDescriptor) {
-        return wrapPass({ pass: encoder.beginComputePass(passDescriptor) });
+        const snapshot = { ...descriptor, compute: { ...descriptor.compute, constants: { ...descriptor.compute.constants } } };
+        return rememberPipeline({ pipeline: await device.createComputePipelineAsync(descriptor), descriptor: snapshot });
       },
+      createBindGroup(descriptor) {
+        const group = device.createBindGroup(descriptor);
+        groups.set(group, {
+          ...descriptor,
+          entries: descriptor.entries.map(entry => ({
+            ...entry,
+            resource: 'buffer' in entry.resource ? { ...entry.resource } : entry.resource,
+          })),
+        });
+        return group;
       },
-      });
+      createCommandEncoder(descriptor) {
+        const encoder = device.createCommandEncoder(descriptor);
+        return facade({
+          target: encoder,
+          overrides: {
+            beginComputePass(passDescriptor) {
+              return wrapPass({ pass: encoder.beginComputePass(passDescriptor) });
+            },
+          },
+        });
+      },
     },
-  },
   });
 }
 
@@ -232,24 +232,24 @@ export function createCoreWebGpuNavigator({ navigator, report }: {
   return facade({
     target: navigator,
     overrides: {
-    gpu: facade({
-    target: gpu,
-    overrides: {
-    async requestAdapter(options) {
-      const adapter = await requestAdapter(options);
-      if (!adapter) return adapter;
-      return facade({
-        target: adapter,
+      gpu: facade({
+        target: gpu,
         overrides: {
-        async requestDevice(descriptor) {
-        return wrapDevice({ device: await adapter.requestDevice(descriptor), report });
-      },
-      },
-      });
+          async requestAdapter(options) {
+            const adapter = await requestAdapter(options);
+            if (!adapter) return adapter;
+            return facade({
+              target: adapter,
+              overrides: {
+                async requestDevice(descriptor) {
+                  return wrapDevice({ device: await adapter.requestDevice(descriptor), report });
+                },
+              },
+            });
+          },
+        },
+      }),
     },
-  },
-  }),
-  },
   });
 }
 export const TEST_ONLY = {

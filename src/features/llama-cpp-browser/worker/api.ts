@@ -65,15 +65,15 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     try {
       return await guarded({
         operation: async () => modelSchema.parse(await operation({
-        signal: controller.signal,
-        onProgress: ({ progress }) => {
-        events.send({
-          operation: () => {
-          if (!controller.signal.aborted) return report({ progress });
-        },
-        });
-      },
-      })),
+          signal: controller.signal,
+          onProgress: ({ progress }) => {
+            events.send({
+              operation: () => {
+                if (!controller.signal.aborted) return report({ progress });
+              },
+            });
+          },
+        })),
       });
     } finally {
       try {

@@ -244,8 +244,8 @@ describe('verified standard tool content history', () => {
     const unusual = { ...call, function: { ...call.function, arguments: JSON.stringify({ city: value }) } };
     const formatted = formatStandardMessagesForToolHandling({
       messages: [
-      { role: 'assistant', content: '', tool_calls: [unusual] }, messages[2]!,
-    ],
+        { role: 'assistant', content: '', tool_calls: [unusual] }, messages[2]!,
+      ],
       handling,
     });
     const content = String(formatted[0]?.['content']);

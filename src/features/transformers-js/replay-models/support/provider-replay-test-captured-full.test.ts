@@ -22,10 +22,10 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      correctedFinalizedStreams: [{ ...finalizedCorrection, expectedFinalized }],
-    },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        correctedFinalizedStreams: [{ ...finalizedCorrection, expectedFinalized }],
+      },
     });
     expectedFinalized[0]!.text = 'mutated';
     expect(result.correctedFinalizedStreams.get(1)).toEqual([{ text: 'literal', streamEnd: true }]);
@@ -42,10 +42,10 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      correctedFinalizedStreams: corrections,
-    },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        correctedFinalizedStreams: corrections,
+      },
     })).toThrow(error);
   });
   it('rejects missing or repeated use of a reviewed finalized stream', () => {
@@ -60,9 +60,9 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      correctedEvents: [{ ...correction, expectedEvents }],
-      invalidatedOutputs: [],
-    },
+        correctedEvents: [{ ...correction, expectedEvents }],
+        invalidatedOutputs: [],
+      },
     });
     expectedEvents.push({ kind: 'mutation' });
     expect(result.correctedEvents.get('first-turn')).toEqual([{ kind: 'assistant-start' }]);
@@ -94,9 +94,9 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      correctedEvents: [],
-      invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
-    },
+        correctedEvents: [],
+        invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
+      },
     })).toThrow('changed public input');
   });
   it('keeps current pre-native rejection separate from historical fulfillment and native output', () => {
@@ -105,11 +105,11 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] },
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      preNativeRejections: [{ scenario: 'natural-tool-minimal', reason: 'No reviewed structured tool adapter' }],
-    },
+        singleTextParts: { endTokenIds: ['2'] },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections: [{ scenario: 'natural-tool-minimal', reason: 'No reviewed structured tool adapter' }],
+      },
     });
     expect([...result.preNativeRejections]).toEqual(['natural-tool-minimal']);
     expect(result.gaps).toEqual([]);
@@ -126,11 +126,11 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] },
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      preNativeRejections: rejections,
-    },
+        singleTextParts: { endTokenIds: ['2'] },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections: rejections,
+      },
     })).toThrow(error);
   });
   it('cannot use a native output gap or an unmigrated observation contract as a pre-native rejection', () => {
@@ -139,20 +139,20 @@ describe('reviewed public contracts remain separate from immutable capture', () 
       evidence,
       originalGaps: [],
       reviewedPublicContract: {
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      preNativeRejections,
-    },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections,
+      },
     })).toThrow('structured parts');
     expect(() => TEST_ONLY.validateReviewedProviderContract({
       evidence,
       originalGaps: [invalidated],
       reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] },
-      correctedEvents: [],
-      invalidatedOutputs: [],
-      preNativeRejections,
-    },
+        singleTextParts: { endTokenIds: ['2'] },
+        correctedEvents: [],
+        invalidatedOutputs: [],
+        preNativeRejections,
+      },
     })).toThrow('conflicting');
   });
 });
@@ -285,14 +285,14 @@ describe('captured Full native inference gate', () => {
       const observed = captureProviderChat({
         provider: harness.provider,
         request: {
-        model: evidence.modelId,
-        messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
-        tools: [],
-        parameters,
-        debug: undefined,
-        readBinaryObject: undefined,
-        signal: undefined,
-      },
+          model: evidence.modelId,
+          messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
+          tools: [],
+          parameters,
+          debug: undefined,
+          readBinaryObject: undefined,
+          signal: undefined,
+        },
       });
       await observed.completion;
       expect(verified).toBe(13);

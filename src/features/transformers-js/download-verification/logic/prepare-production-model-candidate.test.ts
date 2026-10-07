@@ -132,8 +132,8 @@ describe('prepareProductionModelCandidate', () => {
     const prefetch = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
     Object.defineProperty(prefetch, 'timing', {
       get() {
-      throw new Error('Synthetic invalid advisory property');
-    },
+        throw new Error('Synthetic invalid advisory property');
+      },
     });
     const dispose = vi.fn(async () => undefined);
     const prefetchUrls = vi.fn(async () => prefetch);

@@ -62,32 +62,32 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
       abortController: controller,
       onChange: () => {},
       items: createInferenceGeneration({
-      signal: controller.signal,
-      generate: async ({ onEvent }) => {
-        const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-        try {
-          const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
-          await strategy.generate({
-            model,
-            tokenizer,
-            messages: input.messages,
-            params: undefined,
-            tools: undefined,
-            onChunk,
-            onToolCalls,
-            onRawChunk: () => {},
-            debugLog: () => {},
-            observationSink: undefined,
-            generationCapture: undefined,
-            runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-          });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }),
+        signal: controller.signal,
+        generate: async ({ onEvent }) => {
+          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+          try {
+            const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
+            await strategy.generate({
+              model,
+              tokenizer,
+              messages: input.messages,
+              params: undefined,
+              tools: undefined,
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
     });
     let settled = false; void operation.then(() => {
       settled = true;

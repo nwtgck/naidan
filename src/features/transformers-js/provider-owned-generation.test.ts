@@ -63,46 +63,46 @@ function turn({ provider, tools, model }: { provider: LmProvider, tools: Tool[],
     controller,
     onToolEvent,
     run: () => generateChatTurn({
-    onToolCallDraftsChange: undefined,
-    provider,
-    model,
-    parameters: undefined,
-    tools,
-    readBinaryObject: undefined,
-    debug: undefined,
-    abortController: controller,
-    approvalContext: undefined,
-    createAssistantMessage: () => {
-      const node: AssistantMessageNode = {
-        id: toMessageId({ raw: `a${history.length}` }),
-        role: 'assistant',
-        parts: [],
-        createdAt: 1,
-        interruption: undefined,
-        modelId: undefined,
-        lmParameters: undefined,
-        replies: { items: [] },
-      };
-      history.push(node); return node;
-    },
-    createToolMessage: () => {
-      const node: Extract<MessageNode, { role: 'tool' }> = {
-        id: toMessageId({ raw: `t${history.length}` }),
-        role: 'tool',
-        parts: [],
-        createdAt: 1,
-        modelId: undefined,
-        lmParameters: undefined,
-        replies: { items: [] },
-      };
-      history.push(node); return node;
-    },
-    buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
-    onChange: () => {},
-    onToolEvent,
-    persistToolContent: async ({ text }) => ({ type: 'text', text }),
-    describeError: ({ error }) => error.message,
-  }),
+      onToolCallDraftsChange: undefined,
+      provider,
+      model,
+      parameters: undefined,
+      tools,
+      readBinaryObject: undefined,
+      debug: undefined,
+      abortController: controller,
+      approvalContext: undefined,
+      createAssistantMessage: () => {
+        const node: AssistantMessageNode = {
+          id: toMessageId({ raw: `a${history.length}` }),
+          role: 'assistant',
+          parts: [],
+          createdAt: 1,
+          interruption: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
+          replies: { items: [] },
+        };
+        history.push(node); return node;
+      },
+      createToolMessage: () => {
+        const node: Extract<MessageNode, { role: 'tool' }> = {
+          id: toMessageId({ raw: `t${history.length}` }),
+          role: 'tool',
+          parts: [],
+          createdAt: 1,
+          modelId: undefined,
+          lmParameters: undefined,
+          replies: { items: [] },
+        };
+        history.push(node); return node;
+      },
+      buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
+      onChange: () => {},
+      onToolEvent,
+      persistToolContent: async ({ text }) => ({ type: 'text', text }),
+      describeError: ({ error }) => error.message,
+    }),
   };
 }
 
@@ -162,8 +162,8 @@ describe('hosted structured generation with the real service lane', () => {
       description: 'test',
       parametersSchema: z.object({}),
       execute: async () => {
-      held.resolve(); await release.promise; return { status: 'success', content: 'tool result' };
-    },
+        held.resolve(); await release.promise; return { status: 'success', content: 'tool result' };
+      },
     };
     f.client.generateMessage.mockImplementationOnce(publishCall);
     const conversation = turn({ provider: f.provider, model: 'fixture/first', tools: [tool] });
@@ -234,8 +234,8 @@ describe('hosted structured generation with the real service lane', () => {
     await f.provider.runChatOperation!({
       signal: undefined,
       operation: async ({ chat }) => {
-      escaped = chat;
-    },
+        escaped = chat;
+      },
     });
     const c = new AbortController(); if (!escaped) throw new Error('No escaped chat');
     await expect(collectChatGeneration({ items: escaped(request({ signal: c.signal, model: 'fixture/escaped', messages: [] })), abortController: c })).rejects.toThrow('closed');
@@ -250,13 +250,13 @@ describe('hosted structured generation with the real service lane', () => {
     await f.provider.runChatOperation!({
       signal: undefined,
       operation: async ({ chat, signal }) => {
-      const a = new AbortController(); const b = new AbortController();
-      const first = collectChatGeneration({ items: chat(request({ signal, model: 'fixture/m', messages: [] })), abortController: a });
-      await entered.promise;
-      const second = await collectChatGeneration({ items: chat(request({ signal, model: 'fixture/m', messages: [] })), abortController: b });
-      expect(second.result).toMatchObject({ type: 'error', error: expect.objectContaining({ message: expect.stringContaining('active generation') }) });
-      expect(f.client.generateMessage).toHaveBeenCalledOnce(); release.resolve(); expect((await first).text).toBe('first');
-    },
+        const a = new AbortController(); const b = new AbortController();
+        const first = collectChatGeneration({ items: chat(request({ signal, model: 'fixture/m', messages: [] })), abortController: a });
+        await entered.promise;
+        const second = await collectChatGeneration({ items: chat(request({ signal, model: 'fixture/m', messages: [] })), abortController: b });
+        expect(second.result).toMatchObject({ type: 'error', error: expect.objectContaining({ message: expect.stringContaining('active generation') }) });
+        expect(f.client.generateMessage).toHaveBeenCalledOnce(); release.resolve(); expect((await first).text).toBe('first');
+      },
     });
     expect(f.client.interrupt).not.toHaveBeenCalled();
   });
@@ -272,10 +272,10 @@ describe('hosted structured generation with the real service lane', () => {
     await expect(f.provider.runChatOperation!({
       signal: controller.signal,
       operation: async ({ chat, signal }) => {
-      const iterator = chat(request({ signal, model: 'fixture/m', messages: [] }))[Symbol.asyncIterator]();
-      expect((await iterator.next()).done).toBe(false);
+        const iterator = chat(request({ signal, model: 'fixture/m', messages: [] }))[Symbol.asyncIterator]();
+        expect((await iterator.next()).done).toBe(false);
       // The owner must cancel the unread child and drain its failed producer.
-    },
+      },
     })).rejects.toThrow();
     await f.owner.service.resetCache(); expect(f.client.resetCache).toHaveBeenCalledOnce(); expect(f.client.interrupt).toHaveBeenCalledOnce();
   });
@@ -309,15 +309,15 @@ describe('hosted structured generation with the real service lane', () => {
     const operation = f.provider.runChatOperation!({
       signal: undefined,
       operation: async ({ chat, signal }) => {
-      const iterator = chat(request({ signal, model: 'fixture/m', messages: [] }))[Symbol.asyncIterator]();
-      escaped.resolve(iterator);
-      const first = iterator.next();
-      await entered.promise;
-      await expect(iterator.next()).rejects.toThrow('Concurrent reads');
-      release.resolve();
-      firstItem.resolve(await first);
-      await queueFilled.promise;
-    },
+        const iterator = chat(request({ signal, model: 'fixture/m', messages: [] }))[Symbol.asyncIterator]();
+        escaped.resolve(iterator);
+        const first = iterator.next();
+        await entered.promise;
+        await expect(iterator.next()).rejects.toThrow('Concurrent reads');
+        release.resolve();
+        firstItem.resolve(await first);
+        await queueFilled.promise;
+      },
     }).then(
       () => ({ type: 'resolved' as const }),
       (error: unknown) => ({ type: 'rejected' as const, error }),
@@ -351,8 +351,8 @@ describe('hosted structured generation with the real service lane', () => {
     const held = a.provider.runChatOperation!({
       signal: undefined,
       operation: async () => {
-      entered.resolve(); await release.promise;
-    },
+        entered.resolve(); await release.promise;
+      },
     });
     await entered.promise;
     try {
@@ -369,17 +369,17 @@ describe('hosted structured generation with the real service lane', () => {
       id: toMessageId({ raw: 'u' }),
       role: 'user',
       parts: [{
-      type: 'attachment',
-      attachment: {
-      id: toAttachmentId({ raw: 'a' }),
-      binaryObjectId: toBinaryObjectId({ raw: 'b' }),
-      originalName: 'text',
-      mimeType: 'text/plain',
-      size: 4,
-      uploadedAt: 1,
-      status: 'persisted',
-    },
-    }],
+        type: 'attachment',
+        attachment: {
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+          originalName: 'text',
+          mimeType: 'text/plain',
+          size: 4,
+          uploadedAt: 1,
+          status: 'persisted',
+        },
+      }],
     };
     const r = await collectChatGeneration({ items: f.provider.chat({ ...request({ signal: c.signal, model: 'fixture/m', messages: [user] }), readBinaryObject: read }), abortController: c });
     expect(r.result.type).toBe('error'); expect(read).not.toHaveBeenCalled(); expect(f.client.loadDownloadedModel).not.toHaveBeenCalled();
@@ -390,8 +390,8 @@ describe('hosted structured generation with the real service lane', () => {
     await expect(f.provider.runChatOperation!({
       signal: undefined,
       operation: async () => {
-      throw failure;
-    },
+        throw failure;
+      },
     })).rejects.toBe(failure);
     expect(f.client.generateMessage).not.toHaveBeenCalled();
   });
@@ -404,10 +404,10 @@ describe('hosted structured generation with the real service lane', () => {
       description: 'late side effect',
       parametersSchema: z.object({}),
       execute: async ({ signal, onEvent }) => {
-      held.resolve(signal); await release.promise;
-      await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late diagnostic' } });
-      observed.resolve(); return { status: 'success', content: 'actually completed' };
-    },
+        held.resolve(signal); await release.promise;
+        await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late diagnostic' } });
+        observed.resolve(); return { status: 'success', content: 'actually completed' };
+      },
     };
     f.client.generateMessage.mockImplementationOnce(publishCall);
     const old = turn({ provider: f.provider, model: 'fixture/old', tools: [tool] });
@@ -483,10 +483,10 @@ describe('hosted structured generation with the real service lane', () => {
       description: 'late completion',
       parametersSchema: z.object({}),
       execute: async ({ onEvent }) => {
-      held.resolve(); await release.promise;
-      await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'after stop' } });
-      return { status: 'success', content: 'completed after stop' };
-    },
+        held.resolve(); await release.promise;
+        await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'after stop' } });
+        return { status: 'success', content: 'completed after stop' };
+      },
     };
     f.client.generateMessage.mockImplementationOnce(publishCall);
     const first = turn({ provider: f.provider, model: 'fixture/first', tools: [tool] });
@@ -511,8 +511,8 @@ describe('hosted structured generation with the real service lane', () => {
     const held = f.provider.runChatOperation!({
       signal: undefined,
       operation: async () => {
-      entered.resolve(); await release.promise;
-    },
+        entered.resolve(); await release.promise;
+      },
     });
     await entered.promise;
     const controller = new AbortController();
@@ -531,8 +531,8 @@ describe('hosted structured generation with the real service lane', () => {
     await f.provider.runChatOperation!({
       signal: undefined,
       operation: async ({ chat, signal }) => {
-      escaped = chat(request({ signal, model: 'fixture/stale', messages: [] }));
-    },
+        escaped = chat(request({ signal, model: 'fixture/stale', messages: [] }));
+      },
     });
     if (!escaped) throw new Error('Missing escaped generation');
     await expect(collectChatGeneration({ items: escaped, abortController: new AbortController() })).rejects.toThrow('closed');
@@ -548,17 +548,17 @@ describe('hosted structured generation with the real service lane', () => {
       id: toMessageId({ raw: 'u' }),
       role: 'user',
       parts: [{
-      type: 'attachment',
-      attachment: {
-      id: toAttachmentId({ raw: 'a' }),
-      binaryObjectId: toBinaryObjectId({ raw: 'b' }),
-      originalName: 'image',
-      mimeType: 'image/png',
-      size: 4,
-      uploadedAt: 1,
-      status: 'persisted',
-    },
-    }],
+        type: 'attachment',
+        attachment: {
+          id: toAttachmentId({ raw: 'a' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'b' }),
+          originalName: 'image',
+          mimeType: 'image/png',
+          size: 4,
+          uploadedAt: 1,
+          status: 'persisted',
+        },
+      }],
     };
     const result = await collectChatGeneration({ items: f.provider.chat({ ...request({ signal: c.signal, model: 'fixture/m', messages: [user] }), readBinaryObject: read }), abortController: c });
     expect(result.result).toEqual({ type: 'error', error: failure }); expect(read).toHaveBeenCalledOnce();

@@ -87,12 +87,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => stopped.resolve(), { once: true });
-      await writer.text({ type: 'text', text: '<think>I am thinking...' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    },
+        signal.addEventListener('abort', () => stopped.resolve(), { once: true });
+        await writer.text({ type: 'text', text: '<think>I am thinking...' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
     }));
     try {
       await sendMessage({ content: 'Hello' });

@@ -127,15 +127,15 @@ function harness({ pointerBytes, outcome, channels }: {
       return {
         path,
         remove: vi.fn(() => {
-        events.push('unmount');
-      }),
+          events.push('unmount');
+        }),
       };
     }),
   };
   const reader = {
     readAsArrayBuffer: vi.fn((_blob: Blob) => {
-    const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
-  }),
+      const header = new ArrayBuffer(24), view = new DataView(header); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return header;
+    }),
   };
   return { core, api, helpers, reader, fields, recordPointers, strings, events, callbacks, registrations, previewWrites };
 }
@@ -158,8 +158,8 @@ it('observes only an idle loaded session, never native callbacks, closed session
     request: requestFixture(),
     onProgress: vi.fn(),
     onLog() {
-    callbacks.push(session.inspectEngine());
-  },
+      callbacks.push(session.inspectEngine());
+    },
   });
   for (const pending of callbacks) expect(await pending).toEqual({ status: 'unavailable', reason: 'busy' });
   expect(h.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled(); expect(h.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
@@ -219,8 +219,8 @@ it('opens a new graph diagnostic window per retained request and never toggles i
       request: { ...request, runId: index, debug },
       onProgress: vi.fn(),
       onLog() {
-      observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
-    },
+        observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
+      },
     });
   }
   expect(callsDuringCallbacks.map(calls => [...new Set(calls)])).toEqual([[1], [3], [5]]);
@@ -364,11 +364,11 @@ it('uses upstream defaults and safely handles notification exceptions', async ()
     ...h,
     request: requestFixture(),
     onProgress: () => {
-    throw new Error('listener');
-  },
+      throw new Error('listener');
+    },
     onLog: () => {
-    throw new Error('listener');
-  },
+      throw new Error('listener');
+    },
   });
   expect(result.pixels[3]).toBe(71); expect(h.api.sd_get_default_sample_method).toHaveBeenCalledOnce(); expect(h.api.sd_get_default_scheduler).toHaveBeenCalledWith(200000n, 2);
 });
@@ -433,16 +433,16 @@ it.each(['success', 'trap'] as const)('reports final logical and Blob read total
   expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
     event: 'file-read',
     fields: expect.objectContaining({
-    report: 'final',
-    reads: 9,
-    bytes: 18,
-    blobReads: 1,
-    blobBytes: 24,
-    cacheHits: 8,
-    cacheHitBytes: 16,
-    cacheCapacityBytes: 64 * 1024 * 1024,
-    cacheRetainedBytes: 24,
-  }),
+      report: 'final',
+      reads: 9,
+      bytes: 18,
+      blobReads: 1,
+      blobBytes: 24,
+      cacheHits: 8,
+      cacheHitBytes: 16,
+      cacheCapacityBytes: 64 * 1024 * 1024,
+      cacheRetainedBytes: 24,
+    }),
   }));
 });
 
@@ -459,11 +459,11 @@ RuntimeError: memory access out of bounds
     event: 'failed',
     stage: 'generation',
     fields: expect.objectContaining({
-    errorType: 'wasm-trap',
-    nativeCall: 'generate_image',
-    wasmFrames: 'wasm-function[6740]:0xae1009',
-    workerTerminationRequired: true,
-  }),
+      errorType: 'wasm-trap',
+      nativeCall: 'generate_image',
+      wasmFrames: 'wasm-function[6740]:0xae1009',
+      workerTerminationRequired: true,
+    }),
   }));
   const failure = onDiagnostic.mock.calls.findIndex(([entry]) => entry.event === 'failed');
   const cleanup = onDiagnostic.mock.calls.findIndex(([entry]) => entry.stage === 'cleanup');
@@ -496,10 +496,10 @@ it.each(['load', 'generation'] as const)('treats a rejection from %s as uncertai
     event: 'failed',
     stage: stage === 'load' ? 'model-load' : 'generation',
     fields: expect.objectContaining({
-    errorType: 'error',
-    workerTerminationRequired: true,
-    nativeCall: stage === 'load' ? 'new_sd_ctx' : 'generate_image',
-  }),
+      errorType: 'error',
+      workerTerminationRequired: true,
+      nativeCall: stage === 'load' ? 'new_sd_ctx' : 'generate_image',
+    }),
   }));
 });
 it('also skips native cleanup if a short native boundary traps', async () => {
@@ -762,8 +762,8 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
         fillRect() {},
         drawImage() {},
         getImageData() {
-        return { data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) };
-      },
+          return { data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) };
+        },
       };
     }
   });
@@ -830,8 +830,8 @@ it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fi
         fillRect() {},
         drawImage() {},
         getImageData() {
-        return { data: new Uint8ClampedArray(8) };
-      },
+          return { data: new Uint8ClampedArray(8) };
+        },
       };
     }
   });

@@ -1293,15 +1293,15 @@ describe('LFM2.5 350M Provider / tools', () => {
     const strictToolDefinitions = [{
       type: 'function',
       function: {
-      name: 'lookup_weather',
-      description: 'Return deterministic weather fixture data.',
-      parameters: {
-        type: 'object',
-        properties: { city: { type: 'string' } },
-        required: ['city'],
-        additionalProperties: false,
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
+        parameters: {
+          type: 'object',
+          properties: { city: { type: 'string' } },
+          required: ['city'],
+          additionalProperties: false,
+        },
       },
-    },
     }];
     const harness = await createProviderReplayTestRuntime({
       modelId: toolInputEvidence.modelId,
@@ -1483,15 +1483,15 @@ describe('LFM2.5 350M Provider / tools', () => {
     const strictToolDefinitions = [{
       type: 'function',
       function: {
-      name: 'lookup_weather',
-      description: 'Return deterministic weather fixture data.',
-      parameters: {
-        type: 'object',
-        properties: { city: { type: 'string' } },
-        required: ['city'],
-        additionalProperties: false,
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
+        parameters: {
+          type: 'object',
+          properties: { city: { type: 'string' } },
+          required: ['city'],
+          additionalProperties: false,
+        },
       },
-    },
     }];
     const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
     const harness = await createProviderReplayTestRuntime({
@@ -1692,8 +1692,8 @@ describe('LFM2.5 350M Provider / tools', () => {
         id: toMessageId({ raw: 'message_0' }),
         role: 'user',
         parts: [
-        { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+        ],
       }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters });
@@ -2089,138 +2089,138 @@ const lfm350FullStructuredParts = {
       scenario: 'first-turn',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Sure! Here’s an example of a **template** for a **user', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Sure! Here’s an example of a **template** for a **user', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'continuity',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      {
-        type: 'text',
-        text: `\
+        kind: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: `\
 Sure! Here’s a continuation of the synthetic conversation:
 
 ---
 
 User`,
-        completeness: 'partial',
-      },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+            completeness: 'partial',
+          },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'independent-next-input',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'S', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'S', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'system-user',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'The', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'supplied-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'Template', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Template', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-none',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'S', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'S', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-low',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'S', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'S', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-medium',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'S', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'S', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'reasoning-high',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'S', completeness: 'partial' },
-    ],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'S', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
     },
     {
       scenario: 'natural-tool-minimal',
       settlement: 'fulfilled',
       events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ],
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
     },
     {
       scenario: 'natural-tool-representative',
       settlement: 'fulfilled',
       events: [
-      { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ],
+        { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
+      ],
     },
     {
       scenario: 'structured-tool-history',
       settlement: 'fulfilled',
       events: [{
-      kind: 'assistant',
-      parts: [
-      { type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
-    ],
-      terminal: { type: 'finished', next: 'user' },
-    }],
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
     },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
@@ -2498,12 +2498,12 @@ User`]);
     expect(fullEvidenceJson.invocations).toHaveLength(15);
     await verifyCapturedFullReplay({
       reviewedPublicContract: {
-      correctedEvents: [],
-      correctedFinalizedStreams: undefined,
-      invalidatedOutputs: [],
-      preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
-      structuredParts: lfm350FullStructuredParts,
-    },
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
+        structuredParts: lfm350FullStructuredParts,
+      },
       unavailableOutputs: [],
       completeResult: undefined,
       expectedLoadReceipt: undefined,

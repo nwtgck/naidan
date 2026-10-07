@@ -25,10 +25,10 @@ describe('parts-backed chat search', () => {
   it('finds each body part and uses node creation time without changing the source', () => {
     const message = assistant({
       parts: [
-      { type: 'reasoning', text: 'private reasoning word', completeness: 'complete' },
-      { type: 'text', text: '  First body. ', completeness: 'complete' },
-      { type: 'text', text: 'Second 🙂 body.', completeness: 'partial' },
-    ],
+        { type: 'reasoning', text: 'private reasoning word', completeness: 'complete' },
+        { type: 'text', text: '  First body. ', completeness: 'complete' },
+        { type: 'text', text: 'Second 🙂 body.', completeness: 'partial' },
+      ],
     });
     const before = structuredClone(message);
     const results = find({ messages: [message], query: 'SECOND' });
@@ -40,9 +40,9 @@ describe('parts-backed chat search', () => {
   it('keeps AND matching across text parts without inventing words at a part boundary', () => {
     const message = assistant({
       parts: [
-      { type: 'text', text: 'Alpha', completeness: 'complete' },
-      { type: 'text', text: 'Beta', completeness: 'complete' },
-    ],
+        { type: 'text', text: 'Alpha', completeness: 'complete' },
+        { type: 'text', text: 'Beta', completeness: 'complete' },
+      ],
     });
     expect(find({ messages: [message], query: 'alpha beta' })).toHaveLength(1);
     expect(find({ messages: [message], query: 'alphabeta' })).toHaveLength(0);
@@ -52,10 +52,10 @@ describe('parts-backed chat search', () => {
   it('searches literal think tags as text but does not expand body search to reasoning or calls', () => {
     const message = assistant({
       parts: [
-      { type: 'reasoning', text: 'reasoning-only', completeness: 'partial' },
-      { type: 'text', text: '<think>literal-only</think> body', completeness: 'partial' },
-      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'function-only', arguments: '{"private-argument":true}' } } },
-    ],
+        { type: 'reasoning', text: 'reasoning-only', completeness: 'partial' },
+        { type: 'text', text: '<think>literal-only</think> body', completeness: 'partial' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'function-only', arguments: '{"private-argument":true}' } } },
+      ],
     });
     expect(find({ messages: [message], query: '<think>literal-only' })).toHaveLength(1);
     for (const query of ['reasoning-only', 'function-only', 'private-argument']) {
@@ -107,9 +107,9 @@ describe('parts-backed chat search', () => {
     const chatId = toChatId({ raw: 'persisted-search' });
     const message = assistant({
       parts: [
-      { type: 'reasoning', text: 'not-indexed', completeness: 'complete' },
-      { type: 'text', text: '保存された🙂回答', completeness: 'partial' },
-    ],
+        { type: 'reasoning', text: 'not-indexed', completeness: 'complete' },
+        { type: 'text', text: '保存された🙂回答', completeness: 'partial' },
+      ],
     });
     await storage.saveChatContent({ id: chatId, content: { currentLeafId: message.id, root: { items: [message] } } });
     const worker = createGlobalSearchWorker();
@@ -120,12 +120,12 @@ describe('parts-backed chat search', () => {
     });
     const result = await worker.searchChatContent({
       request: {
-      storageType: 'memory',
-      chatId: 'persisted-search',
-      searchQuery: '保存 回答',
-      scope: 'all',
-      roleFilter: 'assistant',
-    },
+        storageType: 'memory',
+        chatId: 'persisted-search',
+        searchQuery: '保存 回答',
+        scope: 'all',
+        roleFilter: 'assistant',
+      },
     });
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0]).toMatchObject({ excerpt: '保存された🙂回答', timestamp: 23 });

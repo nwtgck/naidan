@@ -40,27 +40,27 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
       contract: naidanPeerContract,
       allowedMethods: ['generateChat'],
       implementation: createNaidanPeerImplementation({
-      providedMethods: () => ({ status: 'ready', methods: [] }),
-      inference: {
-      inputBudget,
-      deliveryBudget,
-      resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected },
-    },
-    }),
+        providedMethods: () => ({ status: 'ready', methods: [] }),
+        inference: {
+          inputBudget,
+          deliveryBudget,
+          resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected },
+        },
+      }),
     })],
   });
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], signal: lifetime.signal, limits: { maxCalls: 4, maxCallTimeoutMs: 1000 } });
   // Replace only connection discovery; the provider, protocol and handlers below are real.
   const manager = new NaidanPeerManager({
     dependencies: {
-    storage: { readIdentity: unexpected, list: unexpected, update: unexpected, remember: unexpected, remove: unexpected },
-    identity: unexpected,
-    acquireOwner: unexpected,
-    open: unexpected,
-    retireResources: unexpected,
-    changed: () => {},
-    inference: { inputBudget, deliveryBudget, resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected } },
-  },
+      storage: { readIdentity: unexpected, list: unexpected, update: unexpected, remember: unexpected, remove: unexpected },
+      identity: unexpected,
+      acquireOwner: unexpected,
+      open: unexpected,
+      retireResources: unexpected,
+      changed: () => {},
+      inference: { inputBudget, deliveryBudget, resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected } },
+    },
   });
   vi.spyOn(manager, 'client').mockImplementation(() => caller.client({ contract: naidanPeerContract }));
   vi.mocked(getRpcManager).mockResolvedValue(manager);
@@ -72,13 +72,13 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
   return {
     provider,
     title: ({ effective }: { effective: LmParameters }) => collectTitleGeneration({
-    provider,
-    endpoint: { type: 'naidan_rpc', connectionId },
-    messages,
-    model: 'models/local.gguf',
-    parameters: effective,
-    signal: new AbortController().signal,
-  }),
+      provider,
+      endpoint: { type: 'naidan_rpc', connectionId },
+      messages,
+      model: 'models/local.gguf',
+      parameters: effective,
+      signal: new AbortController().signal,
+    }),
   };
 }
 const successful: ReadOnlyInferenceResources['generateChat'] = async ({ onEvent }) => {
@@ -103,14 +103,14 @@ it('never retries regular chat or discloses the provider error text', async () =
   const { provider } = fixture({ generate }); const abortController = new AbortController();
   const output = await collectChatGeneration({
     items: provider.chat({
-    messages,
-    model: 'models/local.gguf',
-    parameters,
-    tools: undefined,
-    readBinaryObject: undefined,
-    debug: undefined,
-    signal: abortController.signal,
-  }),
+      messages,
+      model: 'models/local.gguf',
+      parameters,
+      tools: undefined,
+      readBinaryObject: undefined,
+      debug: undefined,
+      signal: abortController.signal,
+    }),
     abortController,
   });
   expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();

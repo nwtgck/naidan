@@ -73,15 +73,15 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     const failureKind = lastNativeFailure?.failureKind ?? classifyFailure({ error: event.error instanceof Error ? event.error : event.message });
     logDiagnostic({
       diagnostic: {
-      ...lastOperation,
-      ...dispatchLimitDetails({ message: event.message }),
-      ...lastNativeFailure,
-      event: 'failed',
-      stage: 'worker-error',
-      failureKind,
-      lastStage: lastOperation?.stage,
-      lastEvent: lastOperation?.event,
-    },
+        ...lastOperation,
+        ...dispatchLimitDetails({ message: event.message }),
+        ...lastNativeFailure,
+        event: 'failed',
+        stage: 'worker-error',
+        failureKind,
+        lastStage: lastOperation?.stage,
+        lastEvent: lastOperation?.event,
+      },
     });
     event.preventDefault(); dispose();
   };
@@ -138,10 +138,10 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         call: () => call({
           generationId,
           report: workerProxy({
-          value: ({ ...event }: Progress) => {
-          if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        },
-        }),
+            value: ({ ...event }: Progress) => {
+              if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            },
+          }),
         }),
         signal,
         onAbort: () => {
@@ -183,14 +183,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       try {
         await invoke({
           call: () => remote.prepareModel(accepted, workerProxy({
-          value: ({ ...event }) => {
-          if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        },
-        })),
+            value: ({ ...event }) => {
+              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            },
+          })),
           signal,
           onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        },
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
           abortTimeoutMs: 5000,
         });
       } finally {
@@ -207,31 +207,31 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       try {
         const result = await invoke({
           call: () => remote.generate(accepted,
-          workerProxy({
-            value: async ({ event }) => {
-            if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
-          },
-          }),
-          workerProxy({
-            value: ({ ...event }) => {
-            if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-          },
-          }),
-          workerProxy({
-            value: ({ diagnostic }: { diagnostic: unknown }) => {
-            if (!acceptingEvents || disposed || signal?.aborted) return;
-            debugEnabled = accepted.debug === 'on';
-            const checkpoint = diagnosticSchema.parse(diagnostic);
-            if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-            if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-            if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-            if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-          },
-          })),
+            workerProxy({
+              value: async ({ event }) => {
+                if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
+              },
+            }),
+            workerProxy({
+              value: ({ ...event }) => {
+                if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+              },
+            }),
+            workerProxy({
+              value: ({ diagnostic }: { diagnostic: unknown }) => {
+                if (!acceptingEvents || disposed || signal?.aborted) return;
+                debugEnabled = accepted.debug === 'on';
+                const checkpoint = diagnosticSchema.parse(diagnostic);
+                if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+                if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+                if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+              },
+            })),
           signal,
           onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        },
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
           abortTimeoutMs: 5000,
         });
         return generationResultSchema.parse(result);
@@ -267,41 +267,41 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       try {
         const result = await invoke({
           call: () => {
-          const pending = remote.generateAudio(accepted,
-            workerProxy({
-              value: ({ ...event }) => {
-              if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-            },
-            }),
-            workerProxy({
-              value: ({ diagnostic }: { diagnostic: unknown }) => {
-              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
-              debugEnabled = accepted.debug === 'on';
-              const checkpoint = diagnosticSchema.parse(diagnostic);
-              if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-              if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-              if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-              if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-            },
-            }), preview ? workerProxy({
-              value: async ({ ...event }: AudioPreviewEvent) => {
-              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
-              const acceptedEvent = audioPreviewEventSchema.parse(event);
-              if (acceptedEvent.requestVersion <= deliveredVersion) return;
-              if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
-              deliveredVersion = acceptedEvent.requestVersion;
-              await preview.onPreview(acceptedEvent);
-            },
-            }) : undefined);
-          started = true;
-          if (completionSignal?.aborted) finish();
-          requestPreview();
-          return pending;
-        },
+            const pending = remote.generateAudio(accepted,
+              workerProxy({
+                value: ({ ...event }) => {
+                  if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+                },
+              }),
+              workerProxy({
+                value: ({ diagnostic }: { diagnostic: unknown }) => {
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  debugEnabled = accepted.debug === 'on';
+                  const checkpoint = diagnosticSchema.parse(diagnostic);
+                  if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                  if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+                  if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+                  if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+                },
+              }), preview ? workerProxy({
+                value: async ({ ...event }: AudioPreviewEvent) => {
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  const acceptedEvent = audioPreviewEventSchema.parse(event);
+                  if (acceptedEvent.requestVersion <= deliveredVersion) return;
+                  if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+                  deliveredVersion = acceptedEvent.requestVersion;
+                  await preview.onPreview(acceptedEvent);
+                },
+              }) : undefined);
+            started = true;
+            if (completionSignal?.aborted) finish();
+            requestPreview();
+            return pending;
+          },
           signal: cancellationSignal,
           onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        },
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
           abortTimeoutMs: 5000,
         });
         return audioGenerationResultSchema.parse(result);

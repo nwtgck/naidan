@@ -43,8 +43,8 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   if (currentSettings) {
     await memoryProvider.saveSettings({
       settings: {
-      ...currentSettings,
-    } satisfies Settings,
+        ...currentSettings,
+      } satisfies Settings,
     });
   }
 
@@ -55,10 +55,10 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   // 3. Hierarchy (minimal)
   await memoryProvider.saveHierarchy({
     hierarchy: hierarchyToDto({
-    domain: {
-    items: [{ type: 'chat', id: chat.id }],
-  },
-  }),
+      domain: {
+        items: [{ type: 'chat', id: chat.id }],
+      },
+    }),
   });
 
   // 4. Copy binaries referenced anywhere in the exported tree. Model text and

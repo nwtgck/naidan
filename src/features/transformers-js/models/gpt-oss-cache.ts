@@ -115,9 +115,9 @@ export function prepareGptOssContinuation({ cache, owner, model, config, message
   // preserving the final generated token that the last forward did not consume.
   return {
     inputs: {
-    input_ids: new tensorClass('int64', data, [1, data.length]),
-    attention_mask: new tensorClass('int64', new BigInt64Array(data.length).fill(1n), [1, data.length]),
-  },
+      input_ids: new tensorClass('int64', data, [1, data.length]),
+      attention_mask: new tensorClass('int64', new BigInt64Array(data.length).fill(1n), [1, data.length]),
+    },
     pastKeyValues: owned.pastKeyValues,
   };
 }

@@ -27,14 +27,14 @@ function createAlignment({ parent, result }: { parent: DiffInput, result: DiffIn
       left: parent,
       right: result,
       options: {
-      stripTrailingCarriageReturn: false,
-      ignoreCase: false,
-      ignoreTabExpansion: false,
-      ignoreTrailingSpace: false,
-      ignoreSpaceChange: false,
-      ignoreAllSpace: false,
-      tabSize: 8,
-    },
+        stripTrailingCarriageReturn: false,
+        ignoreCase: false,
+        ignoreTabExpansion: false,
+        ignoreTrailingSpace: false,
+        ignoreSpaceChange: false,
+        ignoreAllSpace: false,
+        tabSize: 8,
+      },
     }),
   });
   const presentResultLines = Array.from({ length: result.lines.starts.length }, () => false);
@@ -74,14 +74,14 @@ function linesEqual({ left, leftIndex, right, rightIndex }: {
     left,
     right,
     options: {
-    stripTrailingCarriageReturn: false,
-    ignoreCase: false,
-    ignoreTabExpansion: false,
-    ignoreTrailingSpace: false,
-    ignoreSpaceChange: false,
-    ignoreAllSpace: false,
-    tabSize: 8,
-  },
+      stripTrailingCarriageReturn: false,
+      ignoreCase: false,
+      ignoreTabExpansion: false,
+      ignoreTrailingSpace: false,
+      ignoreSpaceChange: false,
+      ignoreAllSpace: false,
+      tabSize: 8,
+    },
   })({ leftIndex, rightIndex });
 }
 
@@ -249,10 +249,10 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
               await writer.writeText({ text: "--" });
               await writer.writeBytes({
                 bytes: getLineBytes({
-                input: first,
-                lineIndex: firstDeleted[operation.leftStart + offset]!,
-                stripTrailingCarriageReturn: false,
-              }),
+                  input: first,
+                  lineIndex: firstDeleted[operation.leftStart + offset]!,
+                  stripTrailingCarriageReturn: false,
+                }),
               });
               await writer.writeText({ text: "\n" });
             }
@@ -262,10 +262,10 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
               await writer.writeText({ text: "- " });
               await writer.writeBytes({
                 bytes: getLineBytes({
-                input: first,
-                lineIndex: firstDeleted[operation.leftStart + offset]!,
-                stripTrailingCarriageReturn: false,
-              }),
+                  input: first,
+                  lineIndex: firstDeleted[operation.leftStart + offset]!,
+                  stripTrailingCarriageReturn: false,
+                }),
               });
               await writer.writeText({ text: "\n" });
             }
@@ -275,10 +275,10 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
               await writer.writeText({ text: " -" });
               await writer.writeBytes({
                 bytes: getLineBytes({
-                input: second,
-                lineIndex: secondDeleted[operation.rightStart + offset]!,
-                stripTrailingCarriageReturn: false,
-              }),
+                  input: second,
+                  lineIndex: secondDeleted[operation.rightStart + offset]!,
+                  stripTrailingCarriageReturn: false,
+                }),
               });
               await writer.writeText({ text: "\n" });
             }

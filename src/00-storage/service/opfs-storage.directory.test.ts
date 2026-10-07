@@ -94,12 +94,12 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     // Saving settings should put the file inside the subdirectory, NOT the root
     await provider.saveSettings({
       settings: {
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      endpoint: { type: 'openai', url: 'http://localhost' },
-    },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        storageType: 'opfs',
+        providerProfiles: [],
+        mounts: [],
+        endpoint: { type: 'openai', url: 'http://localhost' },
+      },
     });
 
     expect(mockOpfsRoot.entries.has('settings.json')).toBe(false);
@@ -117,12 +117,12 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     // Save some app data
     await provider.saveSettings({
       settings: {
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      endpoint: { type: 'openai', url: 'http://localhost' },
-    },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        storageType: 'opfs',
+        providerProfiles: [],
+        mounts: [],
+        endpoint: { type: 'openai', url: 'http://localhost' },
+      },
     });
 
     expect(storageDir.entries.size).toBeGreaterThan(0);

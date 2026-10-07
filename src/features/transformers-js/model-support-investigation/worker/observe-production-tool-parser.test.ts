@@ -78,13 +78,13 @@ describe("observeProductionToolParser", () => {
       tools: [{
         type: 'function',
         function: {
-        name: 'probe',
-        description: 'Synthetic schema reconstruction control.',
-        parameters: {
-        type: 'object',
-        properties: { text: { type: 'string' }, number_text: { type: 'string' }, object: { type: 'object' } },
-      },
-      },
+          name: 'probe',
+          description: 'Synthetic schema reconstruction control.',
+          parameters: {
+            type: 'object',
+            properties: { text: { type: 'string' }, number_text: { type: 'string' }, object: { type: 'object' } },
+          },
+        },
       }],
     });
     expect(result).toEqual(expect.objectContaining({

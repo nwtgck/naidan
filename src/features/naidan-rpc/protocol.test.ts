@@ -85,27 +85,27 @@ it('retains only arrived payload bytes when six peers declare maximum-sized fram
   const channels: FramedDuplex[] = [], pending: Promise<unknown>[] = [];
   vi.stubGlobal('Uint8Array', new Proxy(Original, {
     construct(constructor, args) {
-    if (typeof args[0] === 'number') {
-      allocations.push(args[0]);
-      if (args[0] > 1024) throw new Error('Declared length allocated before body arrival');
-    }
-    return Reflect.construct(constructor, args);
-  },
+      if (typeof args[0] === 'number') {
+        allocations.push(args[0]);
+        if (args[0] > 1024) throw new Error('Declared length allocated before body arrival');
+      }
+      return Reflect.construct(constructor, args);
+    },
   }));
   try {
     for (let index = 0; index < 6; index++) {
       const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
       const wire = new FramedDuplex({
         duplex: {
-        readable: new ReadableStream({
-        start(controller) {
-        controller.enqueue(header); controller.enqueue(new Original([1]));
-      },
-      }),
-        writable: new WritableStream(),
-        closed: new Promise(() => {}),
-        abort: () => {},
-      },
+          readable: new ReadableStream({
+            start(controller) {
+              controller.enqueue(header); controller.enqueue(new Original([1]));
+            },
+          }),
+          writable: new WritableStream(),
+          closed: new Promise(() => {}),
+          abort: () => {},
+        },
       });
       channels.push(wire); pending.push(wire.read().catch(error => error));
     }
@@ -157,11 +157,11 @@ it('repeating STOP while a producer cancellation waits cannot create unbounded c
   const definition = contract({ name: 'raw-stop', methods: { run: procedure({ input: rpc.byteStream(), result: z.number(), notifications: {} }) } });
   const call = peer.client({ contract: definition }).run({
     input: new ReadableStream<Uint8Array>({
-    async cancel() {
-    cancellations++; await waiting.promise;
-  },
-  }, { highWaterMark: 0 }),
-  on: {},
+      async cancel() {
+        cancellations++; await waiting.promise;
+      },
+    }, { highWaterMark: 0 }),
+    on: {},
     signal: undefined,
     timeoutMs: 1000,
   });
@@ -180,18 +180,18 @@ it.each(['wrong-type', 'reference'] as const)('retires an awaiting callback afte
   const peer = new NaidanRpcPeer({
     transport: transport.a,
     exports: [expose({
-    contract: api,
-    allowedMethods: ['run'],
-    implementation: {
-    async run({ input }) {
-      try {
-        return await input(3);
-      } finally {
-        completed.resolve();
-      }
-    },
-  },
-  })],
+      contract: api,
+      allowedMethods: ['run'],
+      implementation: {
+        async run({ input }) {
+          try {
+            return await input(3);
+          } finally {
+            completed.resolve();
+          }
+        },
+      },
+    })],
     limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
     signal: new AbortController().signal,
   });
@@ -216,15 +216,15 @@ it('strips finite envelope extensions after inspecting their raw capability refe
     new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
     const wire = new FramedDuplex({
       duplex: {
-      readable: new ReadableStream({
-      start(controller) {
-      controller.enqueue(bytes); controller.close();
-    },
-    }),
-    writable: new WritableStream(),
-      closed: Promise.resolve(),
-      abort: () => {},
-    },
+        readable: new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes); controller.close();
+          },
+        }),
+        writable: new WritableStream(),
+        closed: Promise.resolve(),
+        abort: () => {},
+      },
     });
     try {
       return await wire.read();

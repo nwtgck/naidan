@@ -22,13 +22,13 @@ class HostedTransformersJsProvider implements LmProvider {
     return createInferenceGeneration({
       signal,
       generate: async ({ onEvent, signal }) => {
-      await this.service.runInferenceOperation({
-        signal,
-        operation: async ({ scope }) => {
-        await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner: crypto.randomUUID() });
+        await this.service.runInferenceOperation({
+          signal,
+          operation: async ({ scope }) => {
+            await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner: crypto.randomUUID() });
+          },
+        });
       },
-      });
-    },
     });
   }
 
@@ -42,24 +42,24 @@ class HostedTransformersJsProvider implements LmProvider {
       await this.service.runInferenceOperation({
         signal: controller.signal,
         operation: async ({ scope }) => {
-        const owned = createScopedChat({ scope, controller, continuationOwner: crypto.randomUUID() });
-        let failure: { error: unknown } | undefined;
-        try {
-          await operation({ chat: owned.chat, signal: scope.signal });
-        } catch (error) {
-          failure = { error };
-        }
-        try {
-          await owned.close();
-        } catch (error) {
-          if (failure !== undefined && error !== failure.error) {
-            throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+          const owned = createScopedChat({ scope, controller, continuationOwner: crypto.randomUUID() });
+          let failure: { error: unknown } | undefined;
+          try {
+            await operation({ chat: owned.chat, signal: scope.signal });
+          } catch (error) {
+            failure = { error };
           }
-          throw error;
-        }
-        if (failure !== undefined) throw failure.error;
-        callbackCompleted = true;
-      },
+          try {
+            await owned.close();
+          } catch (error) {
+            if (failure !== undefined && error !== failure.error) {
+              throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+            }
+            throw error;
+          }
+          if (failure !== undefined) throw failure.error;
+          callbackCompleted = true;
+        },
       });
     } catch (error) {
       // The lane rejects an ordinary cancellation at release. If the callback

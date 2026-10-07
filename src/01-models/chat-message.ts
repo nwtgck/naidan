@@ -112,10 +112,10 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
           return exactObject<typeof part>()({
             type,
             toolCall: exactObject<typeof toolCall>()({
-            id: callId,
-            type: callType,
-            function: exactObject<typeof fn>()({ name, arguments: argumentsText }),
-          }),
+              id: callId,
+              type: callType,
+              function: exactObject<typeof fn>()({ name, arguments: argumentsText }),
+            }),
           });
         }
         default: {

@@ -229,8 +229,8 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
     async openFileStream() {
       return new ReadableStream<Uint8Array>({
         start(controller) {
-        controller.close();
-      },
+          controller.close();
+        },
       });
     },
     async readFile({ path }) {
@@ -249,8 +249,8 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
       return {
         stream: new ReadableStream<Uint8Array>({
           start(controller) {
-          controller.close();
-        },
+            controller.close();
+          },
         }),
         result: Promise.resolve({
           status: 'completed' as const,

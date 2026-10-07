@@ -34,8 +34,8 @@ describe('explicit single-text replay observations', () => {
     const invocation = {
       ...sourceInvocation,
       stream: [
-      ...sourceInvocation.stream.slice(0, -1), { operation: 'put' as const, groups: [['2']] }, { operation: 'end' as const },
-    ],
+        ...sourceInvocation.stream.slice(0, -1), { operation: 'put' as const, groups: [['2']] }, { operation: 'end' as const },
+      ],
     };
     const completed: ProductionProviderTraceEvent[] = [
       ...observedEvents.slice(0, -1),
@@ -86,11 +86,11 @@ describe('explicit single-text replay observations', () => {
     expect(() => verifySingleTextPartsObservation({
       recordedEvents,
       invocation: {
-      ...sourceInvocation,
-      stream: [
-      { operation: 'put', groups: [['10']] }, { operation: 'put', groups: [['2', '31']] }, { operation: 'end' },
-    ],
-    },
+        ...sourceInvocation,
+        stream: [
+          { operation: 'put', groups: [['10']] }, { operation: 'put', groups: [['2', '31']] }, { operation: 'end' },
+        ],
+      },
       contract,
       observedEvents,
       finalized,

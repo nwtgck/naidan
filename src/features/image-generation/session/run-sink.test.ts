@@ -17,11 +17,11 @@ function harness({ count }: { count: number }) {
     return {
       index,
       ...finishImageGenerationSnapshot({
-      snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } },
-      result: { png: new Blob(['image']), width: 256, height: 256, modelVersion: 'model', uniformOutput: false },
-      previews: [],
-      elapsedMs: 10,
-    }),
+        snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } },
+        result: { png: new Blob(['image']), width: 256, height: 256, modelVersion: 'model', uniformOutput: false },
+        previews: [],
+        elapsedMs: 10,
+      }),
     };
   }
   return { sink, create, commit, update, snapshot, plan, output, accept: () => sink.submission.accepted({ snapshot, seeds: plan.seeds }) };

@@ -1000,9 +1000,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1085,9 +1085,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1164,9 +1164,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1211,9 +1211,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1240,9 +1240,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: zipBlob,
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       expect(mockStorage.clearAll).not.toHaveBeenCalled();
@@ -1262,9 +1262,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
@@ -1286,9 +1286,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
-      },
+          data: { mode: 'append' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
       });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
@@ -1420,9 +1420,9 @@ ${JSON.stringify({
       await service.executeImport({
         zipFile: await zip.generateAsync({ type: 'blob' }),
         config: {
-        data: { mode: 'replace' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' },
-      },
+          data: { mode: 'replace' },
+          settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' },
+        },
       });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
@@ -1474,10 +1474,10 @@ ${JSON.stringify({
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
       zip.file('chat-metas.json', JSON.stringify({
         entries: [
-        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
-        { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
-        { id: 'invalid-uuid', title: 'Broken' },
-      ],
+          { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
+          { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
+          { id: 'invalid-uuid', title: 'Broken' },
+        ],
       }));
 
       // Add a binary object in a shard
@@ -1503,8 +1503,8 @@ ${JSON.stringify({
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: 1000, isCollapsed: false }));
       zip.file('chat-metas.json', JSON.stringify({
         entries: [
-        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 },
-      ],
+          { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 },
+        ],
       }));
 
       const preview = await service.analyze({ zipFile: await zip.generateAsync({ type: 'blob' }) });

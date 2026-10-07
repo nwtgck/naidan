@@ -50,14 +50,14 @@ export async function translateImagePrompt({ prompt, language, endpoint, modelId
         abortController: controller,
         onText,
         items: chat({
-        messages,
-        model: acceptedModel,
-        parameters: acceptedParameters,
-        tools: undefined,
-        readBinaryObject: undefined,
-        debug: 'off',
-        signal: controller.signal,
-      }),
+          messages,
+          model: acceptedModel,
+          parameters: acceptedParameters,
+          tools: undefined,
+          readBinaryObject: undefined,
+          debug: 'off',
+          signal: controller.signal,
+        }),
       });
       controller.signal.throwIfAborted();
       // Native/protocol failures still invalidate the owned operation. A normally
@@ -78,9 +78,9 @@ export async function translateImagePrompt({ prompt, language, endpoint, modelId
       signal,
       onProgress,
       operation: async ({ chat, signal: operationSignal }) => {
-      if (entered) throw new Error('The translation operation must run exactly once.');
-      entered = true; output = await run({ chat, operationSignal });
-    },
+        if (entered) throw new Error('The translation operation must run exactly once.');
+        entered = true; output = await run({ chat, operationSignal });
+      },
     });
   } else {
     output = await run({ chat: provider.chat.bind(provider), operationSignal: signal });

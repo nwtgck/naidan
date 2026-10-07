@@ -17,33 +17,33 @@ const notifications = vi.hoisted(() => ({
 vi.mock('@/features/llama-cpp-browser/runtime/profile-policy', () => ({ selectableProfiles: notifications.profiles }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
-  getProfileState: vi.fn<() => ProfileState>(() => ({ status: 'idle' })),
-  probeProfiles: vi.fn(),
-  subscribeProfiles: vi.fn(({ listener }: { listener: (event: { state: ProfileState }) => void }) => {
-    notifications.capabilities.add(listener); return () => {
-      notifications.capabilities.delete(listener);
-    };
-  }),
-  getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
-  getOptions: vi.fn(() => ({ profile: 'auto' })),
-  subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
-    notifications.state.add(listener); return () => {
-      notifications.state.delete(listener);
-    };
-  }),
-  subscribeModelList: vi.fn(({ listener }: { listener: () => void }) => {
-    notifications.models.add(listener); return () => {
-      notifications.models.delete(listener);
-    };
-  }),
-  listModels: vi.fn(async () => []),
-  setOptions: vi.fn(),
-  importModel: vi.fn(),
-  importDirectory: vi.fn(),
-  removeModel: vi.fn(),
-  release: vi.fn(),
-  cancel: vi.fn(),
-},
+    getProfileState: vi.fn<() => ProfileState>(() => ({ status: 'idle' })),
+    probeProfiles: vi.fn(),
+    subscribeProfiles: vi.fn(({ listener }: { listener: (event: { state: ProfileState }) => void }) => {
+      notifications.capabilities.add(listener); return () => {
+        notifications.capabilities.delete(listener);
+      };
+    }),
+    getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
+    getOptions: vi.fn(() => ({ profile: 'auto' })),
+    subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
+      notifications.state.add(listener); return () => {
+        notifications.state.delete(listener);
+      };
+    }),
+    subscribeModelList: vi.fn(({ listener }: { listener: () => void }) => {
+      notifications.models.add(listener); return () => {
+        notifications.models.delete(listener);
+      };
+    }),
+    listModels: vi.fn(async () => []),
+    setOptions: vi.fn(),
+    importModel: vi.fn(),
+    importDirectory: vi.fn(),
+    removeModel: vi.fn(),
+    release: vi.fn(),
+    cancel: vi.fn(),
+  },
 }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(async () => []), installedSelection: vi.fn(async () => undefined) }));
 vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
@@ -79,8 +79,8 @@ function deferredFileDrop({ file }: { file: File }) {
     transfer,
     read,
     protect: () => {
-    readable = false;
-  },
+      readable = false;
+    },
   };
 }
 function dispatchDrop({ wrapper, transfer }: { wrapper: VueWrapper, transfer: DataTransfer }): Event {
@@ -96,9 +96,9 @@ beforeEach(async () => {
     const capabilities: ProfileCapabilities = {
       recommended: 'webgpu-wasm64-jspi',
       profiles: [
-      { profile: 'webgpu-wasm64-jspi', status: 'available' }, { profile: 'webgpu-wasm32-jspi', status: 'available' },
-      { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
-    ],
+        { profile: 'webgpu-wasm64-jspi', status: 'available' }, { profile: 'webgpu-wasm32-jspi', status: 'available' },
+        { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
+      ],
     };
     for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
     return capabilities;
@@ -141,9 +141,9 @@ describe('local GGUF manager', () => {
       const capabilities: ProfileCapabilities = {
         recommended: 'webgpu-wasm32-jspi',
         profiles: [
-        { profile: 'webgpu-wasm32-jspi', status: 'available' },
-        { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
-      ],
+          { profile: 'webgpu-wasm32-jspi', status: 'available' },
+          { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
+        ],
       };
       for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
       return capabilities;
@@ -359,14 +359,14 @@ describe('local GGUF manager', () => {
         isFile: false,
         name,
         createReader: () => {
-        let delivered = false;
-        return {
-          readEntries: (resolve: (entries: unknown[]) => void) => {
-          const batch = delivered ? [] : entries; delivered = true;
-          queueMicrotask(() => resolve(batch));
+          let delivered = false;
+          return {
+            readEntries: (resolve: (entries: unknown[]) => void) => {
+              const batch = delivered ? [] : entries; delivered = true;
+              queueMicrotask(() => resolve(batch));
+            },
+          };
         },
-        };
-      },
       };
     }
     const folder = directoryEntry({ name: 'original-GGUF', entries: [directoryEntry({ name: 'nested', entries: [child] })] });

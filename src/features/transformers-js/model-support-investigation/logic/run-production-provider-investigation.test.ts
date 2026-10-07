@@ -48,13 +48,13 @@ function fixture({ plan }: { plan: Arguments['plan'] }) {
       client,
       takeGenerationCapture: take,
       getCaptureLifetime: () => ({
-      runId,
-      workerEpoch,
-      session,
-      issuedCalls,
-      loadRequests: [],
-      incompleteReasons: [],
-    }),
+        runId,
+        workerEpoch,
+        session,
+        issuedCalls,
+        loadRequests: [],
+        incompleteReasons: [],
+      }),
     };
   });
   const onProgress = vi.fn<Arguments['onProgress']>();

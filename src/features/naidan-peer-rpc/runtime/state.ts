@@ -17,7 +17,7 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
   const inference = createInferenceLifetime({
     budgets: [inputBudget, deliveryBudget],
     load: () => import('@/features/naidan-peer-rpc/handlers/inference/resources-factory')
-    .then(({ createReadOnlyResources }) => createReadOnlyResources({ directories: () => settings()?.experimental?.hostModelDirectories ?? [] })),
+      .then(({ createReadOnlyResources }) => createReadOnlyResources({ directories: () => settings()?.experimental?.hostModelDirectories ?? [] })),
   });
   const storage = {
     readIdentity: () => naidanRpcStorage.readIdentity(),
@@ -34,42 +34,42 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
   };
   const manager: NaidanPeerManager = new NaidanPeerManager({
     dependencies: {
-    storage,
-    identity: () => identity.load(),
-    acquireOwner: async ({ signal }) => {
-      const lease = await acquireRpcOwner({ signal });
-      try {
-        signal.throwIfAborted();
-        const unregister = control.registerOwner({
-          ownerId: nanoid(),
-          stop: () => {
-          stopping(); return manager.setEnabled({ enabled: false });
-        },
-        });
-        let released = false;
-        return {
-          release() {
-          if (released) return; released = true; unregister(); lease.release();
-        },
-        };
-      } catch (error) {
-        lease.release(); throw error;
-      }
+      storage,
+      identity: () => identity.load(),
+      acquireOwner: async ({ signal }) => {
+        const lease = await acquireRpcOwner({ signal });
+        try {
+          signal.throwIfAborted();
+          const unregister = control.registerOwner({
+            ownerId: nanoid(),
+            stop: () => {
+              stopping(); return manager.setEnabled({ enabled: false });
+            },
+          });
+          let released = false;
+          return {
+            release() {
+              if (released) return; released = true; unregister(); lease.release();
+            },
+          };
+        } catch (error) {
+          lease.release(); throw error;
+        }
+      },
+      open: openPipingRpc,
+      changed,
+      retireResources: () => inference.retire(),
+      inference: {
+        resources: inference.resources,
+        inputBudget,
+        deliveryBudget,
+      },
     },
-    open: openPipingRpc,
-    changed,
-    retireResources: () => inference.retire(),
-    inference: {
-      resources: inference.resources,
-      inputBudget,
-      deliveryBudget,
-    },
-  },
   });
   storageService.subscribeNaidanRpcRegistryChanges({
     listener: () => {
-    void manager.revalidate().catch(changed);
-  },
+      void manager.revalidate().catch(changed);
+    },
   });
   return manager;
 }

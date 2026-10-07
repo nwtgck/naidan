@@ -101,9 +101,9 @@ describe('inspectDownloadVerificationCachedRevisions', () => {
       modelId: 'hf.co/org/repo',
       storageRoot: storageRoot({
         revisions: {
-        main: revisionDirectory({ lastModified: 10 }),
-        [sha]: revisionDirectory({ lastModified: 20 }),
-      },
+          main: revisionDirectory({ lastModified: 10 }),
+          [sha]: revisionDirectory({ lastModified: 20 }),
+        },
       }),
     });
 
@@ -172,9 +172,9 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
       modelId: 'org/repo',
       storageRoot: storageRoot({
         revisions: {
-        [zero]: revisionDirectory({ weightSize: 0 }),
-        [orphan]: directory({ '.model_q4.onnx.complete': file() }),
-      },
+          [zero]: revisionDirectory({ weightSize: 0 }),
+          [orphan]: directory({ '.model_q4.onnx.complete': file() }),
+        },
       }),
     });
 
@@ -188,10 +188,10 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
       modelId: 'org/repo',
       storageRoot: storageRoot({
         revisions: {
-        main: revisionDirectory({ lastModified: 30 }),
-        [stale]: revisionDirectory({ lastModified: 40 }),
-        [current]: revisionDirectory({ lastModified: 20 }),
-      },
+          main: revisionDirectory({ lastModified: 30 }),
+          [stale]: revisionDirectory({ lastModified: 40 }),
+          [current]: revisionDirectory({ lastModified: 20 }),
+        },
       }),
     });
 
@@ -206,8 +206,8 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
       modelId: 'org/repo',
       storageRoot: storageRoot({
         revisions: {
-        ['e'.repeat(40)]: revisionDirectory({ lastModified: 50 }),
-      },
+          ['e'.repeat(40)]: revisionDirectory({ lastModified: 50 }),
+        },
       }),
     });
 
@@ -225,11 +225,11 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
       modelId: 'org/repo',
       storageRoot: storageRoot({
         revisions: {
-        main: revisionDirectory({ lastModified: 5 }),
-        [older]: revisionDirectory({ lastModified: 10 }),
-        [newer]: revisionDirectory({ lastModified: 20 }),
-        [partialNewest]: revisionDirectory({ complete: false, lastModified: 30 }),
-      },
+          main: revisionDirectory({ lastModified: 5 }),
+          [older]: revisionDirectory({ lastModified: 10 }),
+          [newer]: revisionDirectory({ lastModified: 20 }),
+          [partialNewest]: revisionDirectory({ complete: false, lastModified: 30 }),
+        },
       }),
     });
 

@@ -155,8 +155,8 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         sink,
         packet: { owner, event: event.data, incompleteReasons: [...reasons] },
         failed: () => {
-        reasons.add('transport-failed');
-      },
+          reasons.add('transport-failed');
+        },
       });
     } catch { /* Recording cannot alter Load. */ }
   }

@@ -8,10 +8,10 @@ describe('resolvePublicHuggingFaceRevision', () => {
     const repositoryFetch = vi.fn<typeof fetch>(async () => Response.json({
       sha: SHA,
       siblings: [
-      { rfilename: 'onnx/a', size: 123, lfs: { size: 123, pointerSize: 9 } },
-      { rfilename: 'onnx/b', lfs: { size: 456, pointerSize: 9 } },
-      { rfilename: 'onnx/c' },
-    ],
+        { rfilename: 'onnx/a', size: 123, lfs: { size: 123, pointerSize: 9 } },
+        { rfilename: 'onnx/b', lfs: { size: 456, pointerSize: 9 } },
+        { rfilename: 'onnx/c' },
+      ],
     }));
     const result = await resolvePublicHuggingFaceRevision({ modelId: 'org/model', repositoryFetch });
     expect(result.resolvedRevision).toBe(SHA);
@@ -24,12 +24,12 @@ describe('resolvePublicHuggingFaceRevision', () => {
     const repositoryFetch = vi.fn<typeof fetch>(async () => Response.json({
       sha: SHA,
       siblings: [
-      { rfilename: 'a', size: 100 }, { rfilename: 'a', size: -1 },
-      { rfilename: 'b', size: -1 }, { rfilename: 'b', size: 100 },
-      { rfilename: 'c', size: 100, lfs: { size: 200 } },
-      { rfilename: 'd', size: Number.MAX_SAFE_INTEGER + 1 },
-      { rfilename: 'e', size: 0 },
-    ],
+        { rfilename: 'a', size: 100 }, { rfilename: 'a', size: -1 },
+        { rfilename: 'b', size: -1 }, { rfilename: 'b', size: 100 },
+        { rfilename: 'c', size: 100, lfs: { size: 200 } },
+        { rfilename: 'd', size: Number.MAX_SAFE_INTEGER + 1 },
+        { rfilename: 'e', size: 0 },
+      ],
     }));
     expect(await resolvePublicHuggingFaceRevision({ modelId: 'org/model', repositoryFetch })).toEqual({
       normalizedModelId: 'org/model',

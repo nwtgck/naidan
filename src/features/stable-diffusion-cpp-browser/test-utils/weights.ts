@@ -14,19 +14,19 @@ export function sparseFile({ name, header, size }: { name: string, header: Uint8
   Object.defineProperty(file, 'size', { value: size });
   Object.defineProperty(file, 'slice', {
     value: (start: number | undefined, end: number | undefined): Blob => {
-    const offset = start ?? 0, length = Math.min(end ?? size, size) - offset;
-    if (length < 0 || length > 16 * 1024 * 1024) throw new Error('Fixture forbids whole-model reads');
-    reads.push({ offset, length }); const bytes = new Uint8Array(length);
-    if (offset < header.length) bytes.set(header.subarray(offset, Math.min(offset + length, header.length)));
-    const blob = new Blob([bytes]); ranges.set(blob, bytes.buffer);
-    Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
-    return blob;
-  },
+      const offset = start ?? 0, length = Math.min(end ?? size, size) - offset;
+      if (length < 0 || length > 16 * 1024 * 1024) throw new Error('Fixture forbids whole-model reads');
+      reads.push({ offset, length }); const bytes = new Uint8Array(length);
+      if (offset < header.length) bytes.set(header.subarray(offset, Math.min(offset + length, header.length)));
+      const blob = new Blob([bytes]); ranges.set(blob, bytes.buffer);
+      Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
+      return blob;
+    },
   });
   Object.defineProperty(file, 'arrayBuffer', {
     value: () => {
-    throw new Error('Never materialize a complete model');
-  },
+      throw new Error('Never materialize a complete model');
+    },
   });
   return { file, reads };
 }

@@ -27,10 +27,10 @@ export async function collectChatGeneration({ items, abortController, onText }: 
     items,
     abortController,
     onChange: () => {
-    try {
-      if (onText) void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
-    } catch { /* Presentation cannot own stream consumption. */ }
-  },
+      try {
+        if (onText) void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
+      } catch { /* Presentation cannot own stream consumption. */ }
+    },
   });
   return { text: getMessageText({ message: node }), result };
 }

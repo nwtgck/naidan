@@ -87,22 +87,22 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
         const items = createInferenceGeneration({
           signal: local.signal,
           generate: async ({ onEvent, signal }) => {
-          assertOpen();
-          scope.assertActive();
-          if (generating) throw new Error('The chat operation already has an active generation.');
-          generating = true;
-          // Child abandonment must interrupt this owner, never whatever runtime
-          // happens to be current after an old callback completes.
-          const abort = () => controller.abort(signal.reason);
-          signal.addEventListener('abort', abort, { once: true });
-          if (signal.aborted) abort();
-          try {
-            await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner });
-          } finally {
-            generating = false;
-            signal.removeEventListener('abort', abort);
-          }
-        },
+            assertOpen();
+            scope.assertActive();
+            if (generating) throw new Error('The chat operation already has an active generation.');
+            generating = true;
+            // Child abandonment must interrupt this owner, never whatever runtime
+            // happens to be current after an old callback completes.
+            const abort = () => controller.abort(signal.reason);
+            signal.addEventListener('abort', abort, { once: true });
+            if (signal.aborted) abort();
+            try {
+              await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner });
+            } finally {
+              generating = false;
+              signal.removeEventListener('abort', abort);
+            }
+          },
         });
         const inner = items[Symbol.asyncIterator]();
         const detach = () => {

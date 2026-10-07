@@ -19,22 +19,22 @@ describe('versioned message mapping', () => {
   it('always writes V2 even when every root and descendant was read from V1', () => {
     const raw = {
       root: {
-      items: [
-      {
-        id: 'u',
-        role: 'user',
-        content: 'hello',
-        timestamp: 1,
-        replies: {
         items: [
-        { id: 'visible', role: 'assistant', content: 'one', timestamp: 2, replies: { items: [] } },
-        { id: 'hidden', role: 'assistant', content: 'two', timestamp: 3, replies: { items: [] } },
-      ],
+          {
+            id: 'u',
+            role: 'user',
+            content: 'hello',
+            timestamp: 1,
+            replies: {
+              items: [
+                { id: 'visible', role: 'assistant', content: 'one', timestamp: 2, replies: { items: [] } },
+                { id: 'hidden', role: 'assistant', content: 'two', timestamp: 3, replies: { items: [] } },
+              ],
+            },
+          },
+          { id: 's', role: 'system', content: '', timestamp: 0, replies: { items: [] } },
+        ],
       },
-      },
-      { id: 's', role: 'system', content: '', timestamp: 0, replies: { items: [] } },
-    ],
-    },
       currentLeafId: 'visible',
     };
     const before = JSON.stringify(raw);
@@ -93,13 +93,13 @@ describe('versioned message mapping', () => {
 `;
     const node = messageNodeToDomain({
       dto: MessageNodeSchemaDto.parse({
-      id: 'a',
-      role: 'assistant',
-      createdAt: 0,
-      parts: [{ type: 'reasoning', text: '  ' }, { type: 'reasoning', text: '' }, { type: 'text', text, completeness: 'partial' }],
-      interruption: { type: 'error', message: '通信が切れました: offline' },
-      replies: { items: [] },
-    }),
+        id: 'a',
+        role: 'assistant',
+        createdAt: 0,
+        parts: [{ type: 'reasoning', text: '  ' }, { type: 'reasoning', text: '' }, { type: 'text', text, completeness: 'partial' }],
+        interruption: { type: 'error', message: '通信が切れました: offline' },
+        replies: { items: [] },
+      }),
     });
     expect(roundTrip({ node })).toEqual(node);
     const saved = JSON.parse(JSON.stringify(messageNodeToDto({ domain: node })));
@@ -119,13 +119,13 @@ describe('versioned message mapping', () => {
   it('retains cancellation separately from an already completed reasoning part', () => {
     const node = messageNodeToDomain({
       dto: MessageNodeSchemaDto.parse({
-      id: 'a',
-      role: 'assistant',
-      createdAt: 1,
-      parts: [{ type: 'reasoning', text: 'R' }],
-      interruption: { type: 'cancelled' },
-      replies: { items: [] },
-    }),
+        id: 'a',
+        role: 'assistant',
+        createdAt: 1,
+        parts: [{ type: 'reasoning', text: 'R' }],
+        interruption: { type: 'cancelled' },
+        replies: { items: [] },
+      }),
     });
     expect(roundTrip({ node })).toEqual(node);
     expect(messageNodeToDto({ domain: node })).toMatchObject({ interruption: { type: 'cancelled' }, parts: [{ completeness: undefined }] });
@@ -134,13 +134,13 @@ describe('versioned message mapping', () => {
   it('keeps old attachment metadata in memory and writes only the V2 reference', () => {
     const node = messageNodeToDomain({
       dto: MessageNodeSchemaDto.parse({
-      id: 'u',
-      role: 'user',
-      timestamp: 4,
-      content: '',
-      attachments: [{ id: 'att', originalName: 'image.png', mimeType: 'image/png', size: 123, uploadedAt: 3, status: 'persisted' }],
-      replies: { items: [] },
-    }),
+        id: 'u',
+        role: 'user',
+        timestamp: 4,
+        content: '',
+        attachments: [{ id: 'att', originalName: 'image.png', mimeType: 'image/png', size: 123, uploadedAt: 3, status: 'persisted' }],
+        replies: { items: [] },
+      }),
     });
     expect(node.parts[1]).toMatchObject({ type: 'attachment', attachment: { mimeType: 'image/png', size: 123, uploadedAt: 3, binaryObjectId: 'att' } });
     expect(messageNodeToDto({ domain: node }).parts[1]).toEqual({
@@ -186,15 +186,15 @@ describe('versioned message mapping', () => {
         createdAt: 1,
         interruption: { type: 'error', message: '日本語' },
         parts: [
-        {
-          type: 'reasoning',
-          text: `\
+          {
+            type: 'reasoning',
+            text: `\
   R\\r
 🙂`,
-        },
-        { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-        { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
-      ],
+          },
+          { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
+          { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
+        ],
         replies: { items: [] },
       },
       {
@@ -202,8 +202,8 @@ describe('versioned message mapping', () => {
         role: 'tool',
         createdAt: 2,
         parts: [
-        { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'binary' } } },
-      ],
+          { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'binary' } } },
+        ],
         replies: { items: [] },
       },
       { id: 'u', role: 'user', timestamp: 0, content: '', replies: { items: [] } },
@@ -226,27 +226,27 @@ describe('versioned message mapping', () => {
         role: 'user',
         createdAt: 1,
         parts: [
-        { type: 'text', text: ' [Aborted] <think>literal</think> ', completeness: 'partial' },
-        { type: 'attachment', attachment: { id: 'attachment', name: 'image.png', binaryObjectId: 'image-bytes', status: 'persisted' } },
-      ],
+          { type: 'text', text: ' [Aborted] <think>literal</think> ', completeness: 'partial' },
+          { type: 'attachment', attachment: { id: 'attachment', name: 'image.png', binaryObjectId: 'image-bytes', status: 'persisted' } },
+        ],
       },
       {
         id: 'assistant',
         role: 'assistant',
         createdAt: 2,
         parts: [
-        { type: 'reasoning', text: ' R ' },
-        { type: 'text', text: '' },
-        { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'weather', arguments: ' {"city":"Tokyo"} ' } } },
-      ],
+          { type: 'reasoning', text: ' R ' },
+          { type: 'text', text: '' },
+          { type: 'tool_call', toolCall: { id: 'call', type: 'function', function: { name: 'weather', arguments: ' {"city":"Tokyo"} ' } } },
+        ],
       },
       {
         id: 'tool',
         role: 'tool',
         createdAt: 3,
         parts: [
-        { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'result-bytes' } } },
-      ],
+          { type: 'tool_result', result: { toolCallId: 'call', status: 'success', content: { type: 'binary_object', id: 'result-bytes' } } },
+        ],
       },
       { id: 'system', role: 'system', createdAt: 0, parts: [{ type: 'text', text: 'System' }] },
     ];

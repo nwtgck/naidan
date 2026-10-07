@@ -82,26 +82,26 @@ vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/
     return {
       ...evidenceMocks,
       async openEvidenceStream({ input }: { input: EvidenceStreamInput }) {
-      const archive = await (async () => {
-        switch (input.kind) {
-        case 'partial': { const { kind: _kind, ...request } = input; return await evidenceMocks.createPartialEvidence(request); }
-        case 'batch': { const { kind: _kind, ...request } = input; return await evidenceMocks.createBatchEvidence(request); }
-        case 'retained-timing': { const { kind: _kind, ...request } = input; return await evidenceMocks.createRetainedDownloadTimingEvidence(request); }
-        case 'download-verification': throw new Error('Unexpected download-verification fixture');
-        default: { const exhaustive: never = input; throw new Error(String(exhaustive)); }
-        }
-      })();
-      // The UI owns a stream now. These presentation fixtures do not encode ZIPs;
-      // real archive bytes and transports are covered by capture/full-flow tests.
-      return {
-        stream: new ReadableStream<Uint8Array>({
-        start(controller) {
-        controller.close();
+        const archive = await (async () => {
+          switch (input.kind) {
+          case 'partial': { const { kind: _kind, ...request } = input; return await evidenceMocks.createPartialEvidence(request); }
+          case 'batch': { const { kind: _kind, ...request } = input; return await evidenceMocks.createBatchEvidence(request); }
+          case 'retained-timing': { const { kind: _kind, ...request } = input; return await evidenceMocks.createRetainedDownloadTimingEvidence(request); }
+          case 'download-verification': throw new Error('Unexpected download-verification fixture');
+          default: { const exhaustive: never = input; throw new Error(String(exhaustive)); }
+          }
+        })();
+        // The UI owns a stream now. These presentation fixtures do not encode ZIPs;
+        // real archive bytes and transports are covered by capture/full-flow tests.
+        return {
+          stream: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+          fileName: archive.fileName,
+        };
       },
-      }),
-        fileName: archive.fileName,
-      };
-    },
     };
   },
 }));
@@ -640,13 +640,13 @@ describe('ModelSupportInvestigationModal', () => {
     if (recorded && result.runtimeAssets !== undefined) {
       result.runtimeAssets.controlRuntimeBindings = {
         wasm: {
-        format: 'runtime-control-binding-v1',
-        executionProvider: 'wasm',
-        constructorModule: 'onnxruntime-web/webgpu',
-        environmentMatchesConfigured: true,
-        mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
-        wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
-      },
+          format: 'runtime-control-binding-v1',
+          executionProvider: 'wasm',
+          constructorModule: 'onnxruntime-web/webgpu',
+          environmentMatchesConfigured: true,
+          mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
+          wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
+        },
       };
     }
     workerMocks.runPartialInvestigation.mockResolvedValueOnce(result);
@@ -1121,8 +1121,8 @@ org/second
     const previous = createInvestigationSessionView({ initialSnapshot: undefined });
     await previous.retire({
       dispose: async () => {
-      throw new Error('Worker termination unavailable');
-    },
+        throw new Error('Worker termination unavailable');
+      },
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
     await flushPromises();
@@ -1151,11 +1151,11 @@ org/second
     const exporting = wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
     publish?.({
       checkpoint: {
-      ...checkpoint,
-      run: { ...checkpoint.run, runId: 'after-export' },
-      recovery: { ...checkpoint.recovery, checkpointSequence: 99 },
-      replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":2}']) }],
-    },
+        ...checkpoint,
+        run: { ...checkpoint.run, runId: 'after-export' },
+        recovery: { ...checkpoint.recovery, checkpointSequence: 99 },
+        replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":2}']) }],
+      },
     });
     await exporting;
     await flushPromises();
@@ -1226,17 +1226,17 @@ org/second
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
     publishLate?.({
       checkpoint: {
-      ...createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-run', now: () => completedRun.startedAt }),
-      run: { ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-run' },
-    },
+        ...createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-run', now: () => completedRun.startedAt }),
+        run: { ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-run' },
+      },
     });
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
     await flushPromises();
     expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({
       items: [
-      { target: 'org/first', status: 'failed', run: { runId: 'hung-run', status: 'failed' }, recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError' } } } },
-      { target: 'org/second', status: 'passed', run: { runId: 'second-run' } },
-    ],
+        { target: 'org/first', status: 'failed', run: { runId: 'hung-run', status: 'failed' }, recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError' } } } },
+        { target: 'org/second', status: 'passed', run: { runId: 'second-run' } },
+      ],
     });
     wrapper.unmount();
   });
@@ -1268,9 +1268,9 @@ org/second
       };
       onCheckpoint?.({
         checkpoint: {
-        run: result,
-        recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
-      },
+          run: result,
+          recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
+        },
       });
       if (interrupted) throw new Error(collecting ? 'Worker lost during collection' : 'Full cache acceptance timed out after metadata collection');
       return result;
@@ -1313,16 +1313,16 @@ org/five
     workerMocks.runPartialInvestigation.mockResolvedValue({
       ...structuredClone(completedRun),
       freshMetadata: {
-      schemaVersion: 1,
-      modelId: 'org/model',
-      revision: 'a'.repeat(40),
-      source: 'fresh-network-memory',
-      status: 'prepared',
-      maximumBytes: 1024,
-      receivedBytes: 100,
-      requests: [],
-      preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
-    },
+        schemaVersion: 1,
+        modelId: 'org/model',
+        revision: 'a'.repeat(40),
+        source: 'fresh-network-memory',
+        status: 'prepared',
+        maximumBytes: 1024,
+        receivedBytes: 100,
+        requests: [],
+        preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
+      },
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
@@ -1337,15 +1337,15 @@ org/five
     workerMocks.runPartialInvestigation.mockResolvedValue({
       ...structuredClone(completedRun),
       freshMetadata: {
-      schemaVersion: 1,
-      modelId: 'org/model',
-      revision: 'a'.repeat(40),
-      source: 'fresh-network-memory',
-      status: 'failed',
-      maximumBytes: 1024,
-      receivedBytes: 0,
-      requests: [],
-    },
+        schemaVersion: 1,
+        modelId: 'org/model',
+        revision: 'a'.repeat(40),
+        source: 'fresh-network-memory',
+        status: 'failed',
+        maximumBytes: 1024,
+        receivedBytes: 0,
+        requests: [],
+      },
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
@@ -1488,36 +1488,36 @@ org/second`);
       if (modelId === 'org/second') {
         onEvent({
           event: {
-          stepId: 'loading-investigation',
-          status: 'running',
-          detail: 'Second target only',
-          progress: {
-            kind: 'model-load',
-            artifactSource: 'downloaded-model-cache',
-            candidateId: 'second-only-q4',
-            sourceStatus: 'progress',
-            currentFile: undefined,
-            fileLoaded: undefined,
-            fileTotal: undefined,
-            fileProgress: undefined,
-            aggregateLoaded: undefined,
-            aggregateTotal: undefined,
-            aggregateProgress: undefined,
-            firstActivityAt: completedRun.startedAt,
-            lastForwardProgressAt: undefined,
-            eventCount: 1,
-            progressEventCount: 1,
-            progressTotalEventCount: 0,
-            forwardProgressCount: 1,
-            repeatedWithoutForwardProgressCount: 0,
-            publishedSampleCount: 1,
-            lastActivityAt: completedRun.startedAt,
+            stepId: 'loading-investigation',
+            status: 'running',
+            detail: 'Second target only',
+            progress: {
+              kind: 'model-load',
+              artifactSource: 'downloaded-model-cache',
+              candidateId: 'second-only-q4',
+              sourceStatus: 'progress',
+              currentFile: undefined,
+              fileLoaded: undefined,
+              fileTotal: undefined,
+              fileProgress: undefined,
+              aggregateLoaded: undefined,
+              aggregateTotal: undefined,
+              aggregateProgress: undefined,
+              firstActivityAt: completedRun.startedAt,
+              lastForwardProgressAt: undefined,
+              eventCount: 1,
+              progressEventCount: 1,
+              progressTotalEventCount: 0,
+              forwardProgressCount: 1,
+              repeatedWithoutForwardProgressCount: 0,
+              publishedSampleCount: 1,
+              lastActivityAt: completedRun.startedAt,
+            },
+            productionProviderProgress: {
+              progress: { phase: 'running', provider: { runId: checkpoint.run.runId, modelId, plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: checkpoint.run.runId, requestId: `${checkpoint.run.runId}-first-turn`, scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
+              deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
+            },
           },
-          productionProviderProgress: {
-            progress: { phase: 'running', provider: { runId: checkpoint.run.runId, modelId, plan: 'first-only', run: { status: 'running' }, lifetime: 'open', activeRequest: { runId: checkpoint.run.runId, requestId: `${checkpoint.run.runId}-first-turn`, scenario: 'first-turn' }, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'loading' }, stopReason: undefined, cleanup: 'not-requested', sealOwnership: 'settled' },
-            deadlines: { runMs: 1800000, collectionMs: 10000, sealingMs: 30000, cleanupMs: 5000 },
-          },
-        },
         });
         // A later same-run checkpoint does not erase already received telemetry.
         onCheckpoint?.({ checkpoint });

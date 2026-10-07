@@ -35,8 +35,8 @@ describe('resumable GGUF storage writer', () => {
     const waiting = Promise.withResolvers<void>(); let pulls = 0;
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull(controller) {
-      if (pulls++ === 0) controller.enqueue(ggufBytes().slice(0, 64)); else waiting.resolve();
-    },
+        if (pulls++ === 0) controller.enqueue(ggufBytes().slice(0, 64)); else waiting.resolve();
+      },
     }, { highWaterMark: 0 });
     const consumed = writer.consume({ stream }, async () => {}); const rejected = expect(consumed).rejects.toThrow('Download paused');
     await waiting.promise; await writer.stop(); await rejected; await writer.pause();
@@ -88,8 +88,8 @@ describe('resumable GGUF storage writer', () => {
     vi.stubGlobal('navigator', {
       ...navigator,
       locks: {
-      request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
-    },
+        request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
+      },
     });
     const { plan } = await prepareModelRemoval({ id: 'hf.co/owner/repo' });
     expect(plan.files.some(file => file.path === selection.files[0]!.path)).toBe(false);
@@ -116,15 +116,15 @@ describe('resumable GGUF storage writer', () => {
     vi.stubGlobal('navigator', {
       ...navigator,
       locks: {
-      request: async (name: string, _options: object, operation: (lock: object | undefined) => Promise<unknown>) => {
-      if (locks.has(name)) return operation(undefined);
-      locks.add(name); try {
-        return await operation({});
-      } finally {
-        locks.delete(name);
-      }
-    },
-    },
+        request: async (name: string, _options: object, operation: (lock: object | undefined) => Promise<unknown>) => {
+          if (locks.has(name)) return operation(undefined);
+          locks.add(name); try {
+            return await operation({});
+          } finally {
+            locks.delete(name);
+          }
+        },
+      },
     });
     const gate = Promise.withResolvers<void>();
     const first = withRepositoryLock({ repository: selection.repository, operation: () => gate.promise });

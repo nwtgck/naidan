@@ -78,8 +78,8 @@ it('drops late catalog output after switching connections and cancels the old ca
   h.inferenceLocation.chooseConnection({ id: h.second.id }); expect(signal.aborted).toBe(true);
   gate.resolve(new ReadableStream({
     start(controller) {
-    controller.close();
-  },
+      controller.close();
+    },
   })); await reading;
   expect(h.inferenceLocation.catalog.value).toEqual([]); expect(h.inferenceLocation.connectionId.value).toBe(h.second.id); expect(h.inferenceLocation.loading.value).toBe(false);
 });

@@ -89,11 +89,11 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   return {
     path,
     remove() {
-    if (opens !== 0) throw new Error('Close native file handles before unmounting');
-    if (!removed) {
-      FS.unlink(path); removed = true;
-    }
-  },
+      if (opens !== 0) throw new Error('Close native file handles before unmounting');
+      if (!removed) {
+        FS.unlink(path); removed = true;
+      }
+    },
   };
 }
 export const TEST_ONLY = {

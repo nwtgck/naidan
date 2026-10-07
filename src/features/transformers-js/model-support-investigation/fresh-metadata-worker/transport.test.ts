@@ -19,15 +19,15 @@ it('records missing Content-Length and a size probe without retaining signed que
     expect(transport.snapshot()).toEqual({
       receivedBytes: 1,
       requests: [{
-      consumer: 'runtime-preparation',
-      path: 'config.json',
-      request: 'size-probe',
-      status: 'complete',
-      httpStatus: 206,
-      contentLength: undefined,
-      contentRange: 'bytes 0-0/100',
-      receivedBytes: 1,
-    }],
+        consumer: 'runtime-preparation',
+        path: 'config.json',
+        request: 'size-probe',
+        status: 'complete',
+        httpStatus: 206,
+        contentLength: undefined,
+        contentRange: 'bytes 0-0/100',
+        receivedBytes: 1,
+      }],
     });
     expect(originalFetch.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
   } finally {
@@ -82,9 +82,9 @@ it('does not report a size probe as cancelled until its source acknowledges canc
     onObservation: () => undefined,
     originalFetch: async () => new Response(new ReadableStream({
       cancel() {
-      started.resolve();
-      return finished.promise;
-    },
+        started.resolve();
+        return finished.promise;
+      },
     })),
   });
   const response = await transport.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } });

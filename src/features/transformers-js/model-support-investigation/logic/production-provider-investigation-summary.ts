@@ -40,10 +40,10 @@ export function validateProductionProviderInvestigationLiveProgress({ value, run
     if (provider.run.status === 'completed' && active !== undefined) invalid();
     return Object.freeze({
       progress: Object.freeze({
-      ...progress,
-      stopReason: progress.stopReason,
-      provider: Object.freeze({ ...provider, activeRequest: active === undefined ? undefined : Object.freeze(active) }),
-    }),
+        ...progress,
+        stopReason: progress.stopReason,
+        provider: Object.freeze({ ...provider, activeRequest: active === undefined ? undefined : Object.freeze(active) }),
+      }),
       deadlines: Object.freeze(deadlines),
     });
   } catch {

@@ -35,17 +35,17 @@ describe('inspectChatPersistenceRoundTrip', () => {
         {
           type: 'tool_call',
           toolCall: {
-          id: 'model-support-investigation-tool-call-1',
-          type: 'function',
-          function: {
-            name: 'lookup_weather',
-            arguments: `\
+            id: 'model-support-investigation-tool-call-1',
+            type: 'function',
+            function: {
+              name: 'lookup_weather',
+              arguments: `\
 {
   "city": "Tokyo",
   "unit": "C"
 }`,
+            },
           },
-        },
         },
       ],
     });
@@ -56,15 +56,15 @@ describe('inspectChatPersistenceRoundTrip', () => {
       parts: [{
         type: 'tool_result',
         result: {
-        toolCallId: 'model-support-investigation-tool-call-1',
-        status: 'success',
-        content: {
-          type: 'text',
-          text: `\
+          toolCallId: 'model-support-investigation-tool-call-1',
+          status: 'success',
+          content: {
+            type: 'text',
+            text: `\
 {"temperatureC":20,"condition":"clear"}
 source=fixture`,
+          },
         },
-      },
       }],
     });
     expect(result.restoredMessages[4]?.parts).toEqual([{

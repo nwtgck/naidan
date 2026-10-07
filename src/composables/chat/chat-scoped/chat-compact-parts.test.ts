@@ -28,11 +28,11 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   contextCompactRuntime: {
     setProgress: state.progress,
     setActiveContextCompaction: ({ controller }: { controller: AbortController }) => {
-    state.active = controller;
-  },
-  clearActiveContextCompaction: () => {
-    state.active = undefined;
-  },
+      state.active = controller;
+    },
+    clearActiveContextCompaction: () => {
+      state.active = undefined;
+    },
     getActiveContextCompaction: () => state.active,
   },
 }));
@@ -41,11 +41,11 @@ vi.mock('@/logic/context-compact', async importOriginal => {
   return {
     ...actual,
     createProviderForCompact: async () => ({
-    chat: (request: Parameters<LmProvider['chat']>[0]) => {
-    state.request = request; return state.generate!();
-  },
-    listModels: vi.fn(),
-  }),
+      chat: (request: Parameters<LmProvider['chat']>[0]) => {
+        state.request = request; return state.generate!();
+      },
+      listModels: vi.fn(),
+    }),
   };
 });
 vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ modelId: 'm', endpoint: { type: 'openai', url: 'https://example.invalid', httpHeaders: [] }, lmParameters: EMPTY_LM_PARAMETERS }) }));

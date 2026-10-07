@@ -36,8 +36,8 @@ describe('Qwen image generation session ownership', () => {
     const harness = await createRouteRuntime({
       paths: textArtifacts,
       generate: async () => {
-      throw new Error('No generation needed for receipt');
-    },
+        throw new Error('No generation needed for receipt');
+      },
     });
     const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
     const capture = createTransformersJsGenerationCaptureClient({
@@ -143,9 +143,9 @@ describe('Qwen image generation session ownership', () => {
             id: toMessageId({ raw: 'image-user' }),
             role: 'user',
             parts: [
-            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-          ],
+              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ],
           }],
           parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
@@ -208,9 +208,9 @@ describe('Qwen image generation session ownership', () => {
             id: toMessageId({ raw: 'image-user' }),
             role: 'user',
             parts: [
-            { type: 'text', text: 'Describe this image.', completeness: 'complete' },
-            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-          ],
+              { type: 'text', text: 'Describe this image.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ],
           }],
         },
       });

@@ -587,10 +587,10 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     const prompt = renderThinkingTemplate({
       offRequested: params?.reasoning.effort === 'none',
       render: () => processor.apply_chat_template(templateMessages, {
-      add_generation_prompt: true,
-      ...getGemma4ThinkingTemplateOptions({ parameters: params }),
-      ...(tools?.length ? { tools } : {}),
-    }),
+        add_generation_prompt: true,
+        ...getGemma4ThinkingTemplateOptions({ parameters: params }),
+        ...(tools?.length ? { tools } : {}),
+      }),
     });
     const inputs = await runtimeState.gemma4Processor(
       prompt,
@@ -829,19 +829,19 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
         prompt,
         tools,
         emit: ({ event }) => {
-        switch (event.type) {
-        case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
-        case 'result':
-          switch (event.result.type) {
-          case 'finished': cacheableCompletion = event.result.next === 'user'; break;
-          case 'interrupted': cacheableCompletion = false; break;
-          default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+          switch (event.type) {
+          case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
+          case 'result':
+            switch (event.result.type) {
+            case 'finished': cacheableCompletion = event.result.next === 'user'; break;
+            case 'interrupted': cacheableCompletion = false; break;
+            default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+            }
+            break;
+          default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
           }
-          break;
-        default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
-        }
-        onGenerationEvent({ event });
-      },
+          onGenerationEvent({ event });
+        },
       });
       const streamer = new NativeProtocolStreamer({
         tokenizer,
@@ -971,9 +971,9 @@ async function generateWithModel({
   if (generationCapture !== undefined) {
     recordGenerationCapture({
       record: () => {
-      invocation = generationCapture.beginInvocation();
-      invocation?.recordInputs({ phase: 'pre-budget', inputs });
-    },
+        invocation = generationCapture.beginInvocation();
+        invocation?.recordInputs({ phase: 'pre-budget', inputs });
+      },
     });
   }
   const generationBudget = resolveGenerationBudget({
@@ -1007,10 +1007,10 @@ async function generateWithModel({
   if (invocation !== undefined) {
     recordGenerationCapture({
       record: () => {
-      invocation?.recordSettings({ observation: snapshotGenerationInvocation({ params, generationBudget, kwargs }) });
-      invocation?.recordInputs({ phase: 'native-kwargs', inputs: kwargs });
-      invocation?.recordNativeCall({ phase: 'entering' });
-    },
+        invocation?.recordSettings({ observation: snapshotGenerationInvocation({ params, generationBudget, kwargs }) });
+        invocation?.recordInputs({ phase: 'native-kwargs', inputs: kwargs });
+        invocation?.recordNativeCall({ phase: 'entering' });
+      },
     });
   }
   // The observer receives no live kwargs references. Keep the original receiver,
@@ -1019,8 +1019,8 @@ async function generateWithModel({
   if (invocation !== undefined) {
     recordGenerationCapture({
       record: () => {
-      nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: streamer instanceof NativeProtocolStreamer ? NativeProtocolStreamer.prototype : TextStreamer.prototype, capture: invocation });
-    },
+        nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: streamer instanceof NativeProtocolStreamer ? NativeProtocolStreamer.prototype : TextStreamer.prototype, capture: invocation });
+      },
     });
   }
   let result: Awaited<ReturnType<TextGenerationModel['generate']>>;
@@ -1035,9 +1035,9 @@ async function generateWithModel({
   if (invocation !== undefined) {
     recordGenerationCapture({
       record: () => {
-      invocation?.recordNativeCall({ phase: 'fulfilled' });
-      invocation?.recordSequence({ result });
-    },
+        invocation?.recordNativeCall({ phase: 'fulfilled' });
+        invocation?.recordSequence({ result });
+      },
     });
   }
   emitGenerationObservation({

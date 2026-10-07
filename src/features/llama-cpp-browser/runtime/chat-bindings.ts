@@ -78,17 +78,17 @@ export function bindNativeChat<
         const messages = request.messages.map(message => ({
           ...message,
           content: typeof message.content === 'string' ? message.content : message.content.map(part => {
-          switch (part.type) {
-          case 'text': return part;
-          case 'image': {
+            switch (part.type) {
+            case 'text': return part;
+            case 'image': {
             // An unpredictable marker keeps literal user text distinct from media.
-            const marker = `<__image_${crypto.randomUUID()}__>`;
-            images.push({ marker, blob: part.blob });
-            return { type: 'media_marker', text: marker };
-          }
-          default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
-          }
-        }),
+              const marker = `<__image_${crypto.randomUUID()}__>`;
+              images.push({ marker, blob: part.blob });
+              return { type: 'media_marker', text: marker };
+            }
+            default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
+            }
+          }),
         }));
         const inputs = new native.common_chat_templates_inputs();
         try {

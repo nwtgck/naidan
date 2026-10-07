@@ -101,23 +101,23 @@ export function generationResultToWire({ value }: { value: ImageGenerationQueryR
     deletedAssetIds: value.deletedAssetIds.map(id => idToRaw({ id })),
     pendingDeletions: value.pendingDeletions.map(item => ({ ...item, assetId: idToRaw({ id: item.assetId }), sessionId: idToRaw({ id: item.sessionId }) })),
     page: {
-    ...value.page,
-    items: value.page.items.map(item => ({
-    ...item,
-    id: idToRaw({ id: item.id }),
-    sessionId: idToRaw({ id: item.sessionId }),
-    runId: idToRaw({ id: item.runId }),
-    binaryObjectId: idToRaw({ id: item.binaryObjectId }),
-    annotations: item.annotations && {
-      ...item.annotations,
-      assetId: idToRaw({ id: item.annotations.assetId }),
-      sessionId: idToRaw({ id: item.annotations.sessionId }),
-      tags: item.annotations.tags.map(assignment => ({ ...assignment, tag: tagToWire({ value: assignment.tag }) })),
+      ...value.page,
+      items: value.page.items.map(item => ({
+        ...item,
+        id: idToRaw({ id: item.id }),
+        sessionId: idToRaw({ id: item.sessionId }),
+        runId: idToRaw({ id: item.runId }),
+        binaryObjectId: idToRaw({ id: item.binaryObjectId }),
+        annotations: item.annotations && {
+          ...item.annotations,
+          assetId: idToRaw({ id: item.annotations.assetId }),
+          sessionId: idToRaw({ id: item.annotations.sessionId }),
+          tags: item.annotations.tags.map(assignment => ({ ...assignment, tag: tagToWire({ value: assignment.tag }) })),
+        },
+      })),
+      nextCursor: value.page.nextCursor && { ...value.page.nextCursor, id: idToRaw({ id: value.page.nextCursor.id }) },
     },
-  })),
-  nextCursor: value.page.nextCursor && { ...value.page.nextCursor, id: idToRaw({ id: value.page.nextCursor.id }) },
-  },
-  runs: { ...value.runs, items: value.runs.items.map(run => ({ ...run, id: idToRaw({ id: run.id }), sessionId: idToRaw({ id: run.sessionId }) })) },
+    runs: { ...value.runs, items: value.runs.items.map(run => ({ ...run, id: idToRaw({ id: run.id }), sessionId: idToRaw({ id: run.sessionId }) })) },
   };
 }
 export const TEST_ONLY = {

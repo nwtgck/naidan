@@ -50,61 +50,61 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
   const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
   const core = createWorkerClientCore({
     capture: {
-    loadReceiptOwner: identity,
-    observeLoad({ packet }) {
-      loadDiagnostics.observe({ packet });
-    },
-    createRequest() {
+      loadReceiptOwner: identity,
+      observeLoad({ packet }) {
+        loadDiagnostics.observe({ packet });
+      },
+      createRequest() {
       // Read the owner once, before startup/session awaits. A tool loop may
       // issue several calls for one Provider request, each with its own ID.
-      if (issuedCalls.length >= limits.maxCalls) {
-        incompleteReasons.add('call-limit');
-        return undefined;
-      }
-      try {
-        const active = getActiveRequest();
-        if (active === undefined) {
-          incompleteReasons.add('request-unavailable');
+        if (issuedCalls.length >= limits.maxCalls) {
+          incompleteReasons.add('call-limit');
           return undefined;
         }
-        const parsed = generationCaptureRequestSchema.safeParse({
-          context: { ...identity, runId: active.runId, requestId: active.requestId, generationCallId: issuedCalls.length + 1 },
-          limits,
-        });
-        if (!parsed.success || parsed.data.context.runId !== identity.runId) {
+        try {
+          const active = getActiveRequest();
+          if (active === undefined) {
+            incompleteReasons.add('request-unavailable');
+            return undefined;
+          }
+          const parsed = generationCaptureRequestSchema.safeParse({
+            context: { ...identity, runId: active.runId, requestId: active.requestId, generationCallId: issuedCalls.length + 1 },
+            limits,
+          });
+          if (!parsed.success || parsed.data.context.runId !== identity.runId) {
+            incompleteReasons.add('request-invalid');
+            return undefined;
+          }
+          issuedCalls.push({ ...parsed.data.context });
+          return parsed.data;
+        } catch {
+        // No diagnostic getter/schema failure may reject actual generation.
           incompleteReasons.add('request-invalid');
           return undefined;
         }
-        issuedCalls.push({ ...parsed.data.context });
-        return parsed.data;
-      } catch {
-        // No diagnostic getter/schema failure may reject actual generation.
-        incompleteReasons.add('request-invalid');
-        return undefined;
-      }
-    },
-    recordLoad({ modelId, revisionSelection }) {
-      const revision = (() => {
-        switch (revisionSelection.kind) {
-        case 'pinned': return revisionSelection.revision;
-        case 'discover-cached': return undefined;
-        default: {
-          const _ex: never = revisionSelection;
-          throw new Error(`Unhandled revision selection: ${_ex}`);
-        }
-        }
-      })();
-      if (loadRequests.length >= limits.maxCalls) {
-        incompleteReasons.add('load-limit');
-      } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
-        incompleteReasons.add('load-identity-limit');
-      } else {
+      },
+      recordLoad({ modelId, revisionSelection }) {
+        const revision = (() => {
+          switch (revisionSelection.kind) {
+          case 'pinned': return revisionSelection.revision;
+          case 'discover-cached': return undefined;
+          default: {
+            const _ex: never = revisionSelection;
+            throw new Error(`Unhandled revision selection: ${_ex}`);
+          }
+          }
+        })();
+        if (loadRequests.length >= limits.maxCalls) {
+          incompleteReasons.add('load-limit');
+        } else if (modelId.length > 256 || (revision !== undefined && revision.length > 128)) {
+          incompleteReasons.add('load-identity-limit');
+        } else {
         // These are requested identities, not proof of resolved revision or
         // successful Load. Do not wrap Load settlement just to record them.
-        loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
-      }
+          loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
+        }
+      },
     },
-  },
   });
   return {
     client: core.client,

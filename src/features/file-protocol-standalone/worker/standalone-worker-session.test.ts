@@ -118,8 +118,8 @@ describe('standalone Worker session', () => {
     const worker = createWorkerMock();
     const remote = createRemoteMock({
       release: async () => {
-      throw new Error('release failed');
-    },
+        throw new Error('release failed');
+      },
     });
     vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({

@@ -80,13 +80,13 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
       core,
       path: `/models/${file.path}`,
       source: readCache.wrap({
-      source: {
-      size: access.getSize(),
-      read({ destination, offset }) {
-      return access.read(destination, { at: offset });
-    },
-    },
-    }),
+        source: {
+          size: access.getSize(),
+          read({ destination, offset }) {
+            return access.read(destination, { at: offset });
+          },
+        },
+      }),
       maxChunkBytes: 8 * 1024 * 1024,
     });
     const params = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(params);
@@ -119,10 +119,10 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
       try {
         if (reportFileReads) logDiagnostic({
           diagnostic: {
-          event: 'file-read-performance',
-          profile,
-          fileReads: { target: 'projector', ...readCache.counters },
-        },
+            event: 'file-read-performance',
+            profile,
+            fileReads: { target: 'projector', ...readCache.counters },
+          },
         });
       } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
     }

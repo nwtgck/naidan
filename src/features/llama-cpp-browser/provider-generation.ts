@@ -21,94 +21,94 @@ export function createLlamaCppGeneration({ request, generate }: {
   return createChatGenerationStream({
     signal,
     run: async ({ writer, signal }) => {
-    const input = await prepareLlamaCppRequest({ ...snapshot, model, readBinaryObject, debug, signal });
-    const usedIds = new Set(input.messages.flatMap(message => message.tool_calls?.map(call => call.id) ?? []));
-    let content = ''; let reasoning = '';
-    let reserved = 0;
-    const completed = new Map<number, string>();
-    let phase: 'reasoning' | 'text' | 'tool_call' = 'reasoning';
-    let replayable = true;
-    try {
-      const result = generationResultSchema.parse(await generate({
-        input,
-        signal,
-        onEvent: async ({ event }) => {
-        const value = generationEventSchema.parse(event);
-        switch (value.type) {
-        case 'reasoning':
-          switch (phase) {
-          case 'reasoning': break;
-          case 'text': case 'tool_call': replayable = false; break;
-          default: { const exhaustive: never = phase; throw new Error(`Unknown generation phase: ${exhaustive}`); }
-          }
-          reasoning += value.text;
-          await writer.text({ type: 'reasoning', text: value.text });
-          break;
-        case 'text':
-          switch (phase) {
-          case 'reasoning': phase = 'text'; break;
-          case 'text': break;
-          case 'tool_call': replayable = false; break;
-          default: { const exhaustive: never = phase; throw new Error(`Unknown generation phase: ${exhaustive}`); }
-          }
-          content += value.text;
-          await writer.text({ type: 'text', text: value.text });
-          break;
-        case 'tool_call_start':
-          if (value.index !== reserved) throw new Error('Native call reservations must be ordered and unique.');
-          writer.reserveCall({ key: reserved++ });
-          phase = 'tool_call';
-          await writer.callDraft({ key: value.index, name: undefined, arguments: undefined });
-          break;
-        case 'tool_call_draft':
-          if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call preview has no active reservation.');
-          await writer.callDraft({ key: value.index, name: value.name, arguments: value.arguments });
-          break;
-        case 'tool_call': {
-          if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call completion has no unique reservation.');
-          const call = value.toolCall;
-          completed.set(value.index, JSON.stringify(call));
-          let id = call.id;
-          if (!id || usedIds.has(id)) {
-            do {
-              id = createCallId();
-            } while (usedIds.has(id));
-          }
-          usedIds.add(id);
-          await writer.call({ key: value.index, toolCall: { ...call, id: toToolCallId({ raw: id }), function: { ...call.function } } });
-          break;
+      const input = await prepareLlamaCppRequest({ ...snapshot, model, readBinaryObject, debug, signal });
+      const usedIds = new Set(input.messages.flatMap(message => message.tool_calls?.map(call => call.id) ?? []));
+      let content = ''; let reasoning = '';
+      let reserved = 0;
+      const completed = new Map<number, string>();
+      let phase: 'reasoning' | 'text' | 'tool_call' = 'reasoning';
+      let replayable = true;
+      try {
+        const result = generationResultSchema.parse(await generate({
+          input,
+          signal,
+          onEvent: async ({ event }) => {
+            const value = generationEventSchema.parse(event);
+            switch (value.type) {
+            case 'reasoning':
+              switch (phase) {
+              case 'reasoning': break;
+              case 'text': case 'tool_call': replayable = false; break;
+              default: { const exhaustive: never = phase; throw new Error(`Unknown generation phase: ${exhaustive}`); }
+              }
+              reasoning += value.text;
+              await writer.text({ type: 'reasoning', text: value.text });
+              break;
+            case 'text':
+              switch (phase) {
+              case 'reasoning': phase = 'text'; break;
+              case 'text': break;
+              case 'tool_call': replayable = false; break;
+              default: { const exhaustive: never = phase; throw new Error(`Unknown generation phase: ${exhaustive}`); }
+              }
+              content += value.text;
+              await writer.text({ type: 'text', text: value.text });
+              break;
+            case 'tool_call_start':
+              if (value.index !== reserved) throw new Error('Native call reservations must be ordered and unique.');
+              writer.reserveCall({ key: reserved++ });
+              phase = 'tool_call';
+              await writer.callDraft({ key: value.index, name: undefined, arguments: undefined });
+              break;
+            case 'tool_call_draft':
+              if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call preview has no active reservation.');
+              await writer.callDraft({ key: value.index, name: value.name, arguments: value.arguments });
+              break;
+            case 'tool_call': {
+              if (value.index >= reserved || completed.has(value.index)) throw new Error('Native call completion has no unique reservation.');
+              const call = value.toolCall;
+              completed.set(value.index, JSON.stringify(call));
+              let id = call.id;
+              if (!id || usedIds.has(id)) {
+                do {
+                  id = createCallId();
+                } while (usedIds.has(id));
+              }
+              usedIds.add(id);
+              await writer.call({ key: value.index, toolCall: { ...call, id: toToolCallId({ raw: id }), function: { ...call.function } } });
+              break;
+            }
+            default: { const exhaustive: never = value; throw new Error(`Unknown native event: ${exhaustive}`); }
+            }
+          },
+        }));
+        if (result.content !== content || result.reasoningContent !== reasoning) throw new Error('Native result does not match delivered content.');
+        if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+        switch (result.finishReason) {
+        case 'length': return { type: 'interrupted', reason: 'limit' };
+        case 'stop_sequence': return { type: 'interrupted', reason: 'stop_sequence' };
+        case 'stop':
+          if (reserved !== result.toolCalls.length || completed.size !== reserved || result.toolCalls.some((call, index) => completed.get(index) !== JSON.stringify(call))) throw new Error('Native result does not match completed calls.');
+          // Preserve unsupported ordering in the generated parts, but do not execute
+          // tools before discovering that the next input cannot represent it.
+          if (!replayable) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+          return { type: 'finished', next: result.toolCalls.length ? 'tool_results' : 'user' };
+        default: { const exhaustive: never = result.finishReason; throw new Error(`Unknown finish reason: ${exhaustive}`); }
         }
-        default: { const exhaustive: never = value; throw new Error(`Unknown native event: ${exhaustive}`); }
+      } catch (error) {
+        if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+        const code = errorCode({ error });
+        switch (code) {
+        case 'aborted': return { type: 'interrupted', reason: 'aborted' };
+        case 'reasoning-unsupported': throw new UnsupportedReasoningError({ message: 'This model template does not support the requested thinking control.' });
+        case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
+        case 'runtime-error': case 'template-unsupported': case 'context-full': case 'unsupported-input':
+        case 'busy': case 'worker-failed': case 'audio-model-unsupported': case 'audio-reference-required':
+        case 'audio-reference-invalid': case 'audio-output-empty': throw error;
+        default: { const exhaustive: never = code; throw new Error(`Unhandled generation error: ${exhaustive}`); }
         }
-      },
-      }));
-      if (result.content !== content || result.reasoningContent !== reasoning) throw new Error('Native result does not match delivered content.');
-      if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
-      switch (result.finishReason) {
-      case 'length': return { type: 'interrupted', reason: 'limit' };
-      case 'stop_sequence': return { type: 'interrupted', reason: 'stop_sequence' };
-      case 'stop':
-        if (reserved !== result.toolCalls.length || completed.size !== reserved || result.toolCalls.some((call, index) => completed.get(index) !== JSON.stringify(call))) throw new Error('Native result does not match completed calls.');
-        // Preserve unsupported ordering in the generated parts, but do not execute
-        // tools before discovering that the next input cannot represent it.
-        if (!replayable) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-        return { type: 'finished', next: result.toolCalls.length ? 'tool_results' : 'user' };
-      default: { const exhaustive: never = result.finishReason; throw new Error(`Unknown finish reason: ${exhaustive}`); }
       }
-    } catch (error) {
-      if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
-      const code = errorCode({ error });
-      switch (code) {
-      case 'aborted': return { type: 'interrupted', reason: 'aborted' };
-      case 'reasoning-unsupported': throw new UnsupportedReasoningError({ message: 'This model template does not support the requested thinking control.' });
-      case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
-      case 'runtime-error': case 'template-unsupported': case 'context-full': case 'unsupported-input':
-      case 'busy': case 'worker-failed': case 'audio-model-unsupported': case 'audio-reference-required':
-      case 'audio-reference-invalid': case 'audio-output-empty': throw error;
-      default: { const exhaustive: never = code; throw new Error(`Unhandled generation error: ${exhaustive}`); }
-      }
-    }
-  },
+    },
   });
 }
 

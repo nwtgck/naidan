@@ -19,8 +19,8 @@ it('coalesces many samples to the latest value at 150 ms even when the observer 
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info);
-  },
+      received.push(info);
+    },
   });
   try {
     emitter.publish({ info: { status: 'progress', file: 'model.onnx', loaded: 1, total: 100 } });
@@ -50,8 +50,8 @@ it('removes the pending throttle timer on close and never publishes a buffered o
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info);
-  },
+      received.push(info);
+    },
   });
   try {
     emitter.publish({ info: { status: 'progress', file: 'model.onnx', loaded: 1 } });
@@ -74,9 +74,9 @@ it('does not rearm or deliver buffered files after an observer acknowledges a cl
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info);
-    return held.promise;
-  },
+      received.push(info);
+      return held.promise;
+    },
   });
   try {
     emitter.publish({ info: { status: 'progress', file: 'first.onnx', loaded: 1 } });
@@ -104,8 +104,8 @@ it('preserves cumulative source-clock throughput when held acknowledgement coale
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info); eta.observe({ info }); return held.promise;
-  },
+      received.push(info); eta.observe({ info }); return held.promise;
+    },
   });
   try {
     emitter.publish({ info: { status: 'download', file: 'a', loaded: 0, downloadCumulativeTiming: { clockId: 'worker', sequence: 1, firstFetchStartedAtMs: 50_000, observedAtMs: 50_000, receivedBytes: 0 } } });
@@ -128,8 +128,8 @@ it('keeps disabled timing on a terminal that replaces the failed sample while ac
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info); eta.observe({ info }); return acknowledgement.promise;
-  },
+      received.push(info); eta.observe({ info }); return acknowledgement.promise;
+    },
   });
   try {
     emitter.publish({ info: { status: 'progress', file: 'a', loaded: 300, downloadCumulativeTiming: { clockId: 'source', sequence: 2, firstFetchStartedAtMs: 0, observedAtMs: 3000, receivedBytes: 300 } } });
@@ -155,10 +155,10 @@ it('reconciles source cumulative bytes with coalesced per-file terminals before 
   const received: ProgressInfo[] = [];
   const emitter = createDownloadProgressEmitter({
     callback: ({ info }) => {
-    received.push(info);
-    publishDownloadProgress({ callback: tracker.observe, event: { kind: 'file', index: 0, info } });
-    return held.promise;
-  },
+      received.push(info);
+      publishDownloadProgress({ callback: tracker.observe, event: { kind: 'file', index: 0, info } });
+      return held.promise;
+    },
   });
   try {
     emitter.publish({ info: { status: 'download', file: 'a', loaded: 0, downloadCumulativeTiming: { clockId: 'source', sequence: 1, firstFetchStartedAtMs: 1000, observedAtMs: 1000, receivedBytes: 0 } } });

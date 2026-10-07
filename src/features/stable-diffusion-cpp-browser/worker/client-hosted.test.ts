@@ -169,15 +169,15 @@ it('bounds native error context even after repeated GPU errors', async () => {
   const worker = mocks.workers[0]!;
   for (let i = 0; i < 100; i++) worker.dispatchEvent(new MessageEvent('message', {
     data: {
-    type: 'naidan-image-diagnostic-v1',
-    diagnostic: {
-    event: 'gpu',
-    stage: 'decoding',
-    elapsedMs: i,
-    message: 'uncaptured GPU error: ' + i + ' ' + 'X'.repeat(1900),
-    fields: {},
-  },
-  },
+      type: 'naidan-image-diagnostic-v1',
+      diagnostic: {
+        event: 'gpu',
+        stage: 'decoding',
+        elapsedMs: i,
+        message: 'uncaptured GPU error: ' + i + ' ' + 'X'.repeat(1900),
+        fields: {},
+      },
+    },
   }));
   worker.dispatchEvent(new ErrorEvent('error')); await failed;
   const message = await operation.catch((error: Error) => error.message);
@@ -261,11 +261,11 @@ it('queues generation before a start listener can send live preview control', as
     signal: stop.signal,
     onProgress: vi.fn(),
     onDiagnostic({ diagnostic }) {
-    if (diagnostic.event === 'start' && diagnostic.stage === 'worker') {
-      expect(mocks.generate).toHaveBeenCalledTimes(1);
-      client.updatePreview({ settings: { ...input.preview, enabled: true } });
-    }
-  },
+      if (diagnostic.event === 'start' && diagnostic.stage === 'worker') {
+        expect(mocks.generate).toHaveBeenCalledTimes(1);
+        client.updatePreview({ settings: { ...input.preview, enabled: true } });
+      }
+    },
   });
   expect(mocks.messages).toHaveLength(1);
   const cancelled = expect(task).rejects.toMatchObject({ name: 'AbortError' }); stop.abort(); await cancelled; client.dispose();
@@ -300,15 +300,15 @@ it('retires a GPU-failed context even when cancellation was requested first', as
   const failed = expect(task).rejects.toThrow('uncaptured GPU error');
   mocks.workers[0]!.dispatchEvent(new MessageEvent('message', {
     data: {
-    type: 'naidan-image-diagnostic-v1',
-    diagnostic: {
-    event: 'gpu',
-    stage: 'decoding',
-    elapsedMs: 1,
-    message: 'uncaptured GPU error: validation',
-    fields: { runId: 1 },
-  },
-  },
+      type: 'naidan-image-diagnostic-v1',
+      diagnostic: {
+        event: 'gpu',
+        stage: 'decoding',
+        elapsedMs: 1,
+        message: 'uncaptured GPU error: validation',
+        fields: { runId: 1 },
+      },
+    },
   }));
   gate.resolve({ cancelled: true, modelResident: true });
   await failed; expect(mocks.terminate).toHaveBeenCalledOnce(); client.dispose();

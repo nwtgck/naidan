@@ -33,12 +33,12 @@ describe('consume nested chat generation', () => {
     await consume({
       node,
       items: sequence({
-      items: [
-      part({ id: 'r', index: 0, type: 'reasoning', text: ['  理由\n', ' '], completeness: 'complete' }),
-      part({ id: 'e', index: 1, type: 'text', text: [], completeness: 'complete' }),
-      part({ id: 't', index: 2, type: 'text', text: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'], completeness: 'complete' }), completed(),
-    ],
-    }),
+        items: [
+          part({ id: 'r', index: 0, type: 'reasoning', text: ['  理由\n', ' '], completeness: 'complete' }),
+          part({ id: 'e', index: 1, type: 'text', text: [], completeness: 'complete' }),
+          part({ id: 't', index: 2, type: 'text', text: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'], completeness: 'complete' }), completed(),
+        ],
+      }),
       abortController: new AbortController(),
       onChange: () => {},
     });
@@ -76,8 +76,8 @@ describe('consume nested chat generation', () => {
       items: sequence({ items: [item, completed()] }),
       abortController: new AbortController(),
       onChange: () => {
-      if (JSON.stringify(node.parts).includes('"A"')) started.resolve();
-    },
+        if (JSON.stringify(node.parts).includes('"A"')) started.resolve();
+      },
     }).then(value => {
       completedRun = true; return value;
     });
@@ -105,8 +105,8 @@ describe('consume nested chat generation', () => {
       items: sequence({ items: [part({ id: 'p', index: 0, type: 'text', text: ['A', 'B'], completeness: 'partial' }), call(), cancelled] }),
       abortController: controller,
       onChange: () => {
-      controller.abort();
-    },
+        controller.abort();
+      },
     });
     expect(result).toEqual(cancelled.result);
     expect(node.parts).toMatchObject([{ text: 'AB', completeness: 'partial' }, { type: 'tool_call' }]);
@@ -192,8 +192,8 @@ describe('consume nested chat generation', () => {
       items: sequence({ items: [item, completed()] }),
       abortController: controller,
       onChange: () => {
-      if (JSON.stringify(node.parts).includes('"A"')) throw fault;
-    },
+        if (JSON.stringify(node.parts).includes('"A"')) throw fault;
+      },
     })).rejects.toBe(fault);
     expect(controller.signal.aborted).toBe(true); expect(childClosed).toBe(true);
     expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
@@ -218,13 +218,13 @@ describe('consume nested chat generation', () => {
     const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = {
       [Symbol.asyncIterator]() {
-      return {
-        next: async () => ({ value: 'A', done: false }),
-        return: async () => {
-        throw cleanup;
+        return {
+          next: async () => ({ value: 'A', done: false }),
+          return: async () => {
+            throw cleanup;
+          },
+        };
       },
-      };
-    },
     };
     const node = fresh();
     const running = consume({
@@ -232,8 +232,8 @@ describe('consume nested chat generation', () => {
       items: sequence({ items: [item, completed()] }),
       abortController: new AbortController(),
       onChange: () => {
-      throw fault;
-    },
+        throw fault;
+      },
     });
     await expect(running).rejects.toMatchObject({ errors: [fault, cleanup] });
   });

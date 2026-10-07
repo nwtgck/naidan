@@ -249,39 +249,39 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
     return {
       ...base,
       async send(args) {
-      if (args.bytes.length === 34) {
-        if (owner === 'a') {
-          aOffers++;
-          if (aOffers === 1) {
-            oldOffer = args.bytes.slice();
-            // A failed local request leaves its old body available at the server.
-            await new Promise(resolve => setTimeout(resolve, 5));
-            throw new AttemptError({ kind: 'transient' });
+        if (args.bytes.length === 34) {
+          if (owner === 'a') {
+            aOffers++;
+            if (aOffers === 1) {
+              oldOffer = args.bytes.slice();
+              // A failed local request leaves its old body available at the server.
+              await new Promise(resolve => setTimeout(resolve, 5));
+              throw new AttemptError({ kind: 'transient' });
+            }
+            if (aOffers === 2) {
+              aSecond.resolve(); throw new AttemptError({ kind: 'waiting-sender' });
+            }
+          } else if (++bOffers === 1) {
+            bDuplicate.resolve(); throw new AttemptError({ kind: 'waiting-sender' });
           }
-          if (aOffers === 2) {
-            aSecond.resolve(); throw new AttemptError({ kind: 'waiting-sender' });
-          }
-        } else if (++bOffers === 1) {
-          bDuplicate.resolve(); throw new AttemptError({ kind: 'waiting-sender' });
         }
-      }
-      return base.send(args);
-    },
+        return base.send(args);
+      },
       async receive(args) {
-      if (++gets === 1) {
-        try {
-          return await abortWait({ signal: args.signal });
-        } finally {
+        if (++gets === 1) {
+          try {
+            return await abortWait({ signal: args.signal });
+          } finally {
           // Both peers see the retained sender before either enters GET mode.
-          await (owner === 'a' ? bDuplicate.promise : selfConsumed.promise);
+            await (owner === 'a' ? bDuplicate.promise : selfConsumed.promise);
+          }
         }
-      }
-      if (owner === 'a' && oldOffer) {
-        const bytes = oldOffer; oldOffer = undefined; selfConsumed.resolve();
-        return bytes;
-      }
-      return base.receive(args);
-    },
+        if (owner === 'a' && oldOffer) {
+          const bytes = oldOffer; oldOffer = undefined; selfConsumed.resolve();
+          return bytes;
+        }
+        return base.receive(args);
+      },
     };
   };
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });

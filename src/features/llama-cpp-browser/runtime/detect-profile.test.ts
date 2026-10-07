@@ -12,8 +12,8 @@ function browser({ memory64, jspi, adapter }: { memory64: boolean, jspi: boolean
   vi.stubGlobal('navigator', {
     gpu: { requestAdapter },
     get userAgent() {
-    throw new Error('Profile selection must use feature detection');
-  },
+      throw new Error('Profile selection must use feature detection');
+    },
   });
   return { requestAdapter, validate };
 }

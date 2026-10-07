@@ -111,9 +111,9 @@ describe('chat-tree utils', () => {
       const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'before', mimeType: 'image/png', size: 1, uploadedAt: 0, status: 'persisted' as const };
       const [user, assistant] = createBranchFromMessages({
         messages: [
-        historyMessage({ role: 'user', content: '', thinking: undefined, attachments: [attachment], modelId: undefined }),
-        historyMessage({ role: 'assistant', content: '', thinking: undefined, attachments: undefined, modelId: undefined }),
-      ],
+          historyMessage({ role: 'user', content: '', thinking: undefined, attachments: [attachment], modelId: undefined }),
+          historyMessage({ role: 'assistant', content: '', thinking: undefined, attachments: undefined, modelId: undefined }),
+        ],
       });
       attachment.originalName = 'after';
       expect(user?.parts[1]).toMatchObject({ attachment: { originalName: 'before' } });
@@ -137,10 +137,10 @@ describe('full-part history preservation', () => {
       role: 'assistant',
       interruption: { type: 'error', message: '日本語' },
       parts: [
-      { type: 'text', text: '', completeness: 'complete' },
-      { type: 'reasoning', text: '  R\n', completeness: 'partial' },
-      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
-    ],
+        { type: 'text', text: '', completeness: 'complete' },
+        { type: 'reasoning', text: '  R\n', completeness: 'partial' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
+      ],
     };
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 99, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } }], replies: { items: [] } };
     assistant.replies.items.push(tool, { ...tool, id: toMessageId({ raw: 'sibling' }) });

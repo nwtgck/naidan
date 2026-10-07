@@ -38,22 +38,22 @@ const legacyContent = {
   currentLeafId: 'tool',
   root: {
     items: [{
-    id: 'user',
-    role: 'user',
-    timestamp: 1,
-    content: '  question  ',
-    replies: {
-      items: [{
-      id: 'assistant',
-      role: 'assistant',
-      timestamp: 2,
-      thinking: '  reasoning  ',
-      content: 'answer [Aborted]',
-      toolCalls: [{ id: 'call', type: 'function', function: { name: 'weather', arguments: '{ "city": "Tokyo" }' } }],
-      replies: { items: [legacyTool] },
+      id: 'user',
+      role: 'user',
+      timestamp: 1,
+      content: '  question  ',
+      replies: {
+        items: [{
+          id: 'assistant',
+          role: 'assistant',
+          timestamp: 2,
+          thinking: '  reasoning  ',
+          content: 'answer [Aborted]',
+          toolCalls: [{ id: 'call', type: 'function', function: { name: 'weather', arguments: '{ "city": "Tokyo" }' } }],
+          replies: { items: [legacyTool] },
+        }],
+      },
     }],
-    },
-  }],
   },
 };
 
@@ -166,12 +166,12 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     const content = {
       root: {
         items: [{
-        id: 'parent',
-        role: 'user',
-        createdAt: 1,
-        parts: [{ type: 'text', text: 'question' }],
-        replies: { items: [legacyTool] },
-      }],
+          id: 'parent',
+          role: 'user',
+          createdAt: 1,
+          parts: [{ type: 'text', text: 'question' }],
+          replies: { items: [legacyTool] },
+        }],
       },
     };
     expect(naidanSysfsRemoteChatContentPayloadSchema.safeParse(content).success).toBe(false);

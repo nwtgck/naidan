@@ -12,9 +12,9 @@ describe('native replay Worker event queue', () => {
     type Api = { echo(request: z.infer<typeof requestSchema>): Promise<z.infer<typeof requestSchema>> };
     const worker = new ProviderReplayTestWorker({
       start: async ({ worker }) => {
-      await entryLoaded.promise;
-      exposeWorkerRemote<Api>({ api: { echo: async request => requestSchema.parse(request) }, endpoint: worker.endpoint });
-    },
+        await entryLoaded.promise;
+        exposeWorkerRemote<Api>({ api: { echo: async request => requestSchema.parse(request) }, endpoint: worker.endpoint });
+      },
     });
     // This native adapter transfers Node MessagePorts, not browser-only Canvas
     // transferables. Its browser Worker facade retains the actual Comlink wire.

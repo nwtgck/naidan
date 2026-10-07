@@ -11,16 +11,16 @@ describe('Qwen3_5ToolCallParser', () => {
     parser = new Qwen3_5ToolCallParser({
       onText,
       tools: [{
-      type: 'function',
-      function: {
-      name: 'lookup',
-      description: 'Synthetic typed XML control.',
-      parameters: {
-        type: 'object',
-        properties: { options: { type: 'object' }, items: { type: 'array' }, ['__proto__']: { type: 'object' } },
-      },
-    },
-    }],
+        type: 'function',
+        function: {
+          name: 'lookup',
+          description: 'Synthetic typed XML control.',
+          parameters: {
+            type: 'object',
+            properties: { options: { type: 'object' }, items: { type: 'array' }, ['__proto__']: { type: 'object' } },
+          },
+        },
+      }],
     });
   });
 
@@ -71,13 +71,13 @@ true
     const typed = new Qwen3_5ToolCallParser({
       onText,
       tools: [{
-      type: 'function',
-      function: {
-      name: 'probe',
-      description: 'Synthetic XML type control.',
-      parameters: { type: 'object', properties: { value: schema } },
-    },
-    }],
+        type: 'function',
+        function: {
+          name: 'probe',
+          description: 'Synthetic XML type control.',
+          parameters: { type: 'object', properties: { value: schema } },
+        },
+      }],
     });
     typed.feed({ output: `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>` });
     typed.flush();

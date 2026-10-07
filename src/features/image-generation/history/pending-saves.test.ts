@@ -50,8 +50,8 @@ it('view listener errors cannot fail retention or completion', async () => {
   const store = createPendingImageHistory({ maxEntries: 1, byteLimit: 100 });
   store.subscribe({
     listener() {
-    throw new Error('detached');
-  },
+      throw new Error('detached');
+    },
   });
   const id = store.retain({ ...publication(), save: async () => {} });
   await store.retry({ id }); expect(store.list()).toEqual([]);

@@ -18,14 +18,14 @@ describe('failed model marker creation', () => {
       if (phase === 'write') return {
         ...writer,
         write: async () => {
-        throw failure;
-      },
+          throw failure;
+        },
       };
       return {
         ...writer,
         close: async () => {
-        throw failure;
-      },
+          throw failure;
+        },
       };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);
@@ -55,16 +55,16 @@ describe('failed model marker creation', () => {
       return {
         ...writer,
         write: async () => {
-        switch (change) {
-        case 'replaced': directory.children.set(name, new MemoryFile(name)); break;
-        case 'bytes-changed': this.data = new TextEncoder().encode('foreign'); break;
-        case 'timestamp-changed': this.modified++; break;
-        case 'unreadable': vi.spyOn(this, 'getFile').mockRejectedValue(new Error('Read denied')); break;
-        case 'remove-failed': vi.spyOn(directory, 'removeEntry').mockRejectedValue(new Error('Removal denied')); break;
-        default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
-        }
-        throw failure;
-      },
+          switch (change) {
+          case 'replaced': directory.children.set(name, new MemoryFile(name)); break;
+          case 'bytes-changed': this.data = new TextEncoder().encode('foreign'); break;
+          case 'timestamp-changed': this.modified++; break;
+          case 'unreadable': vi.spyOn(this, 'getFile').mockRejectedValue(new Error('Read denied')); break;
+          case 'remove-failed': vi.spyOn(directory, 'removeEntry').mockRejectedValue(new Error('Removal denied')); break;
+          default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
+          }
+          throw failure;
+        },
       };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);

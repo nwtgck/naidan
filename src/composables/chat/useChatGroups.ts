@@ -327,47 +327,47 @@ export function useChatGroups(): ChatGroupsAdapter {
 
     await storageService.updateHierarchy({
       updater: ({ current }) => {
-      let detachedChatId: ChatId | undefined;
+        let detachedChatId: ChatId | undefined;
 
-      current.items = current.items.filter((item) => {
-        switch (item.type) {
-        case 'chat':
-          if (item.id === chatId) {
-            detachedChatId = item.id;
-            return false;
+        current.items = current.items.filter((item) => {
+          switch (item.type) {
+          case 'chat':
+            if (item.id === chatId) {
+              detachedChatId = item.id;
+              return false;
+            }
+            return true;
+          case 'chat_group': {
+            const chatIndex = item.chat_ids.indexOf(chatId);
+            if (chatIndex !== -1) {
+              detachedChatId = item.chat_ids[chatIndex];
+              item.chat_ids.splice(chatIndex, 1);
+            }
+            return true;
           }
-          return true;
-        case 'chat_group': {
-          const chatIndex = item.chat_ids.indexOf(chatId);
-          if (chatIndex !== -1) {
-            detachedChatId = item.chat_ids[chatIndex];
-            item.chat_ids.splice(chatIndex, 1);
+          default: {
+            const _ex: never = item;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
           }
-          return true;
-        }
-        default: {
-          const _ex: never = item;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
+          }
+        });
 
-      if (detachedChatId === undefined) {
-        detachedChatId = chatId;
-      }
+        if (detachedChatId === undefined) {
+          detachedChatId = chatId;
+        }
 
-      if (chatGroupId === undefined) {
-        current.items.unshift({ type: 'chat', id: detachedChatId });
+        if (chatGroupId === undefined) {
+          current.items.unshift({ type: 'chat', id: detachedChatId });
+          return current;
+        }
+
+        const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === chatGroupId);
+        if (groupNode === undefined || groupNode.type !== 'chat_group') {
+          throw new Error('Chat group not found in hierarchy');
+        }
+        groupNode.chat_ids.unshift(detachedChatId);
         return current;
-      }
-
-      const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === chatGroupId);
-      if (groupNode === undefined || groupNode.type !== 'chat_group') {
-        throw new Error('Chat group not found in hierarchy');
-      }
-      groupNode.chat_ids.unshift(detachedChatId);
-      return current;
-    },
+      },
     });
     await loadData();
   }

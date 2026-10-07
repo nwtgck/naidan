@@ -225,9 +225,9 @@ literal <think>
       model: {
         sessions: {},
         generate: async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
-        streamer.emit('<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function></tool_call>');
-        return { past_key_values: null, sequences: [] };
-      },
+          streamer.emit('<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function></tool_call>');
+          return { past_key_values: null, sequences: [] };
+        },
       } as never,
       tokenizer: { apply_chat_template: () => openPrompt } as never,
       messages: [{ role: 'user', content: 'Weather.' }],
@@ -376,13 +376,13 @@ describe('schema-bound Qwen XML arguments, not captured model output', () => {
       tools: [{
         type: 'function',
         function: {
-        name: 'write_file',
-        description: 'Synthetic ambiguous schema.',
-        parameters: {
-        type: 'object',
-        properties: { content: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
-      },
-      },
+          name: 'write_file',
+          description: 'Synthetic ambiguous schema.',
+          parameters: {
+            type: 'object',
+            properties: { content: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
+          },
+        },
       }],
       runtimeState: {
         activeModelId: 'synthetic/qwen',
@@ -534,8 +534,8 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
   const model = {
     config: modelConfig,
     get generate() {
-    events.push('native-method'); return generate;
-  },
+      events.push('native-method'); return generate;
+    },
   };
   const sink: GenerationStrategyObservationSink = {
     onFullConversationInputPrepared: vi.fn(() => {
@@ -623,8 +623,8 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     Object.defineProperty(inputs, 'extra_input', {
       enumerable: true,
       get() {
-      fixture.events.push('input-getter'); return inputIds;
-    },
+        fixture.events.push('input-getter'); return inputIds;
+      },
     });
     let observed: GenerationInvocationObservation | undefined;
     fixture.sink.onGenerateInvocation = vi.fn(({ observation }) => {

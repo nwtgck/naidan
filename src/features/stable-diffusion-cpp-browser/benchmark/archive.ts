@@ -78,16 +78,16 @@ export function benchmarkManifest({ snapshot, includePrompts, includeInputImages
             loras: request.loras.map(({ file, path, strength, ...unhandled }) => {
             unhandled satisfies Record<PropertyKey, never>;
             return { file: { path: path ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
-          }),
+            }),
           } : {}),
           ...(inputs.length ? {
             imageInputs: {
-            initImage: initial ? describe(initial) : undefined,
-            ...(initial ? { strength: request.imageInputs.strength } : {}),
-            referenceImages: inputs.filter(input => input.role === 'reference').map(describe),
-            preprocessing: 'native-resize-white-alpha',
-            bytesIncluded,
-          },
+              initImage: initial ? describe(initial) : undefined,
+              ...(initial ? { strength: request.imageInputs.strength } : {}),
+              referenceImages: inputs.filter(input => input.role === 'reference').map(describe),
+              preprocessing: 'native-resize-white-alpha',
+              bytesIncluded,
+            },
           } : {}),
         },
       };

@@ -73,12 +73,12 @@ export function createProductionRuntimeStartupFixture({ emitFromWorker }: {
       started = true;
       emitFromWorker({
         message: {
-        ...PRODUCTION_WORKER_READY,
-        status: 'runtime-module',
-        requestId,
-        variant: 'asyncify',
-        bytes: productionRuntimeModuleFixtureBytes({ variant: 'asyncify' }),
-      },
+          ...PRODUCTION_WORKER_READY,
+          status: 'runtime-module',
+          requestId,
+          variant: 'asyncify',
+          bytes: productionRuntimeModuleFixtureBytes({ variant: 'asyncify' }),
+        },
       });
     },
     acceptHostMessage({ message }: { message: unknown }): boolean {

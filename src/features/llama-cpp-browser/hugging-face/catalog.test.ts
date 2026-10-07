@@ -5,10 +5,10 @@ vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 function jsonResponse({ value, headers }: { value: unknown, headers: Headers }): Awaited<ReturnType<typeof privacyFetchStream>> {
   return {
     body: new ReadableStream<Uint8Array<ArrayBuffer>>({
-    start(controller) {
-    controller.enqueue(new TextEncoder().encode(JSON.stringify(value))); controller.close();
-  },
-  }),
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(value))); controller.close();
+      },
+    }),
     headers,
     status: 200,
     statusText: 'OK',

@@ -100,25 +100,25 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
       textTokens,
       dispose,
       async evaluate({ context, capacity }) {
-      const nextPosition = core.alloc({ bytes: 4 });
-      try {
-        core.bytes({ pointer: nextPosition, length: 4 }).fill(0);
-        await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: images.length, chunkCount: Number(count), positions, tokens: tokenCount } });
-        const status = await core.api.mtmd_helper_eval_chunks(projector, context, chunks, 0, 0, 128, 1, nextPosition);
-        if (status !== 0) {
-          await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: status } });
-          throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        const nextPosition = core.alloc({ bytes: 4 });
+        try {
+          core.bytes({ pointer: nextPosition, length: 4 }).fill(0);
+          await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: images.length, chunkCount: Number(count), positions, tokens: tokenCount } });
+          const status = await core.api.mtmd_helper_eval_chunks(projector, context, chunks, 0, 0, 128, 1, nextPosition);
+          if (status !== 0) {
+            await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: status } });
+            throw new LlamaCppBrowserError({ code: 'runtime-error' });
+          }
+          const bytes = core.bytes({ pointer: nextPosition, length: 4 }); const position = new DataView(bytes.buffer, bytes.byteOffset, 4).getInt32(0, true);
+          await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: status, nextPosition: position, positions, tokens: tokenCount } });
+          if (position < 1 || position >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
+          return position;
+        } catch (error) {
+          logFailure({ stage: 'image-evaluate', error }); throw error;
+        } finally {
+          core.free({ pointer: nextPosition });
         }
-        const bytes = core.bytes({ pointer: nextPosition, length: 4 }); const position = new DataView(bytes.buffer, bytes.byteOffset, 4).getInt32(0, true);
-        await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: status, nextPosition: position, positions, tokens: tokenCount } });
-        if (position < 1 || position >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
-        return position;
-      } catch (error) {
-        logFailure({ stage: 'image-evaluate', error }); throw error;
-      } finally {
-        core.free({ pointer: nextPosition });
-      }
-    },
+      },
     };
   } catch (error) {
     logFailure({ stage, error });

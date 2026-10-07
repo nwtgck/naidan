@@ -156,41 +156,41 @@ export class StreamSession {
   get incomingStreams(): AsyncIterable<NaidanPipingDuplexStream> {
     return {
       [Symbol.asyncIterator]: () => {
-      requireValue({ condition: !this.internalIncomingOwned, message: 'Only one incoming iterator' });
-      this.internalIncomingOwned = true;
-      return {
-        next: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
-          requireValue({ condition: !this.internalNextPending, message: 'Only one pending incoming next' });
-          this.internalNextPending = true;
-          try {
-            while (true) {
-              const revision = this.internalPulse.revision;
-              if (this.internalIncomingEnded)
-                return { done: true, value: undefined };
-              this.internalCheckSession();
-              const id = this.internalMachine.takeIncoming();
-              if (id !== undefined) {
-                this.internalNotify();
-                return { done: false, value: this.internalFacade({ id }) };
+        requireValue({ condition: !this.internalIncomingOwned, message: 'Only one incoming iterator' });
+        this.internalIncomingOwned = true;
+        return {
+          next: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
+            requireValue({ condition: !this.internalNextPending, message: 'Only one pending incoming next' });
+            this.internalNextPending = true;
+            try {
+              while (true) {
+                const revision = this.internalPulse.revision;
+                if (this.internalIncomingEnded)
+                  return { done: true, value: undefined };
+                this.internalCheckSession();
+                const id = this.internalMachine.takeIncoming();
+                if (id !== undefined) {
+                  this.internalNotify();
+                  return { done: false, value: this.internalFacade({ id }) };
+                }
+                if (this.internalMachine.incomingClosed()) {
+                  this.internalIncomingEnded = true;
+                  return { done: true, value: undefined };
+                }
+                await this.internalPulse.wait({ revision, signal: undefined });
               }
-              if (this.internalMachine.incomingClosed()) {
-                this.internalIncomingEnded = true;
-                return { done: true, value: undefined };
-              }
-              await this.internalPulse.wait({ revision, signal: undefined });
+            } finally {
+              this.internalNextPending = false;
             }
-          } finally {
-            this.internalNextPending = false;
-          }
-        },
-        return: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
-          this.internalIncomingEnded = true;
-          this.internalMachine.stopIncoming();
-          this.internalNotify();
-          return { done: true, value: undefined };
-        },
-      };
-    },
+          },
+          return: async (): Promise<IteratorResult<NaidanPipingDuplexStream>> => {
+            this.internalIncomingEnded = true;
+            this.internalMachine.stopIncoming();
+            this.internalNotify();
+            return { done: true, value: undefined };
+          },
+        };
+      },
     };
   }
   private internalFacade({ id }: {
@@ -391,29 +391,29 @@ export class StreamSession {
         kind: fullSnapshot ? 'snapshot' : 'receipt-only',
         bytes,
         start: ({ onReceived }) => {
-        this.internalCheckSession();
-        requireValue({
-          condition: !started && this.internalTransmission === undefined && number > this.internalHighestOffered,
-          message: 'Transmission already offered or owned',
-        });
-        started = true;
-        const owner = { number, receipt: 'waiting' as const, onReceived };
-        this.internalTransmission = owner;
-        this.internalHighestOffered = number;
-        this.internalMachine.markOffered({ snapshot });
-        if (fullSnapshot) this.internalLastSnapshotRevision = revision;
-        if (receiptRequested({ request: receiptRequest })) {
-          for (const confirmation of [...this.internalConfirmations]) {
-            if (this.internalConfirmations.has(confirmation) && confirmation.record === undefined && confirmation.threshold <= number) {
-              confirmation.record = number;
-              confirmation.started();
+          this.internalCheckSession();
+          requireValue({
+            condition: !started && this.internalTransmission === undefined && number > this.internalHighestOffered,
+            message: 'Transmission already offered or owned',
+          });
+          started = true;
+          const owner = { number, receipt: 'waiting' as const, onReceived };
+          this.internalTransmission = owner;
+          this.internalHighestOffered = number;
+          this.internalMachine.markOffered({ snapshot });
+          if (fullSnapshot) this.internalLastSnapshotRevision = revision;
+          if (receiptRequested({ request: receiptRequest })) {
+            for (const confirmation of [...this.internalConfirmations]) {
+              if (this.internalConfirmations.has(confirmation) && confirmation.record === undefined && confirmation.threshold <= number) {
+                confirmation.record = number;
+                confirmation.started();
+              }
             }
           }
-        }
-        return () => {
-          if (this.internalTransmission === owner) this.internalTransmission = undefined;
-        };
-      },
+          return () => {
+            if (this.internalTransmission === owner) this.internalTransmission = undefined;
+          };
+        },
       };
     } finally {
       this.internalSnapshotBusy = false;
@@ -428,14 +428,14 @@ export class StreamSession {
       const outcome = await this.internalReceive.accept({
         capsule,
         apply: ({ snapshot, receiptRequest, receivedRecord }) => {
-        this.internalCheckSession();
-        // Validate before Machine commits; malformed stream state and receipts
-        // must never partially confirm a response or advance offsets.
-        requireValue({ condition: receivedRecord === undefined || receivedRecord <= this.internalHighestOffered, message: 'Receipt for an unoffered record' });
-        changed = this.internalMachine.accept({ snapshot });
-        if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
-        reply = receiptRequested({ request: receiptRequest });
-      },
+          this.internalCheckSession();
+          // Validate before Machine commits; malformed stream state and receipts
+          // must never partially confirm a response or advance offsets.
+          requireValue({ condition: receivedRecord === undefined || receivedRecord <= this.internalHighestOffered, message: 'Receipt for an unoffered record' });
+          changed = this.internalMachine.accept({ snapshot });
+          if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
+          reply = receiptRequested({ request: receiptRequest });
+        },
       });
       switch (outcome) {
       case 'accepted': {

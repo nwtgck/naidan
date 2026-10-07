@@ -227,20 +227,20 @@ describe('transformersJsService', () => {
     const revision = createMockDir(entries);
     vi.stubGlobal('navigator', {
       storage: {
-      getDirectory: vi.fn().mockResolvedValue(createMockDir({
-      models: createMockDir({
-        'huggingface.co': createMockDir({
-        org: createMockDir({
-        repo: createMockDir({
-        resolve: createMockDir({
-        '0123456789abcdef0123456789abcdef01234567': revision,
-      }),
-      }),
-      }),
-      }),
-      }),
-    })),
-    },
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({
+            'huggingface.co': createMockDir({
+              org: createMockDir({
+                repo: createMockDir({
+                  resolve: createMockDir({
+                    '0123456789abcdef0123456789abcdef01234567': revision,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        })),
+      },
     });
     const { transformersJsService } = await import('./index');
     expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 100, fileCount: 1, lastModified: 1 }));
@@ -386,8 +386,8 @@ describe('transformersJsService', () => {
     const statuses: string[] = [];
     transformersJsService.subscribe({
       listener: ({ status }) => {
-      statuses.push(status);
-    },
+        statuses.push(status);
+      },
     });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });

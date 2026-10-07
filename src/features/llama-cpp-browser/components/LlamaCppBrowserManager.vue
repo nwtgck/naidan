@@ -121,13 +121,13 @@ onMounted(() => {
   window.addEventListener('focus', refreshOnFocus);
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {
-    state.value = next;
-  },
+      state.value = next;
+    },
   });
   unsubscribeModels = llamaCppBrowserService.subscribeModelList({
     listener: () => {
-    void refresh();
-  },
+      void refresh();
+    },
   });
   // The authoritative list comes from OPFS on every mount, not module-local state.
   void refresh();

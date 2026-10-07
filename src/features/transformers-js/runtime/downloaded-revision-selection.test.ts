@@ -65,9 +65,9 @@ describe('ordinary offline revision selection through the actual Production Work
       availability: 'wait',
       signal: undefined,
       run: async () => {
-      entered.resolve();
-      await release.promise;
-    },
+        entered.resolve();
+        await release.promise;
+      },
     });
     try {
       await entered.promise;

@@ -30,8 +30,8 @@ describe('Provider investigation summary evidence', () => {
     let read = false;
     Object.defineProperty(value, 'secret', {
       get() {
-      read = true; throw new Error('Secret');
-    },
+        read = true; throw new Error('Secret');
+      },
     });
     expect(() => validateProductionProviderInvestigationLiveProgress({ value, runId: 'run-1', modelId: 'org/model' })).toThrow();
     expect(read).toBe(false);
@@ -65,8 +65,8 @@ describe('Provider investigation summary evidence', () => {
     let read = false;
     Object.defineProperty(original, 'secret', {
       get() {
-      read = true; throw new Error('Private secret');
-    },
+        read = true; throw new Error('Private secret');
+      },
     });
     expect(() => createProductionProviderInvestigationSummaryEvidence({ summary: original, runId: 'run-1', modelId: 'org/model' })).toThrow('Invalid Production Provider investigation summary');
     expect(read).toBe(false);

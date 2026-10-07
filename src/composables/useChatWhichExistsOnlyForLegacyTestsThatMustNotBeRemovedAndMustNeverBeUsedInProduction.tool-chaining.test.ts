@@ -172,18 +172,18 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           await writer.call({
             key: 0,
             toolCall: {
-            id: toToolCallId({ raw: 'call-1' }),
-            type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          },
+              id: toToolCallId({ raw: 'call-1' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
           });
           await writer.call({
             key: 1,
             toolCall: {
-            id: toToolCallId({ raw: 'call-2' }),
-            type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"2+2"}' },
-          },
+              id: toToolCallId({ raw: 'call-2' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"2+2"}' },
+            },
           });
           return { type: 'finished', next: 'tool_results' };
         },
@@ -269,10 +269,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           await writer.call({
             key: 0,
             toolCall: {
-            id: toToolCallId({ raw: 'call-invalid' }),
-            type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          },
+              id: toToolCallId({ raw: 'call-invalid' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
           });
           return { type: 'finished', next: 'tool_results' };
         },
@@ -306,51 +306,51 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         id: expect.any(String),
         role: 'user',
         parts: [
-        { type: 'text', text: 'First request', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'First request', completeness: 'complete' },
+        ],
       },
       {
         id: expect.any(String),
         role: 'assistant',
         parts: [
-        { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
-        {
-          type: 'tool_call',
-          toolCall: {
-          id: 'call-invalid',
-          type: 'function',
-          function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-        },
-        },
-      ],
+          { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-invalid',
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
+          },
+        ],
       },
       {
         id: expect.any(String),
         role: 'tool',
         parts: [
-        {
-          type: 'tool_result',
-          result: {
-          toolCallId: 'call-invalid',
-          status: 'error',
-          error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
-        },
-        },
-      ],
+          {
+            type: 'tool_result',
+            result: {
+              toolCallId: 'call-invalid',
+              status: 'error',
+              error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
+            },
+          },
+        ],
       },
       {
         id: expect.any(String),
         role: 'assistant',
         parts: [
-        { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
+        ],
       },
       {
         id: expect.any(String),
         role: 'user',
         parts: [
-        { type: 'text', text: 'Second request', completeness: 'complete' },
-      ],
+          { type: 'text', text: 'Second request', completeness: 'complete' },
+        ],
       },
     ]);
   });
@@ -419,10 +419,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           await writer.call({
             key: 0,
             toolCall: {
-            id: toToolCallId({ raw: 'call-large-result' }),
-            type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          },
+              id: toToolCallId({ raw: 'call-large-result' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
           });
           return { type: 'finished', next: 'tool_results' };
         },

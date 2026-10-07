@@ -19,14 +19,14 @@ describe('transformers-js-gemma4', () => {
     const { getGemma4ThinkingTemplateOptions } = await import('./gemma4');
     expect(getGemma4ThinkingTemplateOptions({
       parameters: {
-      temperature: undefined,
-      topP: undefined,
-      maxCompletionTokens: undefined,
-      presencePenalty: undefined,
-      frequencyPenalty: undefined,
-      stop: undefined,
-      reasoning: { effort },
-    },
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort },
+      },
     })).toEqual(expected);
   });
 
@@ -92,10 +92,10 @@ describe('transformers-js-gemma4', () => {
         role: 'assistant' as const,
         content: 'Supplied assistant text.',
         tool_calls: [{
-        id,
-        type: 'function' as const,
-        function: { name: 'lookup', arguments: '{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}' },
-      }],
+          id,
+          type: 'function' as const,
+          function: { name: 'lookup', arguments: '{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}' },
+        }],
       },
       { role: 'tool' as const, tool_call_id: id, content: 'Result body unchanged.' },
     ];
@@ -103,9 +103,9 @@ describe('transformers-js-gemma4', () => {
     expect(result).toEqual({
       images: [],
       templateMessages: [messages[0], {
-      ...messages[1],
-      tool_calls: [{ id, type: 'function', function: { name: 'lookup', arguments: { text: '12', count: 12, flag: false, nested: [1, { key: true }] } } }],
-    }, messages[2]],
+        ...messages[1],
+        tool_calls: [{ id, type: 'function', function: { name: 'lookup', arguments: { text: '12', count: 12, flag: false, nested: [1, { key: true }] } } }],
+      }, messages[2]],
     });
     expect(messages[1]!.tool_calls![0]!.function.arguments).toBe('{"text":"12","count":12,"flag":false,"nested":[1,{"key":true}]}');
   });
@@ -115,10 +115,10 @@ describe('transformers-js-gemma4', () => {
     const id = toToolCallId({ raw: 'synthetic-thinking-call' });
     const result = await buildGemma4TemplateInput({
       messages: [
-      { role: 'user', content: '<think>User literal</think>' },
-      { role: 'assistant', content: '<think> Reason </think>Answer', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: '{"text":"<think>Argument literal</think>"}' } }] },
-      { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
-    ],
+        { role: 'user', content: '<think>User literal</think>' },
+        { role: 'assistant', content: '<think> Reason </think>Answer', tool_calls: [{ id, type: 'function', function: { name: 'probe', arguments: '{"text":"<think>Argument literal</think>"}' } }] },
+        { role: 'tool', tool_call_id: id, content: '<think>Result literal</think>' },
+      ],
     });
     expect(result.templateMessages).toEqual([
       { role: 'user', content: '<think>User literal</think>' },
@@ -131,9 +131,9 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     const result = await buildGemma4TemplateInput({
       messages: [
-      { role: 'assistant', content: '<think></think>Answer' },
-      { role: 'assistant', content: '<think> A </think>Between<think>B</think>After' },
-    ],
+        { role: 'assistant', content: '<think></think>Answer' },
+        { role: 'assistant', content: '<think> A </think>Between<think>B</think>After' },
+      ],
     });
     expect(result.templateMessages).toEqual([
       { role: 'assistant', content: '<think></think>Answer' },
@@ -145,11 +145,11 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     const result = await buildGemma4TemplateInput({
       messages: [
-      { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
-      { role: 'assistant', content: [{ type: 'text', text: '<think>Reason</think>' }] },
-      { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
-      { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
-    ],
+        { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
+        { role: 'assistant', content: [{ type: 'text', text: '<think>Reason</think>' }] },
+        { role: 'assistant', content: [{ type: 'text', text: ' First ' }, { type: 'text', text: ' Second ' }] },
+        { role: 'user', content: [{ type: 'text', text: '<think>User literal</think>' }] },
+      ],
     });
     expect(result.templateMessages).toEqual([
       { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk> Reason </think>Answer' }] },
@@ -181,14 +181,14 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({
       messages: [{
-      role: 'assistant',
-      content: '',
-      tool_calls: [{
-      id: toToolCallId({ raw: 'synthetic-malformed' }),
-      type: 'function',
-      function: { name: 'lookup', arguments: '{malformed' },
-    }],
-    }],
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: toToolCallId({ raw: 'synthetic-malformed' }),
+          type: 'function',
+          function: { name: 'lookup', arguments: '{malformed' },
+        }],
+      }],
     })).rejects.toThrow();
   });
 
@@ -202,11 +202,11 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({
       messages: [{
-      role: 'tool',
-      content: [
-      { type: 'text', text: 'Result<|' }, { type: 'text', text: '"|>value' },
-    ],
-    }],
+        role: 'tool',
+        content: [
+          { type: 'text', text: 'Result<|' }, { type: 'text', text: '"|>value' },
+        ],
+      }],
     })).rejects.toThrow('quote delimiter');
   });
 
@@ -214,14 +214,14 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({
       messages: [{
-      role: 'assistant',
-      content: '',
-      tool_calls: [{
-      id: toToolCallId({ raw: 'synthetic-null' }),
-      type: 'function',
-      function: { name: 'lookup', arguments: '{"items":[1,null]}' },
-    }],
-    }],
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: toToolCallId({ raw: 'synthetic-null' }),
+          type: 'function',
+          function: { name: 'lookup', arguments: '{"items":[1,null]}' },
+        }],
+      }],
     })).rejects.toThrow('cannot preserve this argument value');
   });
 
@@ -229,14 +229,14 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({
       messages: [{
-      role: 'assistant',
-      content: '',
-      tool_calls: [{
-      id: toToolCallId({ raw: 'synthetic-delimiter' }),
-      type: 'function',
-      function: { name: 'lookup', arguments: JSON.stringify({ text: 'one<|"|>,other:<|"|>two' }) },
-    }],
-    }],
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: toToolCallId({ raw: 'synthetic-delimiter' }),
+          type: 'function',
+          function: { name: 'lookup', arguments: JSON.stringify({ text: 'one<|"|>,other:<|"|>two' }) },
+        }],
+      }],
     })).rejects.toThrow('quote delimiter');
   });
 
@@ -244,14 +244,14 @@ describe('transformers-js-gemma4', () => {
     const { buildGemma4TemplateInput } = await import('./gemma4');
     await expect(buildGemma4TemplateInput({
       messages: [{
-      role: 'assistant',
-      content: '',
-      tool_calls: [{
-      id: toToolCallId({ raw: 'synthetic-key' }),
-      type: 'function',
-      function: { name: 'lookup', arguments: '{"a:b":1}' },
-    }],
-    }],
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: toToolCallId({ raw: 'synthetic-key' }),
+          type: 'function',
+          function: { name: 'lookup', arguments: '{"a:b":1}' },
+        }],
+      }],
     })).rejects.toThrow('bare argument key');
   });
 });
@@ -275,9 +275,9 @@ describe('Gemma structured reasoning input', () => {
   it('rejects unfinished reasoning before attempting an earlier image read', async () => {
     await expect(buildGemma4TemplateInput({
       messages: [
-      { role: 'user', content: [{ type: 'image_url', image_url: { url: 'invalid-image-sentinel' } }] },
-      { role: 'assistant', content: '', reasoning: { text: 'R', completeness: 'partial' } },
-    ],
+        { role: 'user', content: [{ type: 'image_url', image_url: { url: 'invalid-image-sentinel' } }] },
+        { role: 'assistant', content: '', reasoning: { text: 'R', completeness: 'partial' } },
+      ],
     })).rejects.toThrow('unfinished');
   });
 });

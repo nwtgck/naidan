@@ -13,15 +13,15 @@ vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initial
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
   createImageClient: () => {
-  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel: mocks.cancel, updatePreview: mocks.updatePreview };
-},
+    mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel: mocks.cancel, updatePreview: mocks.updatePreview };
+  },
 }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
   default: {
-  kind: 'available',
-  sourceCommit: 'a'.repeat(40),
-  artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
-},
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+  },
 }));
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
@@ -376,23 +376,23 @@ it('shows the debug toggle only for generation and locks it while generating', a
 function benchmarkInventory(): ModelInventory {
   return {
     candidates: ['one','two'].map(name => {
-    const file = ggufFile();
-    return {
-      id: `user/${name}`,
-      repositoryId: `user/${name}`,
-      path: 'model.gguf',
-      files: [{ path: 'model.gguf', file }],
-      size: file.size,
-      format: 'gguf',
-      family: 'sd-checkpoint',
-      classes: [],
-      roles: ['model'],
-      evidence: ['synthetic test'],
-      variant: 'unknown',
-      turboHint: false,
-      issue: undefined,
-    };
-  }),
+      const file = ggufFile();
+      return {
+        id: `user/${name}`,
+        repositoryId: `user/${name}`,
+        path: 'model.gguf',
+        files: [{ path: 'model.gguf', file }],
+        size: file.size,
+        format: 'gguf',
+        family: 'sd-checkpoint',
+        classes: [],
+        roles: ['model'],
+        evidence: ['synthetic test'],
+        variant: 'unknown',
+        turboHint: false,
+        issue: undefined,
+      };
+    }),
     issues: [],
   };
 }

@@ -126,8 +126,8 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
     expect(() => prepareGptOssContinuation({
       ...fixture().prepare,
       buildBaseInputs: () => {
-      throw error;
-    },
+        throw error;
+      },
     })).toThrow(error);
   });
   it('refuses circular/oversized identity and plain-array tensors without a GPU readback', () => {

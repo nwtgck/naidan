@@ -32,12 +32,12 @@ const communityCatalog: RepositoryCatalog = {
   revision: otherRevision,
   ...groupModelFiles({
     files: [
-    { path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 144 },
-    { path: 'gemma-4-E2B-it-Q6_K.gguf', size: 160 },
-    { path: 'gemma-4-E2B-it-Q8_0.gguf', size: 192 },
-    { path: 'dflash-gemma-4-E2B-it-Q8_0.gguf', size: 64 },
-    { path: communityProjector, size: 112 },
-  ],
+      { path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 144 },
+      { path: 'gemma-4-E2B-it-Q6_K.gguf', size: 160 },
+      { path: 'gemma-4-E2B-it-Q8_0.gguf', size: 192 },
+      { path: 'dflash-gemma-4-E2B-it-Q8_0.gguf', size: 64 },
+      { path: communityProjector, size: 112 },
+    ],
   }),
 };
 const localQat: LocalModel = { id: `hf.co/${official.repository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.repository}:${qatPath}`, size: 128, importedAt: 1 };

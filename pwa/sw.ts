@@ -30,10 +30,10 @@ let networkOnly = caches.open(modeCache).then(async cache =>
 const precache = new PrecacheController({
   plugins: [{
     async handlerDidError({ request, error, event }) {
-    if (event.type === 'install') console.error('[PWA] Failed to precache an application resource.', request.url, error);
-    // Report the ORIGINAL error; never turn an incomplete install into success.
-    return undefined;
-  },
+      if (event.type === 'install') console.error('[PWA] Failed to precache an application resource.', request.url, error);
+      // Report the ORIGINAL error; never turn an incomplete install into success.
+      return undefined;
+    },
   }],
 });
 // Full, automatically generated manifest: no minimum-files list or partial install.

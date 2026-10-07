@@ -30,11 +30,11 @@ describe('selective tool stream decoding', () => {
       streamer,
       streamerPrototype: TextStreamer.prototype,
       capture: {
-      setNativeStreamAvailability: vi.fn(),
-      recordNativeStream: ({ operation, phase, args }) => {
-        if (operation === 'put' && phase === 'entering') entered.push(structuredClone(args));
+        setNativeStreamAvailability: vi.fn(),
+        recordNativeStream: ({ operation, phase, args }) => {
+          if (operation === 'put' && phase === 'entering') entered.push(structuredClone(args));
+        },
       },
-    },
     });
     const puts = grouping === 'single' ? [[21n], [10n], [20n], [11n], [7n], [99n]] : [[21n], [10n, 20n, 11n, 7n, 99n]];
     try {

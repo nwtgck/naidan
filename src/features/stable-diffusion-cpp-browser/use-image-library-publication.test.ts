@@ -13,12 +13,12 @@ vi.mock('./composables/use-host-model-directories', async () => {
   const { createDisabledImageLibrary } = await import('./library-standalone');
   return {
     useHostModelDirectories({ changed, stopDownload }: { changed: () => Promise<void>, stopDownload: ({ id }: { id: string }) => Promise<void> }) {
-    mocks.change.mockImplementation(changed);
-    mocks.stopDownload.mockImplementation(stopDownload);
-    const view = createDisabledImageLibrary().hostDirectories;
-    view.destination.value = 'linked-models';
-    return { view, registrations: () => [{ id: 'linked-models', name: 'weights' }], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
-  },
+      mocks.change.mockImplementation(changed);
+      mocks.stopDownload.mockImplementation(stopDownload);
+      const view = createDisabledImageLibrary().hostDirectories;
+      view.destination.value = 'linked-models';
+      return { view, registrations: () => [{ id: 'linked-models', name: 'weights' }], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
+    },
   };
 });
 const scopes: ReturnType<typeof effectScope>[] = [];
@@ -40,11 +40,11 @@ async function inventory(): Promise<ModelInventory> {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return scanImageRepositories({
     repositories: [{
-    id: 'host/linked-models/org/repo',
-    name: 'linked weights',
-    hostSource: { directoryId: 'linked-models', directoryName: 'weights', repository: 'org/repo' },
-    files: [{ path: file.name, file }],
-  }],
+      id: 'host/linked-models/org/repo',
+      name: 'linked weights',
+      hostSource: { directoryId: 'linked-models', directoryName: 'weights', repository: 'org/repo' },
+      files: [{ path: file.name, file }],
+    }],
     signal: undefined,
   });
 }

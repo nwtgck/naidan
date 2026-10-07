@@ -110,8 +110,8 @@ export function useModelLaunchChat({ chat, resolved }: {
       onProgress: ({ progress }) => {
       // Operation-local, not the engine's global progress: another chat may own
       // the lane, or this card may already have changed target/storage.
-      if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') warmupProgress.value = progress;
-    },
+        if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') warmupProgress.value = progress;
+      },
     }).then(result => {
       if (disposed || controller.signal.aborted || !isStorageCurrent() || warmupKey !== key) return;
       switch (result) {
@@ -247,16 +247,16 @@ export function useModelLaunchChat({ chat, resolved }: {
       const updated = await storageService.prepareModelLaunchChat({
         signal: controller.signal,
         request: {
-        chatId: current.id,
-        newChatGroupId: saved.chatGroupId,
-        chatGroupName: modelLaunchChatGroupName({ target: saved.target }),
-        input: saved.input,
-        requestedVariant: saved.requestedVariant,
-        target: saved.target,
-        titleGeneration: settingsApi.settings.value.titleGeneration,
-        mode: 'create-or-resume',
-        expectedTarget: undefined,
-      },
+          chatId: current.id,
+          newChatGroupId: saved.chatGroupId,
+          chatGroupName: modelLaunchChatGroupName({ target: saved.target }),
+          input: saved.input,
+          requestedVariant: saved.requestedVariant,
+          target: saved.target,
+          titleGeneration: settingsApi.settings.value.titleGeneration,
+          mode: 'create-or-resume',
+          expectedTarget: undefined,
+        },
       });
       if (disposed || chat.value?.id !== current.id || controller.signal.aborted) return;
       registerLiveInstance({ chat: updated }); synchronize(); await loadData(); await refresh();
@@ -287,16 +287,16 @@ export function useModelLaunchChat({ chat, resolved }: {
         const updated = await storageService.prepareModelLaunchChat({
           signal: controller.signal,
           request: {
-          chatId: current.id,
-          newChatGroupId: generateId<ChatGroupId>(),
-          chatGroupName: modelLaunchChatGroupName({ target }),
-          input: saved.input,
-          requestedVariant: saved.requestedVariant,
-          target,
-          titleGeneration: settingsApi.settings.value.titleGeneration,
-          mode: 'retarget',
-          expectedTarget: saved.target,
-        },
+            chatId: current.id,
+            newChatGroupId: generateId<ChatGroupId>(),
+            chatGroupName: modelLaunchChatGroupName({ target }),
+            input: saved.input,
+            requestedVariant: saved.requestedVariant,
+            target,
+            titleGeneration: settingsApi.settings.value.titleGeneration,
+            mode: 'retarget',
+            expectedTarget: saved.target,
+          },
         });
         if (disposed || chat.value?.id !== current.id) return;
         registerLiveInstance({ chat: updated }); synchronize(); await loadData();
@@ -338,13 +338,13 @@ export function useModelLaunchChat({ chat, resolved }: {
   }
   const unsubscribeState = llamaCppBrowserService.subscribe({
     listener: ({ state }) => {
-    runtimeState.value = state;
-  },
+      runtimeState.value = state;
+    },
   });
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({
     listener: () => {
-    if (launch.value !== undefined) void refresh();
-  },
+      if (launch.value !== undefined) void refresh();
+    },
   });
   function onFocus(): void {
     if (launch.value !== undefined) {

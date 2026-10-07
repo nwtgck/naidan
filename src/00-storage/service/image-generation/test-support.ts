@@ -148,8 +148,8 @@ export function generationRunFixture({ id, sessionId, count, seed }: { id: strin
         path: 'weights/main.gguf',
         file: { type: 'opfs', path: 'models/custom/main.gguf', name: 'main.gguf', size: 1000, lastModified: 1 },
         companions: [
-        { path: 'weights/tokenizer.json', file: { type: 'host', directoryId: toHostModelDirectoryId({ raw: 'host-models' }), path: 'custom/tokenizer.json', name: 'tokenizer.json', size: 100, lastModified: 1 } },
-      ],
+          { path: 'weights/tokenizer.json', file: { type: 'host', directoryId: toHostModelDirectoryId({ raw: 'host-models' }), path: 'custom/tokenizer.json', name: 'tokenizer.json', size: 100, lastModified: 1 } },
+        ],
       }],
       loras: [{ path: 'inactive.gguf', file: { type: 'file', name: 'inactive.gguf', size: 80, lastModified: 2 }, strength: 0 }],
       imageInputs: { initImage: { binaryObjectId: toBinaryObjectId({ raw: 'input-aa' }), name: 'initial.png' }, strength: 0.75, referenceImages: [{ binaryObjectId: toBinaryObjectId({ raw: 'reference-aa' }), name: 'reference.png' }] },

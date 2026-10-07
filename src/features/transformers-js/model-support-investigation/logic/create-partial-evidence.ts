@@ -518,8 +518,8 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     files,
     path: "questions.json",
     content: `${JSON.stringify(readiness.domains.flatMap(domainReadiness => (
-    domainReadiness.questions.map(question => ({ domainId: domainReadiness.domainId, ...question }))
-  )), undefined, 2)}\n`,
+      domainReadiness.questions.map(question => ({ domainId: domainReadiness.domainId, ...question }))
+    )), undefined, 2)}\n`,
   });
   setEvidenceFile({ files, path: "support-boundaries.json", content: `${JSON.stringify(supportBoundaries, undefined, 2)}\n` });
   setEvidenceFile({ files, path: "run.json", content: `${JSON.stringify({ ...run, productionProviderCapture: providerCapture?.reference, productionProviderNativeCapture: native?.reference, productionProviderInvestigation: providerSummaryReference }, undefined, 2)}\n` });
@@ -528,9 +528,9 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
       files,
       path: "execution-policy/policy.json",
       content: `${JSON.stringify({
-      requestedConfiguration: run.requestedConfiguration,
-      effectiveExecutionPlan: run.executionPlan,
-    }, undefined, 2)}\n`,
+        requestedConfiguration: run.requestedConfiguration,
+        effectiveExecutionPlan: run.executionPlan,
+      }, undefined, 2)}\n`,
     });
   }
   if (recovery !== undefined) {
@@ -540,38 +540,38 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     files,
     path: "errors.json",
     content: `${JSON.stringify({
-    runError: run.error,
-    stepErrors: run.stepErrors,
-    loadAttemptErrors: run.loadAttempts
-      .filter(attempt => attempt.error !== undefined)
-      .map(attempt => ({
-        attemptId: attempt.attemptId,
-        candidateId: attempt.candidateId,
-        failureStage: attempt.failureStage,
-        error: attempt.error,
-      })),
-    activeLoadAttemptError: run.activeLoadAttempt?.error === undefined
-      ? undefined
-      : {
-        attemptId: run.activeLoadAttempt.attemptId,
-        candidateId: run.activeLoadAttempt.candidateId,
-        currentStage: run.activeLoadAttempt.currentStage,
-        error: run.activeLoadAttempt.error,
-      },
-    inputStrategyErrors: inputStrategyErrorRecords({ run }),
-    postAttemptCacheErrors: postAttemptCacheErrorRecords({ run }),
-    naturalGenerationErrors: naturalGenerationErrorRecords({ run }),
-    toolProtocolProbeErrors: toolProtocolProbeErrorRecords({ run }),
-    productionLaneError: run.productionLane.error,
-    productionFirstTurnError: firstTurnError({ run }),
-    productionContinuityError: continuityError({ run }),
-    persistenceRoundTripError: persistenceRoundTripError({ run }),
-    productionToolResultContinuationError: toolResultContinuationError({ run }),
-    productionReasoningError: reasoningError({ run }),
-    productionReasoningEffortErrors: reasoningEffortErrorRecords({ run }),
-    productionMultimodalError: multimodalError({ run }),
-    interruptionError: recovery?.interruption?.error,
-  }, undefined, 2)}\n`,
+      runError: run.error,
+      stepErrors: run.stepErrors,
+      loadAttemptErrors: run.loadAttempts
+        .filter(attempt => attempt.error !== undefined)
+        .map(attempt => ({
+          attemptId: attempt.attemptId,
+          candidateId: attempt.candidateId,
+          failureStage: attempt.failureStage,
+          error: attempt.error,
+        })),
+      activeLoadAttemptError: run.activeLoadAttempt?.error === undefined
+        ? undefined
+        : {
+          attemptId: run.activeLoadAttempt.attemptId,
+          candidateId: run.activeLoadAttempt.candidateId,
+          currentStage: run.activeLoadAttempt.currentStage,
+          error: run.activeLoadAttempt.error,
+        },
+      inputStrategyErrors: inputStrategyErrorRecords({ run }),
+      postAttemptCacheErrors: postAttemptCacheErrorRecords({ run }),
+      naturalGenerationErrors: naturalGenerationErrorRecords({ run }),
+      toolProtocolProbeErrors: toolProtocolProbeErrorRecords({ run }),
+      productionLaneError: run.productionLane.error,
+      productionFirstTurnError: firstTurnError({ run }),
+      productionContinuityError: continuityError({ run }),
+      persistenceRoundTripError: persistenceRoundTripError({ run }),
+      productionToolResultContinuationError: toolResultContinuationError({ run }),
+      productionReasoningError: reasoningError({ run }),
+      productionReasoningEffortErrors: reasoningEffortErrorRecords({ run }),
+      productionMultimodalError: multimodalError({ run }),
+      interruptionError: recovery?.interruption?.error,
+    }, undefined, 2)}\n`,
   });
   const investigationEvents = recovery?.events.map(event => ({
     eventKind: "investigation-event" as const,
@@ -606,9 +606,9 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
       files,
       path: "runtime-assets/backend-controls.json",
       content: `${JSON.stringify({
-      wasm: run.runtimeAssets.control,
-      webgpu: run.runtimeAssets.webGpuControl,
-    }, undefined, 2)}\n`,
+        wasm: run.runtimeAssets.control,
+        webgpu: run.runtimeAssets.webGpuControl,
+      }, undefined, 2)}\n`,
     });
   } else if (run.runtimeAssetsPartial !== undefined) {
     setEvidenceFile({ files, path: "runtime-assets/preflight-partial.json", content: `${JSON.stringify(run.runtimeAssetsPartial, undefined, 2)}\n` });
@@ -623,9 +623,9 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
         files,
         path: "runtime-assets/backend-controls.json",
         content: `${JSON.stringify({
-        wasm: run.runtimeAssetsPartial.control,
-        webgpu: run.runtimeAssetsPartial.webGpuControl,
-      }, undefined, 2)}\n`,
+          wasm: run.runtimeAssetsPartial.control,
+          webgpu: run.runtimeAssetsPartial.webGpuControl,
+        }, undefined, 2)}\n`,
       });
     }
   }
@@ -788,11 +788,11 @@ Native generation capture: ${native === undefined ? 'not recorded' : `recorded; 
     files,
     path: "manifest.json",
     content: `${JSON.stringify({
-    schemaVersion: 1,
-    runId: run.runId,
-    generatedAt: run.completedAt ?? run.startedAt,
-    files: manifestFiles,
-  }, undefined, 2)}
+      schemaVersion: 1,
+      runId: run.runId,
+      generatedAt: run.completedAt ?? run.startedAt,
+      files: manifestFiles,
+    }, undefined, 2)}
 `,
   });
 
@@ -966,13 +966,13 @@ export async function prepareBatchModelSupportEvidence({
     files,
     path: "batch.json",
     content: `${JSON.stringify({
-    schemaVersion: 1,
-    batchId,
-    generatedAt,
-    targetCount: items.length,
-    packagedModelCount: targets.filter(target => target.evidencePath !== undefined).length,
-    targets,
-  }, undefined, 2)}\n`,
+      schemaVersion: 1,
+      batchId,
+      generatedAt,
+      targetCount: items.length,
+      packagedModelCount: targets.filter(target => target.evidencePath !== undefined).length,
+      targets,
+    }, undefined, 2)}\n`,
   });
 
   const manifestFiles = await createManifestFiles({ files });
@@ -980,11 +980,11 @@ export async function prepareBatchModelSupportEvidence({
     files,
     path: "manifest.json",
     content: `${JSON.stringify({
-    schemaVersion: 1,
-    batchId,
-    generatedAt,
-    files: manifestFiles,
-  }, undefined, 2)}\n`,
+      schemaVersion: 1,
+      batchId,
+      generatedAt,
+      files: manifestFiles,
+    }, undefined, 2)}\n`,
   });
 
   await verifyBatchEvidenceContents({ archive: createEvidenceFilesReader({ files }), batchId, items });

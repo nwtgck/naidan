@@ -189,10 +189,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
             await storageService.updateChatContent({
               id: chat.id,
               updater: ({ current }) => ({
-              ...current,
-              root: chat.root,
-              currentLeafId: chat.currentLeafId,
-            }),
+                ...current,
+                root: chat.root,
+                currentLeafId: chat.currentLeafId,
+              }),
             });
             lastSave = Date.now();
           } finally {

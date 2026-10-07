@@ -14,9 +14,9 @@ export function metadataSizeProbeTransport({ originalFetch }: { originalFetch: t
       return new Response(bytes.slice(0, 1), {
         status: 206,
         headers: {
-        'Content-Length': '1',
-        'Content-Range': `bytes 0-0/${bytes.byteLength}`,
-      },
+          'Content-Length': '1',
+          'Content-Range': `bytes 0-0/${bytes.byteLength}`,
+        },
       });
     }
     response.headers.delete('Content-Length');

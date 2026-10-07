@@ -465,9 +465,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const planning = remote({
       runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      const result = await collect({ request });
-      return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
-    }),
+        const result = await collect({ request });
+        return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce({ run: freshRun, [mocks.releaseProxy]: vi.fn() });
     const onEvent = vi.fn();
@@ -591,9 +591,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const planning = remote({
       runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      const result = await collect({ request });
-      return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
-    }),
+        const result = await collect({ request });
+        return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce({ run: fresh, [mocks.releaseProxy]: vi.fn() });
     const onCheckpoint = vi.fn();
@@ -607,9 +607,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
       expect(onCheckpoint).toHaveBeenLastCalledWith({
         checkpoint: expect.objectContaining({
-        recovery: expect.objectContaining({ status: 'interrupted' }),
-        run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
-      }),
+          recovery: expect.objectContaining({ status: 'interrupted' }),
+          run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
+        }),
       });
       expect(mocks.workerInstances).toHaveLength(2);
       expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
@@ -630,9 +630,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it('rejects a fresh-acquisition request from offline planning before creating a network Worker', async () => {
     const planning = remote({
       runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      await expect(collect({ request: { modelId: 'org/model', revision: 'a'.repeat(40), maximumBytes: 1024, repositoryFiles: [] } })).rejects.toThrow('authority');
-      return planningRun();
-    }),
+        await expect(collect({ request: { modelId: 'org/model', revision: 'a'.repeat(40), maximumBytes: 1024, repositoryFiles: [] } })).rejects.toThrow('authority');
+        return planningRun();
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planning);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -655,10 +655,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     }));
     const planning = remote({
       runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      await collect({ request });
-      await expect(collect({ request })).rejects.toThrow('already started');
-      return planningRun();
-    }),
+        await collect({ request });
+        await expect(collect({ request })).rejects.toThrow('already started');
+        return planningRun();
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValue({ run: freshRun, [mocks.releaseProxy]: vi.fn() });
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -864,10 +864,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       const planning = planningRun();
       const planningRemote = remote({
         runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
-        expect(request.replayMetadataBudgetBytes).toBe(123);
-        onRunCheckpoint({ run: planning, replayMetadata: sidecars });
-        return planning;
-      }),
+          expect(request.replayMetadataBudgetBytes).toBe(123);
+          onRunCheckpoint({ run: planning, replayMetadata: sidecars });
+          return planning;
+        }),
       });
       planningRemote[mocks.releaseProxy] = vi.fn(() => new Promise<void>(() => undefined));
       mocks.wrap.mockReturnValueOnce(planningRemote);
@@ -892,10 +892,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let lateCheckpoint: Parameters<IModelSupportInvestigationWorker['runPartialInvestigation']>[2] | undefined;
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async (_request, _event, onRunCheckpoint) => {
-      lateCheckpoint = onRunCheckpoint;
-      onRunCheckpoint({ run: planningRun(), replayMetadata: sidecars });
-      return await new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
-    }),
+        lateCheckpoint = onRunCheckpoint;
+        onRunCheckpoint({ run: planningRun(), replayMetadata: sidecars });
+        return await new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planningRemote);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -1302,8 +1302,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let lateGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7];
     const planning = remote({
       runPartialInvestigation: vi.fn(async (_request, event, checkpoint) => {
-      latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
-    }),
+        latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
+      }),
     });
     const production = ordinaryProductionRemote();
     production.generateText.mockImplementation(async (_messages, _onChunk, _onToolCalls, _params, _tools, _capture, _continuationOwner, onGenerationEvent) => {
@@ -1333,10 +1333,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const planning = remote({ runPartialInvestigation: vi.fn(async () => planningRun()) });
     const candidate = remote({
       runCandidateAttempt: vi.fn(async (_target, _declarations, _template, _candidate, _options, _event, event, checkpoint) => {
-      lateEvent = event;
-      lateCheckpoint = checkpoint;
-      return attempt({ candidateId: 'webgpu-q4f16', status: 'passed' });
-    }),
+        lateEvent = event;
+        lateCheckpoint = checkpoint;
+        return attempt({ candidateId: 'webgpu-q4f16', status: 'passed' });
+      }),
     });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce(candidate);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -1510,9 +1510,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
     expect(onCheckpoint).toHaveBeenLastCalledWith({
       checkpoint: expect.objectContaining({
-      recovery: expect.objectContaining({ status: 'interrupted' }),
-      run: expect.objectContaining({ productionProviderCapture: expect.objectContaining({ requests: expect.arrayContaining([expect.objectContaining({ status: 'awaiting-settlement' })]) }) }),
-    }),
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ productionProviderCapture: expect.objectContaining({ requests: expect.arrayContaining([expect.objectContaining({ status: 'awaiting-settlement' })]) }) }),
+      }),
     });
     await client.waitForEvidenceRelease();
   });
@@ -1735,19 +1735,19 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       ...planning.downloadEvidence,
       mode: 'runtime-complete',
       runtimeCompletion: {
-      schemaVersion: 1,
-      source: 'ordinary-provider-load',
-      status: 'exhausted',
-      repositoryResolvedRevision: exactRevision,
-      cacheRevision: null,
-      loaderRevisionOption: null,
-      selectedCandidate: undefined,
-      cacheReuse: undefined,
-      preparation: undefined,
-      cacheAfter: undefined,
-      cacheInspectionError: undefined,
-      error: { name: 'ProductionLoadReceiptUnavailable', message: 'Ordinary Provider Load status=ready; receipt=not-observed. No independent acceptance Load was run.' },
-    },
+        schemaVersion: 1,
+        source: 'ordinary-provider-load',
+        status: 'exhausted',
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: null,
+        loaderRevisionOption: null,
+        selectedCandidate: undefined,
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: { name: 'ProductionLoadReceiptUnavailable', message: 'Ordinary Provider Load status=ready; receipt=not-observed. No independent acceptance Load was run.' },
+      },
     });
     // Planning provenance is evidence, not authority to silently change the
     // ordinary Provider's requested Load revision or preferred candidate.
@@ -1890,9 +1890,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
     mocks.wrap.mockReturnValueOnce(remote({
       runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
-      checkpoint({ run: planning, replayMetadata: sidecars });
-      return planning;
-    }),
+        checkpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }),
     }));
     let runtimeSignal: AbortSignal | undefined;
     let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
@@ -1921,10 +1921,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(runtimeSignal?.reason).toBe(result);
     expect(onCheckpoint).toHaveBeenLastCalledWith({
       checkpoint: expect.objectContaining({
-      recovery: expect.objectContaining({ status: 'interrupted' }),
-      run: expect.objectContaining({ downloadEvidence: planning.downloadEvidence }),
-      replayMetadata: sidecars,
-    }),
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ downloadEvidence: planning.downloadEvidence }),
+        replayMetadata: sidecars,
+      }),
     });
     const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
     const event = onEvent.mock.calls.at(-1)![0].event;
@@ -1946,9 +1946,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
     mocks.wrap.mockReturnValueOnce(remote({
       runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
-      checkpoint({ run: planning, replayMetadata: sidecars });
-      return planning;
-    }),
+        checkpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }),
     }));
     let runtimeSignal: AbortSignal | undefined;
     let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
@@ -1970,9 +1970,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
       expect(onCheckpoint).toHaveBeenLastCalledWith({
         checkpoint: expect.objectContaining({
-        recovery: expect.objectContaining({ status: 'interrupted' }),
-        replayMetadata: sidecars,
-      }),
+          recovery: expect.objectContaining({ status: 'interrupted' }),
+          replayMetadata: sidecars,
+        }),
       });
       const events = onEvent.mock.calls.length;
       const checkpoints = onCheckpoint.mock.calls.length;

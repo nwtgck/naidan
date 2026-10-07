@@ -209,61 +209,61 @@ export async function prepareProductionModelCandidate({
       await disposeWithDownloadTiming({
         dispose: () => client.dispose(),
         onOutcome: ({ outcome }) => {
-        cleanupOutcome = outcome;
-        switch (outcome) {
-        case 'completed': break;
-        case 'failed': hostSettlement = 'rejected'; break;
-        default: {
-          const exhaustive: never = outcome;
-          throw new Error(`Unhandled disposal outcome: ${exhaustive}`);
-        }
-        }
-      },
+          cleanupOutcome = outcome;
+          switch (outcome) {
+          case 'completed': break;
+          case 'failed': hostSettlement = 'rejected'; break;
+          default: {
+            const exhaustive: never = outcome;
+            throw new Error(`Unhandled disposal outcome: ${exhaustive}`);
+          }
+          }
+        },
       });
     } finally {
       observeDownloadSafely({
         observe: () => {
-        const hostRoundtripMs = clock.elapsed({ start: rpcStarted, end: rpcSettled });
-        const hostFinalizationMs = clock.elapsed({ start: rpcSettled, end: clock.read() });
-        const files: DownloadPrefetchTiming['files'] = [];
-        let droppedFiles = 0;
-        for (const file of observedResult?.files ?? []) {
-          const path = downloadResourcePath({ url: file.url });
-          if (path === undefined || files.length >= 127) {
-            droppedFiles++; continue;
+          const hostRoundtripMs = clock.elapsed({ start: rpcStarted, end: rpcSettled });
+          const hostFinalizationMs = clock.elapsed({ start: rpcSettled, end: clock.read() });
+          const files: DownloadPrefetchTiming['files'] = [];
+          let droppedFiles = 0;
+          for (const file of observedResult?.files ?? []) {
+            const path = downloadResourcePath({ url: file.url });
+            if (path === undefined || files.length >= 127) {
+              droppedFiles++; continue;
+            }
+            const bytes = (() => {
+              switch (file.status) {
+              case 'failed': return file.transferObservation?.receivedBytes;
+              case 'cached':
+              case 'downloaded': return file.byteLength;
+              default: {
+                const exhaustive: never = file;
+                throw new Error(`Unhandled prefetch result: ${String(exhaustive)}`);
+              }
+              }
+            })();
+            files.push({ path, outcome: file.status, bytes, timing: file.timing });
           }
-          const bytes = (() => {
-            switch (file.status) {
-            case 'failed': return file.transferObservation?.receivedBytes;
-            case 'cached':
-            case 'downloaded': return file.byteLength;
-            default: {
-              const exhaustive: never = file;
-              throw new Error(`Unhandled prefetch result: ${String(exhaustive)}`);
-            }
-            }
-          })();
-          files.push({ path, outcome: file.status, bytes, timing: file.timing });
-        }
-        publishDownloadTiming({
-          callback: onTiming,
-          observation: {
-          kind: 'prefetch',
-          version: 1,
-          revision,
-          candidate,
-          clockId: clock.clockId,
-          timingStatus: hostRoundtripMs === undefined || hostFinalizationMs === undefined ? 'unavailable' : 'measured',
-          hostRoundtripMs,
-          hostFinalizationMs,
-          cleanupOutcome,
-          hostSettlement,
-          source: observedResult?.timing,
-          files,
-          droppedFiles,
+          publishDownloadTiming({
+            callback: onTiming,
+            observation: {
+              kind: 'prefetch',
+              version: 1,
+              revision,
+              candidate,
+              clockId: clock.clockId,
+              timingStatus: hostRoundtripMs === undefined || hostFinalizationMs === undefined ? 'unavailable' : 'measured',
+              hostRoundtripMs,
+              hostFinalizationMs,
+              cleanupOutcome,
+              hostSettlement,
+              source: observedResult?.timing,
+              files,
+              droppedFiles,
+            },
+          });
         },
-        });
-      },
       });
     }
   }
