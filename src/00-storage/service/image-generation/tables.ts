@@ -14,7 +14,7 @@ function assertSessionIdentity({ actual, expected }: { actual: string, expected:
 }
 
 function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto }): ExperimentalImageGenerationRunSummaryDto {
-  const { id, sessionId, revision, createdAt, execution, request, seeds, sources: _sources, ...unhandled } = record;
+  const { id, sessionId, revision, createdAt, execution, request, seeds, sources: _sources, acceptedOrder: _acceptedOrder, ...unhandled } = record;
   unhandled satisfies Record<PropertyKey, never>;
   return exactObject<ExperimentalImageGenerationRunSummaryDto>()({ id, sessionId, revision, createdAt, execution,
     prompt: request.parameters.prompt,

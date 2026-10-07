@@ -8,6 +8,8 @@ export type ImageGenerationRecommendation = {
   preview: Pick<PreviewSettings, 'mode' | 'interval' | 'startStep' | 'maxEdge'>;
   sources: readonly { label: string, url: string }[];
   checkedAt: string;
+  recommendedFields?: readonly (keyof ImageGenerationRecommendation['parameters'])[];
+  stepRange?: { minimum: number, maximum: number };
 };
 const upstream = 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be';
 const zSource = { label: 'stable-diffusion.cpp · Z-Image', url: `${upstream}/docs/z_image.md` };
@@ -21,6 +23,7 @@ const browserDefaults: ImageGenerationRecommendation['parameters'] = {
 };
 const presets = {
   'z-image-turbo': {
+    recommendedFields: ['steps', 'guidance'],
     id: 'z-image-turbo', title: 'Z-Image-Turbo', checkedAt: '2026-09-26',
     // sd.cpp's eight steps / CFG 1 are not Diffusers' nine / CFG 0 API values.
     parameters: { ...browserDefaults, steps: 8, guidance: 1 },
@@ -28,12 +31,14 @@ const presets = {
     sources: [zSource, { label: 'Tongyi-MAI · Z-Image-Turbo', url: 'https://huggingface.co/Tongyi-MAI/Z-Image-Turbo' }],
   },
   'z-image-base': {
+    recommendedFields: ['steps', 'guidance'],
     id: 'z-image-base', title: 'Z-Image Base', checkedAt: '2026-09-26',
     parameters: { ...browserDefaults, steps: 50, guidance: 5 },
     preview: { mode: 'vae', interval: 5, startStep: 10, maxEdge: 256 },
     sources: [zSource, { label: 'Tongyi-MAI · Z-Image', url: 'https://huggingface.co/Tongyi-MAI/Z-Image' }],
   },
   'qwen-image-2.1': {
+    recommendedFields: ['guidance', 'sampler'],
     id: 'qwen-image-2.1', title: 'Qwen Image 2.1', checkedAt: '2026-09-26',
     // Upstream example specifies CFG 6 and Euler, not a recommended step count.
     // Twenty steps here remain an explicit Naidan starting point.
@@ -42,6 +47,7 @@ const presets = {
     sources: [{ label: 'stable-diffusion.cpp · Qwen Image 2.1', url: `${upstream}/docs/qwen_image_2.1.md` }],
   },
   'flux2-klein-4b': {
+    recommendedFields: ['steps', 'guidance', 'sampler'],
     id: 'flux2-klein-4b', title: 'FLUX.2 [klein] 4B Distilled', checkedAt: '2026-09-27',
     // Four steps apply to the distilled release, not Klein Base with the same
     // tensor architecture. Only a reviewed release receipt enables this preset.
@@ -50,6 +56,7 @@ const presets = {
     sources: [{ label: 'stable-diffusion.cpp · FLUX.2', url: `${upstream}/docs/flux2.md` }],
   },
   'anima-turbo-1.1': {
+    recommendedFields: ['steps', 'guidance'], stepRange: { minimum: 8, maximum: 12 },
     id: 'anima-turbo-1.1', title: 'Anima Turbo 1.1', checkedAt: '2026-09-27',
     // The publisher recommends 8–12 steps / CFG 1 for Turbo, not Base/Aesthetic.
     parameters: { ...browserDefaults, steps: 10, guidance: 1, sampler: 'euler' },
@@ -58,6 +65,7 @@ const presets = {
       { label: 'stable-diffusion.cpp · Anima', url: `${upstream}/docs/anima.md` }],
   },
   'krea2-turbo': {
+    recommendedFields: ['steps', 'guidance'],
     id: 'krea2-turbo', title: 'Krea 2 Turbo', checkedAt: '2026-09-27',
     // The official API's guidance=0 disables CFG. sd.cpp uses CFG 1 for that
     // behavior; CFG 0 there produces unconditioned output instead.
@@ -67,6 +75,7 @@ const presets = {
       { label: 'stable-diffusion.cpp · Krea2', url: `${upstream}/docs/krea2.md` }],
   },
   'ernie-image-turbo': {
+    recommendedFields: ['steps', 'guidance'],
     id: 'ernie-image-turbo', title: 'ERNIE-Image-Turbo', checkedAt: '2026-09-27',
     parameters: { ...browserDefaults, steps: 8, guidance: 1 },
     preview: { mode: 'vae', interval: 2, startStep: 4, maxEdge: 256 },

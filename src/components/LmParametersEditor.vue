@@ -7,6 +7,7 @@ import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 
 const props = defineProps<{
   modelValue?: LmParameters,
+  inheritanceLabel?: string,
 }>();
 
 const emit = defineEmits<{
@@ -170,7 +171,7 @@ defineExpose({
       <div tw-class="flex items-center gap-2">
         <h3 tw-class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.LmParametersEditor__lm_parameters() }}</h3>
         <span tw-class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800">
-          {{ lazyStrings.LmParametersEditor__empty_fields_use_provider_defaults() }}
+          {{ inheritanceLabel ?? lazyStrings.LmParametersEditor__empty_fields_use_provider_defaults() }}
         </span>
       </div>
       <button
@@ -196,7 +197,7 @@ defineExpose({
               type="number" step="0.1" min="0" max="2"
               :value="params.temperature"
               @input="e => updateParam({ key: 'temperature', value: (e.target as HTMLInputElement).valueAsNumber })"
-              :placeholder="lazyStrings.LmParametersEditor__default()"
+              :placeholder="inheritanceLabel ?? lazyStrings.LmParametersEditor__default()"
               tw-class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
             <button v-if="isOverridden({ key: 'temperature' })" @click="updateParam({ key: 'temperature', value: undefined })" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon tw-class="w-3 h-3"/></button>
@@ -222,7 +223,7 @@ defineExpose({
               type="number" step="0.01" min="0" max="1"
               :value="params.topP"
               @input="e => updateParam({ key: 'topP', value: (e.target as HTMLInputElement).valueAsNumber })"
-              :placeholder="lazyStrings.LmParametersEditor__default()"
+              :placeholder="inheritanceLabel ?? lazyStrings.LmParametersEditor__default()"
               tw-class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
             <button v-if="isOverridden({ key: 'topP' })" @click="updateParam({ key: 'topP', value: undefined })" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon tw-class="w-3 h-3"/></button>
@@ -248,7 +249,7 @@ defineExpose({
               type="number" min="1"
               :value="params.maxCompletionTokens"
               @input="e => updateParam({ key: 'maxCompletionTokens', value: (e.target as HTMLInputElement).valueAsNumber })"
-              :placeholder="lazyStrings.LmParametersEditor__default()"
+              :placeholder="inheritanceLabel ?? lazyStrings.LmParametersEditor__default()"
               tw-class="w-24 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
             <button v-if="isOverridden({ key: 'maxCompletionTokens' })" @click="updateParam({ key: 'maxCompletionTokens', value: undefined })" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon tw-class="w-3 h-3"/></button>
@@ -268,7 +269,7 @@ defineExpose({
               type="number" step="0.1" min="-2" max="2"
               :value="params.presencePenalty"
               @input="e => updateParam({ key: 'presencePenalty', value: (e.target as HTMLInputElement).valueAsNumber })"
-              :placeholder="lazyStrings.LmParametersEditor__default()"
+              :placeholder="inheritanceLabel ?? lazyStrings.LmParametersEditor__default()"
               tw-class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
             <button v-if="isOverridden({ key: 'presencePenalty' })" @click="updateParam({ key: 'presencePenalty', value: undefined })" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon tw-class="w-3 h-3"/></button>

@@ -9,6 +9,10 @@ import type { ImageGenerationTranslationOverride } from '@/01-models/image-gener
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { loadLmProvider } from '@/features/lm/providerFactory';
 import ModelSelector from '@/components/ModelSelector.vue';
+import ReasoningSettings from '@/components/ReasoningSettings.vue';
+import LmParametersEditor from '@/components/LmParametersEditor.vue';
+import { EMPTY_LM_PARAMETERS, type Reasoning } from '@/01-models/types';
+import { cloneLmParameters, hasLmParameterOverrides } from '@/utils/lm-parameters';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { ImageGenerationWorkspaceView } from '@/features/image-generation/composables/use-image-generation-workspace';
 import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from '@/features/image-generation/translation/settings';
@@ -16,7 +20,7 @@ import ImageSettingsSection from './ImageSettingsSection.vue';
 const props = defineProps<{ workspace: ImageGenerationWorkspaceView, scope: 'session' | 'workspace' }>();
 const { settings } = useSettings();
 const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
-const draft = ref<ImageGenerationTranslationOverride>({ endpoint: undefined, modelId: undefined });
+const draft = ref<ImageGenerationTranslationOverride>({ endpoint: undefined, modelId: undefined, lmParameters: undefined });
 const models = ref<string[]>([]), loading = ref(false), saving = ref(false), failure = ref(''), saved = ref(false);
 let controller: AbortController | undefined, epoch = 0, disposed = false;
 const isSessionScope = computed(() => {
@@ -28,14 +32,14 @@ const isSessionScope = computed(() => {
 });
 const owner = computed(() => [props.scope, props.workspace.store.value?.storeId, isSessionScope.value ? props.workspace.selectedSessionId.value : undefined] as const);
 const stored = computed(() => isSessionScope.value ? props.workspace.currentSession.value?.translation : props.workspace.catalog.value?.preferences.translation);
-watch([owner, stored], () => {
+watch(() => JSON.stringify([owner.value, stored.value]), () => {
   epoch++; controller?.abort(); loading.value = false; models.value = []; failure.value = ''; saved.value = false;
-  draft.value = cloneImagePromptTranslationOverride({ value: stored.value }) ?? { endpoint: undefined, modelId: undefined };
+  draft.value = cloneImagePromptTranslationOverride({ value: stored.value }) ?? { endpoint: undefined, modelId: undefined, lmParameters: undefined };
 }, { immediate: true });
 const effective = computed(() => resolveImagePromptTranslation({
   session: isSessionScope.value ? draft.value : undefined,
   workspace: !isSessionScope.value ? draft.value : props.workspace.catalog.value?.preferences.translation,
-  global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId },
+  global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters },
 }));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
 const endpointTypes = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
@@ -58,7 +62,7 @@ function profileChoice({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
   const profile = settings.value.providerProfiles.find(item => idToRaw({ id: item.id }) === raw);
-  if (profile) draft.value = { endpoint: cloneEndpoint({ endpoint: profile.endpoint }), modelId: profile.defaultModelId };
+  if (profile) draft.value = { endpoint: cloneEndpoint({ endpoint: profile.endpoint }), modelId: profile.defaultModelId, lmParameters: cloneLmParameters({ lmParameters: profile.lmParameters }) };
   event.target.value = '';
 }
 const httpEndpoint = computed(() => {
@@ -67,6 +71,10 @@ const httpEndpoint = computed(() => {
 });
 function addHeader(): void {
   if (httpEndpoint.value) (httpEndpoint.value.httpHeaders ??= []).push(['', '']);
+}
+function changeReasoning({ effort }: { effort: Reasoning['effort'] }): void {
+  const parameters = draft.value.lmParameters ?? { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } };
+  draft.value.lmParameters = { ...parameters, reasoning: { ...parameters.reasoning, effort } };
 }
 function changeModel({ event }: { event: Event }): void {
   if (event.target instanceof HTMLInputElement) draft.value.modelId = event.target.value || undefined;
@@ -99,7 +107,7 @@ async function save(): Promise<void> {
   const ownerKey = JSON.stringify(owner.value), submitted = JSON.stringify(draft.value);
   const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && JSON.stringify(draft.value) === submitted;
   const value = cloneImagePromptTranslationOverride({ value: draft.value });
-  const translation = value?.endpoint === undefined && value?.modelId === undefined ? undefined : value;
+  const translation = value?.endpoint === undefined && value?.modelId === undefined && !hasLmParameterOverrides({ lmParameters: value?.lmParameters }) ? undefined : value;
   try {
     const success = isSessionScope.value ? await props.workspace.updateSessionTranslation({ translation })
       : await props.workspace.updatePreferences({ change: { type: 'translation', translation } });
@@ -148,10 +156,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <label tw-class="block space-y-1"><span>{{ lazyStrings.imageGeneration__translation_model() }}</span><input :value="draft.modelId ?? ''" @input="changeModel({ event: $event })" :placeholder="effective.modelId || lazyStrings.imageGeneration__translation_inherit()" data-testid="translation-model-input" tw-class="w-full min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" /></label>
       <ModelSelector v-model="draft.modelId" :models="models" :loading="loading" :disabled="saving || workspace.busy.value" allow-clear :clear-label="lazyStrings.imageGeneration__translation_inherit()" @refresh="fetchModels" />
     </div>
+    <ReasoningSettings :selected-effort="draft.lmParameters?.reasoning.effort" :default-label="lazyStrings.imageGeneration__translation_inherit()" surface="card" @update:effort="changeReasoning({ effort: $event })" />
+    <LmParametersEditor v-model="draft.lmParameters" :inheritance-label="lazyStrings.imageGeneration__translation_inherit()" />
     <p tw-class="break-words text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__translation_effective() }}: {{ endpointLabel }} · {{ effective.modelId || '—' }}</p>
     <div tw-class="flex flex-wrap items-center gap-2">
       <button type="button" @click="save" :disabled="saving || workspace.busy.value || !workspace.available.value" data-testid="translation-settings-save" tw-class="rounded-lg px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__translation_save_settings() }}</button>
-      <button type="button" @click="draft = { endpoint: undefined, modelId: undefined }" :disabled="saving" tw-class="rounded-lg px-2 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.imageGeneration__translation_reset() }}</button>
+      <button type="button" @click="draft = { endpoint: undefined, modelId: undefined, lmParameters: undefined }" :disabled="saving" tw-class="rounded-lg px-2 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.imageGeneration__translation_reset() }}</button>
       <span v-if="saved" role="status" tw-class="text-green-600 dark:text-green-400">{{ lazyStrings.imageGeneration__draft_saved() }}</span>
     </div>
     <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ failure }}</p>

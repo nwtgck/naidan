@@ -138,7 +138,7 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
       deferredModelSelection = modelSelection;
       if (modelSelection && localModels.value) {
         // Suppress first-inventory auto-selection before scanning local files.
-        library.useManualFiles(); await library.prepareHistoryFiles();
+        library.useManualFiles(); await library.prepareHistoryFiles({ requiredFiles: [] });
         if (disposed || storageOwner !== owner || !owner()) return;
         const result = library.restoreModelSelection({ selection: modelSelection });
         form.loras.value = result.loras;
@@ -161,7 +161,7 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     const owner = storageOwner;
     restoring.value = true;
     try {
-      library.useManualFiles(); await library.prepareHistoryFiles();
+      library.useManualFiles(); await library.prepareHistoryFiles({ requiredFiles: [] });
       if (disposed || storageOwner !== owner || !owner()) return;
       const result = library.restoreModelSelection({ selection });
       form.loras.value = result.loras;

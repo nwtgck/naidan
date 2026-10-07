@@ -108,11 +108,11 @@ export function createImageGenerationStorageHarness() {
 }
 
 export function generationSessionFixture({ id }: { id: string }): ImageGenerationSession {
-  return { translation: undefined, assistantChatId: undefined, id: toImageGenerationSessionId({ raw: id }), revision: 0, title: '雨の夜景', createdAt: 1, updatedAt: 1, state: 'active' };
+  return { activityOrder: undefined, translation: undefined, assistantChatId: undefined, id: toImageGenerationSessionId({ raw: id }), revision: 0, title: '雨の夜景', createdAt: 1, updatedAt: 1, state: 'active' };
 }
 export function generationRunFixture({ id, sessionId, count, seed }: { id: string, sessionId: ImageGenerationSessionId, count: number, seed: string }): ImageGenerationRun {
   return {
-    id: toImageGenerationRunId({ raw: id }), sessionId, revision: 0, createdAt: 2, seeds: planImageGenerationSeeds({ baseSeed: seed, count }), sources: [], execution: { type: 'queued' },
+    acceptedOrder: undefined, id: toImageGenerationRunId({ raw: id }), sessionId, revision: 0, createdAt: 2, seeds: planImageGenerationSeeds({ baseSeed: seed, count }), sources: [], execution: { type: 'queued' },
     request: {
       parameters: { prompt: '雨夜景 / cinematic night', negativePrompt: 'blur', width: 256, height: 256, steps: 9, guidance: 1, seed,
         sampler: 'euler', scheduler: 'simple', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 4, modelArguments: '--example',

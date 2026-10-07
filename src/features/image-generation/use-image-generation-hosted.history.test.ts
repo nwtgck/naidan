@@ -1097,6 +1097,37 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.loras.value).toMatchObject([{ enabled: false, strength: 0.75, path: 'draft-adapter.gguf' }]);
     await view.generate({ submission: undefined }); expect(mocks.generate).not.toHaveBeenCalled();
   });
+  it('restores stored model files from the current inventory rather than an old draft snapshot', async () => {
+    const view = open();
+    const original = mocks.models[0]!.file;
+    const draft = view.captureDraft!()!;
+    draft.modelSelection = undefined;
+    const refreshed = new File([original], original.name, { lastModified: original.lastModified });
+    mocks.models = [{ slot: 'model', file: refreshed }];
+    await view.restoreDraft!({ draft });
+    expect(view.historyActions.missingFiles.value).toEqual([]);
+    expect(view.files.value.model).toBe(refreshed);
+    expect(view.files.value.model).not.toBe(original);
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it('does not revive a removed stored model from a cached session draft', async () => {
+    const view = open(), draft = view.captureDraft!()!;
+    draft.modelSelection = undefined; mocks.models = [];
+    await view.restoreDraft!({ draft });
+    expect(view.files.value.model).toBeUndefined();
+    expect(view.historyActions.missingFiles.value).not.toEqual([]);
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it('keeps directly chosen files available when restoring an in-memory draft', async () => {
+    const view = open(), draft = view.captureDraft!()!, file = mocks.models[0]!.file;
+    draft.modelSelection = undefined;
+    const location = { type: 'file' as const, name: file.name, size: file.size, lastModified: file.lastModified };
+    draft.request.models[0]!.file = location;
+    draft.modelFiles = [{ location, file }]; mocks.models = [];
+    await view.restoreDraft!({ draft });
+    expect(view.files.value.model).toBe(file);
+    expect(view.historyActions.missingFiles.value).toEqual([]);
+  });
   it('preserves draft input binary identities and the bytes without relying on the global history', async () => {
     const view = open(); view.imageInputs.value.initImage = new File(['original'], 'initial.png', { type: 'image/png' });
     const first = view.captureDraft?.(); if (!first) throw new Error('Expected draft');
@@ -1137,6 +1168,38 @@ async function remoteView() {
   view.inferenceLocation!.selectModel({ value: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/model.gguf' } } }, components: [], loras: [] } });
   return { ...binding, view, connection };
 }
+it('does not suggest or apply a retained local model preset to a remote model', async () => {
+  const { view } = await remoteView();
+  view.parameters.value.steps = 37; view.parameters.value.guidance = 7;
+  const before = { ...view.parameters.value };
+  expect(view.recommendation.value).toBeUndefined();
+  view.applyRecommendedSettings();
+  expect(view.parameters.value).toEqual(before);
+  view.inferenceLocation!.kind.value = 'local';
+  expect(view.recommendation.value?.id).toBe('z-image-turbo');
+  view.applyRecommendedSettings();
+  expect(view.parameters.value.steps).toBe(8);
+});
+it.each(['ready', 'failed'])('keeps the previous runtime view until local draft preparation is %s', async outcome => {
+  const { view } = await remoteView();
+  view.inferenceLocation!.kind.value = 'local';
+  const draft = view.captureDraft!()!;
+  view.inferenceLocation!.kind.value = 'naidan_rpc';
+  const gate = Promise.withResolvers<void>();
+  mocks.prepareFiles.mockReturnValueOnce(gate.promise);
+  const restoring = view.restoreDraft!({ draft });
+  try {
+    await flushPromises();
+    expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc');
+    if (outcome === 'ready') gate.resolve();
+    else gate.reject(new Error('inventory unavailable'));
+    await restoring;
+    expect(view.inferenceLocation!.kind.value).toBe(outcome === 'ready' ? 'local' : 'naidan_rpc');
+    expect(mocks.generate).not.toHaveBeenCalled();
+  } finally {
+    gate.resolve(); await restoring;
+  }
+});
 it('executes a multi-image submission through the common RPC loop without local inference or model scans', async () => {
   const h = await remoteView(); const accepted = vi.fn(async () => {}), output = vi.fn(async () => {}), finished = vi.fn(async () => {});
   await h.view.generate({ submission: { count: 2, accepted, output, finished } });
@@ -1245,4 +1308,35 @@ it('retains a direct RPC image with its remote provenance without retrying remot
   await pendingImageHistory.retry({ id: retained.record.id });
   expect(h.generateImage).toHaveBeenCalledOnce(); expect(mocks.generate).not.toHaveBeenCalled();
   expect(mocks.save).toHaveBeenCalledTimes(2); expect(mocks.save.mock.calls[1]![0]).toBe(mocks.save.mock.calls[0]![0]);
+});
+
+it('keeps resident models while editing or restoring retention, but honors explicit release', async () => {
+  const view = open(); view.retainModel.value = true; await view.generate({ submission: undefined });
+  expect(view.modelResident.value).toBe(true); mocks.release.mockClear();
+  view.parameters.value = { ...view.parameters.value, flashAttention: !view.parameters.value.flashAttention };
+  view.files.value = { ...view.files.value }; view.retainModel.value = false;
+  await nextTick(); expect(mocks.release).not.toHaveBeenCalled();
+  view.setRetainModel?.({ retain: false }); expect(mocks.release).toHaveBeenCalledOnce();
+});
+it('applies recommendations only to the next draft during a multi-image submission', async () => {
+  const view = open(); view.retainModel.value = true;
+  view.parameters.value = { ...view.parameters.value, steps: 20, guidance: 7 };
+  view.preview.value = { ...view.preview.value, interval: 9 };
+  const gate = Promise.withResolvers<ReturnType<typeof result>>(); mocks.generate.mockReturnValueOnce(gate.promise);
+  const work = view.generate({ submission: { count: 2, accepted: async () => {}, output: async () => {}, finished: async () => {} } });
+  await flushPromises();
+  view.applyRecommendedSettings(); expect(view.parameters.value.steps).toBe(8); expect(view.preview.value.interval).toBe(9);
+  expect(mocks.generate.mock.calls[0]![0].request.parameters.steps).toBe(20);
+  gate.resolve(result()); await work;
+  expect(mocks.generate).toHaveBeenCalledTimes(2); expect(mocks.generate.mock.calls[1]![0].request.parameters.steps).toBe(20);
+});
+
+it('does not apply the next run retention policy to a previous resident when acceptance fails', async () => {
+  const view = open(); view.retainModel.value = true; await view.generate({ submission: undefined });
+  expect(view.modelResident.value).toBe(true); mocks.release.mockClear();
+  view.retainModel.value = false;
+  await view.generate({ submission: { count: 1, accepted: async () => {
+    throw new Error('acceptance write failed');
+  }, output: async () => {}, finished: async () => {} } });
+  expect(mocks.generate).toHaveBeenCalledOnce(); expect(mocks.release).not.toHaveBeenCalled(); expect(view.modelResident.value).toBe(true);
 });

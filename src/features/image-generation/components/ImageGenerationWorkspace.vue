@@ -127,7 +127,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
         <div v-if="view.warnings.value.length" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300"><p v-for="warning in view.warnings.value" :key="warning" tw-class="break-words">{{ warning }}</p></div>
         <div v-if="view.draftStatus.value === 'failed'" role="alert" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs space-y-2"><p tw-class="break-words">{{ view.draftFailure.value }}</p><button type="button" @click="view.saveDraft" tw-class="text-blue-600 dark:text-blue-400 font-semibold rounded-lg px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20">{{ lazyStrings.imageGeneration__save_retry() }}</button></div>
         <div tw-class="grid grid-cols-1 @min-[42rem]/workspace:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)] gap-5 min-w-0 items-start" data-testid="workspace-columns">
-          <div tw-class="min-w-0 space-y-3" data-testid="workspace-settings-column">
+          <div tw-class="min-w-0 space-y-3" data-testid="workspace-settings-column" :aria-busy="view.switching.value">
             <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
               <div tw-class="flex flex-wrap items-center gap-2">
                 <label :for="inputId + '-count'" tw-class="text-xs font-medium">{{ lazyStrings.imageGeneration__images() }}</label>
@@ -137,10 +137,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
               </div>
               <p v-if="countHelpOpen" :id="inputId + '-count-help'" tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__count_help() }}</p>
             </div>
-            <p v-if="!view.editorReady.value" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
-            <ImageGenerationEditor :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active" /></template></ImageGenerationEditor>
-            <ImageSettingsSection :open="!!generation.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>
-              <ImageGenerationResults :view="generation" :active="active" :presentation="view.available.value ? 'settings' : 'full'" persistence="workspace" @prepare="emit('models')" />
+            <p v-if="view.editorDeferred.value" data-testid="workspace-editor-deferred" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
+            <ImageGenerationEditor :context="JSON.stringify([view.store.value?.storeId, view.selectedSessionId.value, view.draftRevision.value])" :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active && view.editorReady.value" /></template></ImageGenerationEditor>
+            <ImageSettingsSection :open="!!view.sessionPresentation.view.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>
+              <ImageGenerationResults :view="view.sessionPresentation.view" :active="active" :presentation="view.available.value ? 'settings' : 'full'" persistence="workspace" @prepare="emit('models')" />
             </ImageSettingsSection>
           </div>
           <!-- One independent right column: gallery follows the preview immediately,

@@ -1,3 +1,16 @@
+import { imageGeneration__apply_to_next_run } from '@/strings/messages/imageGeneration__apply_to_next_run/ja';
+import { imageGeneration__current_value } from '@/strings/messages/imageGeneration__current_value/ja';
+import { imageGeneration__apply_this_setting } from '@/strings/messages/imageGeneration__apply_this_setting/ja';
+import { imageGeneration__suggested_value } from '@/strings/messages/imageGeneration__suggested_value/ja';
+import { imageGeneration__recommended_value } from '@/strings/messages/imageGeneration__recommended_value/ja';
+import { imageGeneration__other_session_running } from '@/strings/messages/imageGeneration__other_session_running/ja';
+import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/ja';
+import { imageGeneration__progress_only } from '@/strings/messages/imageGeneration__progress_only/ja';
+import { imageGeneration__translation_processing_input } from '@/strings/messages/imageGeneration__translation_processing_input/ja';
+import { imageGeneration__translation_loading_model } from '@/strings/messages/imageGeneration__translation_loading_model/ja';
+import { imageGeneration__translation_waiting } from '@/strings/messages/imageGeneration__translation_waiting/ja';
+import { imageGeneration__translation_partial } from '@/strings/messages/imageGeneration__translation_partial/ja';
+import { imageGeneration__translation_previous_source } from '@/strings/messages/imageGeneration__translation_previous_source/ja';
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ja';
@@ -2747,6 +2760,19 @@ export const catalog = {
   imageGeneration__translation_source_text,
   imageGeneration__translation_language,
   imageGeneration__translation_start,
+  imageGeneration__translation_previous_source,
+  imageGeneration__translation_partial,
+  imageGeneration__translation_waiting,
+  imageGeneration__translation_loading_model,
+  imageGeneration__translation_processing_input,
+  imageGeneration__progress_only,
+  imageGeneration__visual_progress,
+  imageGeneration__other_session_running,
+  imageGeneration__recommended_value,
+  imageGeneration__suggested_value,
+  imageGeneration__apply_this_setting,
+  imageGeneration__current_value,
+  imageGeneration__apply_to_next_run,
   imageGeneration__translation_running,
   imageGeneration__translation_result,
   imageGeneration__translation_copy,

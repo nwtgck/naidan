@@ -25,8 +25,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </label>
     </ImageSettingsSection>
     <p v-if="showAll" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__component_evidence_help() }}</p>
-    <ImageSettingsSection v-if="issues.length" :title="lazyStrings.stableDiffusionCppBrowser__inspection_issues()" :summary="issues.length.toString()" tw-class="border-amber-300 dark:border-amber-800">
-      <p v-for="issue in issues" :key="issue" tw-class="mt-2 [overflow-wrap:anywhere] font-mono">{{ issue }}</p>
+    <ImageSettingsSection v-if="issues.length" compact data-testid="image-inspection-issues" :title="lazyStrings.stableDiffusionCppBrowser__inspection_issues()" :summary="issues.length.toString()" tw-class="border-amber-300 dark:border-amber-800">
+      <p v-for="issue in issues" :key="issue" data-testid="image-inspection-issue" tw-class="text-xs leading-relaxed [overflow-wrap:anywhere] font-mono text-gray-600 dark:text-gray-300">{{ issue }}</p>
     </ImageSettingsSection>
   </div>
 </template>

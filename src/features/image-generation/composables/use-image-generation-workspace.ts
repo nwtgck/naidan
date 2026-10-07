@@ -1,9 +1,14 @@
+import { compareImageGenerationSessions } from '@/01-models/image-generation';
+import { imagePendingSessionUses } from '@/features/image-generation/session/pending-session-uses';
+import { useImageSessionPresentation } from './use-image-session-presentation';
+import { createImageTranslationMemory } from '@/features/image-generation/translation/memory';
 import { type Ref, computed, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { storageService } from '@/00-storage/service';
 import * as persistence from '@/00-storage/service/image-generation';
 import { listImageGenerationRunAssets, setImageGenerationAssetState } from '@/00-storage/service/image-generation-curation';
 import type { ImageGenerationStoreAccess } from '@/00-storage/service/image-generation';
 import { generateId } from '@/01-models/id';
+import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, ImageGenerationAssetId, ImageGenerationRunId, ImageGenerationDraftRevisionId, ImageGenerationSessionId, ImageGenerationTagId } from '@/01-models/ids';
 import type { ImageGenerationAsset, ImageGenerationAssetPage, ImageGenerationCatalog, ImageGenerationSessionDraft, ImageGenerationRun, ImageGenerationRunSummary, ImageGenerationSession, ImageGenerationSource, ImageGenerationTagReference, ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { imageGenerationTagNameSchema, imageGenerationTagReferenceKey } from '@/01-models/image-generation';
@@ -24,6 +29,7 @@ type DraftCheckpoint = { value: ImageGenerationDraft, count: number, revision: n
 export function useImageGenerationWorkspace({ generation, requestedSessionId }: {
   generation: ImageGenerationView, requestedSessionId: Readonly<Ref<ImageGenerationSessionId | undefined>> | undefined,
 }) {
+  const translationMemory = createImageTranslationMemory({ maxEntries: 64, maxCharacters: 262144 });
   const initialized = ref(false);
   const persistenceMode = ref<'store' | 'temporary'>('store');
   const storageUnavailable = ref(false);
@@ -32,6 +38,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   const store = shallowRef<ImageGenerationStoreAccess>();
   const selectedSessionId = ref<ImageGenerationSessionId>();
   const editingSessionId = ref<ImageGenerationSessionId>();
+  const presentationKey = computed(() => JSON.stringify([store.value?.storeId, selectedSessionId.value]));
+  const sessionPresentation = useImageSessionPresentation({ generation, selectedKey: presentationKey });
   const runs = shallowRef<ImageGenerationRunSummary[]>([]);
   const runsWithAssets = shallowRef<ImageGenerationRunId[]>([]);
   const tiles = shallowRef<ImageGenerationTile[]>([]);
@@ -80,11 +88,76 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       return false;
     }
   });
+  const monitorIntent = shallowRef<'visual' | 'compact-progress'>();
+  const monitorSaving = ref(false), monitorFailure = ref('');
+  let monitorRevision = 0;
+  const monitorPresentation = computed(() => monitorIntent.value ?? catalog.value?.preferences.generationMonitorPresentation ?? 'visual');
+  // Serializes only this preference; never locks draft edits, navigation or cancel.
+  async function setMonitorPresentation({ presentation }: { presentation: 'visual' | 'compact-progress' }): Promise<void> {
+    monitorIntent.value = presentation; monitorRevision++;
+    if (monitorSaving.value || disposed) return;
+    const storeEpoch = epoch;
+    monitorSaving.value = true; monitorFailure.value = '';
+    try {
+      while (!disposed && epoch === storeEpoch && monitorIntent.value !== undefined) {
+        const version = monitorRevision, intent = monitorIntent.value;
+        const target = store.value ?? await openStore({ creation: 'allow' });
+        if (!target || disposed || epoch !== storeEpoch) throw new Error('Image workspace preferences cannot be saved.');
+        const previous = await persistence.loadImageGenerationCatalog({ store: target });
+        if (disposed || epoch !== storeEpoch) return;
+        const next = { ...previous, revision: previous.revision + 1, preferences: { ...previous.preferences, generationMonitorPresentation: intent } };
+        try {
+          await persistence.saveImageGenerationCatalog({ store: target, catalog: next, expectedRevision: previous.revision });
+          if (disposed || epoch !== storeEpoch) return;
+          // Do not replace a newer catalog returned by another preference command.
+          if (!catalog.value || catalog.value.revision <= next.revision) catalog.value = next;
+          if (version === monitorRevision) {
+            monitorIntent.value = undefined; break;
+          }
+        } catch (error) {
+          if (version === monitorRevision) throw error;
+        }
+      }
+    } catch (error) {
+      if (!disposed && epoch === storeEpoch) monitorFailure.value = errorText({ error });
+    } finally {
+      monitorSaving.value = false;
+      if (!disposed && epoch !== storeEpoch && monitorIntent.value !== undefined) void setMonitorPresentation({ presentation: monitorIntent.value });
+    }
+  }
+  const sessionUseFailure = ref(''), sessionUseSaving = ref(false);
+  async function retrySessionUse(): Promise<void> {
+    const target = store.value;
+    if (sessionUseSaving.value || disposed || !target) return;
+    const token = epoch;
+    sessionUseSaving.value = true; sessionUseFailure.value = '';
+    try {
+      for (const accepted of imagePendingSessionUses.list({ store: target })) {
+        if (disposed || token !== epoch || store.value?.storeId !== accepted.store.storeId) return;
+        try {
+          const latest = await persistence.recordImageGenerationSessionUse(accepted);
+          imagePendingSessionUses.complete(accepted);
+          if (disposed || token !== epoch) return;
+          sessions.value = sessions.value.map(session => session.id === latest.id && session.revision <= latest.revision ? latest : session)
+            .sort((a, b) => compareImageGenerationSessions({ a, b }));
+        } catch (error) {
+          // One older failed update must not prevent a newly accepted session
+          // from being moved. Preserve every failure's original retry identity.
+          if (!disposed && token === epoch && !sessionUseFailure.value) sessionUseFailure.value = errorText({ error });
+        }
+      }
+    } finally {
+      sessionUseSaving.value = false;
+    }
+  }
   const assistantVisibility = computed(() => catalog.value?.preferences.assistantVisibility ?? 'closed');
   const assistantLayout = computed(() => catalog.value?.preferences.assistantLayout ?? 'floating');
   const experimentalNoticeVisible = computed(() => hasGeneratedImages.value && catalog.value !== undefined && catalog.value.preferences.experimentalNoticeDismissedAt === undefined);
   const currentSession = computed(() => sessions.value.find(session => session.id === selectedSessionId.value && session.state !== 'deleting' && session.state !== 'deleted'));
   const editorReady = computed(() => !switching.value && !starting.value && editingSessionId.value === selectedSessionId.value);
+  // Restoring an idle editor is not a generation in another session. Keep the
+  // deferred-run notice out of ordinary navigation (and its layout).
+  const editorDeferred = computed(() => generation.busy.value && editingSessionId.value !== selectedSessionId.value);
   const runState = computed(() => {
     void runRevision.value; return owner?.snapshot();
   });
@@ -132,6 +205,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     // editor inputs/count/seeds and retained saves bound to their original store.
     rememberDraft(); clearTimeout(timer); clearTimeout(searchTimer);
     epoch++; queryEpoch++; detailEpoch++;
+    sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
     persistenceMode.value = 'temporary'; storageUnavailable.value = false;
     store.value = undefined; catalog.value = undefined; sessions.value = [];
     selectedSessionId.value = undefined; editingSessionId.value = undefined;
@@ -288,8 +362,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       failure.value = await ensureStrings.imageGeneration__session_unavailable();
       return;
     }
-    await refresh({ append: false });
-    await restoreActiveDraft();
+    // Gallery I/O must not delay restoring the next editor. Both operations
+    // retain their own stale-result checks and may finish independently.
+    await promiseAllKeyed({ draft: restoreActiveDraft(), gallery: refresh({ append: false }) });
   }
   async function newSession({ preserveDraft }: { preserveDraft: boolean }): Promise<ImageGenerationSession | undefined> {
     if (busy.value || disposed) return undefined;
@@ -304,8 +379,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       const title = preserveDraft && generation.parameters.value.prompt.trim()
         ? Array.from(generation.parameters.value.prompt.trim().replace(/\s+/g, ' ')).slice(0, 80).join('')
         : await ensureStrings.imageGeneration__new_session();
-      const session: ImageGenerationSession = { translation: undefined, assistantChatId: undefined, id: generateId<ImageGenerationSessionId>(), revision: 0, title, createdAt: now, updatedAt: now, state: 'active' };
-      await persistence.saveImageGenerationSession({ store: target, session, expectedRevision: undefined });
+      let session: ImageGenerationSession = { activityOrder: undefined, translation: undefined, assistantChatId: undefined, id: generateId<ImageGenerationSessionId>(), revision: 0, title, createdAt: now, updatedAt: now, state: 'active' };
+      session = await persistence.saveImageGenerationSession({ store: target, session, expectedRevision: undefined });
       if (disposed || token !== epoch) return undefined;
       sessions.value = [session, ...sessions.value]; selectedSessionId.value = session.id;
       if (previous) {
@@ -333,6 +408,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       const target = await openStore({ creation: 'forbid' });
       if (!target) return;
       await refreshSessions();
+      await retrySessionUse();
       if (requestedSessionId?.value && requestedSessionId.value !== selectedSessionId.value) {
         await selectSession({ sessionId: requestedSessionId.value });
       } else if (!selectedSessionId.value) {
@@ -350,9 +426,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     if (!target || !previous || mutation.value) return;
     mutation.value = true; failure.value = '';
     try {
-      const next = { ...previous, title: title.trim(), revision: previous.revision + 1, updatedAt: Date.now() };
-      await persistence.saveImageGenerationSession({ store: target, session: next, expectedRevision: previous.revision });
-      if (store.value?.storeId === target.storeId) sessions.value = sessions.value.map(session => session.id === next.id ? next : session);
+      let next = { ...previous, title: title.trim(), revision: previous.revision + 1, updatedAt: Date.now() };
+      next = await persistence.saveImageGenerationSession({ store: target, session: next, expectedRevision: previous.revision });
+      if (store.value?.storeId === target.storeId) sessions.value = sessions.value.map(session => session.id === next.id ? next : session).sort((a, b) => compareImageGenerationSessions({ a, b }));
     } catch (error) {
       failure.value = errorText({ error });
     } finally {
@@ -407,10 +483,10 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       const previous = await persistence.loadImageGenerationSession({ store: target, sessionId: selected.id });
       if (!previous) throw new Error(await ensureStrings.imageGeneration__session_unavailable());
       if (disposed || token !== epoch || selectedSessionId.value !== selected.id) return false;
-      const next = { ...previous, translation, revision: previous.revision + 1, updatedAt: Date.now() };
-      await persistence.saveImageGenerationSession({ store: target, session: next, expectedRevision: previous.revision });
+      let next = { ...previous, translation, revision: previous.revision + 1, updatedAt: Date.now() };
+      next = await persistence.saveImageGenerationSession({ store: target, session: next, expectedRevision: previous.revision });
       if (disposed || token !== epoch) return false;
-      sessions.value = sessions.value.map(item => item.id === next.id ? next : item);
+      sessions.value = sessions.value.map(item => item.id === next.id ? next : item).sort((a, b) => compareImageGenerationSessions({ a, b }));
       return true;
     } catch (error) {
       if (!disposed && token === epoch) failure.value = errorText({ error });
@@ -434,8 +510,10 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         clearTimeout(timer); await draftWriting;
       }
       await persistence.deleteImageGenerationSession({ store: target, sessionId, expectedRevision: previous.revision });
+      imagePendingSessionUses.removeSession({ store: target, sessionId });
       if (disposed || token !== epoch) return false;
       drafts.delete(sessionId); attempts.delete(sessionId); sources.delete(sessionId);
+      translationMemory.removeSession({ storeId: idToRaw({ id: target.storeId }), sessionId: idToRaw({ id: sessionId }) });
       sessions.value = sessions.value.filter(session => session.id !== sessionId);
       if (selectedSessionId.value === sessionId) {
         queryEpoch++; clearTimeout(searchTimer); selectedSessionId.value = undefined; editingSessionId.value = undefined;
@@ -463,10 +541,10 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     if (!target || !previous || mutation.value || token !== epoch || disposed) return false;
     mutation.value = true; failure.value = '';
     try {
-      const session = { ...previous, assistantChatId: chatId, revision: previous.revision + 1, updatedAt: Date.now() };
-      await persistence.saveImageGenerationSession({ store: target, session, expectedRevision: previous.revision });
+      let session = { ...previous, assistantChatId: chatId, revision: previous.revision + 1, updatedAt: Date.now() };
+      session = await persistence.saveImageGenerationSession({ store: target, session, expectedRevision: previous.revision });
       if (store.value?.storeId !== target.storeId || disposed) return false;
-      sessions.value = sessions.value.map(item => item.id === session.id ? session : item);
+      sessions.value = sessions.value.map(item => item.id === session.id ? session : item).sort((a, b) => compareImageGenerationSessions({ a, b }));
       return true;
     } catch (error) {
       if (!disposed && token === epoch) failure.value = errorText({ error }); return false;
@@ -585,9 +663,11 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       // Persistence availability must not change the requested count or seeds.
       // Pixels remain in the bounded result/recovery owners, not a fake store.
       starting.value = true;
+      sessionPresentation.begin({ key: presentationKey.value });
       try {
         await generation.generate({ submission: { count: count.value, accepted: async () => {}, output: async () => {}, finished: async () => {} } });
       } finally {
+        sessionPresentation.finish();
         starting.value = false;
       }
       return;
@@ -611,11 +691,20 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       failure.value = errorText({ error }); return;
     }
     const acceptedOwner = owner;
+    sessionPresentation.begin({ key: JSON.stringify([target.storeId, destination]) });
     try {
-      await generation.generate({ submission: acceptedOwner.submission });
+      await generation.generate({ submission: { ...acceptedOwner.submission,
+        async accepted({ snapshot, seeds }) {
+          await acceptedOwner.submission.accepted({ snapshot, seeds });
+          if (disposed || store.value?.storeId !== target.storeId) return;
+          // An ordering write is not a native failure or a second submission.
+          await retrySessionUse();
+        },
+      } });
     } catch (error) {
       if (!disposed) failure.value = errorText({ error });
     } finally {
+      sessionPresentation.finish();
       try {
         await acceptedOwner.retire();
       } catch (error) {
@@ -806,6 +895,8 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     store.value = undefined; catalog.value = undefined; sessions.value = []; selectedSessionId.value = undefined; editingSessionId.value = undefined;
     pendingDeletions.value = []; deletedAssetIds.value = []; operationProgress.value = undefined; visibility.value = 'active';
     hasGeneratedImages.value = false;
+    monitorIntent.value = undefined; monitorRevision++; monitorFailure.value = '';
+    sessionPresentation.clear(); translationMemory.clear(); sessionUseFailure.value = "";
     drafts.clear(); attempts.clear(); sources.clear(); tiles.value = []; runs.value = []; runsWithAssets.value = []; selection.value = []; closeDetails();
     clearTimeout(timer); void reload();
   } });
@@ -813,9 +904,10 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     void reload();
   });
   onScopeDispose(() => {
+    translationMemory.clear();
     rememberDraft(); void saveDraft(); disposed = true; queryEpoch++; detailEpoch++; clearTimeout(timer); clearTimeout(searchTimer); void queries.dispose(); unsubscribe(); unsubscribeRuns();
   });
-  return { initialized, persistenceMode, storageUnavailable, useTemporary, assistantVisibility, deleteSession, updateSessionTranslation, assistantLayout, experimentalNoticeVisible, updatePreferences, available, catalog, store, sessions, currentSession, selectedSessionId, editorReady, count, loading, switching, starting, mutation, busy,
+  return { sessionUseFailure, sessionUseSaving, retrySessionUse, monitorPresentation, monitorSaving, monitorFailure, setMonitorPresentation, sessionPresentation, translationMemory, initialized, persistenceMode, storageUnavailable, useTemporary, assistantVisibility, deleteSession, updateSessionTranslation, assistantLayout, experimentalNoticeVisible, updatePreferences, available, catalog, store, sessions, currentSession, selectedSessionId, editorReady, editorDeferred, count, loading, switching, starting, mutation, busy,
     failure, warnings, text, visibility, pendingDeletions, deletedAssetIds, operationProgress, curate, retryDeletions, runAssets, connectChat, onlyFavorite, filterTagId, userTags, mode, runs, runsWithAssets, tiles, nextCursor, total, selection, details, draftStatus, draftFailure, draftRevision,
     inspectedTile, inspectLoading, inspectFailure, runState, hasPendingSave, editor, reload, refresh, selectSession, newSession, renameSession, generate, retrySave, editTag, getImage, hasTag, toggleTag, toggleSelection, inspect, closeDetails, setPromptDraft, reuse, saveDraft, flushDraft,
     ...((__BUILD_MODE_IS_TEST__ && {

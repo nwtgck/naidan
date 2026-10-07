@@ -5,6 +5,8 @@ import type { Progress } from '@/features/stable-diffusion-cpp-browser/types';
 
 const props = defineProps<{
   size?: 'monitor' | 'compact',
+  presentation?: 'visual' | 'compact-progress',
+  startedAt?: number,
   busy: boolean, supported: boolean, active: boolean, stopping: boolean, progress: Progress | undefined,
   width: number, height: number, image: { url: string, width: number, height: number } | undefined,
 }>();
@@ -20,8 +22,8 @@ const visible = computed(() => props.supported && props.busy);
 const running = computed(() => visible.value && props.active && !props.stopping);
 const elapsedSeconds = ref(0);
 let began = 0;
-watch(visible, value => {
-  began = value ? performance.now() : 0;
+watch(() => [visible.value, props.startedAt] as const, ([value]) => {
+  began = value ? (props.startedAt ?? performance.now()) : 0;
   elapsedSeconds.value = 0;
 }, { immediate: true, flush: 'sync' });
 watch(running, (value, _previous, onCleanup) => {
@@ -73,7 +75,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div v-if="visible" data-testid="image-generation-progress" :data-running="running && !image" class="generation-progress" tw-class="w-full">
+  <div v-if="visible && presentation === 'compact-progress'" data-testid="image-generation-compact-progress" tw-class="space-y-2 text-xs text-gray-600 dark:text-gray-300">
+    <div role="status" tw-class="flex justify-between gap-3"><span>{{ phaseLabel }}<span v-if="units && !sampling"> · {{ phasePercent }}%</span></span><span tw-class="shrink-0 tabular-nums">{{ elapsedSeconds }} s</span></div>
+    <div v-if="units" role="progressbar" :aria-label="phaseLabel" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="phasePercent" tw-class="h-1 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700"><div :style="{ width: `${phasePercent}%` }" tw-class="h-full bg-blue-500"></div></div>
+  </div>
+  <div v-else-if="visible" data-testid="image-generation-progress" :data-running="running && !image" class="generation-progress" tw-class="w-full">
     <div :style="{ aspectRatio: `${width} / ${height}`, maxWidth: `${heightLimit * width / height}vh` }" data-testid="image-generation-canvas" tw-class="relative w-full mx-auto overflow-hidden rounded-2xl flex items-center justify-center bg-gray-50/50 dark:bg-gray-900/30">
       <img v-if="image" :src="image.url" :width="image.width" :height="image.height" :style="{ maxWidth: `min(100%, ${image.width}px)` }" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" data-testid="image-generation-current-preview" tw-class="max-h-full object-contain" />
       <template v-else>

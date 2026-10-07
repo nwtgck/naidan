@@ -23,8 +23,9 @@ export interface LlamaCppBrowserService {
   generate({ input, onEvent, signal }: {
     input: Omit<GenerateInput, 'options'>, onEvent: GenerationCallback, signal: AbortSignal | undefined,
   }): Promise<GenerationResult>;
-  runGenerationOperation({ signal, operation }: {
+  runGenerationOperation({ signal, operation, onProgress }: {
     signal: AbortSignal | undefined,
+    onProgress?: ({ progress }: { progress: Progress }) => void,
     operation: ({ scope }: { scope: LlamaCppGenerationScope }) => Promise<void>,
   }): Promise<void>;
   restartRuntime({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;

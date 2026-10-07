@@ -70,3 +70,17 @@ it('does not read from the network when enumerating existing cached HF repositor
   const models = await listImageRepositories({ signal: undefined });
   expect(models[0]!.id).toContain('owner/repo'); expect(network).not.toHaveBeenCalled();
 });
+
+it('does not obtain new File snapshots for repositories outside a known publication', async () => {
+  await importImageRepository({ input: { ...input(), name: 'retained' }, signal: undefined, onProgress() {} });
+  await importImageRepository({ input: { ...input(), name: 'published' }, signal: undefined, onProgress() {} });
+  const user = await (await root.getDirectoryHandle('models')).getDirectoryHandle('user');
+  const retained = await (await (await user.getDirectoryHandle('retained')).getDirectoryHandle('diffusion')).getFileHandle('weights.gguf');
+  const published = await (await (await user.getDirectoryHandle('published')).getDirectoryHandle('diffusion')).getFileHandle('weights.gguf');
+  const oldRead = vi.spyOn(retained, 'getFile'), newRead = vi.spyOn(published, 'getFile');
+  const repositories = await listImageRepositories({ signal: undefined, repositoryIds: ['user/published'] });
+  expect(repositories.map(repository => repository.id)).toEqual(['user/published']);
+  expect(oldRead).not.toHaveBeenCalled(); expect(newRead).toHaveBeenCalledOnce();
+  expect(await listImageRepositories({ signal: undefined, repositoryIds: [] })).toEqual([]);
+  expect(oldRead).not.toHaveBeenCalled(); expect(newRead).toHaveBeenCalledOnce();
+});

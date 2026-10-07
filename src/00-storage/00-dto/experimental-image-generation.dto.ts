@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EndpointSchemaDto } from './dto';
+import { EndpointSchemaDto, LmParametersSchemaDto, ReasoningSchemaDto } from './dto';
 import {
   ExperimentalBrowserImageModelSelectionSchemaDto,
   ExperimentalImageGenerationPathSchemaDto,
@@ -157,13 +157,26 @@ export const ExperimentalImageGenerationTagReferenceSchemaDto = z.discriminatedU
 ]);
 export type ExperimentalImageGenerationTagReferenceDto = z.infer<typeof ExperimentalImageGenerationTagReferenceSchemaDto>;
 
+// Image workspace writes must never strip unknown nested settings. Share the
+// canonical field schemas while refusing payloads our domain mapper cannot keep.
+const ImageTranslationReasoningSchemaDto = resolveMissingAsUndefined(z.object({
+  ...ReasoningSchemaDto.shape,
+  experimental: z.undefined().optional(),
+}).strict());
+const ImageTranslationLmParametersSchemaDto = resolveMissingAsUndefined(z.object({
+  ...LmParametersSchemaDto.shape,
+  reasoning: missingAsUndefined(ImageTranslationReasoningSchemaDto),
+  experimental: z.undefined().optional(),
+}).strict());
 export const ExperimentalImageGenerationTranslationOverrideSchemaDto = resolveMissingAsUndefined(z.object({
   endpoint: missingAsUndefined(EndpointSchemaDto),
   modelId: missingAsUndefined(z.string().min(1).max(4096)),
+  lmParameters: missingAsUndefined(ImageTranslationLmParametersSchemaDto),
 }).strict());
 export type ExperimentalImageGenerationTranslationOverrideDto = z.infer<typeof ExperimentalImageGenerationTranslationOverrideSchemaDto>;
 
 export const ExperimentalImageGenerationPreferencesSchemaDto = resolveMissingAsUndefined(z.object({
+  generationMonitorPresentation: missingAsUndefined(z.enum(['visual', 'compact-progress'])),
   assistantVisibility: missingAsUndefined(z.enum(['open', 'closed'])),
   translation: missingAsUndefined(ExperimentalImageGenerationTranslationOverrideSchemaDto),
   experimentalNoticeDismissedAt: missingAsUndefined(ExperimentalImageGenerationTimestampSchemaDto),
@@ -195,7 +208,27 @@ export const ExperimentalImageGenerationCatalogSchemaDto = z.object({
 });
 export type ExperimentalImageGenerationCatalogDto = z.infer<typeof ExperimentalImageGenerationCatalogSchemaDto>;
 
+export const ExperimentalImageGenerationActivityOrderSchemaDto = z.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1);
+
+export const ExperimentalImageGenerationActivityJournalSchemaDto = z.object({
+  version: z.literal(1),
+  sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1),
+  pending: z.array(z.object({
+    sessionId: ExperimentalImageGenerationIdSchemaDto, runId: ExperimentalImageGenerationIdSchemaDto,
+    order: ExperimentalImageGenerationActivityOrderSchemaDto,
+  }).strict()).max(4096),
+}).strict().superRefine((value, context) => {
+  const ids = new Set<string>(), orders = new Set<number>();
+  value.pending.forEach((entry, index) => {
+    const key = JSON.stringify([entry.sessionId, entry.runId]);
+    if (entry.order > value.sequence || ids.has(key) || orders.has(entry.order)) context.addIssue({ code: 'custom', path: ['pending', index], message: 'Activity reservations must be unique and no newer than the clock.' });
+    ids.add(key); orders.add(entry.order);
+  });
+});
+export type ExperimentalImageGenerationActivityJournalDto = z.infer<typeof ExperimentalImageGenerationActivityJournalSchemaDto>;
+
 export const ExperimentalImageGenerationSessionSchemaDto = resolveMissingAsUndefined(z.object({
+  activityOrder: missingAsUndefined(ExperimentalImageGenerationActivityOrderSchemaDto),
   translation: missingAsUndefined(ExperimentalImageGenerationTranslationOverrideSchemaDto),
   assistantChatId: missingAsUndefined(ExperimentalImageGenerationIdSchemaDto),
   id: ExperimentalImageGenerationIdSchemaDto,
@@ -296,7 +329,8 @@ export type ExperimentalImageGenerationDraftDto = z.infer<typeof ExperimentalIma
 
 export type ExperimentalImageGenerationRequestDto = z.infer<typeof ExperimentalImageGenerationRequestSchemaDto>;
 
-export const ExperimentalImageGenerationRunSchemaDto = z.object({
+export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined(z.object({
+  acceptedOrder: missingAsUndefined(ExperimentalImageGenerationActivityOrderSchemaDto),
   id: ExperimentalImageGenerationIdSchemaDto,
   sessionId: ExperimentalImageGenerationIdSchemaDto,
   revision: ExperimentalImageGenerationRevisionSchemaDto,
@@ -310,7 +344,7 @@ export const ExperimentalImageGenerationRunSchemaDto = z.object({
     assetId: ExperimentalImageGenerationIdSchemaDto,
   }).strict()).max(256),
   execution: ExperimentalImageGenerationRunExecutionSchemaDto,
-}).strict().superRefine((run, context) => {
+}).strict()).superRefine((run, context) => {
   try {
     const seeds = planImageGenerationSeeds({ baseSeed: run.request.parameters.seed, count: run.seeds.length });
     if (seeds.some((seed, index) => seed !== run.seeds[index])) throw new Error('Seed plan differs from the accepted base seed.');

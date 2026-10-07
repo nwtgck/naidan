@@ -5,8 +5,8 @@ import { inspectionProgressSchema, type InspectionReport, type InventoryWorker }
 
 // This is an inactivity bound, not a maximum duration for a large model library.
 export const INSPECTION_STALL_MS = 60_000;
-export async function inspectImageInventory({ signal, onProgress, repositories, hostDirectories }: {
-  signal: AbortSignal, onProgress: InspectionReport, repositories?: LocalImageRepository[], hostDirectories?: HostImageDirectory[],
+export async function inspectImageInventory({ signal, onProgress, repositories, hostDirectories, repositoryIds }: {
+  signal: AbortSignal, onProgress: InspectionReport, repositories?: LocalImageRepository[], hostDirectories?: HostImageDirectory[], repositoryIds?: string[],
 }): Promise<ModelInventory> {
   signal.throwIfAborted();
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'image-model-inspection' });
@@ -35,7 +35,7 @@ export async function inspectImageInventory({ signal, onProgress, repositories, 
       try {
         onProgress({ progress: parsed.data });
       } catch { /* observational */ }
-    } }), hostDirectories), stopped.promise]);
+    } }), hostDirectories, repositoryIds), stopped.promise]);
   } finally {
     closed = true; clearTimeout(timer); signal.removeEventListener('abort', abort);
     worker.removeEventListener('error', crash); worker.removeEventListener('messageerror', crash);

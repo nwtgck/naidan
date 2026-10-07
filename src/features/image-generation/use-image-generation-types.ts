@@ -70,6 +70,7 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<I
   cancel(): void;
   forceCancel(): void;
   releaseModel(): void;
+  setRetainModel?({ retain }: { retain: boolean }): void;
   clearResults(): void;
   removePreview({ previewId }: { previewId: number }): void;
   clearPreviews(): void;

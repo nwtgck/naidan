@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createChatGenerationStream } from './create-chat-generation-stream';
 import { collectChatGeneration } from './collect-chat-generation';
 
@@ -28,4 +28,22 @@ describe('text-only generation consumers', () => {
     } }) });
     expect(text).toBe('partial'); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
+  it.each(['throws', 'rejects', 'stalls'] as const)('does not let a display observer that %s own stream consumption', async failure => {
+    const controller = new AbortController();
+    const observer = vi.fn(() => {
+      if (failure === 'throws') throw new Error('display');
+      if (failure === 'rejects') return Promise.reject(new Error('display'));
+      return new Promise<void>(() => {});
+    });
+    const { text, result } = await collectChatGeneration({ abortController: controller, onText: observer,
+      items: createChatGenerationStream({ signal: controller.signal, run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'hello' });
+        await writer.text({ type: 'text', text: ' world' });
+        return { type: 'finished', next: 'user' };
+      } }),
+    });
+    expect(text).toBe('hello world'); expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(controller.signal.aborted).toBe(false); expect(observer).toHaveBeenCalledWith({ text: 'hello world' });
+  });
+
 });

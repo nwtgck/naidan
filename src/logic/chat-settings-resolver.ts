@@ -103,6 +103,13 @@ function applyLmParameterOverrides({
   }
 }
 
+/** Layers are supplied from lowest to highest precedence. */
+export function resolveLmParameterLayers({ layers }: { layers: readonly (LmParameters | undefined)[] }): LmParameters | undefined {
+  const target: LmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } };
+  for (const source of layers) applyLmParameterOverrides({ target, source });
+  return normalizeLmParameters({ lmParameters: target });
+}
+
 function cloneResolvedLmParameters({
   lmParameters,
 }: {

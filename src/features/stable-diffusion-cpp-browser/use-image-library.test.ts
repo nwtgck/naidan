@@ -159,7 +159,7 @@ it('lets explicit history reuse await the initial scan without applying automati
   const h = harness({ entries, scan });
   const initial = h.library.refresh(); await entered.promise;
   h.block();
-  const preparing = h.library.prepareHistoryFiles();
+  const preparing = h.library.prepareHistoryFiles({ requiredFiles: [] });
   expect(scan).toHaveBeenCalledOnce();
   gate.resolve(actual); await Promise.all([initial, preparing]);
   expect(h.onSelection).not.toHaveBeenCalled(); expect(h.library.main.value).toBe('');
@@ -172,7 +172,7 @@ it('starts a local history preparation scan when needed and rejects read failure
     throw new Error('Local directory cannot be read');
   });
   const h = harness({ entries: [], scan }); h.block();
-  await expect(h.library.prepareHistoryFiles()).rejects.toThrow('Local directory cannot be read');
+  await expect(h.library.prepareHistoryFiles({ requiredFiles: [] })).rejects.toThrow('Local directory cannot be read');
   expect(h.list).toHaveBeenCalledOnce(); expect(h.onSelection).not.toHaveBeenCalled();
 });
 it('cancels an unresponsive injected read immediately and ignores its late rejection', async () => {
@@ -235,4 +235,51 @@ it('resolves benchmark component overrides independently and never replaces a mi
   const stale = h.library.benchmarkTargets({ selections }).find(target => target.id === first.id)!;
   expect(stale.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
   expect(stale.missing).toContain('vae'); expect(stale.models).toBeUndefined();
+});
+
+it('reuses resolved files across session restorations and only retries a missing reference once per inventory', async () => {
+  const entries = repositories(), h = harness({ entries, scan: undefined });
+  await h.library.refresh(); const file = entries[0]!.files[0]!.file;
+  const location = h.library.historyFileLocation({ file });
+  h.onSelection.mockClear();
+  for (let i = 0; i < 3; i++) await h.library.prepareHistoryFiles({ requiredFiles: [location] });
+  expect(h.list).toHaveBeenCalledOnce(); expect(h.onSelection).not.toHaveBeenCalled();
+  expect(h.library.findHistoryFile({ location })).toBe(file);
+  const missing = { ...location, size: location.size + 1 };
+  await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
+  await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
+  expect(h.list).toHaveBeenCalledTimes(2);
+  await h.library.refresh(); await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
+  expect(h.list).toHaveBeenCalledTimes(4);
+});
+
+it('keeps the exact main and component Files after an unrelated import, but refreshes them on explicit rescan', async () => {
+  const entries = repositories(), scan = vi.fn(scanImageRepositories);
+  const h = harness({ entries, scan }); await h.library.refresh();
+  const before = h.library.selectedModels()!;
+  // These are sparse fixture Files: copying their Blob bytes would lose the mocked tensor data.
+  const fresh = repositories();
+  const imported = { ...repositories()[0]!, id: 'user/imported' };
+  h.entries({ next: [...fresh, imported] });
+  const onSelectionCount = h.onSelection.mock.calls.length;
+  const inputFile = new File(['imported'], 'readme.txt');
+  Object.defineProperty(inputFile, 'webkitRelativePath', { value: 'imported/readme.txt' });
+  class TestInput {
+    files = [inputFile]; value = 'selected';
+  }
+  vi.stubGlobal('HTMLInputElement', TestInput);
+  try {
+    const event = new Event('change'); Object.defineProperty(event, 'target', { value: new TestInput() });
+    await h.library.importDirectory({ event });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  expect(scan.mock.calls.at(-1)?.[0].repositories.map(repository => repository.id)).toEqual(['user/imported']);
+  const after = h.library.selectedModels()!;
+  expect(after.map(model => model.slot)).toEqual(before.map(model => model.slot));
+  after.forEach((model, index) => expect(model.file).toBe(before[index]!.file));
+  expect(h.onSelection).toHaveBeenCalledTimes(onSelectionCount);
+  await h.library.refresh();
+  const rescanned = h.library.selectedModels()!;
+  rescanned.forEach((model, index) => expect(model.file).not.toBe(before[index]!.file));
 });

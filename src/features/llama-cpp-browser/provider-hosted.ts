@@ -1,4 +1,4 @@
-import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
+import type { ChatGenerationItem, LmOperationProgress, LmProvider } from '@/01-models/lm';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { createLlamaCppGeneration, createScopedGeneration } from './provider-generation';
 import type { LlamaCppBrowserService } from './service-contract';
@@ -16,8 +16,22 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
     return createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal }, generate: this.service.generate.bind(this.service) });
   }
 
-  async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
-    await this.service.runGenerationOperation({ signal, operation: async ({ scope }) => {
+  async runChatOperation({ signal, operation, onProgress }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
+    const notify = ({ progress }: { progress: LmOperationProgress }): void => {
+      try {
+        if (onProgress) void Promise.resolve(onProgress({ progress })).catch(() => undefined);
+      } catch { /* Display-only, independent of operation success. */ }
+    };
+    if (!signal?.aborted) notify({ progress: { phase: 'queued', completed: 0, total: 0 } });
+    await this.service.runGenerationOperation({ signal, onProgress({ progress }) {
+      if (signal?.aborted) return;
+      const { phase, completed, total } = progress;
+      switch (phase) {
+      case 'initializing': case 'loading': case 'prefill': case 'generating': notify({ progress: { phase, completed, total } }); break;
+      case 'importing': case 'decoding-audio': break;
+      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      }
+    }, operation: async ({ scope }) => {
       const owned = createScopedGeneration({ scope });
       let failure: { error: unknown } | undefined;
       try {

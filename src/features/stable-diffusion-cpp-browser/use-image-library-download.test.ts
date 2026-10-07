@@ -321,7 +321,7 @@ it('does not interrupt a history file read when another download is enqueued', a
   const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
   const h = harness({ initial: wanted, download: undefined });
   const reading = Promise.withResolvers<LocalImageRepository[]>(); h.list.mockReturnValueOnce(reading.promise);
-  const restoring = h.library.prepareHistoryFiles();
+  const restoring = h.library.prepareHistoryFiles({ requiredFiles: [] });
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
   const downloading = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
@@ -329,4 +329,24 @@ it('does not interrupt a history file read when another download is enqueued', a
   reading.resolve(wanted); await restoring; await downloading;
   expect(h.list).toHaveBeenCalledTimes(2);
   expect(h.library.downloadState.value).toBe('complete');
+});
+
+it('retains unrelated user Files after a completed catalog publication without relying on size or timestamp identity', async () => {
+  const files = selectedRecipeFiles({ recipe, selections: {} });
+  const initial = files.map(file => repository({ file, user: true }));
+  const h = harness({ initial, download: undefined }); await h.library.refresh();
+  const before = h.library.selectedModels()!;
+  const snapshots = initial.map(entry => ({ ...entry, files: entry.files.map(file => ({ ...file, file: new File([file.file], file.file.name, { lastModified: file.file.lastModified }) })) }));
+  h.downloader.mockImplementation(async () => {
+    h.update({ repositories: [...snapshots, ...files.map(file => repository({ file, user: false }))] });
+    h.block();
+  });
+  await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  h.unblock();
+  expect(h.library.downloadState.value).toBe('complete');
+  const after = h.library.selectedModels()!;
+  expect(after).toHaveLength(before.length);
+  after.forEach((model, index) => expect(model.file).toBe(before[index]!.file));
+  await h.library.refresh();
+  h.library.selectedModels()!.forEach((model, index) => expect(model.file).not.toBe(before[index]!.file));
 });
