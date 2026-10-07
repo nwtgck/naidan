@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__discard_warning = (): string => "¿Descartar esta imagen recuperada de la memoria? Las imágenes ya guardadas no se eliminarán. Espera a que termine cualquier guardado en curso.";

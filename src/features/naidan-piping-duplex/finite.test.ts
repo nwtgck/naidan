@@ -84,6 +84,42 @@ it('an oversized body is cancelled, not returned as a partial success', async ()
   expect(vi.getTimerCount()).toBe(0);
 });
 
+for (const [status, kind] of [[200, 'transient'], [403, 'fatal'], [503, 'transient']] as const) {
+  for (const cleanupOutcome of ['resolved', 'rejected'] as const) {
+    it(`HTTP ${status} retains POST ownership until ${cleanupOutcome} response cancellation finishes`, async () => {
+      const cleanup = Promise.withResolvers<void>(), cancel = vi.fn(() => cleanup.promise);
+      const response = new Response(new ReadableStream<Uint8Array>({ start(controller) {
+        if (status === 200) controller.enqueue(new Uint8Array(8193));
+      }, cancel }), { status });
+      vi.mocked(fetch).mockResolvedValueOnce(response);
+      const instance = endpoint(), signal = new AbortController().signal;
+      let settled = false;
+      const first = instance.send({ route: 'slot', bytes: new Uint8Array([1]), signal }).then(() => {
+        settled = true;
+      }, (error: unknown) => {
+        settled = true; return error;
+      });
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cancel).toHaveBeenCalledOnce(); expect(settled).toBe(false);
+        await expect(instance.send({ route: 'slot', bytes: new Uint8Array([1]), signal })).rejects.toThrow('Concurrent');
+        await expect(instance.repair({ route: 'slot', signal })).rejects.toThrow('Concurrent');
+        expect(fetch).toHaveBeenCalledOnce();
+        if (cleanupOutcome === 'resolved') cleanup.resolve(); else cleanup.reject(new Error('Cleanup failed'));
+        expect(await first).toMatchObject({ kind });
+        expect(response.body?.locked).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+        vi.mocked(fetch).mockResolvedValueOnce(new Response('sent'));
+        await instance.send({ route: 'slot', bytes: new Uint8Array([1]), signal });
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        cleanup.resolve(); await first;
+      }
+    });
+  }
+}
+
 it('a broken response body cannot publish its already-read prefix', async () => {
   let pulls = 0;
   const response = new Response(new ReadableStream<Uint8Array>({
@@ -102,8 +138,8 @@ for (const [diagnostic, kind] of [
   ["[ERROR] Another sender has been connected on '/slot'.", 'waiting-sender'],
   ["[ERROR] Connection on '/slot' has been established already.", 'established'],
   ['[ERROR] The number of receivers has reached limits.', 'waiting-receiver'],
-  ["[ERROR] Another sender has been connected on '/other'.", 'fatal'],
-  ['Bad Request', 'fatal'],
+  ["[ERROR] Another sender has been connected on '/other'.", 'transient'],
+  ['Bad Request', 'transient'],
 ] as const) {
   it(`classifies a bounded 400 without guessing from the status alone: ${diagnostic}`, async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(diagnostic, { status: 400 }));

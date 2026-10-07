@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toImageGenerationSessionId, toHostModelDirectoryId } from '@/01-models/ids';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
-import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationDraftSchemaDto, ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import * as service from './image-generation';
 import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
@@ -25,6 +25,15 @@ describe('session draft checkpoints', () => {
     expect(writeInputs).toHaveBeenCalledOnce();
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(h.draft);
     expect((await service.listImageGenerationRuns({ store: h.store, sessionId: h.session.id })).items).toEqual([]);
+  });
+  it('stores a pending inference location without relaxing the accepted run contract', async () => {
+    const h = await setup(); h.draft.inferenceLocation = { kind: 'naidan_rpc', connection: undefined };
+    h.draft.request.runtime = undefined; h.draft.request.models = []; h.draft.request.loras = []; h.draft.loraStates = [];
+    await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
+    expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(h.draft);
+    const request = imageGenerationDraftToDto({ draft: h.draft }).request;
+    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ id: 'run-aa', sessionId: h.session.id, revision: 0, createdAt: 1, request: { ...request, parameters: { ...request.parameters, prompt: 'ready', seed: '42' } }, seeds: ['42'], sources: [], execution: { type: 'queued' } }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(false);
   });
   it('preserves user-selected components, explicit none and disabled adapter strength', async () => {
     const h = await setup();

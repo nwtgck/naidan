@@ -160,3 +160,22 @@ describe('permanent output deletion', () => {
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('deleted');
   });
 });
+
+it('preserves recovery confirmation through canonical storage and refuses its resurrection after deletion', async () => {
+  const h = await ready({ count: 1, finish: false });
+  // Use a second run so the original immutable successful asset is never rewritten.
+  const run = generationRunFixture({ id: 'run-recovered', sessionId: h.session.id, count: 1, seed: '99' });
+  await service.createImageGenerationRun({ store: h.store, run, writeInputs: async () => {} });
+  await service.updateImageGenerationRunExecution({ store: h.store, sessionId: h.session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
+  const asset = generationAssetFixture({ id: 'asset-recovered', run, index: 0 });
+  asset.result = { ...asset.result, confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined }; asset.previews = [];
+  await service.commitImageGenerationAsset({ store: h.store, asset, writeImages: async () => {} });
+  const key = { store: h.store, sessionId: h.session.id, assetId: asset.id };
+  expect((await service.loadImageGenerationAsset(key))?.result.confirmation).toBe('unconfirmed');
+  await service.updateImageGenerationRunExecution({ store: h.store, sessionId: h.session.id, runId: run.id, expectedRevision: 1, execution: { type: 'interrupted', finishedAt: 12 } });
+  expect((await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: run.id }))[0]?.confirmation).toBe('unconfirmed');
+  await deleteImageGenerationAsset({ ...key, expectedRevision: 0, removeBinary: async () => {} });
+  const writeImages = vi.fn();
+  await expect(service.commitImageGenerationAsset({ store: h.store, asset, writeImages })).rejects.toThrow();
+  expect(writeImages).not.toHaveBeenCalled();
+});

@@ -20,7 +20,113 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/de';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/de';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/de';
+import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/messages/ImageRecoveredOutputs__managed_by_pending_run/de';
+import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/de';
+import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/de';
+import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/de';
+import { ImagePendingHistory__save_without_generating_again } from '@/strings/messages/ImagePendingHistory__save_without_generating_again/de';
+import { ImagePendingHistory__unsaved_images } from '@/strings/messages/ImagePendingHistory__unsaved_images/de';
+import { ImagePendingRuns__completion_unconfirmed } from '@/strings/messages/ImagePendingRuns__completion_unconfirmed/de';
+import { ImageGenerationWorkspace__generate_without_saving } from '@/strings/messages/ImageGenerationWorkspace__generate_without_saving/de';
+import { ImagePendingRuns__discard_warning } from '@/strings/messages/ImagePendingRuns__discard_warning/de';
+import { ImagePendingRuns__discard_pending_save } from '@/strings/messages/ImagePendingRuns__discard_pending_save/de';
+import { ImagePendingRuns__download_image } from '@/strings/messages/ImagePendingRuns__download_image/de';
+import { ImagePendingRuns__run_information_pending } from '@/strings/messages/ImagePendingRuns__run_information_pending/de';
+import { ImagePendingRuns__save_without_generating_again } from '@/strings/messages/ImagePendingRuns__save_without_generating_again/de';
+import { ImagePendingRuns__unsaved_runs } from '@/strings/messages/ImagePendingRuns__unsaved_runs/de';
+import { ImageRecoveredOutputs__discard_warning } from '@/strings/messages/ImageRecoveredOutputs__discard_warning/de';
+import { ImageRecoveredOutputs__discard_image } from '@/strings/messages/ImageRecoveredOutputs__discard_image/de';
+import { ImageRecoveredOutputs__download_image } from '@/strings/messages/ImageRecoveredOutputs__download_image/de';
+import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/de';
+import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/de';
+import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/de';
+import { ImageInferenceLocation__refresh_connections } from '@/strings/messages/ImageInferenceLocation__refresh_connections/de';
+import { ImageInferenceLocation__use_configuration } from '@/strings/messages/ImageInferenceLocation__use_configuration/de';
+import { ImageInferenceLocation__connect_in_rpc_settings } from '@/strings/messages/ImageInferenceLocation__connect_in_rpc_settings/de';
+import { ImageInferenceLocation__list_remote_models } from '@/strings/messages/ImageInferenceLocation__list_remote_models/de';
+import { ImageInferenceLocation__remote_model } from '@/strings/messages/ImageInferenceLocation__remote_model/de';
+import { ImageInferenceLocation__this_device } from '@/strings/messages/ImageInferenceLocation__this_device/de';
+import { ImageInferenceLocation__compute_with } from '@/strings/messages/ImageInferenceLocation__compute_with/de';
+import { ImageInferenceLocation__explicit_model_configuration } from '@/strings/messages/ImageInferenceLocation__explicit_model_configuration/de';
+import { ImageInferenceLocation__remote_models_are_read_only } from '@/strings/messages/ImageInferenceLocation__remote_models_are_read_only/de';
 import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/de';
+import { naidanRpc__enable_first } from '@/strings/messages/naidanRpc__enable_first/de';
+import { naidanRpc__methods_empty } from '@/strings/messages/naidanRpc__methods_empty/de';
+import { naidanRpc__use_help } from '@/strings/messages/naidanRpc__use_help/de';
+import { naidanRpc__manage } from '@/strings/messages/naidanRpc__manage/de';
+import { naidanRpc__choose_connection } from '@/strings/messages/naidanRpc__choose_connection/de';
+import { naidanRpc__no_connections } from '@/strings/messages/naidanRpc__no_connections/de';
+import { naidanRpc__checking_stop_status } from '@/strings/messages/naidanRpc__checking_stop_status/de';
+import { naidanRpc__new_calls_blocked_waiting_for_completion } from '@/strings/messages/naidanRpc__new_calls_blocked_waiting_for_completion/de';
+import { naidanRpc__rpc_connections_stopped } from '@/strings/messages/naidanRpc__rpc_connections_stopped/de';
+import { naidanRpc__stop_not_confirmed_check_managing_tab } from '@/strings/messages/naidanRpc__stop_not_confirmed_check_managing_tab/de';
+import { naidanRpc__check_stop_again } from '@/strings/messages/naidanRpc__check_stop_again/de';
+import { naidanRpc__failed } from '@/strings/messages/naidanRpc__failed/de';
+import { naidanRpc__disconnect_confirm } from '@/strings/messages/naidanRpc__disconnect_confirm/de';
+import { naidanRpc__forget_confirm } from '@/strings/messages/naidanRpc__forget_confirm/de';
+import { naidanRpc__forget } from '@/strings/messages/naidanRpc__forget/de';
+import { naidanRpc__save_connection } from '@/strings/messages/naidanRpc__save_connection/de';
+import { naidanRpc__label } from '@/strings/messages/naidanRpc__label/de';
+import { NaidanRpcTab__connect_automatically_on_startup } from '@/strings/messages/NaidanRpcTab__connect_automatically_on_startup/de';
+import { NaidanRpcTab__automatic_connection_help } from '@/strings/messages/NaidanRpcTab__automatic_connection_help/de';
+import { NaidanRpcTab__save_with_persistent_storage_first } from '@/strings/messages/NaidanRpcTab__save_with_persistent_storage_first/de';
+import { NaidanRpcTab__save_name } from '@/strings/messages/NaidanRpcTab__save_name/de';
+import { RpcPeerProvision__available_from_peer } from '@/strings/messages/RpcPeerProvision__available_from_peer/de';
+import { RpcPeerProvision__connect_to_check } from '@/strings/messages/RpcPeerProvision__connect_to_check/de';
+import { RpcPeerProvision__checking_provided_functions } from '@/strings/messages/RpcPeerProvision__checking_provided_functions/de';
+import { RpcPeerProvision__could_not_check } from '@/strings/messages/RpcPeerProvision__could_not_check/de';
+import { RpcPeerProvision__not_provided } from '@/strings/messages/RpcPeerProvision__not_provided/de';
+import { RpcPeerProvision__provided } from '@/strings/messages/RpcPeerProvision__provided/de';
+import { RpcPeerProvision__partially_provided } from '@/strings/messages/RpcPeerProvision__partially_provided/de';
+import { RpcPeerProvision__chat_inference } from '@/strings/messages/RpcPeerProvision__chat_inference/de';
+import { RpcPeerProvision__image_generation } from '@/strings/messages/RpcPeerProvision__image_generation/de';
+import { NaidanRpcTab__method_details } from '@/strings/messages/NaidanRpcTab__method_details/de';
+import { NaidanRpcTab__connection_check_paused } from '@/strings/messages/NaidanRpcTab__connection_check_paused/de';
+import { NaidanRpcTab__checking_connection } from '@/strings/messages/NaidanRpcTab__checking_connection/de';
+import { NaidanRpcTab__partially_enabled } from '@/strings/messages/NaidanRpcTab__partially_enabled/de';
+import { naidanRpc__remember_help } from '@/strings/messages/naidanRpc__remember_help/de';
+import { naidanRpc__remember } from '@/strings/messages/naidanRpc__remember/de';
+import { naidanRpc__reject } from '@/strings/messages/naidanRpc__reject/de';
+import { naidanRpc__matches } from '@/strings/messages/naidanRpc__matches/de';
+import { naidanRpc__compare_help } from '@/strings/messages/naidanRpc__compare_help/de';
+import { naidanRpc__compare } from '@/strings/messages/naidanRpc__compare/de';
+import { naidanRpc__start } from '@/strings/messages/naidanRpc__start/de';
+import { naidanRpc__responder } from '@/strings/messages/naidanRpc__responder/de';
+import { naidanRpc__initiator } from '@/strings/messages/naidanRpc__initiator/de';
+import { naidanRpc__code_help } from '@/strings/messages/naidanRpc__code_help/de';
+import { naidanRpc__code } from '@/strings/messages/naidanRpc__code/de';
+import { naidanRpc__disabled } from '@/strings/messages/naidanRpc__disabled/de';
+import { naidanRpc__remove_header } from '@/strings/messages/naidanRpc__remove_header/de';
+import { naidanRpc__header_value } from '@/strings/messages/naidanRpc__header_value/de';
+import { naidanRpc__header_name } from '@/strings/messages/naidanRpc__header_name/de';
+import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/de';
+import { naidanRpc__headers } from '@/strings/messages/naidanRpc__headers/de';
+import { naidanRpc__server } from '@/strings/messages/naidanRpc__server/de';
+import { naidanRpc__transport } from '@/strings/messages/naidanRpc__transport/de';
+import { naidanRpc__native_unavailable } from '@/strings/messages/naidanRpc__native_unavailable/de';
+import { naidanRpc__saving } from '@/strings/messages/naidanRpc__saving/de';
+import { naidanRpc__methods_pending } from '@/strings/messages/naidanRpc__methods_pending/de';
+import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/de';
+import { naidanRpc__images } from '@/strings/messages/naidanRpc__images/de';
+import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/de';
+import { naidanRpc__provide_help } from '@/strings/messages/naidanRpc__provide_help/de';
+import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/de';
+import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/de';
+import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/de';
+import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/de';
+import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/de';
+import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/de';
+import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/de';
+import { naidanRpc__disconnect } from '@/strings/messages/naidanRpc__disconnect/de';
+import { naidanRpc__connect } from '@/strings/messages/naidanRpc__connect/de';
+import { naidanRpc__refresh } from '@/strings/messages/naidanRpc__refresh/de';
+import { naidanRpc__new_connection } from '@/strings/messages/naidanRpc__new_connection/de';
+import { naidanRpc__connections } from '@/strings/messages/naidanRpc__connections/de';
+import { naidanRpc__feature_details } from '@/strings/messages/naidanRpc__feature_details/de';
+import { naidanRpc__summary } from '@/strings/messages/naidanRpc__summary/de';
+import { naidanRpc__disable } from '@/strings/messages/naidanRpc__disable/de';
+import { naidanRpc__enable } from '@/strings/messages/naidanRpc__enable/de';
+import { naidanRpc__title } from '@/strings/messages/naidanRpc__title/de';
 import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/de';
 import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/de';
 import { imageGeneration__show_connected_chat } from '@/strings/messages/imageGeneration__show_connected_chat/de';
@@ -2602,6 +2708,21 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  ImageRecoveredOutputs__discard_warning,
+  ImageRecoveredOutputs__discard_image,
+  ImageRecoveredOutputs__download_image,
+  ImageRecoveredOutputs__recovery_explanation,
+  ImageRecoveredOutputs__unconfirmed,
+  ImageRecoveredOutputs__unconfirmed_images,
+  ImageInferenceLocation__refresh_connections,
+  ImageInferenceLocation__use_configuration,
+  ImageInferenceLocation__connect_in_rpc_settings,
+  ImageInferenceLocation__list_remote_models,
+  ImageInferenceLocation__remote_model,
+  ImageInferenceLocation__this_device,
+  ImageInferenceLocation__compute_with,
+  ImageInferenceLocation__explicit_model_configuration,
+  ImageInferenceLocation__remote_models_are_read_only,
   imageGeneration__session_deletion_pending,
   imageGeneration__session_unavailable,
   imageGeneration__finish_session_work_before_deleting,
@@ -5109,4 +5230,95 @@ export const catalog = {
   imageGeneration__choose_chat_help,
   imageGeneration__close_chat,
   imageGeneration__open_assistant_chat,
+  naidanRpc__title,
+  naidanRpc__enable,
+  naidanRpc__disable,
+  naidanRpc__summary,
+  naidanRpc__feature_details,
+  naidanRpc__connections,
+  naidanRpc__new_connection,
+  naidanRpc__refresh,
+  naidanRpc__connect,
+  naidanRpc__disconnect,
+  naidanRpc__disconnected,
+  naidanRpc__connecting,
+  naidanRpc__connected,
+  naidanRpc__stopping,
+  naidanRpc__temporary,
+  naidanRpc__saved,
+  naidanRpc__provide,
+  naidanRpc__provide_help,
+  naidanRpc__chat,
+  naidanRpc__images,
+  naidanRpc__apply_methods,
+  naidanRpc__methods_pending,
+  naidanRpc__saving,
+  naidanRpc__native_unavailable,
+  naidanRpc__transport,
+  naidanRpc__server,
+  naidanRpc__headers,
+  naidanRpc__add_header,
+  naidanRpc__header_name,
+  naidanRpc__header_value,
+  naidanRpc__remove_header,
+  naidanRpc__code,
+  naidanRpc__disabled,
+  naidanRpc__code_help,
+  naidanRpc__initiator,
+  naidanRpc__responder,
+  naidanRpc__start,
+  naidanRpc__compare,
+  naidanRpc__compare_help,
+  naidanRpc__matches,
+  naidanRpc__reject,
+  naidanRpc__remember,
+  naidanRpc__remember_help,
+  naidanRpc__label,
+  NaidanRpcTab__connect_automatically_on_startup,
+  NaidanRpcTab__automatic_connection_help,
+  NaidanRpcTab__save_with_persistent_storage_first,
+  NaidanRpcTab__save_name,
+  RpcPeerProvision__available_from_peer,
+  RpcPeerProvision__connect_to_check,
+  RpcPeerProvision__checking_provided_functions,
+  RpcPeerProvision__could_not_check,
+  RpcPeerProvision__not_provided,
+  RpcPeerProvision__provided,
+  RpcPeerProvision__partially_provided,
+  RpcPeerProvision__chat_inference,
+  RpcPeerProvision__image_generation,
+  NaidanRpcTab__method_details,
+  NaidanRpcTab__connection_check_paused,
+  NaidanRpcTab__checking_connection,
+  NaidanRpcTab__partially_enabled,
+  naidanRpc__save_connection,
+  naidanRpc__forget,
+  naidanRpc__forget_confirm,
+  naidanRpc__disconnect_confirm,
+  naidanRpc__checking_stop_status,
+  naidanRpc__new_calls_blocked_waiting_for_completion,
+  naidanRpc__rpc_connections_stopped,
+  naidanRpc__stop_not_confirmed_check_managing_tab,
+  naidanRpc__check_stop_again,
+  naidanRpc__failed,
+  naidanRpc__no_connections,
+  naidanRpc__choose_connection,
+  naidanRpc__manage,
+  naidanRpc__use_help,
+  naidanRpc__methods_empty,
+  naidanRpc__enable_first,
+  ImageRecoveredOutputs__managed_by_pending_run,
+  ImagePendingHistory__discard_warning,
+  ImagePendingHistory__discard,
+  ImagePendingHistory__download_image,
+  ImagePendingHistory__save_without_generating_again,
+  ImagePendingHistory__unsaved_images,
+  ImagePendingRuns__completion_unconfirmed,
+  ImageGenerationWorkspace__generate_without_saving,
+  ImagePendingRuns__discard_warning,
+  ImagePendingRuns__discard_pending_save,
+  ImagePendingRuns__download_image,
+  ImagePendingRuns__run_information_pending,
+  ImagePendingRuns__save_without_generating_again,
+  ImagePendingRuns__unsaved_runs,
 } satisfies Strings;

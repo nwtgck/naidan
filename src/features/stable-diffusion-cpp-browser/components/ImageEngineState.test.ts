@@ -2,9 +2,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import type { ImageEngineSnapshot } from '@/features/stable-diffusion-cpp-browser/engine-state';
-import type { ImageEngineStateView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageEngineStateView } from '@/features/image-generation/use-image-generation-types';
 import ImageEngineState from './ImageEngineState.vue';
 
 let wrapper: VueWrapper | undefined;

@@ -1,0 +1,1 @@
+export const ImageInferenceLocation__remote_models_are_read_only = (): string => "Nur vorhandene Modelldateien auf dem anderen Gerät können ausgewählt werden. Downloads, Importe und Änderungen an dessen Einstellungen werden bewusst nicht angeboten.";

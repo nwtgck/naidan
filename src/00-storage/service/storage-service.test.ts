@@ -12,6 +12,8 @@ vi.mock('@/strings', () => ({
 const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   mockLocalProvider: {
     init: vi.fn().mockResolvedValue(undefined),
+    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
@@ -23,6 +25,8 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   },
   mockOpfsProvider: {
     init: vi.fn().mockResolvedValue(undefined),
+    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),

@@ -31,10 +31,12 @@ import { IStorageProvider } from './interface';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
+import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
 const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
+const KEY_NAIDAN_RPC_REGISTRY = `${LSP_STORAGE_PREFIX}experimental-naidan-rpc-connections`;
 const KEY_META_PREFIX = `${LSP_STORAGE_PREFIX}chat_meta:`;
 const KEY_GROUP_PREFIX = `${LSP_STORAGE_PREFIX}chat_group:`;
 const KEY_CONTENT_PREFIX = `${LSP_STORAGE_PREFIX}chat_content:`;
@@ -47,6 +49,15 @@ const KEY_CONTENT_PREFIX = `${LSP_STORAGE_PREFIX}chat_content:`;
 export class LocalStorageProvider extends IStorageProvider {
   readonly canPersistBinary = false;
   private blobCache = new Map<AttachmentId, Blob>();
+
+  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+    const raw = localStorage.getItem(KEY_NAIDAN_RPC_REGISTRY);
+    return raw === null ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(raw));
+  }
+  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+    if (registry === undefined) localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
+    else localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));
+  }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
     for (const part of iterateAttachmentParts({ nodes })) {

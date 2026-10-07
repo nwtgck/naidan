@@ -1,0 +1,1 @@
+export const ImagePendingRuns__save_without_generating_again = (): string => "Reintenta guardar en el almacenamiento original sin volver a generar. Los datos sin guardar se pierden al cerrar esta pestaña.";

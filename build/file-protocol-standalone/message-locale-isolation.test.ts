@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const roots: string[] = [];
 // Include the shared chat header: it is reachable even when browser image
 // generation itself is disabled in a standalone build. Keep real message bytes.
-const keys = ['ChatPaneHeader__model_and_chat_settings', 'imageGeneration__copy_prompt', 'imageGeneration__export_notice'] as const;
+const keys = ['ChatPaneHeader__model_and_chat_settings', 'imageGeneration__copy_prompt', 'imageGeneration__export_notice', 'naidanRpc__remember_help', 'ImageRecoveredOutputs__managed_by_pending_run'] as const;
 
 function writeFile({ root, file, source }: { root: string; file: string; source: string }): void {
   const filePath = path.join(root, file);
@@ -42,6 +42,7 @@ export const catalog = { ${keys.join(', ')} };
 import { lazyStrings } from '@/strings';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/locale-fixture';
 globalThis.headerLabel = () => lazyStrings.ChatPaneHeader__model_and_chat_settings();
+globalThis.rpcLabels = () => [lazyStrings.naidanRpc__remember_help(), lazyStrings.ImageRecoveredOutputs__managed_by_pending_run()];
 globalThis.loadImageActions = () => import('./image-actions');
 globalThis.createFixtureWorker = createStandaloneWorker;
 ` });

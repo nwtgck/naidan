@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
-import type { ImageGenerationView } from './use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 export function useImageBenchmark({ generation: _generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
   const form = createBenchmarkForm();
   return { ...form, available: computed(() => false), targets: computed(() => []), busy: computed(() => false), canStart: computed(() => false), plannedRuns: computed(() => 0),

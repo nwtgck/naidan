@@ -726,6 +726,7 @@ describe('Settings Mapping', () => {
         unreadable: undefined,
         hostModelDirectories: undefined,
         browserImageGeneration: undefined,
+        naidanRpc: undefined,
       },
     };
 

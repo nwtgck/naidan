@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import ImageModelPicker from './ImageModelPicker.vue';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 import { lazyStrings } from '@/strings';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { SavedImageLoraChoice } from '@/features/stable-diffusion-cpp-browser/library-view';

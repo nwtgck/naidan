@@ -1,4 +1,4 @@
-import { getImageGenerationToolsForChat } from '@/features/stable-diffusion-cpp-browser/session/assistant-registry';
+import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
@@ -95,6 +95,7 @@ function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): bool
   switch (endpoint.type) {
   case 'browser_provided_lm':
     return true;
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'llama_cpp_browser':
@@ -123,7 +124,7 @@ function resolveGenerationModel({
   // Local file identities need not be present in the human-readable model list.
   // Missing local files are an error, not permission to use another model.
   switch (endpointType) {
-  case 'llama_cpp_browser': return preferredModel;
+  case 'naidan_rpc': case 'llama_cpp_browser': return preferredModel;
   case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case undefined: break;
   default: { const exhaustive: never = endpointType; throw new Error(String(exhaustive)); }
   }
@@ -219,6 +220,8 @@ export async function sendMessageToTargetChat({
           url: endpoint.url,
           type: endpoint.type,
         };
+      case 'naidan_rpc':
+        return { hasReachableEndpoint: endpoint.connectionId !== undefined, url: undefined, type: endpoint.type };
       case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':

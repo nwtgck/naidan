@@ -1,23 +1,31 @@
 import { onScopeDispose, watch, type Ref } from 'vue';
-import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, type BrowserImageGenerationSettings, type Settings } from '@/01-models/types';
+import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, type BrowserImageGenerationSettings, type BrowserImageModelSelection, type Settings } from '@/01-models/types';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import { parametersSchema, previewSettingsSchema } from './types';
-import type { createImageForm } from './form';
+import type { createImageForm } from '@/features/image-generation/form';
 import type { ImageLibraryView } from './library-view';
 
 /** The editor stores preferences, never a draft prompt, image or temporary File. */
-export function useImagePreferences({ settings, initialized, updateExperimental, form, seedMode, historyEnabled, library, restoring, restored, failed }: {
+export function useImagePreferences({ settings, initialized, captureStorage, updateForStorage, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed }: {
   settings: Readonly<Ref<Settings>>,
   initialized: Readonly<Ref<boolean>>,
-  updateExperimental: ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => Promise<void>,
+  captureStorage(): () => boolean,
+  updateForStorage: ({ isCurrent, updater }: { isCurrent(): boolean, updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => Promise<'saved' | 'changed'>,
   form: ReturnType<typeof createImageForm>, seedMode: Ref<'random' | 'fixed'>, historyEnabled: Ref<boolean>,
-  library: ImageLibraryView, restoring: Ref<boolean>,
+  library: ImageLibraryView, localModels: Readonly<Ref<boolean>>, restoring: Ref<boolean>,
   restored: ({ missing, missingInactive }: { missing: string[], missingInactive: string[] }) => void,
   failed: ({ error }: { error: unknown }) => void,
-}): void {
+}) {
   let disposed = false, hydrated = false, writing = false;
   let previous: BrowserImageGenerationSettings = {};
   let pending: BrowserImageGenerationSettings = {};
+  let deferredModelSelection: BrowserImageModelSelection | undefined;
+  let storageOwner: (() => boolean) | undefined;
+  function invalidate({ owner }: { owner: (() => boolean) | undefined }): void {
+    if (storageOwner !== owner) return;
+    storageOwner = undefined; hydrated = false; pending = {};
+    deferredModelSelection = undefined; restoring.value = false;
+  }
   const defaults = DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS;
   function snapshot(): BrowserImageGenerationSettings {
     const parameters = form.parameters.value;
@@ -54,19 +62,32 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
     };
   }
   async function save(): Promise<void> {
-    if (writing || !Object.keys(pending).length) return;
+    if (writing || !storageOwner || !Object.keys(pending).length) return;
+    const owner = storageOwner;
+    if (!owner()) {
+      invalidate({ owner }); return;
+    }
     writing = true;
     const patch = pending; pending = {};
     try {
       // The updater executes against the latest settings under the existing
       // storage lock, preserving concurrent locale/host-directory changes.
-      await updateExperimental({ updater: ({ experimental }) => ({ ...experimental,
+      const outcome = await updateForStorage({ isCurrent: owner, updater: ({ experimental }) => ({ ...experimental,
         browserImageGeneration: merge({ base: experimental?.browserImageGeneration, patch }),
       }) });
+      switch (outcome) {
+      case 'saved': if (!owner()) invalidate({ owner }); break;
+      case 'changed': invalidate({ owner }); break;
+      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      }
     } catch (error) {
-      pending = merge({ base: patch, patch: pending });
-      failed({ error });
-      return;
+      if (!owner()) {
+        invalidate({ owner });
+      } else {
+        pending = merge({ base: patch, patch: pending });
+        failed({ error });
+        return;
+      }
     } finally {
       writing = false;
     }
@@ -74,7 +95,7 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
     if (Object.keys(pending).length) void save();
   }
   watch(snapshot, value => {
-    if (!hydrated || restoring.value || disposed) return;
+    if (!hydrated || restoring.value || disposed || !storageOwner?.()) return;
     const patch: BrowserImageGenerationSettings = {};
     // This is a partial patch: absent/invalid draft fields leave their last
     // valid stored values intact rather than resetting the entire group.
@@ -85,12 +106,18 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
     if (!Object.keys(patch).length) return;
     pending = merge({ base: pending, patch }); void save();
   }, { deep: true });
-  watch(initialized, async ready => {
-    if (!ready || hydrated || restoring.value || disposed) return;
+  watch([initialized, settings], async ([ready]) => {
+    if (disposed) return;
+    if (!ready) {
+      invalidate({ owner: storageOwner }); return;
+    }
+    if (storageOwner?.() && (hydrated || restoring.value)) return;
+    invalidate({ owner: storageOwner });
+    const owner = captureStorage(); storageOwner = owner;
     restoring.value = true;
     try {
       const saved = settings.value.experimental?.browserImageGeneration;
-      const { width, height, seedMode: savedSeedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = saved ?? {};
+      const { width, height, seedMode: savedSeedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation: _inferenceLocation, remoteModelEditors: _remoteModelEditors, preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = saved ?? {};
       unhandled satisfies Record<PropertyKey, never>;
       form.parameters.value = { ...form.parameters.value, width: width ?? defaults.width, height: height ?? defaults.height,
         seed: seed ?? defaults.seed, bf16WeightType: bf16WeightType ?? defaults.bf16WeightType };
@@ -108,26 +135,54 @@ export function useImagePreferences({ settings, initialized, updateExperimental,
       case 'host': library.hostDirectories.destination.value = idToRaw({ id: destination.directoryId }); break;
       default: { const exhaustive: never = destination; throw new Error(String(exhaustive)); }
       }
-      if (modelSelection) {
+      deferredModelSelection = modelSelection;
+      if (modelSelection && localModels.value) {
         // Suppress first-inventory auto-selection before scanning local files.
         library.useManualFiles(); await library.prepareHistoryFiles();
-        if (disposed) return;
+        if (disposed || storageOwner !== owner || !owner()) return;
         const result = library.restoreModelSelection({ selection: modelSelection });
         form.loras.value = result.loras;
         restored({ missing: result.missing, missingInactive: result.missingInactive });
+        deferredModelSelection = undefined;
       }
       previous = snapshot(); hydrated = true;
     } catch (error) {
+      if (storageOwner !== owner || !owner()) return;
       if (!disposed) failed({ error });
       // Keep the editor usable and permit subsequent explicit preference edits.
       previous = snapshot(); hydrated = true;
     } finally {
-      restoring.value = false;
+      if (storageOwner === owner) restoring.value = false;
     }
-  }, { immediate: true });
+  }, { immediate: true, deep: true });
+  watch(localModels, async local => {
+    if (!local || !hydrated || !deferredModelSelection || restoring.value || disposed || !storageOwner?.()) return;
+    const selection = deferredModelSelection;
+    const owner = storageOwner;
+    restoring.value = true;
+    try {
+      library.useManualFiles(); await library.prepareHistoryFiles();
+      if (disposed || storageOwner !== owner || !owner()) return;
+      const result = library.restoreModelSelection({ selection });
+      form.loras.value = result.loras;
+      restored({ missing: result.missing, missingInactive: result.missingInactive });
+      deferredModelSelection = undefined; previous = snapshot();
+    } catch (error) {
+      if (!disposed && storageOwner === owner && owner()) failed({ error });
+    } finally {
+      if (storageOwner === owner) restoring.value = false;
+    }
+  });
   onScopeDispose(() => {
     disposed = true;
   });
+  return {
+    discardDeferredModelSelection(): void {
+      // A session or history request owns its explicit local configuration.
+      deferredModelSelection = undefined;
+    },
+    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
+  };
 }
 export const TEST_ONLY = {
 };

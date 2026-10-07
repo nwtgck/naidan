@@ -1,7 +1,9 @@
+import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+import { ExperimentalImageGenerationRuntimeSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationModelFile, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import { idToRaw, toBinaryObjectId, toHostModelDirectoryId, toImageGenerationId } from '@/01-models/ids';
 import { exactObject } from '@/utils/exact-object';
-import type { ExperimentalImageGenerationDto, ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental.dto';
+import type { ExperimentalImageGenerationDto, ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 
 type ModelFileDto = ExperimentalImageGenerationDto['request']['models'][number]['file'];
 
@@ -23,14 +25,13 @@ function fileToDto({ file }: { file: ImageGenerationModelFile }): ModelFileDto {
   }
 }
 
-export function imageGenerationRequestToDomain({ request }: { request: ExperimentalImageGenerationDto['request'] }): ImageGenerationRecord['request'] {
-  const { models, loras, imageInputs, parameters, preview, runtime, ...requestMetadata } = request;
+export function imageGenerationRequestBodyToDomain({ request }: { request: Omit<ExperimentalImageGenerationDto['request'], 'runtime'> }): Omit<ImageGenerationRecord['request'], 'runtime'> {
+  const { models, loras, imageInputs, parameters, preview, ...requestMetadata } = request;
   const { initImage, referenceImages, ...inputMetadata } = imageInputs;
-  return exactObject<ImageGenerationRecord['request']>()({
+  return exactObject<Omit<ImageGenerationRecord['request'], 'runtime'>>()({
     ...requestMetadata,
     parameters: exactObject<ImageGenerationRecord['request']['parameters']>()({ ...parameters }),
     preview: exactObject<ImageGenerationRecord['request']['preview']>()({ ...preview }),
-    runtime: exactObject<ImageGenerationRecord['request']['runtime']>()({ ...runtime }),
     models: models.map(({ file, companions, ...model }) => exactObject<ImageGenerationRecord['request']['models'][number]>()({
       ...model, file: fileToDomain({ file }), companions: companions.map(({ file, ...companion }) => exactObject<ImageGenerationRecord['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDomain({ file }) })),
     })),
@@ -43,14 +44,13 @@ export function imageGenerationRequestToDomain({ request }: { request: Experimen
   });
 }
 
-export function imageGenerationRequestToDto({ request }: { request: ImageGenerationRecord['request'] }): ExperimentalImageGenerationDto['request'] {
-  const { models, loras, imageInputs, parameters, preview, runtime, ...requestMetadata } = request;
+export function imageGenerationRequestBodyToDto({ request }: { request: Omit<ImageGenerationRecord['request'], 'runtime'> }): Omit<ExperimentalImageGenerationDto['request'], 'runtime'> {
+  const { models, loras, imageInputs, parameters, preview, ...requestMetadata } = request;
   const { initImage, referenceImages, ...inputMetadata } = imageInputs;
-  return exactObject<ExperimentalImageGenerationDto['request']>()({
+  return exactObject<Omit<ExperimentalImageGenerationDto['request'], 'runtime'>>()({
     ...requestMetadata,
     parameters: exactObject<ExperimentalImageGenerationDto['request']['parameters']>()({ ...parameters }),
     preview: exactObject<ExperimentalImageGenerationDto['request']['preview']>()({ ...preview }),
-    runtime: exactObject<ExperimentalImageGenerationDto['request']['runtime']>()({ ...runtime }),
     models: models.map(({ file, companions, ...model }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]>()({
       ...model, file: fileToDto({ file }), companions: companions.map(({ file, ...companion }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDto({ file }) })),
     })),
@@ -61,6 +61,25 @@ export function imageGenerationRequestToDto({ request }: { request: ImageGenerat
       referenceImages: referenceImages.map(image => exactObject<ExperimentalImageGenerationDto['request']['imageInputs']['referenceImages'][number]>()({ ...image, binaryObjectId: idToRaw({ id: image.binaryObjectId }) })),
     }),
   });
+}
+
+export function imageGenerationRuntimeToDomain({ runtime }: { runtime: ExperimentalImageGenerationDto['request']['runtime'] }): ImageGenerationRecord['request']['runtime'] {
+  switch (runtime.profile) {
+  case 'naidan-rpc': return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), connectionId: toNaidanRpcConnectionId({ raw: runtime.connectionId }), peerId: toNaidanRpcPeerId({ raw: runtime.peerId }) };
+  case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
+  default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+  }
+}
+export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerationRecord['request']['runtime'] }): ExperimentalImageGenerationDto['request']['runtime'] {
+  return ExperimentalImageGenerationRuntimeSchemaDto.parse(runtime);
+}
+export function imageGenerationRequestToDomain({ request }: { request: ExperimentalImageGenerationDto['request'] }): ImageGenerationRecord['request'] {
+  const { runtime, ...body } = request;
+  return exactObject<ImageGenerationRecord['request']>()({ ...imageGenerationRequestBodyToDomain({ request: body }), runtime: imageGenerationRuntimeToDomain({ runtime }) });
+}
+export function imageGenerationRequestToDto({ request }: { request: ImageGenerationRecord['request'] }): ExperimentalImageGenerationDto['request'] {
+  const { runtime, ...body } = request;
+  return exactObject<ExperimentalImageGenerationDto['request']>()({ ...imageGenerationRequestBodyToDto({ request: body }), runtime: imageGenerationRuntimeToDto({ runtime }) });
 }
 
 export function imageGenerationToDomain({ dto }: { dto: ExperimentalImageGenerationDto }): ImageGenerationRecord {

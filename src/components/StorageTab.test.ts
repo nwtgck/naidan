@@ -540,6 +540,8 @@ describe('StorageTab.vue Tests', () => {
         settings: { value: { storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } } } as any,
         save: mockSaveFail,
         updateExperimental: vi.fn(),
+        captureExperimentalStorage: () => () => true,
+        updateExperimentalForStorage: vi.fn(),
         updateProviderProfiles: vi.fn(),
         initialized: { value: true } as any,
         isOnboardingDismissed: { value: true } as any,

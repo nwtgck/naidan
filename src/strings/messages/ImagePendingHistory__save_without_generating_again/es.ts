@@ -1,0 +1,1 @@
+export const ImagePendingHistory__save_without_generating_again = (): string => "Vuelve a guardar las imágenes originales sin generarlas de nuevo. Las imágenes sin guardar se perderán al cerrar esta pestaña.";

@@ -8,7 +8,7 @@ export type RunnerEvent = {
 };
 export type NaidanPipingDuplexPacing = {
     minimumMs: number;
-    heartbeatMs: number;
+    idleResendIntervalMs: number;
     retryBaseMs: number;
     retryMaximumMs: number;
 };
@@ -31,10 +31,10 @@ function jitter(): number {
 export function validatePacing({ pacing }: {
     pacing: NaidanPipingDuplexPacing;
 }): void {
-  const { minimumMs, heartbeatMs, retryBaseMs, retryMaximumMs, ...rest } = pacing;
+  const { minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs, ...rest } = pacing;
     rest satisfies Record<PropertyKey, never>;
-    requireValue({ condition: [minimumMs, heartbeatMs, retryBaseMs, retryMaximumMs].every(value => Number.isInteger(value) && value > 0 && value <= 2147483647) &&
-            heartbeatMs >= minimumMs && retryBaseMs >= Math.max(2, minimumMs) && retryMaximumMs >= retryBaseMs,
+    requireValue({ condition: [minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs].every(value => Number.isInteger(value) && value > 0 && value <= 2147483647) &&
+            idleResendIntervalMs >= minimumMs && retryBaseMs >= Math.max(2, minimumMs) && retryMaximumMs >= retryBaseMs,
     message: 'Pacing parameters' });
 }
 export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: {
@@ -48,9 +48,10 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
 }): Promise<void> {
   validatePacing({ pacing });
   const settings = { ...pacing }, release = session.claimTransport();
-  const local = new AbortController(), forward = () => local.abort(signal.reason);
-  signal.addEventListener('abort', forward, { once: true });
-  if (signal.aborted)
+  const parent = AbortSignal.any([signal, session.stoppedSignal]);
+  const local = new AbortController(), forward = () => local.abort(parent.reason);
+  parent.addEventListener('abort', forward, { once: true });
+  if (parent.aborted)
     forward();
   const backoff = async ({ failures }: {
         failures: number;
@@ -59,13 +60,39 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
   });
   const send = async () => {
     let failures = 0;
+    let reason: 'update' | 'idle-resend' = 'idle-resend';
     while (!local.signal.aborted && !session.stopped) {
       // Capture before snapshot and I/O so a concurrent ACK or write cannot be lost.
-      const revision = session.revision;
+      const revision = session.transportRevision;
       try {
-        const capsule = await session.makeCapsule();
-        await endpoint.send({ route: session.routes.send, bytes: capsule, signal: local.signal });
-        onEvent({ event: { kind: 'sent', count: capsule.length } });
+        const transmission = await session.makeCapsule({ reason });
+        const received = new AbortController(), receipt = new Error('Authenticated peer received this record');
+        const replaced = new Error('Replace receipt-only advertisement');
+        const releaseTransmission = transmission.start({ onReceived: () => received.abort(receipt) });
+        const postSignal = AbortSignal.any([local.signal, received.signal]);
+        // Only the replaceable cumulative receipt carries no DATA, stream state
+        // or bitmaps. A new request/receipt can supersede it even if HTTP EOF is
+        // lost. Full snapshots retain their owner until exact receipt or EOF.
+        const changes = (() => {
+          switch (transmission.kind) {
+          case 'receipt-only': return session.waitForTransportChange({ revision, signal: postSignal })
+            .then(() => received.abort(replaced), () => {});
+          case 'snapshot': return Promise.resolve();
+          default: { const unreachable: never = transmission.kind; throw new Error(String(unreachable)); }
+          }
+        })();
+        try {
+          await endpoint.send({ route: session.routes.send, bytes: transmission.bytes, signal: postSignal });
+        } catch (error) {
+          // Awaiting the send promise joins the old POST/repair owner before
+          // either authenticated receipt or compact replacement can advance.
+          if (local.signal.aborted || (error !== receipt && error !== replaced)) throw error;
+        } finally {
+          received.abort();
+          await changes;
+          releaseTransmission();
+        }
+        onEvent({ event: { kind: 'sent', count: transmission.bytes.length } });
         failures = 0;
       } catch (error) {
         if (local.signal.aborted || session.stopped)
@@ -77,21 +104,24 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
           onEvent({ event: { kind: 'repair', count: 1 } });
         }
         onEvent({ event: { kind: 'retry', count: 1 } });
+        reason = 'idle-resend';
         failures = Math.min(failures + 1, 32);
         await backoff({ failures });
         continue;
       }
       await sleep({ milliseconds: settings.minimumMs, signal: local.signal });
-      const heartbeat = new Deadline({ parent: local.signal, milliseconds: settings.heartbeatMs });
+      const idleResend = new Deadline({ parent: local.signal, milliseconds: settings.idleResendIntervalMs });
       try {
-        await session.waitForChange({ revision, signal: heartbeat.signal });
+        await session.waitForTransportChange({ revision, signal: idleResend.signal });
+        reason = 'update';
       } catch (error) {
         if (local.signal.aborted)
           throw error;
-        if (!heartbeat.signal.aborted)
+        if (!idleResend.signal.aborted)
           throw error;
+        reason = 'idle-resend';
       } finally {
-        heartbeat.dispose();
+        idleResend.dispose();
       }
     }
   };
@@ -149,7 +179,7 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
   } finally {
     local.abort();
     await Promise.allSettled(jobs);
-    signal.removeEventListener('abort', forward);
+    parent.removeEventListener('abort', forward);
     release();
   }
 }

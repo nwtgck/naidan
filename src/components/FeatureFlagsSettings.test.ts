@@ -58,6 +58,7 @@ vi.mock('lucide-vue-next', () => ({
   FlaskConicalIcon: { template: '<span>FlaskConical</span>' },
   FolderIcon: { template: '<span>Folder</span>' },
   ListRestartIcon: { template: '<span>ListRestart</span>' },
+  NetworkIcon: { template: '<span>Network</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
 }));
 
@@ -78,7 +79,10 @@ describe('FeatureFlagsSettings.vue', () => {
     const wrapper = mount(FeatureFlagsSettings);
     const list = wrapper.find('[data-testid="experimental-feature-list"]');
 
-    expect(list.findAll('[data-testid$="-row"]')).toHaveLength(5);
+    const rows = list.findAll('[data-testid$="-row"]');
+    expect(rows).toHaveLength(6);
+    const ids = rows.map(row => row.attributes('data-testid'));
+    expect(ids.indexOf('feature-naidan-rpc-row')).toBe(ids.indexOf('feature-fake-lm-row') + 1);
     expect(list.classes()).toContain('divide-y');
     expect(list.classes().some(className => className.includes('grid-cols'))).toBe(false);
     expect(wrapper.find('[data-testid="feature-volume-row"] > div').classes()).toContain('flex-wrap');

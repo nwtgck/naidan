@@ -68,3 +68,10 @@ declare module 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32
   export const byteLength: number;
   export const sha256: string;
 }
+
+declare module 'virtual:file-protocol-standalone/worker/image-history' {
+  export function createStandaloneWorker(): Promise<Worker>;
+}
+declare module 'virtual:file-protocol-standalone/worker/image-generation-query' {
+  export function createStandaloneWorker(): Promise<Worker>;
+}

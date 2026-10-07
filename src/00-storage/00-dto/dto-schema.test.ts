@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ChatGroupSchemaDtoV2,
   ChatMetaSchemaDtoV2,
@@ -29,6 +29,63 @@ const settingsDtoBase = {
   lmParameters: undefined,
   experimental: undefined,
 };
+
+describe('DTO module initialization', () => {
+  it.each(['basic', 'experimental', 'image', 'rpc'] as const)(
+    'loads image preferences and translation with %s imported first',
+    async first => {
+      vi.resetModules();
+      switch (first) {
+      case 'basic':
+        await import('./dto');
+        break;
+      case 'experimental':
+        await import('./experimental.dto');
+        break;
+      case 'image':
+        await import('./experimental-image-generation.dto');
+        break;
+      case 'rpc':
+        await import('./experimental-naidan-rpc.dto');
+        break;
+      default: {
+        const _ex: never = first;
+        throw new Error(`Unexpected DTO entry: ${_ex}`);
+      }
+      }
+
+      const { SettingsSchemaDtoV2 } = await import('./dto');
+      const { ExperimentalImageGenerationTranslationOverrideSchemaDto } = await import('./experimental-image-generation.dto');
+      const connectionId = 'connection-1';
+      const peerId = 'A'.repeat(43);
+      const rpcEndpoint = {
+        type: 'experimental_type',
+        experimental: { endpoint: { type: 'naidan_rpc', connectionId } },
+      };
+      const inferenceLocation = { kind: 'naidan_rpc', connection: { connectionId, peerId } };
+      const remoteModelEditors = [{
+        connectionId,
+        peerId,
+        editor: { primary: undefined, components: [], loras: [] },
+      }];
+      const settings = SettingsSchemaDtoV2.parse({
+        ...settingsDtoBase,
+        endpoint: rpcEndpoint,
+        titleGeneration: 'disabled',
+        experimental: { browserImageGeneration: { inferenceLocation, remoteModelEditors } },
+      });
+      expect(settings.experimental?.browserImageGeneration?.inferenceLocation).toEqual(inferenceLocation);
+      expect(settings.experimental?.browserImageGeneration?.remoteModelEditors).toEqual(remoteModelEditors);
+
+      const translation = ExperimentalImageGenerationTranslationOverrideSchemaDto.parse({
+        endpoint: rpcEndpoint,
+        modelId: 'translation-model',
+      });
+      expect(translation.endpoint).toEqual(settings.endpoint);
+      expect(translation.modelId).toBe('translation-model');
+    },
+  );
+});
 
 describe('Zod Schemas', () => {
   it('should validate a correct chat object', () => {

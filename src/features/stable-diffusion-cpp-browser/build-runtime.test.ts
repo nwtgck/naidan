@@ -36,11 +36,12 @@ function fixture({ omitFunction }: { omitFunction?: string } = {}) {
   return { directory, sourceCommit };
 }
 describe('optional image build integration', () => {
-  it('allows the passive engine panel without admitting the hosted observer or native reader', () => {
+  it('allows the passive engine panel and pure observer without admitting native readers', () => {
     const rootDir = '/fixture';
     const id = ({ file }: { file: string }) => path.join(rootDir, 'src/features/stable-diffusion-cpp-browser', file);
     expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'components/ImageEngineState.vue' }) })).not.toThrow();
-    for (const file of ['engine-state.ts', 'use-image-engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
+    expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'use-image-engine-state.ts' }) })).not.toThrow();
+    for (const file of ['engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
       expect(() => assertStandaloneImageModule({ rootDir, id: id({ file }) })).toThrow('Hosted image implementation');
     }
   });

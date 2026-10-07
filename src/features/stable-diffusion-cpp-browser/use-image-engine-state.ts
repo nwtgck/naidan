@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef, type Ref } from 'vue';
-import type { ImageEngineStateView } from './use-image-generation-types';
+import type { ImageEngineStateView } from '@/features/image-generation/use-image-generation-types';
 import type { ImageClient } from './worker/types';
 import type { Progress } from './types';
 import type { ImageEngineSnapshot } from './engine-state';

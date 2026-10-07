@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref, nextTick } from 'vue';
 import SettingsModal from './SettingsModal.vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -10,6 +10,7 @@ beforeEach(async () => {
 });
 
 const mockIsFeatureEnabled = vi.fn();
+const mockRpcStatus = ref<'disabled' | 'enabled'>('disabled');
 
 vi.mock('@/composables/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
@@ -19,7 +20,7 @@ vi.mock('@/composables/useFeatureFlags', () => ({
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({
+    settings: computed(() => ({
       endpoint: {
         type: 'openai',
         url: 'http://localhost:1234/v1',
@@ -32,7 +33,8 @@ vi.mock('@/composables/useSettings', () => ({
       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
       storageType: 'local',
       providerProfiles: [],
-    }),
+      experimental: { naidanRpc: mockRpcStatus.value },
+    })),
     availableModels: ref([]),
     isFetchingModels: ref(false),
   }),
@@ -77,6 +79,7 @@ vi.mock('lucide-vue-next', () => ({
   Settings2Icon: { template: '<span>Settings2</span>' },
   BookmarkPlusIcon: { template: '<span>BookmarkPlus</span>' },
   CpuIcon: { template: '<span>Cpu</span>' },
+  NetworkIcon: { template: '<span>Network</span>' },
   InfoIcon: { template: '<span>Info</span>' },
   ChefHatIcon: { template: '<span>ChefHat</span>' },
   DownloadIcon: { template: '<span>Download</span>' },
@@ -95,6 +98,7 @@ describe('SettingsModal feature flags', () => {
 
   beforeEach(() => {
     mockIsFeatureEnabled.mockReset();
+    mockRpcStatus.value = 'disabled'; route.query = {}; route.params = {};
     (useRoute as unknown as ReturnType<typeof vi.fn>).mockReturnValue(route);
     (useRouter as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       push: vi.fn(),
@@ -132,4 +136,31 @@ describe('SettingsModal feature flags', () => {
 
     expect(wrapper.find('[data-testid="tab-volumes"]').exists()).toBe(true);
   });
+
+  it('shows Naidan RPC immediately above Developer only when explicitly enabled', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ThemeToggle: true, ConnectionTab: true, NaidanRpcTab: true } } });
+    expect(wrapper.find('[data-testid="tab-naidan-rpc"]').exists()).toBe(false);
+    mockRpcStatus.value = 'enabled'; await nextTick();
+    const tabs = wrapper.findAll('[data-testid^="tab-"]').map(tab => tab.attributes('data-testid'));
+    expect(tabs.indexOf('tab-naidan-rpc')).toBe(tabs.indexOf('tab-developer') - 1);
+    wrapper.unmount();
+  });
+
+  it.each(['query', 'params'] as const)('does not open the RPC tab through a disabled %s deep link', async source => {
+    switch (source) {
+    case 'query': route.query = { settings: 'naidan-rpc' }; break;
+    case 'params': route.params = { tab: 'naidan-rpc' }; break;
+    default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
+    }
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ThemeToggle: true, ConnectionTab: true, NaidanRpcTab: true } } });
+    expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'NaidanRpcTab' }).exists()).toBe(false);
+    expect(useRouter().push).not.toHaveBeenCalled();
+    mockRpcStatus.value = 'enabled'; await nextTick();
+    expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(false);
+    mockRpcStatus.value = 'disabled'; await nextTick();
+    expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
 });

@@ -73,6 +73,7 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
     endpoint: missingAsUndefined(z.union([
+      resolveMissingAsUndefined(z.object({ type: z.literal('naidan_rpc'), connectionId: missingAsUndefined(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)) })),
       resolveMissingAsUndefined(z.object({
         type: z.literal('browser_provided_lm'),
       })),
@@ -132,14 +133,61 @@ export const ExperimentalMigrationStateSchemaDto = EmptyExperimentalSchemaDto;
 
 export const ExperimentalSettingsLocaleSchemaDto = z.enum(UI_LOCALES);
 
-const ImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
+// Shared image settings stay here so the image records can import Endpoint
+// from dto.ts without introducing a cycle through ExperimentalSettingsSchemaDto.
+// Storage validates structure independently from the peer wire contract. The
+// caller adapter must validate these values again before making a remote call.
+const pathSchema = z.string().min(1).max(4096);
+export const ExperimentalRemoteImageModelFileSchemaDto = z.object({
+  location: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('opfs'), path: pathSchema }),
+    z.object({ kind: z.literal('host'), directoryId: z.string().min(1).max(128), path: pathSchema }),
+  ]),
+  expected: z.object({ size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), lastModified: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional(),
+});
+
+const connectionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
+const peerIdSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
+export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(z.object({
+  primary: missingAsUndefined(resolveMissingAsUndefined(z.object({
+    slot: z.enum(['model', 'diffusion']),
+    file: ExperimentalRemoteImageModelFileSchemaDto,
+    family: missingAsUndefined(z.string().min(1).max(64)),
+  }))),
+  components: z.array(z.object({
+    slot: z.enum(['vae', 'clipL', 'clipG', 't5', 'lm']), file: ExperimentalRemoteImageModelFileSchemaDto,
+  })).max(5).refine(items => new Set(items.map(item => item.slot)).size === items.length),
+  loras: z.array(z.object({
+    file: ExperimentalRemoteImageModelFileSchemaDto,
+    strength: z.number().finite().min(-10).max(10),
+    enabled: z.enum(['enabled', 'disabled']),
+  })).max(8),
+}));
+export type ExperimentalRemoteImageModelEditorDto = z.infer<typeof ExperimentalRemoteImageModelEditorSchemaDto>;
+
+export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('local') }),
+  resolveMissingAsUndefined(z.object({
+    kind: z.literal('naidan_rpc'),
+    connection: missingAsUndefined(z.object({ connectionId: connectionIdSchema, peerId: peerIdSchema })),
+  })),
+]);
+export type ExperimentalImageInferenceLocationPreferenceDto = z.infer<typeof ExperimentalImageInferenceLocationPreferenceSchemaDto>;
+
+export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = z.array(z.object({
+  connectionId: connectionIdSchema, peerId: peerIdSchema, editor: ExperimentalRemoteImageModelEditorSchemaDto,
+})).max(32).refine(items => new Set(items.map(item => `${item.connectionId}:${item.peerId}`)).size === items.length);
+export type ExperimentalRemoteImageModelEditorPreferenceDto = z.infer<typeof ExperimentalRemoteImageModelEditorPreferencesSchemaDto>[number];
+
+export const ExperimentalImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
   !value.includes('\\') && !value.includes('\0')
   && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
 const BrowserImageModelLocationSchemaDto = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('opfs'), path: ImageGenerationPathSchemaDto.refine(path => path.startsWith('models/')) }),
-  z.object({ kind: z.literal('host'), directoryId: z.string().min(1), path: ImageGenerationPathSchemaDto }),
+  z.object({ kind: z.literal('opfs'), path: ExperimentalImageGenerationPathSchemaDto.refine(path => path.startsWith('models/')) }),
+  z.object({ kind: z.literal('host'), directoryId: z.string().min(1), path: ExperimentalImageGenerationPathSchemaDto }),
 ]);
-export const BrowserImageModelSelectionSchemaDto = z.object({
+export const ExperimentalBrowserImageModelSelectionSchemaDto = z.object({
   primary: z.object({
     slot: z.enum(['model', 'diffusion']),
     location: BrowserImageModelLocationSchemaDto,
@@ -157,7 +205,7 @@ export const BrowserImageModelSelectionSchemaDto = z.object({
     strength: z.number().finite().min(-10).max(10),
   })).max(16),
 });
-const BrowserImageGenerationSchemaDto = resolveMissingAsUndefined(z.object({
+export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissingAsUndefined(z.object({
   width: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
   height: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
   seedMode: missingAsUndefined(z.enum(['random', 'fixed'])),
@@ -172,7 +220,9 @@ const BrowserImageGenerationSchemaDto = resolveMissingAsUndefined(z.object({
     format: missingAsUndefined(z.enum(['png', 'webp', 'jpeg'])),
     metadata: missingAsUndefined(z.enum(['include', 'omit'])),
   }))),
-  modelSelection: missingAsUndefined(BrowserImageModelSelectionSchemaDto),
+  modelSelection: missingAsUndefined(ExperimentalBrowserImageModelSelectionSchemaDto),
+  inferenceLocation: missingAsUndefined(ExperimentalImageInferenceLocationPreferenceSchemaDto),
+  remoteModelEditors: missingAsUndefined(ExperimentalRemoteImageModelEditorPreferencesSchemaDto),
   preview: missingAsUndefined(resolveMissingAsUndefined(z.object({
     enabled: missingAsUndefined(z.enum(['enabled', 'disabled'])),
     mode: missingAsUndefined(z.enum(['projection', 'vae'])),
@@ -195,6 +245,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
   toolConfigPersistence: missingAsUndefined(z.literal('enabled')),
   toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(z.literal('enabled')),
+  naidanRpc: missingAsUndefined(z.literal('enabled')),
   sidebarSendMessageReorder: missingAsUndefined(z.union([
     z.literal('disabled'),
     z.literal('move_sent_chat'),
@@ -208,7 +259,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
       z.literal('full'),
     ])),
   }))),
-  browserImageGeneration: missingAsUndefined(BrowserImageGenerationSchemaDto),
+  browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
   hostModelDirectories: missingAsUndefined(z.array(z.object({
     id: z.string(),
     name: z.string(),
@@ -292,114 +343,6 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
   return transformed.optional();
 };
 
-
-// Image history is deliberately independent of chat persistence and runtime
-// transport defaults. Stored requests describe what was requested, not a
-// guarantee that a future runtime can reproduce the same image.
-const ImageHistoryRawIdSchemaDto = z.string().regex(/^[a-zA-Z0-9_-]{2,128}$/);
-const ImageGenerationFileMetadataSchemaDto = {
-  name: z.string().min(1),
-  size: z.number().int().nonnegative(),
-  lastModified: z.number().finite().nonnegative(),
-};
-const ImageGenerationModelFileSchemaDto = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('opfs'), path: ImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
-  z.object({ type: z.literal('host'), directoryId: z.string().min(1), path: ImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
-  z.object({ type: z.literal('file'), ...ImageGenerationFileMetadataSchemaDto }),
-]);
-const ImageGenerationImageSchemaDto = z.object({
-  binaryObjectId: ImageHistoryRawIdSchemaDto,
-  name: z.string().min(1),
-});
-
-export const ExperimentalImageGenerationSchemaDto = z.object({
-  id: ImageHistoryRawIdSchemaDto,
-  createdAt: z.number().finite().nonnegative(),
-  request: z.object({
-    parameters: z.object({
-      prompt: z.string(),
-      negativePrompt: z.string(),
-      width: z.number().int().positive(),
-      height: z.number().int().positive(),
-      steps: z.number().int().positive(),
-      guidance: z.number().finite(),
-      seed: z.string().regex(/^-?(0|[1-9][0-9]*)$/),
-      sampler: z.enum(['auto', 'euler', 'euler_a', 'heun', 'dpm2', 'dpm++2m', 'lcm']),
-      scheduler: z.enum(['auto', 'discrete', 'karras', 'exponential', 'simple', 'sgm_uniform']),
-      distilledGuidance: z.number().finite(),
-      vaeTiling: z.boolean(),
-      vaeTileSize: z.number().int().positive(),
-      flashAttention: z.boolean(),
-      bf16WeightType: z.enum(['f32', 'f16']),
-      qwenVaePolicy: z.enum(['bounded', 'native']),
-      conditioningCacheSize: z.number().int().nonnegative(),
-      modelArguments: z.string(),
-    }),
-    models: z.array(z.object({
-      slot: z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']),
-      path: ImageGenerationPathSchemaDto,
-      file: ImageGenerationModelFileSchemaDto,
-      companions: z.array(z.object({ path: ImageGenerationPathSchemaDto, file: ImageGenerationModelFileSchemaDto })),
-    })),
-    loras: z.array(z.object({
-      path: ImageGenerationPathSchemaDto,
-      file: ImageGenerationModelFileSchemaDto,
-      strength: z.number().finite(),
-    })),
-    imageInputs: resolveMissingAsUndefined(z.object({
-      initImage: missingAsUndefined(ImageGenerationImageSchemaDto),
-      strength: z.number().finite(),
-      referenceImages: z.array(ImageGenerationImageSchemaDto),
-    })),
-    preview: z.object({
-      enabled: z.boolean(),
-      interval: z.number().int().positive(),
-      startStep: z.number().int().positive(),
-      mode: z.enum(['projection', 'vae']),
-      maxEdge: z.number().int().nonnegative(),
-    }),
-    runtime: resolveMissingAsUndefined(z.object({
-      sourceCommit: z.string(),
-      profile: z.enum(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']),
-      weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
-      gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
-    })),
-  }),
-  result: z.object({
-    binaryObjectId: ImageHistoryRawIdSchemaDto,
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-    modelVersion: z.string(),
-    uniformOutput: z.boolean(),
-    elapsedMs: z.number().finite().nonnegative(),
-  }),
-  previews: z.array(z.object({
-    binaryObjectId: ImageHistoryRawIdSchemaDto,
-    step: z.number().int().positive(),
-    steps: z.number().int().positive(),
-    mode: z.enum(['projection', 'vae']),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-  })),
-});
-export type ExperimentalImageGenerationDto = z.infer<typeof ExperimentalImageGenerationSchemaDto>;
-
-export const ExperimentalImageGenerationSummarySchemaDto = z.object({
-  id: ImageHistoryRawIdSchemaDto,
-  createdAt: z.number().finite().nonnegative(),
-  prompt: z.string(),
-  modelName: z.string(),
-  binaryObjectId: ImageHistoryRawIdSchemaDto,
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  previewCount: z.number().int().nonnegative(),
-});
-export type ExperimentalImageGenerationSummaryDto = z.infer<typeof ExperimentalImageGenerationSummarySchemaDto>;
-
-export const ExperimentalImageGenerationIndexSchemaDto = z.object({
-  generations: z.record(ImageHistoryRawIdSchemaDto, ExperimentalImageGenerationSummarySchemaDto),
-});
-export type ExperimentalImageGenerationIndexDto = z.infer<typeof ExperimentalImageGenerationIndexSchemaDto>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

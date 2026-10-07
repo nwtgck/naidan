@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import { createImageForm } from './form';
+import { createImageForm } from '@/features/image-generation/form';
 import type { ModelSlot, Parameters, Progress, ImageInputs } from './types';
 import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange } from './benchmark/types';
 import type { ImageLoraSelection } from './lora-form';

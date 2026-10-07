@@ -227,6 +227,8 @@ export async function createProviderForCompact({
       endpoint: endpoint.url,
       headers: endpoint.httpHeaders,
     });
+  case 'naidan_rpc':
+    return new (await import('@/features/naidan-peer-rpc/adapters/lm-provider')).NaidanRpcLmProvider({ connectionId: endpoint.connectionId });
   case 'transformers_js':
     return new (await import('@/features/transformers-js/provider')).TransformersJsProvider();
   case 'llama_cpp_browser':

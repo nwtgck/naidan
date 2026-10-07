@@ -10,6 +10,7 @@ import {
   type StringBoundaryModule,
 } from '@/strings/runtime';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import type { ChangeListener } from '@/00-storage/service/synchronizer';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -69,13 +70,15 @@ const mocks = vi.hoisted(() => ({
   }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
-  subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  subscribeToChanges: vi.fn<({ listener }: { listener: ChangeListener }) => () => void>(() => () => {}),
   notify: vi.fn(),
 }));
 
 vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
+
+const synchronizeSettings = mocks.subscribeToChanges.mock.calls[0]![0].listener;
 
 vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
@@ -111,6 +114,17 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('republishes the editor storage boundary after migration removes the saved Settings record', async () => {
+    const { init, settings } = useSettings(); await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    const previous = settings.value;
+    mocks.loadSettings.mockResolvedValue(null);
+    await synchronizeSettings({ event: { type: 'settings', timestamp: 1 } });
+    expect(settings.value).toBe(previous);
+    await synchronizeSettings({ event: { type: 'migration', timestamp: 2 } });
+    expect(settings.value).not.toBe(previous); expect(settings.value).toEqual(previous);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it('uses thinking off only when no settings have been saved, without persisting a migration', async () => {

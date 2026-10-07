@@ -128,18 +128,19 @@ export class NaidanPipingKeyContext {
     this.internalRoot = undefined;
   }
 }
-export async function establishNaidanPipingKeys({ role, identity, expectedPeer, binding, channel, signal }: {
+export async function establishVerifiedNaidanPipingKeys({ role, identity, expectedPeer, verifyPeer, binding, channel, signal }: {
     role: NaidanPipingRole;
     identity: NaidanPipingIdentity;
-    expectedPeer: Uint8Array;
+    expectedPeer: Uint8Array | undefined;
+    verifyPeer: NaidanPipingPeerVerifier | undefined;
     binding: Uint8Array;
     channel: NaidanPipingHandshakeChannel;
     signal: AbortSignal;
 }): Promise<NaidanPipingKeyContext> {
   requireValue({ condition: isInitiator({ role: role }) || !isInitiator({ role: role }), message: 'Invalid role' });
-  const pin = ownBytes({ bytes: expectedPeer, maxBytes: 32 }), sharedBinding = ownBytes({ bytes: binding, maxBytes: 32 });
+  const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 }), sharedBinding = ownBytes({ bytes: binding, maxBytes: 32 });
   const local: NaidanPipingIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
-  requireValue({ condition: pin.length === 32 && sharedBinding.length === 32, message: 'Pin and binding are mandatory' });
+  requireValue({ condition: (pin?.length === 32 || (pin === undefined && verifyPeer !== undefined)) && sharedBinding.length === 32, message: 'A trusted pin or explicit comparison and binding are mandatory' });
   signal.throwIfAborted();
   const state = await NoiseXX.create({ role, identity: local, ephemeral: await createNaidanPipingIdentity(),
     prologue: fields({ parts: [ascii({ text: 'peer-key-profile/v1' }), sharedBinding, ascii({ text: 'initiator/responder' })] }) });
@@ -158,14 +159,14 @@ export async function establishNaidanPipingKeys({ role, identity, expectedPeer, 
         requireValue({ condition: payload.length === 0, message: 'Unexpected handshake payload' });
         // Authenticate a received static identity before sending the next flight.
         const peer = state.peerIdentity;
-        if (peer)
+        if (peer && pin)
           requireValue({ condition: equalBytes({ left: pin, right: peer }), message: 'Peer identity mismatch' });
       }
     }
     const established = await state.split();
     noise = established;
     signal.throwIfAborted();
-    requireValue({ condition: equalBytes({ left: pin, right: established.peerIdentity }), message: 'Peer identity mismatch' });
+    if (pin) requireValue({ condition: equalBytes({ left: pin, right: established.peerIdentity }), message: 'Peer identity mismatch' });
     const staticI = isInitiator({ role: role }) ? local.publicKey : established.peerIdentity;
     const staticR = !isInitiator({ role: role }) ? local.publicKey : established.peerIdentity;
     const sessionBinding = await digest({ bytes: fields({ parts: [ascii({ text: 'peer-key-binding/v1' }), established.binding, staticI, staticR] }) });
@@ -183,10 +184,23 @@ export async function establishNaidanPipingKeys({ role, identity, expectedPeer, 
       signal.throwIfAborted();
       return bytes;
     };
-    await send({ bytes: joinBytes({ parts: [new Uint8Array([1, 1]), sessionBinding] }) });
+    const trustFlag = pin ? 1 : 0;
+    await send({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }) });
     const status = await receive();
-    requireValue({ condition: equalBytes({ left: status, right: joinBytes({ parts: [new Uint8Array([1, 1]), sessionBinding] }) }),
-      message: 'Pinned authentication status mismatch' });
+    requireValue({ condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
+      equalBytes({ left: status.subarray(2), right: sessionBinding }), message: 'Authentication status mismatch' });
+    if (trustFlag === 0 || status[1] === 0) {
+      if (!verifyPeer) throw new Error('This connection needs an explicit peer comparison');
+      // The full 256-bit channel binding is compared over an already authenticated external path.
+      // Never truncate this to the short, public rendezvous number or reuse it across attempts.
+      const verified = await verifyComparison({ verifyPeer, peerIdentity: established.peerIdentity, comparison: sessionBinding, signal });
+      signal.throwIfAborted();
+      requireValue({ condition: verified === true, message: 'Peer comparison rejected' });
+      await send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) });
+      const approval = await receive();
+      requireValue({ condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
+        message: 'Peer did not approve this connection' });
+    }
     const seed = crypto.getRandomValues(new Uint8Array(32));
     sensitive.push(seed);
     await send({ bytes: joinBytes({ parts: [new Uint8Array([6]), seed] }) });
@@ -218,7 +232,7 @@ export async function establishNaidanPipingKeys({ role, identity, expectedPeer, 
     requireValue({ condition: peerMac.length === 33 && peerMac[0] === 7, message: 'Key confirmation encoding' });
     requireValue({ condition: await crypto.subtle.verify('HMAC', receiveKey, peerMac.subarray(1), confirmInput), message: 'Key confirmation failed' });
     signal.throwIfAborted();
-    return new NaidanPipingKeyContext({ role, root, id: contextId, peer: pin, proof: authenticated });
+    return new NaidanPipingKeyContext({ role, root, id: contextId, peer: established.peerIdentity, proof: authenticated });
   } finally {
     for (const bytes of sensitive)
       bytes.fill(0);
@@ -228,7 +242,36 @@ export async function establishNaidanPipingKeys({ role, identity, expectedPeer, 
   }
 }
 
+export type NaidanPipingPeerVerifier = ({ peerIdentity, comparison, signal }: {
+  peerIdentity: Uint8Array; comparison: Uint8Array; signal: AbortSignal;
+}) => Promise<boolean>;
+
+async function verifyComparison({ verifyPeer, peerIdentity, comparison, signal }: {
+  verifyPeer: NaidanPipingPeerVerifier; peerIdentity: Uint8Array; comparison: Uint8Array; signal: AbortSignal;
+}): Promise<boolean> {
+  signal.throwIfAborted();
+  return new Promise<boolean>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    // Own late rejection even when the user never completes the obsolete confirmation dialog.
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return verifyPeer({ peerIdentity: peerIdentity.slice(), comparison: comparison.slice(), signal });
+    })
+      .then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+export function establishNaidanPipingKeys({ role, identity, expectedPeer, binding, channel, signal }: {
+  role: NaidanPipingRole; identity: NaidanPipingIdentity; expectedPeer: Uint8Array;
+  binding: Uint8Array; channel: NaidanPipingHandshakeChannel; signal: AbortSignal;
+}): Promise<NaidanPipingKeyContext> {
+  // Keep the existing pinned-only entrypoint incapable of silently trusting a new key.
+  return establishVerifiedNaidanPipingKeys({ role, identity, expectedPeer, verifyPeer: undefined, binding, channel, signal });
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  verifyComparison,
 };

@@ -342,6 +342,8 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     if (customEndpoint !== undefined) {
       const endpoint = (() => {
         switch (customEndpoint.type) {
+        case 'naidan_rpc':
+          return { type: customEndpoint.type, connectionId: undefined };
         case 'openai':
         case 'ollama':
           return {
@@ -447,6 +449,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
       case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
+      case 'naidan_rpc':
       case 'unsupported_experimental_endpoint':
         throw new Error('Image generation requires an Ollama endpoint');
       default: {

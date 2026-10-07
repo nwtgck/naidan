@@ -1,6 +1,8 @@
 import type { NaidanStandaloneWorkerDefinition } from './plugin.js';
 
 export const FILE_PROTOCOL_STANDALONE_WORKERS = [
+  { name: 'image-history-worker', entry: 'src/features/image-generation/history/worker/entry.ts', virtualId: 'virtual:file-protocol-standalone/worker/image-history', defaultWorkerName: 'naidan-image-history' },
+  { name: 'image-generation-query-worker', entry: 'src/features/image-generation/session/query-worker/entry.ts', virtualId: 'virtual:file-protocol-standalone/worker/image-generation-query', defaultWorkerName: 'naidan-image-generation-query' },
   {
     name: 'llama-cpp-browser-worker',
     entry: 'src/features/llama-cpp-browser/worker/entry.ts',

@@ -140,7 +140,7 @@ export function generationAssetFixture({ id, run, index }: { id: string, run: Im
 export function generationDraftFixture({ sessionId }: { sessionId: ImageGenerationSessionId }): import('@/01-models/image-generation').ImageGenerationSessionDraft {
   const run = generationRunFixture({ id: 'draft-run-aa', sessionId, count: 2, seed: '42' });
   return { sessionId, revision: 0, updatedAt: 3, request: { ...run.request, parameters: { ...run.request.parameters, prompt: '', seed: '' } },
-    seedMode: 'random', layout: 'components', modelSelection: undefined, loraStates: [{ enabled: false, strength: 0.75 }],
+    inferenceLocation: undefined, seedMode: 'random', layout: 'components', modelSelection: undefined, remoteModelEditor: undefined, loraStates: [{ enabled: false, strength: 0.75 }],
     count: 2, debug: 'off', retainModel: true, keepPreviews: true, maxPreviews: 8, maxResults: 12 };
 }
 

@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__managed_by_pending_run = (): string => "Esta imagen pertenece a una ejecución sin guardar. Usa el panel de ejecuciones sin guardar para reintentar el guardado o descartar la ejecución.";

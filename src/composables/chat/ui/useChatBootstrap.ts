@@ -65,6 +65,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
         (type, _previousType, onCleanup) => {
           switch (type) {
           case undefined:
+          case 'naidan_rpc':
           case 'openai':
           case 'ollama':
           case 'browser_provided_lm':

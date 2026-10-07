@@ -1,3 +1,5 @@
+import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import type { ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
 import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
@@ -23,6 +25,9 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 import { idToRaw, toChatId, toBinaryObjectId } from '@/01-models/ids';
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
+import { readNaidanRpcRegistry, writeNaidanRpcRegistry, sameNaidanRpcRegistry } from './naidan-rpc-registry';
+import type { NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from './naidan-rpc-registry';
 
 
 // Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
@@ -58,6 +63,8 @@ export class StorageService {
   private provider: IStorageProvider | null = null;
   private currentType: 'local' | 'opfs' | 'memory' | null = null;
   private synchronizer: StorageSynchronizer;
+  private providerGeneration = 0;
+  private readonly rpcRegistryListeners = new Set<() => void>();
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
@@ -75,6 +82,8 @@ export class StorageService {
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     await this.synchronizer.withLock({ fn: async () => {
+      this.providerGeneration++;
+      if (this.provider) this.emitRpcRegistryChange();
       const isOPFSSupported = await checkOPFSSupport();
       let targetType: 'local' | 'opfs' | 'memory' = type;
 
@@ -121,7 +130,31 @@ export class StorageService {
   }
 
   notify({ event }: { event: StorageChangeEvent }): void {
+    if (event.type === 'naidan_rpc_registry' || event.type === 'migration') this.emitRpcRegistryChange();
     this.synchronizer.notify({ event });
+  }
+
+  /** Observe both this page's changes and synchronization hints from other
+   * pages. A hint requires reading storage; it never contains authority. */
+  subscribeNaidanRpcRegistryChanges({ listener }: { listener(): void }): () => void {
+    this.rpcRegistryListeners.add(listener);
+    const unsubscribe = this.synchronizer.subscribe({ listener: ({ event }) => {
+      if (event.type === 'naidan_rpc_registry' || event.type === 'migration') {
+        try {
+          listener();
+        } catch { /* Synchronization hints are observation only. */ }
+      }
+    } });
+    return () => {
+      this.rpcRegistryListeners.delete(listener); unsubscribe();
+    };
+  }
+  private emitRpcRegistryChange(): void {
+    for (const listener of this.rpcRegistryListeners) {
+      try {
+        listener();
+      } catch { /* Observers cannot change a storage commit's outcome. */ }
+    }
   }
 
   // --- Hierarchy Management (Atomic) ---
@@ -155,6 +188,38 @@ export class StorageService {
   captureModelLaunchStorage(): () => boolean {
     const provider = this.getProvider();
     return () => provider === this.getProvider();
+  }
+
+  /** Replacing or restoring a provider invalidates queued editor writes even
+   * when its storage type and underlying provider instance stay the same. */
+  captureSettingsStorage(): () => boolean {
+    const provider = this.getProvider(), generation = this.providerGeneration;
+    return () => provider === this.getProvider() && generation === this.providerGeneration;
+  }
+
+  async updateSettingsForStorage({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater({ current }: { current: Settings | null }): Settings | Promise<Settings>,
+  }): Promise<'saved' | 'changed'> {
+    try {
+      const outcome = await this.synchronizer.withLock({ fn: async () => {
+        if (!isCurrent()) return 'changed' as const;
+        const provider = this.getProvider();
+        const current = await provider.loadSettings();
+        if (!isCurrent()) return 'changed' as const;
+        const updated = await updater({ current });
+        if (!isCurrent()) return 'changed' as const;
+        await provider.saveSettings({ settings: updated });
+        return 'saved' as const;
+      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettingsForStorage' }) });
+      switch (outcome) {
+      case 'saved': this.notify({ event: { type: 'settings', timestamp: Date.now() } }); return outcome;
+      case 'changed': return outcome;
+      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      }
+    } catch (error) {
+      await this.handleStorageError({ error, source: 'updateSettingsForStorage' }); throw error;
+    }
   }
 
   /** Setup state is session-local; it is never part of stored Chat data. */
@@ -304,6 +369,45 @@ export class StorageService {
 
   // --- Settings & Bulk ---
 
+  private rpcRegistryPersistence(): NaidanRpcRegistryAccess['persistence'] {
+    const type = this.getCurrentType();
+    switch (type) {
+    case 'local': case 'opfs': return 'durable';
+    case 'memory': return 'session';
+    default: { const exhaustive: never = type; throw new Error(String(exhaustive)); }
+    }
+  }
+
+  async loadNaidanRpcRegistry(): Promise<NaidanRpcRegistrySnapshot> {
+    return this.synchronizer.withLock({ lockKey: SYNC_LOCK_KEY, fn: async () => readNaidanRpcRegistry({
+      provider: this.getProvider(), providerGeneration: this.providerGeneration,
+      persistence: this.rpcRegistryPersistence(),
+    }) });
+  }
+  async updateNaidanRpcRegistry({ access, updater }: {
+    access: NaidanRpcRegistryAccess,
+    updater({ connections }: { connections: readonly NaidanRpcConnection[] }): Promise<readonly NaidanRpcConnection[]>,
+  }): Promise<NaidanRpcRegistryAccess> {
+    const persistence = this.rpcRegistryPersistence();
+    switch (persistence) {
+    case 'durable':
+      if (typeof navigator === 'undefined' || !navigator.locks?.request) throw new Error('Saving RPC connections requires Web Locks');
+      break;
+    case 'session': break;
+    default: { const exhaustive: never = persistence; throw new Error(String(exhaustive)); }
+    }
+    const updated = await this.synchronizer.withLock({ lockKey: SYNC_LOCK_KEY, fn: async () => {
+      const provider = this.getProvider();
+      const current = await readNaidanRpcRegistry({ provider, providerGeneration: this.providerGeneration,
+        persistence: this.rpcRegistryPersistence() });
+      if (!sameNaidanRpcRegistry({ left: access, right: current.access })) throw new Error('The RPC storage registry changed. Reload before saving.');
+      const connections = await updater({ connections: current.connections });
+      return writeNaidanRpcRegistry({ provider, current, connections });
+    } });
+    this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
+    return updated;
+  }
+
   /**
    * Performs an atomic update on the global settings.
    */
@@ -328,6 +432,8 @@ export class StorageService {
   async clearAll(): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
+        this.providerGeneration++;
+        this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
         await this.getProvider().clearAll();
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
@@ -394,60 +500,80 @@ export class StorageService {
     record: ImageGenerationRecord,
     files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
+    const writer = this.createImageGenerationHistoryWriter();
+    return writer.save({ record, files });
+  }
+
+  /** Pin the binary provider and history directory before starting computation.
+   * The returned writer owns persistence, not a component or current settings.
+   * A removed/replaced directory is an error; retries must never recreate it. */
+  createImageGenerationHistoryWriter() {
     const storageType = this.getCurrentType();
     switch (storageType) {
     case 'opfs': break;
     case 'local': case 'memory': throw new Error('Image generation history requires OPFS storage');
     default: { const exhaustive: never = storageType; throw new Error(String(exhaustive)); }
     }
+    const provider = this.getProvider();
+    const historyModule = import('./image-generation-history');
+    const target = historyModule.then(service => service.captureImageGenerationHistoryTarget({ storageType }));
+    // Preparing a writer need not await storage before the caller can retain
+    // pixels. A failed open remains a rejected target, never a silent new store.
+    void target.catch(() => {});
+    return { ready: async (): Promise<void> => {
+      await target;
+    }, save: async ({ record, files }: {
+      record: ImageGenerationRecord,
+      files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
+    }): Promise<void> => {
     // Capture the provider before awaiting. A storage switch must not split
     // one generation's bytes between OPFS and another storage provider.
-    const provider = this.getProvider();
-    const snapshot = structuredClone(record);
-    const images = files.map(file => ({ ...file }));
-    const { saveImageGenerationRecord } = await import('./image-generation-history');
-    await this.synchronizer.withLock({
-      lockKey: LOCK_METADATA,
-      ...this.getLockOptions({ source: 'saveImageGeneration' }),
-      fn: () => saveImageGenerationRecord({
-        storageType,
-        record: snapshot,
-        writeImages: async () => {
-          const referenced = new Set([
-            snapshot.result.binaryObjectId,
-            ...snapshot.previews.map(image => image.binaryObjectId),
-            ...(snapshot.request.imageInputs.initImage ? [snapshot.request.imageInputs.initImage.binaryObjectId] : []),
-            ...snapshot.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
-          ].map(binaryObjectId => idToRaw({ id: binaryObjectId })));
-          const supplied = new Set<string>();
-          for (const image of images) {
-            const rawId = idToRaw({ id: image.binaryObjectId });
-            if (supplied.has(rawId) || !referenced.has(rawId)) throw new Error('Image history files must match unique record references');
-            supplied.add(rawId);
-          }
-          for (const { binaryObjectId, blob, name } of images) {
-            const metadata = await provider.getBinaryObject({ binaryObjectId });
-            const existing = await provider.getFile({ binaryObjectId });
-            if (metadata && !existing) throw new Error('Image history binary object is missing or unreadable');
-            if (existing) {
-              if (existing.size !== blob.size || metadata && existing.type !== blob.type) throw new Error('Image history binary objects are immutable');
-              for (let offset = 0; offset < blob.size; offset += 65536) {
-                const left = new Uint8Array(await existing.slice(offset, offset + 65536).arrayBuffer());
-                const right = new Uint8Array(await blob.slice(offset, offset + 65536).arrayBuffer());
-                if (left.some((byte, index) => byte !== right[index])) throw new Error('Image history binary objects are immutable');
+      const snapshot = imageGenerationToDomain({ dto: ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record })) });
+      const images = files.map(file => ({ ...file }));
+      const { saveImageGenerationRecord } = await historyModule;
+      const expectedDirectory = await target;
+      await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'saveImageGeneration' }),
+        fn: () => saveImageGenerationRecord({
+          storageType, expectedDirectory,
+          record: snapshot,
+          writeImages: async () => {
+            const referenced = new Set([
+              snapshot.result.binaryObjectId,
+              ...snapshot.previews.map(image => image.binaryObjectId),
+              ...(snapshot.request.imageInputs.initImage ? [snapshot.request.imageInputs.initImage.binaryObjectId] : []),
+              ...snapshot.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+            ].map(binaryObjectId => idToRaw({ id: binaryObjectId })));
+            const supplied = new Set<string>();
+            for (const image of images) {
+              const rawId = idToRaw({ id: image.binaryObjectId });
+              if (supplied.has(rawId) || !referenced.has(rawId)) throw new Error('Image history files must match unique record references');
+              supplied.add(rawId);
+            }
+            for (const { binaryObjectId, blob, name } of images) {
+              const metadata = await provider.getBinaryObject({ binaryObjectId });
+              const existing = await provider.getFile({ binaryObjectId });
+              if (metadata && !existing) throw new Error('Image history binary object is missing or unreadable');
+              if (existing) {
+                if (existing.size !== blob.size || metadata && existing.type !== blob.type) throw new Error('Image history binary objects are immutable');
+                for (let offset = 0; offset < blob.size; offset += 65536) {
+                  const left = new Uint8Array(await existing.slice(offset, offset + 65536).arrayBuffer());
+                  const right = new Uint8Array(await blob.slice(offset, offset + 65536).arrayBuffer());
+                  if (left.some((byte, index) => byte !== right[index])) throw new Error('Image history binary objects are immutable');
+                }
+              }
+              if (!existing || !metadata) {
+                await provider.saveFile({ binaryObjectId, blob, name, mimeType: blob.type || undefined });
               }
             }
-            if (!existing || !metadata) {
-              await provider.saveFile({ binaryObjectId, blob, name, mimeType: blob.type || undefined });
+            for (const rawId of referenced) {
+              if (!await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: rawId }) })) throw new Error('Image history references a missing binary object');
             }
-          }
-          for (const rawId of referenced) {
-            if (!await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: rawId }) })) throw new Error('Image history references a missing binary object');
-          }
-        },
-      }),
-    });
+          },
+        }),
+      });
+    } };
   }
 
   /** Pin binary publication and metadata to one store. Never call saveFile from
@@ -460,7 +586,7 @@ export class StorageService {
       | { type: 'draft', draft: ImageGenerationSessionDraft, expectedRevision: number | undefined },
     files: ImageGenerationBinaryFile[],
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
     const provider = this.getProvider();
     const accepted = structuredClone(publication);
     const images = files.map(file => ({ ...file }));
@@ -497,7 +623,7 @@ export class StorageService {
   async deleteImageGenerationOutput({ store, sessionId, assetId, expectedRevision }: {
     store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: import('@/01-models/ids').ImageGenerationAssetId, expectedRevision: number,
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
     const provider = this.getProvider();
     const { deleteImageGenerationAsset } = await import('./image-generation-curation');
     try {
@@ -512,7 +638,7 @@ export class StorageService {
   }
 
   async captureImageGenerationExport({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationExportSnapshot> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
     const provider = this.getProvider();
     const { collectImageGenerationSessionMetadata } = await import('./image-generation-export');
     return this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'captureImageGenerationExport' }), fn: async () => {
@@ -529,13 +655,11 @@ export class StorageService {
   }
 
   async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { loadImageGenerationRecord } = await import('./image-generation-history');
     return loadImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
 
   async deleteImageGeneration({ id }: { id: ImageGenerationId }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { deleteImageGenerationRecord } = await import('./image-generation-history');
     return deleteImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
@@ -748,6 +872,7 @@ export class StorageService {
         if (this.currentType === type) return;
 
         const oldProvider = activeProvider;
+        const rpcRegistry = await oldProvider.loadNaidanRpcRegistry();
         const snapshot = await oldProvider.dump();
 
         const isOPFSSupported = await checkOPFSSupport();
@@ -767,10 +892,6 @@ export class StorageService {
         })();
 
         await newProvider.init();
-
-        const oldType = this.currentType;
-        this.provider = newProvider;
-        this.currentType = type;
 
         // Wrap content stream to rescue memory blobs
         const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
@@ -829,20 +950,21 @@ export class StorageService {
           }
         };
 
-        try {
-          await newProvider.restore({ snapshot: {
-            structure: snapshot.structure,
-            contentStream: migrationStream(),
-          } });
-        } catch (e) {
-          this.provider = oldProvider;
-          this.currentType = oldType;
-          throw e;
-        }
+        await newProvider.restore({ snapshot: {
+          structure: snapshot.structure,
+          contentStream: migrationStream(),
+        } });
+        // Transfer local trust only during an explicit provider switch. It is
+        // absent from general JSON backups, which cannot carry CryptoKey.
+        await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
+        const actualType = type === 'opfs' && !isOPFSSupported ? 'local' : type;
 
         if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
+          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, actualType);
         }
+        this.provider = newProvider;
+        this.currentType = actualType;
+        this.providerGeneration++;
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
 
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
@@ -871,6 +993,8 @@ export class StorageService {
   async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
+        this.providerGeneration++;
+        this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
         await this.getProvider().restore({ snapshot });
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });

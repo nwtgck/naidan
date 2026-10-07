@@ -39,6 +39,8 @@ function createSettings({ endpointType }: {
   return {
     endpoint: (() => {
       switch (endpointType) {
+      case 'naidan_rpc':
+        return { type: endpointType, connectionId: undefined };
       case 'transformers_js':
       case 'llama_cpp_browser':
       case 'browser_provided_lm':
@@ -66,6 +68,7 @@ function createSettings({ endpointType }: {
 }
 
 const globalStubs = {
+  RpcConnectionSelect: true,
   ModelSelector: {
     name: 'ModelSelector',
     props: ['modelValue', 'disabled'],
@@ -337,4 +340,42 @@ describe('ConnectionTab Ollama management integration', () => {
     }
   });
 
+});
+
+
+describe('Naidan RPC endpoint availability', () => {
+  it('offers RPC for global chat and title only while the feature is enabled', async () => {
+    const settings = createSettings({ endpointType: 'ollama' });
+    const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+      }
+      await wrapper.setProps({ modelValue: { ...settings, experimental: { ...settings.experimental, naidanRpc: 'enabled' } } });
+      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+  it('preserves disabled saved RPC endpoints instead of silently selecting another provider', async () => {
+    const settings = createSettings({ endpointType: 'naidan_rpc' });
+    if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');
+    settings.titleGeneration.endpoint = { type: 'naidan_rpc', connectionId: undefined };
+    const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+        const select = wrapper.get(`[data-testid="${name}"]`);
+        expect(select.element).toHaveProperty('value', 'naidan_rpc');
+        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      }
+      expect(settings.endpoint.type).toBe('naidan_rpc');
+      expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

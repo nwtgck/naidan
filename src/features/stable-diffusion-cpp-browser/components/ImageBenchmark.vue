@@ -6,12 +6,12 @@ import ImageBenchmarkParameters from './ImageBenchmarkParameters.vue';
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
-import ImageInputControls from './ImageInputControls.vue';
-import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import ImageInputControls from '@/features/image-generation/components/ImageInputControls.vue';
+import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
 import { profileOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { ImageBenchmarkView } from '@/features/stable-diffusion-cpp-browser/benchmark-view';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import type { BenchmarkRunRecord } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
 const props = defineProps<{ bench: ImageBenchmarkView, generation: ImageGenerationView, active: boolean }>();
 // The view owns these refs; controls edit the handed-out form state, not a prop snapshot.

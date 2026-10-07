@@ -1,0 +1,1 @@
+export const naidanRpc__code_help = (): string => "This code is a meeting point. Verify the peer by comparing the full confirmation text through a trusted channel, such as a phone call. Choose opposite roles on the two devices.";

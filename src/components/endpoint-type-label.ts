@@ -7,6 +7,7 @@ export function endpointTypeLabel({
   endpointType: Endpoint['type'],
 }): string | undefined {
   switch (endpointType) {
+  case 'naidan_rpc': return 'Naidan RPC';
   case 'openai':
     return 'OpenAI';
   case 'ollama':

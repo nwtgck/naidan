@@ -9,7 +9,7 @@ function runFixture() {
   return generationRunFixture({ id: 'run-aa', sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), count: 4, seed: '9007199254740993' });
 }
 
-describe('strict Image Generation persistence contracts', () => {
+describe('Image Generation persistence contracts', () => {
   it('round-trips exact large seeds and the complete request through JSON serialization', () => {
     const run = runFixture();
     const parsed = ExperimentalImageGenerationRunSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationRunToDto({ run }))));
@@ -20,7 +20,6 @@ describe('strict Image Generation persistence contracts', () => {
     { name: 'run', extend: ({ dto }) => ({ ...dto, future: true }) },
     { name: 'request', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, future: true } }) },
     { name: 'parameters', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, future: true } } }) },
-    { name: 'runtime', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, runtime: { ...dto.request.runtime, future: true } } }) },
     { name: 'preview', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, preview: { ...dto.request.preview, future: true } } }) },
     { name: 'model', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, models: dto.request.models.map(model => ({ ...model, future: true })) } }) },
     { name: 'model file', extend: ({ dto }) => ({ ...dto, request: { ...dto.request, models: dto.request.models.map(model => ({ ...model, file: { ...model.file, future: true } })) } }) },
@@ -36,6 +35,12 @@ describe('strict Image Generation persistence contracts', () => {
   ];
   it.each(futureShapes)('rejects rather than silently strips unknown $name fields', ({ extend }) => {
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse(extend({ dto: imageGenerationRunToDto({ run: runFixture() }) })).success).toBe(false);
+  });
+  it('reads runtime records with additional fields without changing known generation settings', () => {
+    const run = runFixture();
+    const dto = imageGenerationRunToDto({ run });
+    const parsed = ExperimentalImageGenerationRunSchemaDto.parse({ ...dto, request: { ...dto.request, runtime: { ...dto.request.runtime, future: true } } });
+    expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
   });
   it('does not confuse immutable output plans with requested random seeds', () => {
     const dto = imageGenerationRunToDto({ run: runFixture() });

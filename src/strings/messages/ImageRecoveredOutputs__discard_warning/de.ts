@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__discard_warning = (): string => "Dieses wiederhergestellte Bild aus dem Speicher verwerfen? Bereits gespeicherte Bilder werden nicht gelöscht. Warte, bis laufende Speichervorgänge beendet sind.";

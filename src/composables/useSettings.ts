@@ -1,3 +1,4 @@
+import { configureRpcFeature } from '@/features/naidan-peer-rpc/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
@@ -37,6 +38,12 @@ const _settings = ref<Settings>({
   storageType: 'local',
   endpoint: { type: 'openai', url: '' },
 } as Settings);
+
+watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
+  void configureRpcFeature({ status, settings: () => _settings.value }).catch(() => {
+    console.warn('[naidan-rpc] stop-confirmation-failed');
+  });
+}, { immediate: true, flush: 'sync' });
 
 let globalDefaultRevision = 0;
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
@@ -89,6 +96,11 @@ interface UseSettingsApi {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
   }) => Promise<void>,
+  captureExperimentalStorage(): () => boolean,
+  updateExperimentalForStorage: ({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }) => Promise<'saved' | 'changed'>,
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
@@ -132,6 +144,18 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
         await setStringLocale({
           locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
         });
+      } else {
+        const type = event.type;
+        switch (type) {
+        case 'settings': break;
+        case 'migration':
+          // Clearing storage still retires editor write owners. Republish the
+          // current UI settings so mounted editors can capture the new provider
+          // boundary even when no saved Settings record exists yet.
+          _settings.value = { ..._settings.value };
+          break;
+        default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+        }
       }
     } catch (error) {
       console.error('Failed to synchronize settings:', error);
@@ -171,6 +195,7 @@ watch(
   () => _settings.value.endpoint.type,
   (endpointType, _previousType, onCleanup) => {
     switch (endpointType) {
+    case 'naidan_rpc':
     case 'openai':
     case 'ollama':
       return;
@@ -522,6 +547,30 @@ export function useSettings(): UseSettingsApi {
     }
   }
 
+  function captureExperimentalStorage(): () => boolean {
+    return storageService.captureSettingsStorage();
+  }
+
+  async function updateExperimentalForStorage({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }): Promise<'saved' | 'changed'> {
+    let savedSettings: Settings | undefined;
+    const outcome = await storageService.updateSettingsForStorage({ isCurrent, updater: ({ current }) => {
+      const base = current ?? _settings.value;
+      savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
+      return savedSettings;
+    } });
+    switch (outcome) {
+    case 'changed': return outcome;
+    case 'saved':
+      if (!isCurrent()) return 'changed';
+      if (savedSettings) _settings.value = savedSettings;
+      return outcome;
+    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    }
+  }
+
   // --- Explicit Actions ---
 
   async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
@@ -780,6 +829,8 @@ export function useSettings(): UseSettingsApi {
     init,
     save,
     updateExperimental,
+    captureExperimentalStorage,
+    updateExperimentalForStorage,
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,

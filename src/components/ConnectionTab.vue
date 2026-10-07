@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RpcConnectionSelect from '@/features/naidan-peer-rpc/components/RpcConnectionSelect.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
@@ -70,6 +71,8 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
+const rpcEnabled = computed(() => form.value.experimental?.naidanRpc === 'enabled');
+
 const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
@@ -96,6 +99,11 @@ const endpointType = computed<Endpoint['type']>({
       resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     }
+    case 'naidan_rpc':
+      clearBrowserProvidedLmModelIds();
+      form.value.endpoint = { type, connectionId: undefined };
+      resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
+      return;
     case 'llama_cpp_browser':
     case 'transformers_js':
       clearBrowserProvidedLmModelIds();
@@ -330,6 +338,7 @@ function titleModelIdFromSettingsTitleGeneration({
 const globalTitleGenerationEnabled = computed(() => currentSettingsTitleGeneration() !== 'disabled');
 
 const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  naidan_rpc: true,
   openai: true,
   ollama: true,
   transformers_js: true,
@@ -539,6 +548,9 @@ function setGlobalTitleEndpointType({
       },
     });
     return;
+  case 'naidan_rpc':
+    setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: explicitSettingsTitleModel({ modelId }) } });
+    return;
   case 'llama_cpp_browser':
   case 'transformers_js':
     setFormTitleGeneration({
@@ -669,6 +681,7 @@ async function copySetupUrl(): Promise<void> {
   case 'transformers_js':
     // transformers_js doesn't use global-endpoint parameters in this implementation
     break;
+  case 'naidan_rpc':
   case 'browser_provided_lm':
   case 'unsupported_experimental_endpoint':
     // Experimental endpoint DTOs are intentionally not encoded in setup URLs.
@@ -736,6 +749,7 @@ async function fetchModels() {
     let changed = false;
     const shouldValidateModelSelection = (() => {
       switch (updatedForm.endpoint.type) {
+      case 'naidan_rpc':
       case 'openai':
       case 'ollama':
       case 'llama_cpp_browser':
@@ -957,6 +971,8 @@ defineExpose({
                 >
                   <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
+                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-else-if="endpointType === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                   <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available' ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
@@ -970,6 +986,7 @@ defineExpose({
                     disabled
                   >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
+                <RpcConnectionSelect v-if="form.endpoint.type === 'naidan_rpc'" v-model="form.endpoint.connectionId" />
                 <PromptApiStatus v-if="endpointType === 'browser_provided_lm'" show-ready tw-class="mt-3" />
               </div>
 
@@ -1156,11 +1173,19 @@ defineExpose({
                       >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                       <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                       <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
+                      <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                      <option v-else-if="globalTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                       <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                       <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
                       <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>
                     </select>
                   </div>
+
+                  <RpcConnectionSelect
+                    v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'"
+                    :model-value="globalTitleEndpoint.connectionId"
+                    @update:model-value="connectionId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', connectionId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })"
+                  />
 
                   <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-2">
                     <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>

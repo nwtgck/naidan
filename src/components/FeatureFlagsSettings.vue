@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NaidanRpcFeatureRow from '@/features/naidan-peer-rpc/components/NaidanRpcFeatureRow.vue';
 import { computed } from 'vue';
 import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, ListRestartIcon, TerminalIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
@@ -391,6 +392,7 @@ defineExpose({
           <FlaskConicalIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
+      <NaidanRpcFeatureRow />
     </div>
 
     <div

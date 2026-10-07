@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 import { lazyStrings } from '@/strings';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 const state = props.view.engineState;

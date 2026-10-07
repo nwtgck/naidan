@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__managed_by_pending_run = (): string => "Dieses Bild gehört zu einem ungespeicherten Vorgang. Verwende dessen Eintrag in der Liste ungespeicherter Vorgänge, um das Speichern erneut zu versuchen oder den Vorgang zu verwerfen.";

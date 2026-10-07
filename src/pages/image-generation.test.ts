@@ -1,12 +1,12 @@
 import { defineComponent, h } from 'vue';
-import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
+import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import ImageGenerationLab from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';
+import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn() }));
@@ -92,7 +92,7 @@ it('preserves an active benchmark and its retained results across browser back a
   await historyStep({ router, delta: -1 });
   expect(owner.TEST_ONLY.activeTab.value).toBe('generate');
   expect(bench.busy.value).toBe(true); expect(mocks.dispose).not.toHaveBeenCalled();
-  await owner.TEST_ONLY.generate(); expect(mocks.generate).toHaveBeenCalledTimes(1);
+  await owner.TEST_ONLY.generate({ submission: undefined }); expect(mocks.generate).toHaveBeenCalledTimes(1);
   await historyStep({ router, delta: 1 });
   expect(wrapper!.getComponent(ImageGenerationLab).vm.$.uid).toBe(owner.$.uid);
   pending.resolve({ png: new Blob(['PNG'], { type: 'image/png' }), width: 512, height: 512, modelVersion: 'fixture' });

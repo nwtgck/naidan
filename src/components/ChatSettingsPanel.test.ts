@@ -7,7 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
-import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration, type Settings } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -42,6 +42,31 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 describe('ChatSettingsPanel.vue', () => {
+  it('hides disabled RPC choices while preserving existing chat and title references', async () => {
+    mockCurrentChat.value.endpoint = { type: 'naidan_rpc', connectionId: undefined };
+    mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        const select = wrapper.get(`[data-testid="${name}"]`);
+        expect(select.element).toHaveProperty('value', 'naidan_rpc');
+        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      }
+      mockSettings.value.experimental = { naidanRpc: 'enabled' }; await nextTick();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      }
+      mockSettings.value.experimental = undefined;
+      mockCurrentChat.value.endpoint = undefined; mockCurrentChat.value.titleGeneration = 'inherit'; await nextTick();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
   const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
     if (mockCurrentChat.value?.id === id) {
@@ -53,6 +78,7 @@ describe('ChatSettingsPanel.vue', () => {
   const mockSettings = reactive<{
     value: {
       endpoint: Endpoint,
+      experimental?: Settings['experimental'],
       defaultModelId: string,
       titleGeneration: SettingsTitleGeneration,
       lmParameters?: LmParameters,
@@ -84,6 +110,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   const globalStubs = {
+    RpcConnectionSelect: true,
     XIcon: true,
     RefreshCwIcon: true,
     GlobeIcon: true,
