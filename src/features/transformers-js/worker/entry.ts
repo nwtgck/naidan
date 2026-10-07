@@ -1126,20 +1126,25 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     const diagnosticEnv = env as typeof env & { naidanModelLoadObserver?: UpstreamLoadDiagnosticObserver };
     let previousObserver: typeof diagnosticEnv.naidanModelLoadObserver;
     // Recording is optional and never grants a different Load/OPFS/fetch path.
-    recordGenerationCapture({ record: () => {
-      diagnosticLoadOrdinal++;
-      const owner = productionLoadReceiptOwnerSchema.safeParse(loadReceiptOwner);
-      const diagnosticSender = postLoadDiagnostic;
-      if (owner.success && diagnosticSender !== undefined && diagnosticLoadOrdinal <= 32) {
-        const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-        loadDiagnostics = createLoadDiagnosticOperation({ owner: owner.data, loadOrdinal: diagnosticLoadOrdinal,
-          sink: ({ packet }) => diagnosticSender({ message: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } }),
-          resourceNames: cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/') ? 'omit' : 'public-repository' });
-        previousObserver = diagnosticEnv.naidanModelLoadObserver;
-        diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.observeUpstream;
-        loadDiagnostics.emit({ kind: 'load-start', details: { priorRuntime: model === null ? 'absent' : 'present' } });
-      }
-    } });
+    recordGenerationCapture({
+      record: () => {
+        diagnosticLoadOrdinal++;
+        const owner = productionLoadReceiptOwnerSchema.safeParse(loadReceiptOwner);
+        const diagnosticSender = postLoadDiagnostic;
+        if (owner.success && diagnosticSender !== undefined && diagnosticLoadOrdinal <= 32) {
+          const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+          loadDiagnostics = createLoadDiagnosticOperation({
+            owner: owner.data,
+            loadOrdinal: diagnosticLoadOrdinal,
+            sink: ({ packet }) => diagnosticSender({ message: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } }),
+            resourceNames: cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/') ? 'omit' : 'public-repository',
+          });
+          previousObserver = diagnosticEnv.naidanModelLoadObserver;
+          diagnosticEnv.naidanModelLoadObserver = loadDiagnostics.observeUpstream;
+          loadDiagnostics.emit({ kind: 'load-start', details: { priorRuntime: model === null ? 'absent' : 'present' } });
+        }
+      },
+    });
     try {
       loadDiagnostics?.emit({ kind: 'previous-unload-start', details: {} });
       try {
@@ -1184,12 +1189,14 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         throw new Error(errorMessage);
       }
     } finally {
-      recordGenerationCapture({ record: () => {
-        if (loadDiagnostics !== undefined) {
-          if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
-          else diagnosticEnv.naidanModelLoadObserver = previousObserver;
-        }
-      } });
+      recordGenerationCapture({
+        record: () => {
+          if (loadDiagnostics !== undefined) {
+            if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
+            else diagnosticEnv.naidanModelLoadObserver = previousObserver;
+          }
+        },
+      });
     }
   },
 
@@ -2069,10 +2076,12 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
                 throw new Error(`Unhandled generation strategy: ${String(_ex)}`);
               }
               }
-              delivery.enqueue({ deliver: () => {
-                if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
-                return onChunk(chunk);
-              } });
+              delivery.enqueue({
+                deliver: () => {
+                  if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
+                  return onChunk(chunk);
+                },
+              });
             },
             onRawChunk: ({ chunk }) => {
               if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-raw', chunk }) });

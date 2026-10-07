@@ -92,7 +92,11 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
         endpoint.addEventListener('messageerror', onMessageError);
         try {
           endpoint.postMessage(productionWorkerStartupSchema.parse({
-            ...PRODUCTION_WORKER_READY, status: 'runtime-module', requestId, variant, bytes,
+            ...PRODUCTION_WORKER_READY,
+            status: 'runtime-module',
+            requestId,
+            variant,
+            bytes,
           }));
         } catch (error) {
           cleanup(); reject(error);

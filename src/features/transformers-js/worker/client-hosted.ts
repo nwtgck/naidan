@@ -205,14 +205,18 @@ function createWorkerClientCore({ capture }: {
     }): Promise<ModelLoadResult> {
       const revisionSelection = downloadedModelRevisionSelectionSchema.parse(rawSelection);
       capture?.recordLoad({ modelId, revisionSelection });
-      return session.run({ operation: ({ remote }) => remote.loadDownloadedModel(
-        modelId, revisionSelection,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => {
-          if (session.isActive()) return progressCallback({ info });
-        } }),
-        ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
-      ) });
+      return session.run({
+        operation: ({ remote }) => remote.loadDownloadedModel(
+          modelId, revisionSelection,
+          workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+            value: (info: ProgressInfo) => {
+              if (session.isActive()) return progressCallback({ info });
+            },
+          }),
+          ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
+        ),
+      });
     },
     async unloadModel(): Promise<void> {
       return session.run({ operation: ({ remote }) => remote.unloadModel() });
@@ -241,21 +245,27 @@ function createWorkerClientCore({ capture }: {
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
       try {
-        return await session.run({ operation: ({ remote }) => remote.generateText(
-          accepted.messages,
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-          workerProxy({ value: (chunk: string) => {
-            if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
-          } }),
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-          workerProxy({ value: (toolCalls: ToolCall[]) => {
-            if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
-          } }),
-          accepted.params,
-          accepted.tools,
-          request,
-          continuationOwner,
-        ) });
+        return await session.run({
+          operation: ({ remote }) => remote.generateText(
+            accepted.messages,
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+              value: (chunk: string) => {
+                if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
+              },
+            }),
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+              value: (toolCalls: ToolCall[]) => {
+                if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
+              },
+            }),
+            accepted.params,
+            accepted.tools,
+            request,
+            continuationOwner,
+          ),
+        });
       } finally {
         // A failed or disposed RPC cannot deliver into a later request, even
         // when its callback MessagePort still has queued messages.
@@ -277,21 +287,29 @@ function createWorkerClientCore({ capture }: {
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
       try {
-        await session.run({ operation: ({ remote }) => remote.generateText(
-          accepted.messages,
-          workerProxy({ value: () => {
-            throw new Error('Structured generation received a legacy text callback.');
-          } }),
-          workerProxy({ value: () => {
-            throw new Error('Structured generation received a legacy tool callback.');
-          } }),
-          accepted.params, accepted.tools, request, continuationOwner,
-          workerProxy({ value: ({ event }: { event: unknown }) => {
-            if (acceptingCallbacks && session.isActive()) {
-              return onEvent({ event: inferenceGenerationEventSchema.parse(event) });
-            }
-          } }),
-        ) });
+        await session.run({
+          operation: ({ remote }) => remote.generateText(
+            accepted.messages,
+            workerProxy({
+              value: () => {
+                throw new Error('Structured generation received a legacy text callback.');
+              },
+            }),
+            workerProxy({
+              value: () => {
+                throw new Error('Structured generation received a legacy tool callback.');
+              },
+            }),
+            accepted.params, accepted.tools, request, continuationOwner,
+            workerProxy({
+              value: ({ event }: { event: unknown }) => {
+                if (acceptingCallbacks && session.isActive()) {
+                  return onEvent({ event: inferenceGenerationEventSchema.parse(event) });
+                }
+              },
+            }),
+          ),
+        });
       } finally {
         acceptingCallbacks = false;
       }

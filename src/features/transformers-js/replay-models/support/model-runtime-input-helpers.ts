@@ -86,9 +86,12 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
       reads.push(path);
       const blob = blobs.get(path);
       if (blob === undefined) throw new DOMException('Missing raw fixture file', 'NotFoundError');
-      return { getFile: async () => blob, createWritable: () => {
-        mutations(); throw new Error('Writer forbidden');
-      } };
+      return {
+        getFile: async () => blob,
+        createWritable: () => {
+          mutations(); throw new Error('Writer forbidden');
+        },
+      };
     },
     removeEntry: () => {
       mutations(); throw new Error('Delete forbidden');
@@ -112,7 +115,12 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
   const bodyReads: string[] = [];
   const allowedMetadata = new Set<string>(archive.summary.files.map(file => file.path));
   Object.assign(runtime.env, {
-    allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false, useCustomCache: true, useWasmCache: false, fetch: guardedFetch,
+    allowLocalModels: true,
+    allowRemoteModels: false,
+    useBrowserCache: false,
+    useCustomCache: true,
+    useWasmCache: false,
+    fetch: guardedFetch,
     customCache: {
       ...cache,
       // eslint-disable-next-line local-rules-named-args/require-named-args -- TJS customCache external positional callback.
@@ -131,9 +139,11 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
         requests.push(path);
         if (bodyPaths.includes(path)) {
           await gate.promise;
-          return new Response(new ReadableStream<Uint8Array>({ pull(controller) {
-            bodyReads.push(path); controller.enqueue(new Uint8Array([1])); controller.close();
-          } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1' } });
+          return new Response(new ReadableStream<Uint8Array>({
+            pull(controller) {
+              bodyReads.push(path); controller.enqueue(new Uint8Array([1])); controller.close();
+            },
+          }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1' } });
         }
         if (offset < 0 || !allowedMetadata.has(path)) {
           unknownRequests.push(url); throw new Error('Uncaptured raw replay request');

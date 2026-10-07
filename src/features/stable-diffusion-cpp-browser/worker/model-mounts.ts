@@ -15,12 +15,15 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
   if (files.some(file => !validModelPath({ path: file.path })) || names.size !== files.length) throw new Error('Unsafe or duplicate model paths');
   const metadata = new Map<string, WeightMetadata>();
   function source({ file }: { file: File }): ModelMetadataFile {
-    return { size: file.size,
+    return {
+      size: file.size,
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Platform Blob.slice signature.
       slice(start, end) {
-        return { async arrayBuffer() {
-          return reader.readAsArrayBuffer(file.slice(start, end));
-        } };
+        return {
+          async arrayBuffer() {
+            return reader.readAsArrayBuffer(file.slice(start, end));
+          },
+        };
       },
     };
   }

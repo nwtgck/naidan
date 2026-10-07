@@ -245,7 +245,8 @@ export function createImageGenerationSession({ core, helpers, reader }: {
           }
           previousRun = current;
         });
-        mounts.push(helpers.mountReadOnlyFile(core, path, { size: source.size,
+        mounts.push(helpers.mountReadOnlyFile(core, path, {
+          size: source.size,
           // eslint-disable-next-line local-rules-named-args/require-named-args -- External filesystem range-reader signature.
           read(destination, offset) {
             const count = source.read(destination, offset);

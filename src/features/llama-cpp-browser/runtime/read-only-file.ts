@@ -77,7 +77,8 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     },
     write() {
       fail({ code: 'EROFS' });
-    }, mmap() {
+    },
+    mmap() {
       fail({ code: 'EINVAL' });
     },
   };

@@ -64,25 +64,37 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
 
   return {
     async verifyDownloadedModelCandidate({ modelId, loadRevision, candidate, progressCallback }) {
-      return await verify({ operation: () => session.run({ operation: ({ remote }) => remote.verifyDownloadedModelCandidate(
-        modelId,
-        loadRevision,
-        candidate,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => {
-          if (session.isActive()) return progressCallback({ info });
-        } }),
-      ) }) });
+      return await verify({
+        operation: () => session.run({
+          operation: ({ remote }) => remote.verifyDownloadedModelCandidate(
+            modelId,
+            loadRevision,
+            candidate,
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
+              value: (info: ProgressInfo) => {
+                if (session.isActive()) return progressCallback({ info });
+              },
+            }),
+          ),
+        }),
+      });
     },
     async verifyDownloadedModelRevision({ modelId, loadRevision, progressCallback }) {
-      return await verify({ operation: () => session.run({ operation: ({ remote }) => remote.verifyDownloadedModelRevision(
-        modelId,
-        loadRevision,
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => {
-          if (session.isActive()) return progressCallback({ info });
-        } }),
-      ) }) });
+      return await verify({
+        operation: () => session.run({
+          operation: ({ remote }) => remote.verifyDownloadedModelRevision(
+            modelId,
+            loadRevision,
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
+              value: (info: ProgressInfo) => {
+                if (session.isActive()) return progressCallback({ info });
+              },
+            }),
+          ),
+        }),
+      });
     },
     async dispose() {
       if (retirementError !== undefined) throw retirementError;
@@ -91,7 +103,9 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
       } catch (cause) {
         // Remote release is advisory inside the session. A rejection here
         // means physical retirement is unknown, including throw undefined/null.
-        retirementError = new DownloadAcceptanceWorkerRetirementError({ cause, verificationOutcome,
+        retirementError = new DownloadAcceptanceWorkerRetirementError({
+          cause,
+          verificationOutcome,
           interruption: operationSignal?.aborted ? { reason: operationSignal.reason } : undefined,
         });
         throw retirementError;

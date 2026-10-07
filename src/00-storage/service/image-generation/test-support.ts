@@ -86,15 +86,18 @@ export function createImageGenerationStorageHarness() {
   const root = new MockDirectory({ name: '', path: '' });
   const tails = new Map<string, Promise<unknown>>();
   const getDirectory = vi.fn(async () => root);
-  vi.stubGlobal('navigator', { storage: { getDirectory }, locks: {
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- LockManager.request is a browser positional contract.
-    request<T>(name: string, operation: () => Promise<T>): Promise<T> {
-      const pending = (tails.get(name) ?? Promise.resolve()).then(async () => {
-        acquired.push(name); return operation();
-      });
-      tails.set(name, pending.catch(() => {})); return pending;
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory },
+    locks: {
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- LockManager.request is a browser positional contract.
+      request<T>(name: string, operation: () => Promise<T>): Promise<T> {
+        const pending = (tails.get(name) ?? Promise.resolve()).then(async () => {
+          acquired.push(name); return operation();
+        });
+        tails.set(name, pending.catch(() => {})); return pending;
+      },
     },
-  } });
+  });
   async function directory({ path }: { path: string }): Promise<MockDirectory> {
     let value = root;
     for (const name of path.split('/').filter(Boolean)) value = await value.getDirectoryHandle(name);

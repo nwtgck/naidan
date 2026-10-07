@@ -235,65 +235,69 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
   const cache = {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- TJS Cache-compatible boundary.
     match(input: string | Request): Promise<Response | undefined> {
-      return tracked({ run: async () => {
-        const value = typeof input === 'string' ? input : input.url;
-        // Ignore only the known same-model local lookup made before the HF key.
-        // Do not read user uploads or mutable local-path cache aliases.
-        if (value.startsWith(`/models/${modelId}/`)) return undefined;
-        const id = resource({ value, presence: 'allowed' });
-        if (id.aliased) {
+      return tracked({
+        run: async () => {
+          const value = typeof input === 'string' ? input : input.url;
+          // Ignore only the known same-model local lookup made before the HF key.
+          // Do not read user uploads or mutable local-path cache aliases.
+          if (value.startsWith(`/models/${modelId}/`)) return undefined;
+          const id = resource({ value, presence: 'allowed' });
+          if (id.aliased) {
+            const size = await storage.stat({ url: id.url });
+            check();
+            if (size === undefined) return undefined;
+            if (size > maximumByteLength) throw new Error('Cached metadata exceeds byte limit');
+            return new Response(null, { headers: { 'Content-Length': String(size) } });
+          }
+          // Stat first prevents an oversized cached resource from opening a body.
           const size = await storage.stat({ url: id.url });
           check();
           if (size === undefined) return undefined;
           if (size > maximumByteLength) throw new Error('Cached metadata exceeds byte limit');
-          return new Response(null, { headers: { 'Content-Length': String(size) } });
-        }
-        // Stat first prevents an oversized cached resource from opening a body.
-        const size = await storage.stat({ url: id.url });
-        check();
-        if (size === undefined) return undefined;
-        if (size > maximumByteLength) throw new Error('Cached metadata exceeds byte limit');
-        const stored = await storage.read({ url: id.url });
-        const owned = stored === undefined ? undefined : ownResponse({ response: stored.response, url: id.url, obligation: 'cached' });
-        check();
-        if (stored === undefined || stored.byteLength !== size) throw new Error('Metadata changed after cache stat');
-        required.set(id.url, size);
-        return owned;
-      } });
+          const stored = await storage.read({ url: id.url });
+          const owned = stored === undefined ? undefined : ownResponse({ response: stored.response, url: id.url, obligation: 'cached' });
+          check();
+          if (stored === undefined || stored.byteLength !== size) throw new Error('Metadata changed after cache stat');
+          required.set(id.url, size);
+          return owned;
+        },
+      });
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- TJS Cache-compatible boundary.
     put(input: string | Request, response: Response): Promise<void> {
-      return tracked({ run: async () => {
-        const id = resource({ value: typeof input === 'string' ? input : input.url, presence: 'forbidden' });
-        if (response.status !== 200) {
-          ownResponse({ response, url: id.url, obligation: 'none' });
-          if (response.status !== 404) {
+      return tracked({
+        run: async () => {
+          const id = resource({ value: typeof input === 'string' ? input : input.url, presence: 'forbidden' });
+          if (response.status !== 200) {
+            ownResponse({ response, url: id.url, obligation: 'none' });
+            if (response.status !== 404) {
+              const error = fullResourceResponseError({ response });
+              if (error !== undefined) throw error;
+            }
+            return;
+          }
+          const previous = writes.get(id.url);
+          const task = (async () => {
+            await previous;
+            check();
+            const guarded = ownResponse({ response, url: id.url, obligation: 'save' });
             const error = fullResourceResponseError({ response });
             if (error !== undefined) throw error;
+            if (response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) throw new Error('HTML response is not runtime metadata');
+            await storage.write({ url: id.url, response: guarded });
+            check();
+            const size = await storage.stat({ url: id.url });
+            check();
+            if (size === undefined || size !== required.get(id.url)) throw new Error('Metadata is not durably complete after write');
+          })();
+          writes.set(id.url, task);
+          try {
+            await task;
+          } finally {
+            if (writes.get(id.url) === task) writes.delete(id.url);
           }
-          return;
-        }
-        const previous = writes.get(id.url);
-        const task = (async () => {
-          await previous;
-          check();
-          const guarded = ownResponse({ response, url: id.url, obligation: 'save' });
-          const error = fullResourceResponseError({ response });
-          if (error !== undefined) throw error;
-          if (response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) throw new Error('HTML response is not runtime metadata');
-          await storage.write({ url: id.url, response: guarded });
-          check();
-          const size = await storage.stat({ url: id.url });
-          check();
-          if (size === undefined || size !== required.get(id.url)) throw new Error('Metadata is not durably complete after write');
-        })();
-        writes.set(id.url, task);
-        try {
-          await task;
-        } finally {
-          if (writes.get(id.url) === task) writes.delete(id.url);
-        }
-      } });
+        },
+      });
     },
   };
 

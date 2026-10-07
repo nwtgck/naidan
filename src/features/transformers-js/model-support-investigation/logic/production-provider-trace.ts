@@ -177,45 +177,52 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     onChunk: input => append({ project: ({ text }) => ({ kind: 'chunk', chunk: text({ value: ownData({ source: input, key: 'chunk' }) }) }) }),
     onAssistantMessageStart: () => append({ project: () => ({ kind: 'assistant-start' }) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolCall: input => append({ project: ({ text }) => ({
-      kind: 'tool-call', toolCallId: text({ value: ownData({ source: input, key: 'id' }) }),
-      toolName: text({ value: ownData({ source: input, key: 'toolName' }) }),
-      modelVisibleArguments: text({ value: ownData({ source: input, key: 'modelVisibleArguments' }) }),
-    }) }),
+    onToolCall: input => append({
+      project: ({ text }) => ({
+        kind: 'tool-call',
+        toolCallId: text({ value: ownData({ source: input, key: 'id' }) }),
+        toolName: text({ value: ownData({ source: input, key: 'toolName' }) }),
+        modelVisibleArguments: text({ value: ownData({ source: input, key: 'modelVisibleArguments' }) }),
+      }),
+    }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolEvent: input => append({ project: ({ text }) => {
-      const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
-      const event = ownData({ source: input, key: 'event' });
-      const type = ownData({ source: event, key: 'type' });
-      switch (type) {
-      case 'started': return { kind: 'tool-started', toolCallId };
-      case 'output': {
-        const stream = ownData({ source: event, key: 'stream' });
-        if (stream !== 'stdout' && stream !== 'stderr') throw unreadableField;
-        return { kind: 'tool-output', toolCallId, stream, text: text({ value: ownData({ source: event, key: 'text' }) }) };
-      }
-      case 'exit': {
-        const exitCode = ownData({ source: event, key: 'exitCode' });
-        if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) throw unreadableField;
-        return { kind: 'tool-exit', toolCallId, exitCode };
-      }
-      default: throw unreadableField;
-      }
-    } }),
+    onToolEvent: input => append({
+      project: ({ text }) => {
+        const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
+        const event = ownData({ source: input, key: 'event' });
+        const type = ownData({ source: event, key: 'type' });
+        switch (type) {
+        case 'started': return { kind: 'tool-started', toolCallId };
+        case 'output': {
+          const stream = ownData({ source: event, key: 'stream' });
+          if (stream !== 'stdout' && stream !== 'stderr') throw unreadableField;
+          return { kind: 'tool-output', toolCallId, stream, text: text({ value: ownData({ source: event, key: 'text' }) }) };
+        }
+        case 'exit': {
+          const exitCode = ownData({ source: event, key: 'exitCode' });
+          if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) throw unreadableField;
+          return { kind: 'tool-exit', toolCallId, exitCode };
+        }
+        default: throw unreadableField;
+        }
+      },
+    }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolResult: input => append({ project: ({ text }) => {
-      const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
-      const result = ownData({ source: input, key: 'result' });
-      switch (ownData({ source: result, key: 'status' })) {
-      case 'success': return { kind: 'tool-success', toolCallId, content: text({ value: ownData({ source: result, key: 'content' }) }) };
-      case 'error': {
-        const code = ownData({ source: result, key: 'code' });
-        if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') throw unreadableField;
-        return { kind: 'tool-error', toolCallId, code, messageCapture: 'omitted-for-privacy' };
-      }
-      default: throw unreadableField;
-      }
-    } }),
+    onToolResult: input => append({
+      project: ({ text }) => {
+        const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
+        const result = ownData({ source: input, key: 'result' });
+        switch (ownData({ source: result, key: 'status' })) {
+        case 'success': return { kind: 'tool-success', toolCallId, content: text({ value: ownData({ source: result, key: 'content' }) }) };
+        case 'error': {
+          const code = ownData({ source: result, key: 'code' });
+          if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') throw unreadableField;
+          return { kind: 'tool-error', toolCallId, code, messageCapture: 'omitted-for-privacy' };
+        }
+        default: throw unreadableField;
+        }
+      },
+    }),
   };
 
   // Keep only the latest revision for each part. A text snapshot records the

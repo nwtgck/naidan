@@ -223,59 +223,61 @@ export function createRequiredDownloadedResourceOperation({
   const cache: ReturnType<typeof createOpfsModelCache> = {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Cache-compatible boundary.
     match(request) {
-      return track({ operation: (async () => {
-        assertActive();
-        const resolution = scope.resolve({ request });
-        let url: string;
-        let resourceKey: string | undefined;
-        let scopeOwnership: 'owned' | 'outside';
-        switch (resolution.kind) {
-        case 'unsupported-method': return undefined;
-        case 'admitted':
-          url = resourceUrl({ value: resolution.url });
-          resourceKey = resolution.resourceKey;
-          scopeOwnership = 'owned';
-          break;
-        case 'outside-scope':
-          url = resourceUrl({ value: typeof request === 'string' ? request : request.url });
-          resourceKey = undefined;
-          scopeOwnership = 'outside';
-          break;
-        default: {
-          const _ex: never = resolution;
-          throw new Error(`Unhandled cache scope result ${_ex}`);
-        }
-        }
-        const required = resourceKey !== undefined && requiredKeys.has(resourceKey);
-        let response: Response | undefined;
-        try {
-          response = await modelCache.match(request);
-        } catch (cause) {
-          // Optional absence is normal; native I/O failure is not evidence of
-          // absence or candidate incompatibility. A preceding local probe is
-          // outside an HF operation and must not poison its exact lookup.
-          if (required || (scopeOwnership === 'owned' && !((cause instanceof DOMException || cause instanceof Error) && cause.name === 'NotFoundError'))) {
-            throw recordFailure({ url, kind: 'io', cause });
+      return track({
+        operation: (async () => {
+          assertActive();
+          const resolution = scope.resolve({ request });
+          let url: string;
+          let resourceKey: string | undefined;
+          let scopeOwnership: 'owned' | 'outside';
+          switch (resolution.kind) {
+          case 'unsupported-method': return undefined;
+          case 'admitted':
+            url = resourceUrl({ value: resolution.url });
+            resourceKey = resolution.resourceKey;
+            scopeOwnership = 'owned';
+            break;
+          case 'outside-scope':
+            url = resourceUrl({ value: typeof request === 'string' ? request : request.url });
+            resourceKey = undefined;
+            scopeOwnership = 'outside';
+            break;
+          default: {
+            const _ex: never = resolution;
+            throw new Error(`Unhandled cache scope result ${_ex}`);
           }
-          throw cause;
-        }
-        if (required && response === undefined) throw recordFailure({ url, kind: 'missing', cause: undefined });
-        switch (lifecycle) {
-        case 'closed':
+          }
+          const required = resourceKey !== undefined && requiredKeys.has(resourceKey);
+          let response: Response | undefined;
           try {
-            await response?.body?.cancel();
+            response = await modelCache.match(request);
           } catch (cause) {
-            throw scopedIoFailure({ url, scopeOwnership, cause });
+            // Optional absence is normal; native I/O failure is not evidence of
+            // absence or candidate incompatibility. A preceding local probe is
+            // outside an HF operation and must not poison its exact lookup.
+            if (required || (scopeOwnership === 'owned' && !((cause instanceof DOMException || cause instanceof Error) && cause.name === 'NotFoundError'))) {
+              throw recordFailure({ url, kind: 'io', cause });
+            }
+            throw cause;
           }
-          throw new Error('Downloaded resource response arrived after operation closure');
-        case 'active': break;
-        default: {
-          const _ex: never = lifecycle;
-          throw new Error(`Unhandled downloaded resource lifecycle ${_ex}`);
-        }
-        }
-        return response === undefined ? undefined : observeBody({ response, url, resourceKey, scopeOwnership });
-      })() });
+          if (required && response === undefined) throw recordFailure({ url, kind: 'missing', cause: undefined });
+          switch (lifecycle) {
+          case 'closed':
+            try {
+              await response?.body?.cancel();
+            } catch (cause) {
+              throw scopedIoFailure({ url, scopeOwnership, cause });
+            }
+            throw new Error('Downloaded resource response arrived after operation closure');
+          case 'active': break;
+          default: {
+            const _ex: never = lifecycle;
+            throw new Error(`Unhandled downloaded resource lifecycle ${_ex}`);
+          }
+          }
+          return response === undefined ? undefined : observeBody({ response, url, resourceKey, scopeOwnership });
+        })(),
+      });
     },
     async put() {
       throw new Error('Read-only OPFS model cache MUST NOT be written during model loading');

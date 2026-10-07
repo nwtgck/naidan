@@ -187,9 +187,14 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
       if (sequence >= 512) return;
       try {
         if (typeof value !== 'object' || value === null) return;
-        const raw = z.object({ token: z.object({}).strict(), kind: z.enum(['read', 'session']), resource: z.string().max(256).optional(),
+        const raw = z.object({
+          token: z.object({}).strict(),
+          kind: z.enum(['read', 'session']),
+          resource: z.string().max(256).optional(),
           phase: z.enum(['allocation-attempt', 'allocation-succeeded', 'allocation-failed', 'read-start', 'read-returned', 'read-failed',
-            'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected']), bytes: count, errorName: z.string().max(64).optional(),
+            'session-preparing', 'session-entering', 'session-fulfilled', 'session-rejected']),
+          bytes: count,
+          errorName: z.string().max(64).optional(),
           // Only raw advisory input is projected before emission: an invalid
           // category must not discard the otherwise valid native event.
           errorCategory: errorCategory.catch(undefined),
@@ -239,9 +244,16 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         default: { const _ex: never = phase; throw new Error(`Unhandled diagnostic phase: ${_ex}`); }
         }
         const name = errorName.safeParse(raw.data.errorName);
-        emit({ kind: phase, details: { resource: read.resource, readOrdinal: read.readOrdinal, requestedBytes: bytes,
-          ...categoryDetails,
-          ...(raw.data.errorName === undefined ? {} : { errorName: name.success ? name.data : 'unknown' }) } });
+        emit({
+          kind: phase,
+          details: {
+            resource: read.resource,
+            readOrdinal: read.readOrdinal,
+            requestedBytes: bytes,
+            ...categoryDetails,
+            ...(raw.data.errorName === undefined ? {} : { errorName: name.success ? name.data : 'unknown' }),
+          },
+        });
       } catch { /* A malformed observation must not change the original exception. */ }
     },
   };

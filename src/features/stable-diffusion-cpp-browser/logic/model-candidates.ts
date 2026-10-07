@@ -162,12 +162,15 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, path: `${repository.id}/${entry.path}`.slice(0, 2048) } });
       progress(); completed++;
       // Report real I/O progress without reading any additional bytes.
-      const file = { size: entry.file.size,
+      const file = {
+        size: entry.file.size,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Blob slice-compatible adapter.
         slice(start?: number, end?: number) {
-          return { async arrayBuffer() {
-            const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
-          } };
+          return {
+            async arrayBuffer() {
+              const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
+            },
+          };
         },
       };
       if (/\.json$/i.test(entry.path)) {

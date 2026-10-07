@@ -44,7 +44,10 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
   const original = raw.runtime.env.customCache;
   const scope = createDownloadedModelCacheScope({ modelId, revision: archive.summary.revision });
   const owned = createRequiredDownloadedResourceOperation({
-    modelId, revision: archive.summary.revision, requiredPaths: paths, workerLocationUrl: 'http://localhost/assets/worker.js',
+    modelId,
+    revision: archive.summary.revision,
+    requiredPaths: paths,
+    workerLocationUrl: 'http://localhost/assets/worker.js',
     modelCache: {
       ...original,
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Third-party customCache callback boundary.
@@ -65,7 +68,8 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
         await matched?.body?.cancel();
         return response({ path });
       },
-    }, cacheOnlyFetch: raw.guardedFetch,
+    },
+    cacheOnlyFetch: raw.guardedFetch,
   });
   raw.runtime.env.customCache = owned.cache;
   raw.runtime.env.fetch = owned.fetch;

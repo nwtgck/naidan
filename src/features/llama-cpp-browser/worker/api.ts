@@ -91,13 +91,21 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       try {
-        await guarded({ operation: async () => {
-          await prepareSession({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
-            events.send({ operation: () => {
-              if (!controller.signal.aborted) return onProgress(progress);
-            } });
-          } });
-        } });
+        await guarded({
+          operation: async () => {
+            await prepareSession({
+              request: accepted,
+              signal: controller.signal,
+              onProgress: ({ progress }) => {
+                events.send({
+                  operation: () => {
+                    if (!controller.signal.aborted) return onProgress(progress);
+                  },
+                });
+              },
+            });
+          },
+        });
       } finally {
         try {
           await events.finish();
@@ -111,35 +119,49 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
       const controller = new AbortController(); let finishRequested = false; let previewVersion = 0;
-      active = { generationId, controller, finishAudio: () => {
-        finishRequested = true;
-      }, previewAudio: ({ requestVersion }) => {
-        if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
-      } };
+      active = {
+        generationId,
+        controller,
+        finishAudio: () => {
+          finishRequested = true;
+        },
+        previewAudio: ({ requestVersion }) => {
+          if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
+        },
+      };
       const events = eventQueue();
-      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
-        if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
-        return undefined;
-      } });
+      const unsubscribe = subscribeDiagnostics({
+        debug: accepted.debug,
+        listener: ({ diagnostic }) => {
+          if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
+          return undefined;
+        },
+      });
       try {
-        const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
-          request: accepted, cancellationSignal: controller.signal, shouldComplete: () => finishRequested,
-          preview: onPreview ? {
-            requestedVersion: () => previewVersion,
-            onPreview: async ({ ...event }) => {
-              if (controller.signal.aborted) return;
-              const acceptedEvent = audioPreviewEventSchema.parse(event);
-              // Acknowledge each user-requested copy before continuing. Do not
-              // build an unbounded event queue of large audio buffers.
-              await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+        const result = audioGenerationResultSchema.parse(await guarded({
+          operation: () => generateAudio({
+            request: accepted,
+            cancellationSignal: controller.signal,
+            shouldComplete: () => finishRequested,
+            preview: onPreview ? {
+              requestedVersion: () => previewVersion,
+              onPreview: async ({ ...event }) => {
+                if (controller.signal.aborted) return;
+                const acceptedEvent = audioPreviewEventSchema.parse(event);
+                // Acknowledge each user-requested copy before continuing. Do not
+                // build an unbounded event queue of large audio buffers.
+                await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+              },
+            } : undefined,
+            onProgress: ({ progress }) => {
+              events.send({
+                operation: () => {
+                  if (!controller.signal.aborted) return onProgress(progress);
+                },
+              });
             },
-          } : undefined,
-          onProgress: ({ progress }) => {
-            events.send({ operation: () => {
-              if (!controller.signal.aborted) return onProgress(progress);
-            } });
-          },
-        }) }));
+          }),
+        }));
         // Native memory was already copied and released. Transfer the owned bytes,
         // rather than cloning a second full waveform across the worker boundary.
         return workerTransfer({ value: result, transferables: [result.wav.buffer as ArrayBuffer] });
@@ -173,10 +195,12 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       return importWithCancellation({ generationId, report: ({ progress }) => onProgress(progress), operation: ({ signal, onProgress }) => importModelDirectory({ directory, signal, onProgress }) });
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
-    removeModel: (request) => guarded({ operation: async () => {
-      const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
-      await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
-    } }),
+    removeModel: (request) => guarded({
+      operation: async () => {
+        const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
+        await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
+      },
+    }),
     // Like cancellation, this control must bypass the lock held by synthesis.
     // Only its owning audio request is affected, never a chat or import.
     async finishAudioGeneration({ generationId }) {
@@ -203,38 +227,47 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       const progressQueue = createProgressQueue({ signal: controller.signal, deliver: ({ progress }) => onProgress(progress) });
-      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug ?? 'off', listener: ({ diagnostic }) => {
-        if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
-        return undefined;
-      } });
+      const unsubscribe = subscribeDiagnostics({
+        debug: accepted.debug ?? 'off',
+        listener: ({ diagnostic }) => {
+          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
+          return undefined;
+        },
+      });
       try {
-        const result = await guarded({ operation: () => generate({ request: accepted, signal: controller.signal,
-          onEvent: async ({ event }) => {
-            // Already accepted content is drained on Stop; consumer abandonment rejects the ACK.
-            const acceptedEvent = generationEventSchema.parse(event);
-            try {
-              await onEvent({ event: acceptedEvent });
-            } catch {
-              throw new LlamaCppBrowserError({ code: 'worker-failed' });
-            }
-          },
-          onProgress: ({ progress }) => {
-            const acceptedProgress = progressSchema.parse(progress);
-            switch (acceptedProgress.phase) {
-            case 'prefill': case 'generating':
-              progressQueue.send({ progress: { ...acceptedProgress, phase: acceptedProgress.phase } });
-              break;
-            case 'importing': case 'initializing': case 'loading': case 'decoding-audio':
-              // Preserve immediate native loading progress. Only the high-rate
-              // text-evaluation/generation snapshots use the bounded mailbox.
-              events.send({ operation: () => {
-                if (!controller.signal.aborted) return onProgress(acceptedProgress);
-              } });
-              break;
-            default: { const exhaustive: never = acceptedProgress.phase; throw new Error(String(exhaustive)); }
-            }
-          },
-        }) });
+        const result = await guarded({
+          operation: () => generate({
+            request: accepted,
+            signal: controller.signal,
+            onEvent: async ({ event }) => {
+              // Already accepted content is drained on Stop; consumer abandonment rejects the ACK.
+              const acceptedEvent = generationEventSchema.parse(event);
+              try {
+                await onEvent({ event: acceptedEvent });
+              } catch {
+                throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              }
+            },
+            onProgress: ({ progress }) => {
+              const acceptedProgress = progressSchema.parse(progress);
+              switch (acceptedProgress.phase) {
+              case 'prefill': case 'generating':
+                progressQueue.send({ progress: { ...acceptedProgress, phase: acceptedProgress.phase } });
+                break;
+              case 'importing': case 'initializing': case 'loading': case 'decoding-audio':
+                // Preserve immediate native loading progress. Only the high-rate
+                // text-evaluation/generation snapshots use the bounded mailbox.
+                events.send({
+                  operation: () => {
+                    if (!controller.signal.aborted) return onProgress(acceptedProgress);
+                  },
+                });
+                break;
+              default: { const exhaustive: never = acceptedProgress.phase; throw new Error(String(exhaustive)); }
+              }
+            },
+          }),
+        });
         return generationResultSchema.parse(result);
       } finally {
         unsubscribe();

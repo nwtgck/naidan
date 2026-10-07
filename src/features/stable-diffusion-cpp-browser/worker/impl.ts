@@ -73,7 +73,10 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
         }
       })();
-      const performanceTrace = createRunPerformance({ enabled: measured, request, emit: trace.emit,
+      const performanceTrace = createRunPerformance({
+        enabled: measured,
+        request,
+        emit: trace.emit,
         checkpoint: ({ point }) => observed?.checkpoint({ point }),
       });
       let outcome: MeasurementOutcome = 'failed';
@@ -118,14 +121,35 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           Promise.resolve(report({ event: progressSchema.parse(event) })).catch(() => undefined);
         } catch { /* renderer gone */ }
       };
-      trace.emit({ event: 'request', stage: 'worker', message: undefined, fields: {
-        profile: request.artifact.profile, source: request.artifact.modulePath.split('/')[1]!, schema: request.artifact.schemaSha256,
-        debug: request.debug ?? 'off', models: request.models.length, loras: request.loras.filter(lora => lora.strength !== 0).length, width: request.parameters.width, height: request.parameters.height,
-        steps: request.parameters.steps, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', weightResidency: request.weightResidency,
-        guidance: request.parameters.guidance, sampler: request.parameters.sampler, scheduler: request.parameters.scheduler, seed: request.parameters.seed,
-        flashAttention: request.parameters.flashAttention, vaeTiling: request.parameters.vaeTiling, vaeTileSize: request.parameters.vaeTileSize,
-        previewEnabled: request.preview.enabled, previewMode: request.preview.mode, previewInterval: request.preview.interval, reuse: !!session,
-      } });
+      trace.emit({
+        event: 'request',
+        stage: 'worker',
+        message: undefined,
+        fields: {
+          profile: request.artifact.profile,
+          source: request.artifact.modulePath.split('/')[1]!,
+          schema: request.artifact.schemaSha256,
+          debug: request.debug ?? 'off',
+          models: request.models.length,
+          loras: request.loras.filter(lora => lora.strength !== 0).length,
+          width: request.parameters.width,
+          height: request.parameters.height,
+          steps: request.parameters.steps,
+          gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset',
+          weightResidency: request.weightResidency,
+          guidance: request.parameters.guidance,
+          sampler: request.parameters.sampler,
+          scheduler: request.parameters.scheduler,
+          seed: request.parameters.seed,
+          flashAttention: request.parameters.flashAttention,
+          vaeTiling: request.parameters.vaeTiling,
+          vaeTileSize: request.parameters.vaeTileSize,
+          previewEnabled: request.preview.enabled,
+          previewMode: request.preview.mode,
+          previewInterval: request.preview.interval,
+          reuse: !!session,
+        },
+      });
       performanceTrace.settings();
       try {
         if (!session) {
@@ -139,7 +163,8 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           const { create, wasmBinary, moduleUrl, helpers } = await loadCoreFactory({ artifact: request.artifact, baseUrl: request.baseUrl });
           trace.emit({ event: 'complete', stage: 'runtime-fetch', message: undefined, fields: { bytes: wasmBinary.length } });
           trace.emit({ event: 'start', stage: 'runtime-init', message: undefined, fields: {} });
-          const module = await create({ wasmBinary,
+          const module = await create({
+            wasmBinary,
             // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten callback signature.
             locateFile(name) {
               if (name !== 'core.wasm') throw new Error('Unexpected image runtime side file');
@@ -177,11 +202,20 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           session = createImageGenerationSession({ core, helpers, reader: new FileReaderSync() });
         }
         performanceTrace.phase({ next: 'prepare' });
-        const pendingGeneration = session.generate({ request, onProgress: notify, onLog: log, onDiagnostic: sessionDiagnostic, onPerformance: measured ? performanceTrace.native : undefined,
+        const pendingGeneration = session.generate({
+          request,
+          onProgress: notify,
+          onLog: log,
+          onDiagnostic: sessionDiagnostic,
+          onPerformance: measured ? performanceTrace.native : undefined,
           onPreview({ capture }) {
-            previews.push({ capture: { image: capture.image, maxEdge: capture.maxEdge,
-              frame: { type: 'naidan-image-preview-v1', runId: request.runId, revision: capture.revision, step: capture.step, steps: capture.steps, mode: capture.mode },
-            } });
+            previews.push({
+              capture: {
+                image: capture.image,
+                maxEdge: capture.maxEdge,
+                frame: { type: 'naidan-image-preview-v1', runId: request.runId, revision: capture.revision, step: capture.step, steps: capture.steps, mode: capture.mode },
+              },
+            });
           },
         });
         if (operation.cancelRequested) session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
@@ -246,9 +280,21 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
       // The only setter legal during native work is reviewed in preview-control.ts.
       try {
         session?.updatePreview({ control }); current.latest = control;
-        if (current.measured) current.trace.emit({ event: 'native', stage: 'sampling', message: undefined,
-          fields: { metric: 'preview-control', perfVersion: 1, revision: control.revision, enabled: control.settings.enabled,
-            interval: control.settings.interval, startStep: control.settings.startStep, maxEdge: control.settings.maxEdge, mode: control.settings.mode } });
+        if (current.measured) current.trace.emit({
+          event: 'native',
+          stage: 'sampling',
+          message: undefined,
+          fields: {
+            metric: 'preview-control',
+            perfVersion: 1,
+            revision: control.revision,
+            enabled: control.settings.enabled,
+            interval: control.settings.interval,
+            startStep: control.settings.startStep,
+            maxEdge: control.settings.maxEdge,
+            mode: control.settings.mode,
+          },
+        });
       } catch (error) {
         failed = true;
         emitCurrent({ event: 'failed', stage: 'worker', message: 'Live preview control failed; the runtime must be released', fields: { kind: 'preview-control', workerTerminationRequired: true, ...imageErrorContext({ error }) } });

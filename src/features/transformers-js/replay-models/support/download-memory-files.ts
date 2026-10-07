@@ -24,7 +24,8 @@ export function createMemoryFiles() {
   }
   function directory({ prefix }: { prefix: string }): FileSystemDirectoryHandle {
     return {
-      kind: 'directory', name: prefix.split('/').at(-2) ?? '',
+      kind: 'directory',
+      name: prefix.split('/').at(-2) ?? '',
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the native FileSystemDirectoryHandle API.
       async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions) {
         const path = `${prefix}${name}/`;
@@ -43,27 +44,34 @@ export function createMemoryFiles() {
         }
         if (!files.has(path)) throw new DOMException(`Missing file ${path}`, 'NotFoundError');
         return {
-          kind: 'file', name,
+          kind: 'file',
+          name,
           async getFile() {
             const bytes = files.get(path);
             if (!bytes) throw new DOMException(`Missing file ${path}`, 'NotFoundError');
             record({ operation: 'stat', path, bytes: bytes.byteLength });
             const snapshot = Uint8Array.from(bytes);
             const file = new File([snapshot], name);
-            Object.defineProperty(file, 'arrayBuffer', { value: async () => {
-              record({ operation: 'body-read', path, bytes: snapshot.byteLength });
-              return Uint8Array.from(snapshot).buffer;
-            } });
-            Object.defineProperty(file, 'text', { value: async () => {
-              record({ operation: 'body-read', path, bytes: snapshot.byteLength });
-              return new TextDecoder().decode(snapshot);
-            } });
-            Object.defineProperty(file, 'stream', { value: () => new ReadableStream<Uint8Array>({
-              pull(controller) {
+            Object.defineProperty(file, 'arrayBuffer', {
+              value: async () => {
                 record({ operation: 'body-read', path, bytes: snapshot.byteLength });
-                controller.enqueue(Uint8Array.from(snapshot)); controller.close();
+                return Uint8Array.from(snapshot).buffer;
               },
-            }, { highWaterMark: 0 }) });
+            });
+            Object.defineProperty(file, 'text', {
+              value: async () => {
+                record({ operation: 'body-read', path, bytes: snapshot.byteLength });
+                return new TextDecoder().decode(snapshot);
+              },
+            });
+            Object.defineProperty(file, 'stream', {
+              value: () => new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  record({ operation: 'body-read', path, bytes: snapshot.byteLength });
+                  controller.enqueue(Uint8Array.from(snapshot)); controller.close();
+                },
+              }, { highWaterMark: 0 }),
+            });
             return file;
           },
           async createWritable() {

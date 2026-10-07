@@ -367,24 +367,34 @@ export class RpcConversation {
     const resultPlan = compile({ schema: target.capability.result, capabilitiesAllowed: false, callbacksAllowed: false });
     check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     this.callbacksRunning++;
-    this.task({ run: async () => {
-      try {
-        const input = project({ plan: inputPlan, value, proxy: () => {
-          throw new Error('No nested capabilities');
-        } }).value;
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Invoke the locally registered callback with the one argument defined by its schema, not an extra wrapper object.
-        const result: unknown = await (target.value as (input: unknown) => unknown)(input);
-        if (!this.active()) return;
-        const packed = pack({ plan: resultPlan, value: result, allocate: () => {
-          throw new Error('No nested capabilities');
-        } });
-        await this.send({ frame: { type: 'returned', invocation, value: packed.value } });
-      } catch {
-        if (this.active()) await this.send({ frame: { type: 'raised', invocation } });
-      } finally {
-        this.callbacksRunning--;
-      }
-    } });
+    this.task({
+      run: async () => {
+        try {
+          const input = project({
+            plan: inputPlan,
+            value,
+            proxy: () => {
+              throw new Error('No nested capabilities');
+            },
+          }).value;
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Invoke the locally registered callback with the one argument defined by its schema, not an extra wrapper object.
+          const result: unknown = await (target.value as (input: unknown) => unknown)(input);
+          if (!this.active()) return;
+          const packed = pack({
+            plan: resultPlan,
+            value: result,
+            allocate: () => {
+              throw new Error('No nested capabilities');
+            },
+          });
+          await this.send({ frame: { type: 'returned', invocation, value: packed.value } });
+        } catch {
+          if (this.active()) await this.send({ frame: { type: 'raised', invocation } });
+        } finally {
+          this.callbacksRunning--;
+        }
+      },
+    });
   }
   private notify({ name, value }: { name: string; value: unknown }): void {
     if (!this.active()) return;
