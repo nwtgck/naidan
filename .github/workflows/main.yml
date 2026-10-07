@@ -124,6 +124,10 @@ jobs:
           echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
 
       - name: Run build
+        # Build type checking hit Node's ~4 GiB heap limit before bundling.
+        # Keep every check enabled; allow headroom only for this build step.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run build
 
       - name: Set up Go

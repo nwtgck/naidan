@@ -177,7 +177,7 @@ it('bounds native error context even after repeated GPU errors', async () => {
   client.dispose();
 });
 
-it('reuses one Worker for compatible requests and physically retires it before changed context settings', async () => {
+it.each(['flash-attention', 'bf16-conversion'] as const)('reuses one Worker and retires it only when generating with changed %s settings', async setting => {
   const client = createImageClient(), input = request();
   mocks.generate.mockResolvedValue({ png: new Blob(['x'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mock' });
   await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
@@ -185,7 +185,12 @@ it('reuses one Worker for compatible requests and physically retires it before c
   await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
   expect(mocks.constructed).toHaveBeenCalledTimes(1); expect(mocks.terminate).not.toHaveBeenCalled();
   expect(mocks.generate.mock.calls.map(([r]) => r.runId)).toEqual([1, 2]);
-  input.parameters.flashAttention = true;
+  switch (setting) {
+  case 'flash-attention': input.parameters.flashAttention = true; break;
+  case 'bf16-conversion': input.parameters.bf16WeightType = 'f16'; break;
+  default: { const exhaustive: never = setting; throw new Error(String(exhaustive)); }
+  }
+  expect(mocks.constructed).toHaveBeenCalledTimes(1); expect(mocks.terminate).not.toHaveBeenCalled();
   await client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
   expect(mocks.constructed).toHaveBeenCalledTimes(2); expect(mocks.terminate).toHaveBeenCalledTimes(1);
   expect(mocks.terminate.mock.invocationCallOrder[0]).toBeLessThan(mocks.constructed.mock.invocationCallOrder[1]!);
