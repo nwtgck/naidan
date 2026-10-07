@@ -68,7 +68,7 @@ defineExpose({
         v-if="showOpfsMenu"
         :is-open="showOpfsMenu"
         :trigger-el="opfsTriggerRef"
-        :width="180"
+        :width="288"
         @close="showOpfsMenu = false"
       >
         <div tw-class="px-1 py-1">
@@ -77,47 +77,47 @@ defineExpose({
           </div>
           <button
             @click="handleOpenRecent"
-            tw-class="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium group"
+            tw-class="w-full text-left flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium group"
             data-testid="sidebar-recent-button"
           >
-            <div tw-class="flex items-center gap-3">
-              <HistoryIcon tw-class="w-4 h-4" />
-              <span>{{ lazyStrings.SidebarDebugControls__recent_chats() }}</span>
+            <div tw-class="min-w-0 flex items-center gap-3">
+              <HistoryIcon tw-class="w-4 h-4 shrink-0" />
+              <span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ lazyStrings.SidebarDebugControls__recent_chats() }}</span>
             </div>
-            <kbd tw-class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+P</kbd>
+            <kbd tw-class="invisible group-hover:visible group-focus-within:visible shrink-0 px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+P</kbd>
           </button>
           <button
             @click="openFileExplorer({ options: { kind: 'opfs-root' } }); showOpfsMenu = false"
-            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-file-explorer-button"
           >
-            <FolderSearchIcon tw-class="w-4 h-4" />
-            <span>{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
+            <FolderSearchIcon tw-class="w-4 h-4 shrink-0" />
+            <span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
           </button>
           <RouterLink
             to="/audio-generation"
             @click="showOpfsMenu = false"
-            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-audio-generation-link"
           >
-            <AudioLinesIcon tw-class="w-4 h-4" />
+            <AudioLinesIcon tw-class="w-4 h-4 shrink-0" />
             <span>{{ lazyStrings.audioGeneration__audio_generation() }}</span>
           </RouterLink>
           <RouterLink
             to="/image-generation"
             @click="showOpfsMenu = false"
-            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-image-generation-link"
           >
-            <ImageIcon tw-class="w-4 h-4" />
+            <ImageIcon tw-class="w-4 h-4 shrink-0" />
             <span>{{ lazyStrings.stableDiffusionCppBrowser__image_generation_lab() }}</span>
           </RouterLink>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
-            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
           >
-            <BoxIcon tw-class="w-4 h-4" />
-            <span>{{ lazyStrings.SidebarDebugControls__wesh_terminal() }}</span>
+            <BoxIcon tw-class="w-4 h-4 shrink-0" />
+            <span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ lazyStrings.SidebarDebugControls__wesh_terminal() }}</span>
           </button>
         </div>
       </MessageActionsMenu>

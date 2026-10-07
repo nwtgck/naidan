@@ -83,6 +83,7 @@ export type ImageLibraryView = {
   issues: ComputedRef<string[]>;
   ready: ComputedRef<boolean>;
   refresh(): Promise<void>;
+  refreshAccess(): Promise<void>;
   chooseMain({ id }: { id: string }): void;
   chooseComponent({ slot, id }: { slot: ModelSlot, id: string }): void;
   importDirectory({ event }: { event: Event }): Promise<void>;
@@ -92,7 +93,7 @@ export type ImageLibraryView = {
   selectedModels(): Request['models'] | undefined;
   historyFileLocation({ file }: { file: File }): ImageGenerationModelFile;
   findHistoryFile({ location }: { location: ImageGenerationModelFile }): File | undefined;
-  prepareHistoryFiles(): Promise<void>;
+  prepareHistoryFiles({ requiredFiles }: { requiredFiles: readonly ImageGenerationModelFile[] }): Promise<void>;
 };
 export const TEST_ONLY = {
 };

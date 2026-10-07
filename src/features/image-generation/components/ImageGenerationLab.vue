@@ -148,12 +148,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
               </div>
               <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
             </div>
-            <ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" />
             <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
               <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
             </ImageSettingsSection>
             <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
-              <ImageModelCatalog :download-disabled="library.downloadsDisabled.value" :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
+              <div tw-class="min-w-0 space-y-4">
+                <ImageModelCatalog :download-disabled="library.downloadsDisabled.value" :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
+                <KeepAlive><ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" /></KeepAlive>
+              </div>
               <ImageRepositoryImport :disabled="formDisabled" :view="library" />
             </div>
           </div>

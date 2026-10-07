@@ -1,3 +1,5 @@
+import { translateImagePrompt } from '@/features/image-generation/translation/request';
+vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => provider }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
@@ -133,4 +135,45 @@ it('preserves common generated parts and the next native request through real me
   expect(after).toEqual(before);
   const a = await prepareLlamaCppRequest({ ...request, messages: before });const b = await prepareLlamaCppRequest({ ...request, messages: after });expect(b).toEqual(a);
   expect(a.messages).toEqual([{ role: 'user', content: 'hello' }, { role: 'assistant', content: '', reasoning_content: 'Check the tool.\n', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'c1', name: 'lookup', content: '  result\r\n' }, { role: 'assistant', content: 'answer' }]);
+});
+
+it.each(['length', 'stop_sequence', 'empty'] as const)('keeps the same Worker between chat and translation even after %s translation', async outcome => {
+  await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });
+  worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { ...finalText({ text: outcome === 'empty' ? '' : 'partial' }), finishReason: outcome === 'empty' ? 'stop' : outcome }, onEvent }));
+  await expect(translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local.gguf', parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled' })).rejects.toThrow();
+  const otherProvider = createLlamaCppProvider({ service });
+  await collectChatGeneration({ items: otherProvider.chat(chatRequest()), abortController: new AbortController() });
+  expect(factory).toHaveBeenCalledOnce(); expect(worker.dispose).not.toHaveBeenCalled();
+});
+it('reports only the translation queue and its own progress, never an earlier chat progress', async () => {
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  let firstProgress: Parameters<LlamaCppWorkerClient['generate']>[0]['onProgress'] | undefined;
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    firstProgress = onProgress; entered.resolve(); await gate.promise; return deliverNativeResult({ result: finalText({ text: 'chat' }), onEvent });
+  });
+  const chat = collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() }); await entered.promise;
+  const phases: string[] = [];
+  const translation = translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local.gguf', parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled', onProgress({ progress }) {
+    phases.push(progress.phase);
+  } });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  firstProgress?.({ progress: { phase: 'loading', completed: 99, total: 100 } });
+  expect(phases).toEqual(['queued']);
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    onProgress({ progress: { phase: 'prefill', completed: 1, total: 2 } }); return deliverNativeResult({ result: finalText({ text: 'hello' }), onEvent });
+  });
+  gate.resolve(); await chat; expect(await translation).toBe('hello');
+  expect(phases).toEqual(['queued', 'prefill', 'prefill']); expect(factory).toHaveBeenCalledOnce();
+});
+
+it('keeps the shared Worker when asynchronous translation display observers reject', async () => {
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    onProgress({ progress: { phase: 'prefill', completed: 1, total: 2 } });
+    return deliverNativeResult({ result: finalText({ text: 'hello' }), onEvent });
+  });
+  const observer = vi.fn().mockRejectedValue(new Error('display unavailable'));
+  await expect(translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local.gguf',
+    parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled', onProgress: observer, onText: observer })).resolves.toBe('hello');
+  await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });
+  expect(factory).toHaveBeenCalledOnce(); expect(worker.dispose).not.toHaveBeenCalled();
 });

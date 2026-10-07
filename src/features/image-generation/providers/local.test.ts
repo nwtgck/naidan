@@ -73,3 +73,31 @@ it('does not publish a cancelled native success as a completed image', async () 
   await expect(job.result).resolves.toEqual({ status: 'cancelled' });
   expect(onModelResident).toHaveBeenCalledWith({ resident: true });
 });
+
+it('preserves generated pixels when retained-model presentation throws', async () => {
+  const { execution, args, gate, output, onModelResident } = setup();
+  onModelResident.mockImplementation(() => {
+    throw new Error('broken presentation');
+  });
+  const job = execution.start(args); gate.resolve(output);
+  await expect(job.result).resolves.toEqual({ status: 'completed', output });
+});
+it('ignores late progress from an earlier image after a later image starts', async () => {
+  const { execution, args, native, gate, output } = setup();
+  const progress = vi.fn(), nextProgress = vi.fn();
+  const first = execution.start({ ...args, onProgress: progress });
+  const old = vi.mocked(native.generate).mock.calls[0]![0];
+  gate.resolve(output); await first.result;
+  const next = Promise.withResolvers<WorkerResult>(); vi.mocked(native.generate).mockReturnValue(next.promise);
+  const second = execution.start({ ...args, onProgress: nextProgress });
+  old.onProgress({ event: { phase: 'sampling', step: 1, steps: 20 } });
+  expect(progress).not.toHaveBeenCalled(); expect(nextProgress).not.toHaveBeenCalled();
+  next.resolve(output); await second.result;
+});
+
+it('preserves generated pixels when an asynchronous display observer rejects', async () => {
+  const { execution, args, gate, output, onModelResident } = setup();
+  onModelResident.mockRejectedValue(new Error('display unavailable'));
+  const job = execution.start(args); gate.resolve(output);
+  await expect(job.result).resolves.toEqual({ status: 'completed', output });
+});

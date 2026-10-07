@@ -18,6 +18,7 @@ export function createOwnedImageEngine({ createClient }: {
   let client: ImageClient | undefined;
   let active: { owner: Owner } | undefined;
   let resident: Owner | undefined;
+  let reservation: { owner: Owner, token: object, close(): void } | undefined;
   let nativeGeneration = 0;
   let cacheGeneration = 0;
 
@@ -34,7 +35,7 @@ export function createOwnedImageEngine({ createClient }: {
     if (active?.owner !== previous) notify({ owner: active?.owner });
   }
   function collect(): void {
-    if (owners.size || active) return;
+    if (owners.size || active || reservation) return;
     const retired = client;
     nativeGeneration++;
     client = undefined;
@@ -45,10 +46,27 @@ export function createOwnedImageEngine({ createClient }: {
     const owner: Owner = { stop: new AbortController(), onReleased };
     owners.add(owner);
     return {
+      reserve({ signal }) {
+        signal.throwIfAborted(); owner.stop.signal.throwIfAborted();
+        if (reservation || active) throw new ImageEngineBusyError();
+        const token = {};
+        let closing = false;
+        function finish(): void {
+          if (reservation?.token !== token || !closing || active?.owner === owner) return;
+          signal.removeEventListener('abort', close); owner.stop.signal.removeEventListener('abort', close);
+          reservation = undefined; collect();
+        }
+        function close(): void {
+          closing = true; finish();
+        }
+        reservation = { owner, token, close: finish };
+        signal.addEventListener('abort', close, { once: true }); owner.stop.signal.addEventListener('abort', close, { once: true });
+        return { release: close };
+      },
       async generate({ request, signal, onProgress, onPreview, onDiagnostic }) {
         owner.stop.signal.throwIfAborted();
         signal.throwIfAborted();
-        if (active) throw new ImageEngineBusyError();
+        if (active || reservation && reservation.owner !== owner) throw new ImageEngineBusyError();
         const operation = { owner };
         active = operation;
         cacheGeneration++;
@@ -80,6 +98,7 @@ export function createOwnedImageEngine({ createClient }: {
               if (resident === owner) resident = undefined;
             }
           }
+          reservation?.close();
           collect();
         }
       },
@@ -101,7 +120,7 @@ export function createOwnedImageEngine({ createClient }: {
         return result;
       },
       release({ reason } = {}) {
-        if (owner.stop.signal.aborted || active && active.owner !== owner) return;
+        if (owner.stop.signal.aborted || active && active.owner !== owner || reservation && reservation.owner !== owner) return;
         if (active?.owner !== owner && resident !== owner) return;
         client?.release({ reason });
         if (resident === owner) resident = undefined;

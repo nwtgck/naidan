@@ -177,7 +177,8 @@ export function useImageGeneration(): ImageGenerationView {
       }
     },
   });
-  const recommendation = computed(() => recommendationForSelection({ model: library.main.value ? library.selectedFacts.value : manualFacts.value }));
+  // A retained local model is not evidence about the model on a remote peer.
+  const recommendation = computed(() => remote.value ? undefined : recommendationForSelection({ model: library.main.value ? library.selectedFacts.value : manualFacts.value }));
   // Adapters and input images belong to the selected base model; do not carry
   // them silently to another model with a different conditioning contract.
   watch([library.main, layout, () => files.value.model, () => files.value.diffusion], () => {
@@ -214,12 +215,12 @@ export function useImageGeneration(): ImageGenerationView {
   }
   function applyRecommendedSettings(): void {
     const preset = recommendation.value;
-    if (!preset || formDisabled.value || library.importing.value) return;
+    if (!preset || draftDisabled.value || library.importing.value || disposed) return;
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
     const { width: _width, height: _height, ...settings } = preset.parameters;
     parameters.value = { ...parameters.value, ...settings };
-    preview.value = { ...preview.value, ...preset.preview };
+    if (!busy.value) preview.value = { ...preview.value, ...preset.preview };
   }
   function randomSeed(): string {
     return String(Math.max(1, crypto.getRandomValues(new Uint32Array(1))[0] ?? 1));
@@ -297,7 +298,16 @@ export function useImageGeneration(): ImageGenerationView {
   function releaseBenchmark(): void {
     benchmarkActive.value = false;
   }
+  let releaseAfterRun: AbortController | undefined;
+  function setRetainModel({ retain }: { retain: boolean }): void {
+    retainModel.value = retain;
+    if (!retain) releaseModel();
+  }
   function releaseModel(): void {
+    if (controller.value) {
+      releaseAfterRun = controller.value;
+      return;
+    }
     releaseFor({ reason: 'explicit-release' });
   }
   function removeResult({ resultId }: { resultId: number }): void {
@@ -360,19 +370,8 @@ export function useImageGeneration(): ImageGenerationView {
       activeJob?.updatePreview?.({ settings: { ...lastValidPreview, enabled: false } });
     }
   }, { deep: true, flush: 'sync' });
-  watch(retainModel, value => {
-    if (!value && !busy.value) releaseFor({ reason: 'retention-disabled' });
-  });
-  // IDs stay stable across a local refresh. File content/publication identity is
-  // checked again by the client at the next explicit generation.
-  watch(() => JSON.stringify([library.main.value, library.components.value.map(item => item.selected), profile.value,
-    weightResidency.value, gpuBudgetMiB.value, parameters.value.flashAttention, parameters.value.conditioningCacheSize,
-    parameters.value.modelArguments, parameters.value.bf16WeightType, debug.value]), () => {
-    if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
-  });
-  watch(files, () => {
-    if (!busy.value) releaseFor({ reason: 'view-settings-changed' });
-  });
+  // Selection and restoration edit the next request. The native client checks
+  // source/runtime compatibility at Generate, never during passive navigation.
   async function retryHistorySave(): Promise<void> {
     if (!pendingSaves.size || historySaveRunning || disposed) return;
     historySaveRunning = true;
@@ -482,7 +481,15 @@ export function useImageGeneration(): ImageGenerationView {
     const revision = storageRevision.value;
     if (draft.inferenceLocation?.kind === 'local' || draft.request.runtime && draft.request.runtime.profile !== 'naidan-rpc') nativePreferences.discardDeferredModelSelection();
     const restored = draft.request.runtime ? await restoreRequest({ request: { ...draft.request, runtime: draft.request.runtime }, purpose: { type: 'draft', loraStates: draft.loraStates, layout: draft.layout, modelSelection: draft.modelSelection, remoteModelEditor: draft.remoteModelEditor },
-      findFile: ({ location }) => findDraftModelFile({ entries: draft.modelFiles, location }) ?? library.findHistoryFile({ location }),
+      findFile: ({ location }) => {
+        // Stored sources must follow the current inventory after an explicit
+        // refresh. Only directly chosen files are owned by the memory draft.
+        switch (location.type) {
+        case 'file': return findDraftModelFile({ entries: draft.modelFiles, location });
+        case 'opfs': case 'host': return library.findHistoryFile({ location });
+        default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+        }
+      },
       getImage: async ({ binaryObjectId }) => findDraftImage({ files: draft.files, binaryObjectId }) ?? await history.getImage({ binaryObjectId }),
     }) : await restoreUnfinishedDraft({ draft });
     if (!restored || disposed || revision !== storageRevision.value) return;
@@ -572,8 +579,10 @@ export function useImageGeneration(): ImageGenerationView {
       default: { const exhaustive: never = request.runtime; throw new Error(String(exhaustive)); }
       }
       nativePreferences.discardDeferredModelSelection();
-      inferenceLocation.kind.value = 'local';
-      await library.prepareHistoryFiles();
+      await library.prepareHistoryFiles({ requiredFiles: [
+        ...request.models.flatMap(model => [model.file, ...model.companions.map(companion => companion.file)]),
+        ...request.loras.map(lora => lora.file),
+      ].filter(location => !findFile({ location })) });
       if (disposed || revision !== storageRevision.value) return false;
       const restored = await (() => {
         switch (purpose.type) {
@@ -586,6 +595,7 @@ export function useImageGeneration(): ImageGenerationView {
       // All reads/validation finish before changing the editor. Missing weights
       // are an explicit re-selection state, never a fallback to another model.
       historyActions.busy.value = false;
+      inferenceLocation.kind.value = 'local';
       library.useManualFiles();
       switch (purpose.type) {
       case 'draft': layout.value = purpose.layout; break;
@@ -793,6 +803,9 @@ export function useImageGeneration(): ImageGenerationView {
     execution: PreparedImageExecution, snapshot: import('./history/snapshot').ImageGenerationSnapshot,
     seeds: string[], submission: ImageGenerationSubmission | undefined, operation: AbortController,
   }): Promise<void> {
+    const retainAfterRun = retainModel.value;
+    let nativeFailed = false, nativeStarted = false;
+    let reservation: { release(): void } | undefined;
     invalid.value = false; failure.value = ''; cancelled.value = false; stopping.value = false;
     activeHistoryId = snapshot.id;
     const saveThisGeneration = submission === undefined && historySaving.enabled.value && historySaving.supported.value;
@@ -813,6 +826,7 @@ export function useImageGeneration(): ImageGenerationView {
     try {
       // Set busy before awaiting persistence, so double clicks cannot create two
       // owners. The consumer captures the destination before any asynchronous work.
+      reservation = execution.reserve?.({ signal: operation.signal });
       if (historyWriter) await historyWriter.ready();
       if (submission) await submission.accepted({ snapshot, seeds: [...seeds] });
       if (disposed || operation.signal.aborted || stopRequested) return;
@@ -833,6 +847,7 @@ export function useImageGeneration(): ImageGenerationView {
           : undefined;
         let job: ImageExecutionJob;
         try {
+          nativeStarted = true;
           job = execution.start({ seed: actualSeed, signal: operation.signal, onProgress({ event }) {
             if (!disposed && !operation.signal.aborted) {
               progress.value = event;
@@ -855,14 +870,14 @@ export function useImageGeneration(): ImageGenerationView {
             }
           } });
         } catch (error) {
-          recovery?.release(); throw error;
+          nativeFailed = true; recovery?.release(); throw error;
         }
         activeJob = job;
         let outcome: Awaited<ImageExecutionJob['result']>;
         try {
           outcome = await job.result;
         } catch (error) {
-          recovery?.release(); throw error;
+          nativeFailed = true; recovery?.release(); throw error;
         }
         if (outcome.status === 'interrupted' && outcome.recoverable && recovery) {
           const recovered = recoverImageGenerationSnapshot({ snapshot: imageSnapshot, output: outcome.recoverable, elapsedMs: Math.max(0, now() - generateStartedAt) });
@@ -889,7 +904,7 @@ export function useImageGeneration(): ImageGenerationView {
           switch (outcome.status) {
           case 'completed': return outcome.output;
           case 'cancelled': return undefined;
-          case 'failed': case 'interrupted': throw new Error(outcome.message);
+          case 'failed': case 'interrupted': nativeFailed = true; throw new Error(outcome.message);
           default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
           }
         })();
@@ -938,7 +953,7 @@ export function useImageGeneration(): ImageGenerationView {
       default: { const exhaustive: never = completion; throw new Error(String(exhaustive)); }
       }
     } catch (error) {
-      if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime })) releaseFor({ reason: 'failed' });
+      if (nativeFailed && !isRemoteImageRuntime({ runtime: snapshot.request.runtime })) releaseFor({ reason: 'failed' });
       switch (completion.type) {
       case 'interrupted': break; // Saving cannot confirm interrupted execution.
       case 'completed': case 'cancelled':
@@ -964,17 +979,20 @@ export function useImageGeneration(): ImageGenerationView {
       // End native progress before saving terminal metadata. Partial outputs and
       // failed-save buffers belong to the consumer, even when the page is leaving.
       progress.value = undefined;
+      reservation?.release();
       try {
         await submission?.finished({ completion });
       } catch (error) {
         if (!disposed) failure.value = (error instanceof Error ? error.message : String(error)).slice(-32768);
       } finally {
+        const explicitRelease = releaseAfterRun === operation;
+        if (explicitRelease) releaseAfterRun = undefined;
         submissionActive = false;
         activeJob = undefined;
         if (!disposed) {
           controller.value = undefined; stopping.value = false;
           // Retention is a run-level policy, not a per-image policy.
-          if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime }) && !retainModel.value && modelResident.value) releaseFor({ reason: 'retention-disabled' });
+          if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime }) && (nativeStarted && !retainAfterRun || explicitRelease) && modelResident.value) releaseFor({ reason: 'retention-disabled' });
           if (!isRemoteImageRuntime({ runtime: snapshot.request.runtime })) engineState.afterRun();
         }
       }
@@ -1011,11 +1029,14 @@ export function useImageGeneration(): ImageGenerationView {
   const refreshLocalModels = (): void => {
     if (!preferenceRestoring.value && !remote.value) void library.refresh();
   };
+  const refreshLocalAccess = (): void => {
+    if (!preferenceRestoring.value && !remote.value) void library.refreshAccess();
+  };
   onMounted(() => {
-    refreshLocalModels(); window.addEventListener('focus', refreshLocalModels);
+    refreshLocalModels(); window.addEventListener('focus', refreshLocalAccess);
   });
   onUnmounted(() => {
-    window.removeEventListener('focus', refreshLocalModels);
+    window.removeEventListener('focus', refreshLocalAccess);
     disposed = true; engineState.dispose(); manualInspection?.abort(); controller.value?.abort(); client?.dispose();
     unsubscribeStorage(); unsubscribePendingHistory();
     void history.dispose();
@@ -1023,7 +1044,7 @@ export function useImageGeneration(): ImageGenerationView {
     savedHistoryIds.value.clear();
     modelResident.value = false; finalGallery.clear(); clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, setRetainModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

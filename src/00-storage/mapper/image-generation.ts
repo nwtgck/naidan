@@ -1,7 +1,7 @@
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorToDomain, remoteImageModelEditorToDto } from './image-generation-editor';
-import { endpointToDomain, endpointToDto } from './mappers';
+import { endpointToDomain, endpointToDto, lmParametersToDomain, lmParametersToDto } from './mappers';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
-import type { ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationTranslationOverrideSchemaDto, type ExperimentalImageGenerationTranslationOverrideDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import type { ExperimentalImageGenerationDraftDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -24,15 +24,15 @@ export function imageGenerationDraftToDomain({ dto }: { dto: ExperimentalImageGe
 
 export function imageGenerationTranslationToDto({ value }: { value: ImageGenerationTranslationOverride | undefined }): ExperimentalImageGenerationTranslationOverrideDto | undefined {
   if (!value) return undefined;
-  const { endpoint, modelId, ...unhandled } = value;
+  const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
-  return { endpoint: endpoint && endpointToDto({ endpoint }), modelId };
+  return ExperimentalImageGenerationTranslationOverrideSchemaDto.parse({ endpoint: endpoint && endpointToDto({ endpoint }), modelId, lmParameters: lmParametersToDto({ domain: lmParameters }) });
 }
 export function imageGenerationTranslationToDomain({ value }: { value: ExperimentalImageGenerationTranslationOverrideDto | undefined }): ImageGenerationTranslationOverride | undefined {
   if (!value) return undefined;
-  const { endpoint, modelId, ...unhandled } = value;
+  const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
-  return { endpoint: endpoint && endpointToDomain({ dto: endpoint }), modelId };
+  return { endpoint: endpoint && endpointToDomain({ dto: endpoint }), modelId, lmParameters: lmParametersToDomain({ dto: lmParameters }) };
 }
 
 export function imageGenerationCatalogToDto({ catalog }: { catalog: ImageGenerationCatalog }): ExperimentalImageGenerationCatalogDto {
@@ -41,7 +41,7 @@ export function imageGenerationCatalogToDto({ catalog }: { catalog: ImageGenerat
 }
 export function imageGenerationCatalogToDomain({ dto }: { dto: ExperimentalImageGenerationCatalogDto }): ImageGenerationCatalog {
   const { version: _version, id, tags, preferences, ...metadata } = dto;
-  return exactObject<ImageGenerationCatalog>()({ ...metadata, preferences: { ...preferences, assistantVisibility: preferences.assistantVisibility ?? 'closed', translation: imageGenerationTranslationToDomain({ value: preferences.translation }) }, id: toImageGenerationStoreId({ raw: id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: toImageGenerationTagId({ raw: id }) })) });
+  return exactObject<ImageGenerationCatalog>()({ ...metadata, preferences: { ...preferences, generationMonitorPresentation: preferences.generationMonitorPresentation ?? 'visual', assistantVisibility: preferences.assistantVisibility ?? 'closed', translation: imageGenerationTranslationToDomain({ value: preferences.translation }) }, id: toImageGenerationStoreId({ raw: id }), tags: tags.map(({ id, ...tag }) => ({ ...tag, id: toImageGenerationTagId({ raw: id }) })) });
 }
 export function imageGenerationSessionToDto({ session }: { session: ImageGenerationSession }): ExperimentalImageGenerationSessionDto {
   return exactObject<ExperimentalImageGenerationSessionDto>()({ ...session, translation: imageGenerationTranslationToDto({ value: session.translation }), id: idToRaw({ id: session.id }), assistantChatId: session.assistantChatId && idToRaw({ id: session.assistantChatId }) });

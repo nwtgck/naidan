@@ -1,5 +1,5 @@
 import type { ImageInferenceLocationPreference, RemoteImageModelEditor } from './image-generation-preferences';
-import type { BrowserImageModelSelection, Endpoint } from './types';
+import type { BrowserImageModelSelection, Endpoint, LmParameters } from './types';
 import { z } from 'zod';
 import type { ImageGenerationRecord } from './image-generation-history';
 import { idToRaw, type ChatId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId, type ImageGenerationStoreId, type ImageGenerationTagId } from './ids';
@@ -22,9 +22,11 @@ export type ImageGenerationTagReference =
 export type ImageGenerationTranslationOverride = {
   endpoint: Endpoint | undefined,
   modelId: string | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 export type ImageGenerationPreferences = {
+  generationMonitorPresentation: 'visual' | 'compact-progress',
   assistantVisibility: 'open' | 'closed',
   translation: ImageGenerationTranslationOverride | undefined,
   experimentalNoticeDismissedAt: number | undefined,
@@ -40,6 +42,8 @@ export type ImageGenerationCatalog = {
 };
 
 export type ImageGenerationSession = {
+  /** Storage-assigned order, independent of the timestamps displayed to users. */
+  activityOrder: number | undefined,
   translation: ImageGenerationTranslationOverride | undefined,
   assistantChatId: ChatId | undefined,
   id: ImageGenerationSessionId,
@@ -49,6 +53,15 @@ export type ImageGenerationSession = {
   updatedAt: number,
   state: 'active' | 'archived' | 'deleting' | 'deleted',
 };
+
+export function compareImageGenerationSessions({ a, b }: { a: ImageGenerationSession, b: ImageGenerationSession }): number {
+  const order = (b.activityOrder ?? 0) - (a.activityOrder ?? 0);
+  if (order) return order;
+  const timestamp = b.updatedAt - a.updatedAt;
+  if (timestamp) return timestamp;
+  const left = idToRaw({ id: a.id }), right = idToRaw({ id: b.id });
+  return left < right ? -1 : left > right ? 1 : 0;
+}
 
 export type ImageGenerationDraftRequest = Omit<ImageGenerationRecord['request'], 'runtime'> & {
   runtime: ImageGenerationRecord['request']['runtime'] | undefined,
@@ -90,6 +103,8 @@ export type ImageGenerationRunExecution =
 
 /** Request and output plan never change after acceptance. Only execution changes. */
 export type ImageGenerationRun = {
+  /** Assigned once when published; absent on legacy or not-yet-published runs. */
+  acceptedOrder: number | undefined,
   id: ImageGenerationRunId,
   sessionId: ImageGenerationSessionId,
   revision: number,

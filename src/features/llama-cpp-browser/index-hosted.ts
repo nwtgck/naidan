@@ -314,7 +314,13 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
     } });
   },
-  async runGenerationOperation({ signal, operation }) {
+  async runGenerationOperation({ signal, operation, onProgress }) {
+    const reportOperation = ({ progress: value }: { progress: Progress }): void => {
+      progress({ progress: value });
+      try {
+        if (onProgress) void Promise.resolve(onProgress({ progress: { ...value } })).catch(() => undefined);
+      } catch { /* Display observers cannot invalidate a healthy model. */ }
+    };
     const acceptedOptions = { ...options };
     let callbackCompleted = false;
     let observedFailure: { error: unknown } | undefined;
@@ -345,18 +351,24 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
             return () => source.removeEventListener('abort', forward);
           });
           pending = Promise.resolve().then(async () => {
+            let acceptingProgress = true;
+            const report = ({ progress: value }: { progress: Progress }): void => {
+              if (!acceptingProgress || local.signal.aborted) return;
+              reportOperation({ progress: value });
+            };
             try {
               if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-              progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
+              report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
               const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
               if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-              return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: progress, signal: local.signal });
+              return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: report, signal: local.signal });
             } catch (error) {
               // A failed model request is not a user cancellation. Keep its error
               // visible to the consumer instead of aborting the delivery signal.
               observedFailure = { error };
               throw error;
             } finally {
+              acceptingProgress = false;
               for (const remove of removers) remove();
               pending = undefined;
             }

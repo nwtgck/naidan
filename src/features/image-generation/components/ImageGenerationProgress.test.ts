@@ -136,3 +136,15 @@ it('stops animation and timers during cancellation and does no work when unsuppo
   expect(vi.getTimerCount()).toBe(0);
   expect(view.find('[data-testid="image-generation-progress"]').exists()).toBe(false);
 });
+
+it('uses a non-animated compact tree and preserves elapsed time across remounts', async () => {
+  const view = openProgress(); await view.setProps({ presentation: 'compact-progress', startedAt: 0 });
+  expect(view.find('[data-testid="image-generation-compact-progress"]').exists()).toBe(true);
+  expect(view.find('[data-testid="image-generation-indeterminate"]').exists()).toBe(false);
+  expect(view.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
+  vi.advanceTimersByTime(6000); await view.vm.$nextTick(); expect(view.text()).toContain('6 s');
+  view.unmount(); wrapper = undefined;
+  const next = openProgress(); await next.setProps({ presentation: 'compact-progress', startedAt: 0 });
+  vi.advanceTimersByTime(1000); await next.vm.$nextTick(); expect(next.text()).toContain('7 s');
+  await next.setProps({ busy: false }); expect(next.find('[data-testid="image-generation-compact-progress"]').exists()).toBe(false);
+});

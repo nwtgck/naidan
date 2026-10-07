@@ -71,6 +71,7 @@ it('uses only explicit, referrer-free browser links to immutable file revisions'
     expect(url.pathname).toMatch(/^\/[\w.-]+\/[\w.-]+(?:$|\/(resolve|blob)\/[0-9a-f]{40}\/)/);
     expect(link.attributes('rel')).toBe('noopener noreferrer');
     expect(link.attributes('referrerpolicy')).toBe('no-referrer');
+    expect(link.find('svg').exists()).toBe(true);
   }
   for (const button of downloads) expect(button.element.tagName).toBe('BUTTON');
 });

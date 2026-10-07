@@ -80,3 +80,52 @@ describe('transient read-only prompt translation', () => {
     await expect(translateImagePrompt(args())).rejects.toThrow('did not run');
   });
 });
+
+it.each([
+  { type: 'interrupted', reason: 'limit' },
+] satisfies ChatGenerationResult[])('rejects translation semantics only after the healthy runtime scope closes: $type', async result => {
+  const { provider } = providerWith({ output: 'partial', result });
+  let operationFailed = false, closed = false;
+  provider.runChatOperation = async ({ operation, signal }) => {
+    try {
+      await operation({ chat: provider.chat, signal: signal ?? new AbortController().signal });
+    } catch (error) {
+      operationFailed = true; throw error;
+    } finally {
+      closed = true;
+    }
+  };
+  await expect(translateImagePrompt(args())).rejects.toThrow();
+  expect(closed).toBe(true); expect(operationFailed).toBe(false);
+});
+it('keeps empty successful native output separate from a runtime failure', async () => {
+  const { provider } = providerWith({ output: '', result: { type: 'finished', next: 'user' } });
+  const scope = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
+    await expect(operation({ chat: provider.chat, signal: signal ?? new AbortController().signal })).resolves.toBeUndefined();
+  });
+  provider.runChatOperation = scope;
+  await expect(translateImagePrompt(args())).rejects.toThrow('no translation');
+  expect(scope).toHaveBeenCalledTimes(1);
+});
+it('streams escaped text without reasoning and isolates a failing display observer', async () => {
+  providerWith({ output: '<cat>', result: { type: 'finished', next: 'user' } });
+  const text: string[] = [];
+  expect(await translateImagePrompt({ ...args(), onText({ text: value }) {
+    text.push(value); throw new Error('renderer failed');
+  } })).toBe('<cat>');
+  expect(text).toContain('<cat>'); expect(text.join('')).not.toContain('not part of the translation');
+});
+it('still propagates native errors inside the owned runtime operation', async () => {
+  const error = new Error('native failure');
+  const { provider } = providerWith({ output: '', result: { type: 'error', error } });
+  let caught: unknown;
+  provider.runChatOperation = async ({ operation, signal }) => {
+    try {
+      await operation({ chat: provider.chat, signal: signal ?? new AbortController().signal });
+    } catch (failure) {
+      caught = failure; throw failure;
+    }
+  };
+  await expect(translateImagePrompt(args())).rejects.toBe(error);
+  expect(caught).toBe(error);
+});

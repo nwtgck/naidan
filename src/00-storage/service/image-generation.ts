@@ -1,3 +1,5 @@
+import { applyImageGenerationActivity, finishImageGenerationActivity, recoverImageGenerationActivities, reserveImageGenerationActivity } from './image-generation/activity';
+import { compareImageGenerationSessions } from '@/01-models/image-generation';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -45,9 +47,10 @@ export async function saveImageGenerationCatalog({ store, catalog, expectedRevis
 
 export async function listImageGenerationSessions({ store }: { store: ImageGenerationStoreAccess }): Promise<ImageGenerationReadResult<ImageGenerationSession>> {
   return withImageGenerationStore({ store, operation: async ({ directory }) => {
+    const recovery = await recoverImageGenerationActivities({ directory });
     const result = await (await imageGenerationSessionTable({ directory, create: false })).list();
-    result.items.sort((a, b) => b.updatedAt - a.updatedAt || compareIds({ a: a.id, b: b.id }));
-    return { ...result, items: result.items.filter(dto => dto.state !== 'deleted').map(dto => imageGenerationSessionToDomain({ dto })) };
+    return { warnings: [...recovery.warnings, ...result.warnings].slice(0, 100), warningCount: recovery.warningCount + result.warningCount,
+      items: result.items.filter(dto => dto.state !== 'deleted').map(dto => imageGenerationSessionToDomain({ dto })).sort((a, b) => compareImageGenerationSessions({ a, b })) };
   } });
 }
 export async function loadImageGenerationSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationSession | undefined> {
@@ -57,15 +60,36 @@ export async function loadImageGenerationSession({ store, sessionId }: { store: 
     return dto && dto.state !== 'deleted' && dto.state !== 'deleting' ? imageGenerationSessionToDomain({ dto }) : undefined;
   } });
 }
-export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<void> {
-  const next = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
-  await withImageGenerationStore({ store, operation: async ({ directory }) => {
-    if (next.state === 'deleted' || next.state === 'deleting') throw new Error('Use the explicit session deletion operation.');
-    await (await imageGenerationSessionTable({ directory, create: true })).write({ record: next, assertCurrent({ current }) {
-      if (current?.state === 'deleted' || current?.state === 'deleting') throw new Error('The session has been deleted.');
-      if (current && next.createdAt !== current.createdAt) throw new Error('Session creation time is immutable.');
-      assertImageGenerationReplacement({ current, next, expectedRevision });
-    }, async beforeCommit() {} });
+export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
+  const requested = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
+  return withImageGenerationStore({ store, operation: async ({ directory }) => {
+    if (requested.state === 'deleted' || requested.state === 'deleting') throw new Error('Use the explicit session deletion operation.');
+    const table = await imageGenerationSessionTable({ directory, create: true });
+    const current = await table.load({ id: requested.id });
+    if (current?.state === 'deleted' || current?.state === 'deleting') throw new Error('The session has been deleted.');
+    if (current && requested.createdAt !== current.createdAt) throw new Error('Session creation time is immutable.');
+    // Callers cannot manufacture order, and retrying an acknowledged-lost save
+    // must repair its index without reserving a newer position.
+    const candidate = { ...requested, activityOrder: current?.activityOrder };
+    assertImageGenerationReplacement({ current, next: candidate, expectedRevision });
+    const next = current && JSON.stringify(current) === JSON.stringify(candidate) ? current
+      : { ...candidate, activityOrder: await reserveImageGenerationActivity({ directory, run: undefined }) };
+    await table.write({ record: next, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next, expectedRevision }), async beforeCommit() {} });
+    return imageGenerationSessionToDomain({ dto: next });
+  } });
+}
+
+/** Merge an accepted run's durable order into current metadata. The underlying
+ * journal also replays during session listing after page reload or tab exit. */
+export async function recordImageGenerationSessionUse({ store, sessionId, runId }: {
+  store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId,
+}): Promise<ImageGenerationSession> {
+  const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
+  const runKey = imageGenerationRawIdSchema.parse(idToRaw({ id: runId }));
+  return withImageGenerationStore({ store, operation: async ({ directory }) => {
+    const result = await applyImageGenerationActivity({ directory, sessionId: id, runId: runKey });
+    if (!result) throw new Error('The generation is not accepted or its session has been deleted.');
+    return imageGenerationSessionToDomain({ dto: result });
   } });
 }
 
@@ -150,7 +174,8 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
 /** writeInputs publishes immutable BinaryObjects using a captured provider.
  * It must not call a lock-taking storageService method recursively. */
 export async function createImageGenerationRun({ store, run, writeInputs }: { store: ImageGenerationStoreAccess, run: ImageGenerationRun, writeInputs: () => Promise<void> }): Promise<void> {
-  const next = ExperimentalImageGenerationRunSchemaDto.parse(imageGenerationRunToDto({ run }));
+  const requested = ExperimentalImageGenerationRunSchemaDto.parse(imageGenerationRunToDto({ run }));
+  const next = { ...requested, acceptedOrder: undefined };
   if (next.revision !== 0 || next.execution.type !== 'queued') throw new Error('New Image Generation runs must be queued at revision zero.');
   await withImageGenerationStore({ store, operation: async ({ directory }) => {
     const sessionDirectory = await requireSession({ directory, sessionId: next.sessionId });
@@ -180,12 +205,24 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
       default: { const exhaustive: never = source.role; throw new Error(String(exhaustive)); }
       }
     }
-    await (await imageGenerationRunTable({ directory: sessionDirectory, sessionId: next.sessionId, create: true })).write({ record: next, assertCurrent({ current }) {
-      assertImageGenerationReplacement({ current, next, expectedRevision: undefined });
-    }, beforeCommit: async () => {
-      await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
-      await writeInputs();
-    } });
+    const table = await imageGenerationRunTable({ directory: sessionDirectory, sessionId: next.sessionId, create: true });
+    const current = await table.load({ id: next.id });
+    const candidate = { ...next, acceptedOrder: current?.acceptedOrder };
+    assertImageGenerationReplacement({ current, next: candidate, expectedRevision: undefined });
+    await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
+    await writeInputs();
+    const accepted = current ?? { ...candidate, acceptedOrder: await reserveImageGenerationActivity({ directory, run: { sessionId: next.sessionId, runId: next.id } }) };
+    try {
+      await table.write({ record: accepted, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next: accepted, expectedRevision: undefined }), async beforeCommit() {} });
+    } catch (error) {
+      // No canonical record means there was no acceptance. A future attempt may
+      // receive a new order. If publication succeeded but its acknowledgement
+      // failed, keep the original durable reservation for recovery instead.
+      try {
+        if (!await table.load({ id: next.id })) await finishImageGenerationActivity({ directory, sessionId: next.sessionId, runId: next.id });
+      } catch { /* Preserve the original publication error and recovery intent. */ }
+      throw error;
+    }
   } });
 }
 export async function loadImageGenerationRun({ store, sessionId, runId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId }): Promise<ImageGenerationRun | undefined> {

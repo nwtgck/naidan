@@ -52,6 +52,7 @@ export type ImageExecutionJob = {
  * per-image change allowed within an accepted multi-image submission. */
 export type PreparedImageExecution<Snapshot = ImageGenerationSnapshot> = {
   readonly snapshot: Snapshot,
+  reserve?({ signal }: { signal: AbortSignal }): { release(): void },
   start({ seed, signal, onProgress, onPreview }: {
     seed: string,
     signal: AbortSignal,

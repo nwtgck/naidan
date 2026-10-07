@@ -91,3 +91,29 @@ it('ignores a released notification from a disposed native client after replacem
   await expect(current.inspectEngine()).resolves.toEqual({ status: 'unavailable', reason: 'unsupported' });
   expect(clients[1]!.inspectEngine).toHaveBeenCalledOnce(); current.dispose();
 });
+
+it('reserves a complete batch without allocating native resources and protects gaps between images', async () => {
+  const { a, b, args, factory, raw, gate, output } = fixture();
+  const lease = a.reserve!({ signal: args.signal }); expect(factory).not.toHaveBeenCalled();
+  await expect(b.generate(args)).rejects.toBeInstanceOf(ImageEngineBusyError);
+  const first = a.generate(args); gate.resolve(output); await first;
+  await expect(b.generate(args)).rejects.toBeInstanceOf(ImageEngineBusyError);
+  b.release(); expect(raw.release).not.toHaveBeenCalled();
+  await a.generate(args); lease.release(); await expect(b.generate(args)).resolves.toEqual(output);
+  // A delayed old lease release cannot unlock the new owner's reservation.
+  const current = b.reserve!({ signal: args.signal }); lease.release();
+  await expect(a.generate(args)).rejects.toBeInstanceOf(ImageEngineBusyError);
+  current.release(); a.dispose(); b.dispose();
+});
+it('keeps an aborted batch reserved until native retirement, then releases it', async () => {
+  const { a, b, args, gate, output } = fixture(), stop = new AbortController();
+  a.reserve!({ signal: stop.signal }); const pending = a.generate({ ...args, signal: stop.signal }); stop.abort();
+  await expect(b.generate(args)).rejects.toBeInstanceOf(ImageEngineBusyError);
+  gate.resolve(output); await pending;
+  await expect(b.generate(args)).resolves.toEqual(output); a.dispose(); b.dispose();
+});
+it('drops a disposed idle owner reservation without touching another owner', async () => {
+  const { a, b, args, gate, output } = fixture();
+  a.reserve!({ signal: args.signal }); a.dispose();
+  const next = b.generate(args); gate.resolve(output); await expect(next).resolves.toEqual(output); b.dispose();
+});

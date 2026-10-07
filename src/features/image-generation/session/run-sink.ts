@@ -85,7 +85,7 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
       const plan = planImageGenerationSeeds({ baseSeed: snapshot.request.parameters.seed, count });
       if (plan.length !== seeds.length || plan.some((seed, index) => seed !== seeds[index])) throw new Error('Accepted seeds must match the requested output count and base seed.');
       startedAt = Date.now();
-      run = { id: generateId<ImageGenerationRunId>(), sessionId, revision: 0, createdAt: snapshot.createdAt,
+      run = { acceptedOrder: undefined, id: generateId<ImageGenerationRunId>(), sessionId, revision: 0, createdAt: snapshot.createdAt,
         request: structuredClone(snapshot.request), seeds: [...seeds], sources: sources.map(source => ({ ...source })), execution: { type: 'queued' } };
       inputs = snapshot.inputFiles.map(file => ({ ...file }));
       changed(); await publish();

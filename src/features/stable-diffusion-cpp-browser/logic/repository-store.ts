@@ -98,7 +98,7 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
   return { files: files.sort((a, b) => a.path.localeCompare(b.path)), issues };
 }
 /** Read the existing model tree only. No Hugging Face/network requests. */
-export async function listImageRepositories({ signal, onProgress }: { signal: AbortSignal | undefined, onProgress?: InspectionReport }): Promise<LocalImageRepository[]> {
+export async function listImageRepositories({ signal, onProgress, repositoryIds }: { signal: AbortSignal | undefined, onProgress?: InspectionReport, repositoryIds?: readonly string[] }): Promise<LocalImageRepository[]> {
   signal?.throwIfAborted();
   if (!navigator.storage?.getDirectory) throw new Error('Local model storage is unavailable');
   const root = await optionalDirectory({ parent: await navigator.storage.getDirectory(), name: 'models' });
@@ -106,6 +106,9 @@ export async function listImageRepositories({ signal, onProgress }: { signal: Ab
   const result: LocalImageRepository[] = [];
   async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
     signal?.throwIfAborted();
+    // A known publication invalidates only its repository. Do not acquire new
+    // File snapshots (or reread headers) for unrelated retained model sources.
+    if (repositoryIds && !repositoryIds.includes(id)) return;
     onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, path: id.slice(0, 2048) } });
     try {
       const hidden = new Set<string>();

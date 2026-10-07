@@ -22,8 +22,16 @@ export function prepareLocalImageExecution({ request, snapshot, client, onDiagno
     loras: request.loras.map(lora => ({ ...lora })),
     imageInputs: { ...request.imageInputs, referenceImages: [...request.imageInputs.referenceImages] },
   };
+  function notifyResident({ resident }: { resident: boolean }): void {
+    try {
+      void Promise.resolve(onModelResident({ resident })).catch(() => undefined);
+    } catch { /* Completed pixels must survive a display observer failure. */ }
+  }
   return createImageExecutionPlan({
     snapshot, copySnapshot: copyImageGenerationSnapshot,
+    reserve({ signal }) {
+      return client().reserve?.({ signal }) ?? { release() {} };
+    },
     start({ seed, signal, onProgress, onPreview }) {
       let owner: ImageClient | undefined;
       const result = (async (): Promise<ImageExecutionOutcome> => {
@@ -32,10 +40,10 @@ export function prepareLocalImageExecution({ request, snapshot, client, onDiagno
           owner = client();
           const output = await owner.generate({ request: { ...captured, parameters: { ...captured.parameters, seed } }, signal, onProgress, onPreview, onDiagnostic });
           if ('cancelled' in output) {
-            onModelResident({ resident: output.modelResident });
+            notifyResident({ resident: output.modelResident });
             return { status: 'cancelled' };
           }
-          onModelResident({ resident: true });
+          notifyResident({ resident: true });
           // Cancellation can race a native success reply. Keep real cache
           // bookkeeping, but never publish that cancelled job as a success.
           if (signal.aborted) return { status: 'cancelled' };

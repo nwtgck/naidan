@@ -79,13 +79,13 @@ describe('image generation session deletion', () => {
 describe('experimental translation and visibility persistence', () => {
   it('round-trips independent workspace and session overrides including private headers and open/closed visibility', async () => {
     const h = await setup();
-    const translation = { endpoint: { type: 'openai' as const, url: 'https://translator.test/v1', httpHeaders: [['Authorization', 'secret']] as [string, string][] }, modelId: 'model-a' };
+    const translation = { endpoint: { type: 'openai' as const, url: 'https://translator.test/v1', httpHeaders: [['Authorization', 'secret']] as [string, string][] }, modelId: 'model-a', lmParameters: undefined };
     const next = { ...h.catalog, revision: 1, preferences: { ...h.catalog.preferences, assistantVisibility: 'open' as const, translation } };
     const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(imageGenerationCatalogToDto({ catalog: next }));
     expect(imageGenerationCatalogToDomain({ dto })).toEqual(next);
     await service.saveImageGenerationCatalog({ store: h.store, catalog: next, expectedRevision: 0 });
     expect(await service.loadImageGenerationCatalog({ store: h.store })).toEqual(next);
-    const session = { ...h.session, revision: 1, translation: { endpoint: undefined, modelId: 'session-model' } };
+    const session = { ...h.session, revision: 1, translation: { endpoint: undefined, modelId: 'session-model', lmParameters: undefined } };
     expect(imageGenerationSessionToDomain({ dto: ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session })) })).toEqual(session);
     await service.saveImageGenerationSession({ store: h.store, session, expectedRevision: 0 });
     expect((await service.loadImageGenerationSession({ store: h.store, sessionId: session.id }))?.translation?.modelId).toBe('session-model');
@@ -101,5 +101,38 @@ describe('experimental translation and visibility persistence', () => {
     const h = await setup();
     const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...dto.preferences, translation: { modelId: 'x', future: true } } }).success).toBe(false);
+  });
+});
+
+describe('accepted session activity and translation parameters', () => {
+  it('moves an accepted session, preserves concurrent metadata and uses the original timestamp on retry', async () => {
+    const h = await setup();
+    const other = { ...generationSessionFixture({ id: 'session-bb' }), updatedAt: 10 };
+    await service.saveImageGenerationSession({ store: h.store, session: other, expectedRevision: undefined });
+    const run = { ...generationRunFixture({ id: 'run-aa', sessionId: h.session.id, count: 1, seed: '42' }), createdAt: 20 };
+    await expect(service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id })).rejects.toThrow('accepted');
+    await service.createImageGenerationRun({ store: h.store, run, writeInputs: async () => {} });
+    await service.saveImageGenerationSession({ store: h.store, session: { ...h.session, revision: 1, title: 'concurrent rename', updatedAt: 25 }, expectedRevision: 0 });
+    const updated = await service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id });
+    expect(updated).toMatchObject({ updatedAt: 25, title: 'concurrent rename', revision: 1 });
+    expect((await service.listImageGenerationSessions({ store: h.store })).items[0]?.id).toBe(h.session.id);
+    await service.saveImageGenerationSession({ store: h.store, session: { ...other, revision: 1, updatedAt: 30 }, expectedRevision: 0 });
+    const writes = fs.writes.length;
+    await service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id });
+    expect(fs.writes.length).toBe(writes);
+    expect((await service.listImageGenerationSessions({ store: h.store })).items[0]?.id).toBe(other.id);
+    await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: updated.revision });
+    await expect(service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id })).rejects.toThrow();
+  });
+  it('round trips explicit zero, empty stop and reasoning off while rejecting nested unknown data', async () => {
+    const h = await setup(); const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
+    const preferences = { ...dto.preferences, translation: { lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } } }, generationMonitorPresentation: 'compact-progress' };
+    const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences }) });
+    expect(decoded.preferences.translation?.lmParameters).toMatchObject({ temperature: 0, stop: [], reasoning: { effort: 'none' } });
+    expect(decoded.preferences.generationMonitorPresentation).toBe('compact-progress');
+    for (const lmParameters of [{ future: 1 }, { reasoning: { future: true } }, { reasoning: { effort: 'future' } }]) {
+      expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, translation: { lmParameters } } }).success).toBe(false);
+    }
+    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, generationMonitorPresentation: 'future' } }).success).toBe(false);
   });
 });

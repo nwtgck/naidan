@@ -12,6 +12,8 @@ export interface ImageWorker {
 }
 export type ImageReleaseReason = 'explicit-release' | 'view-settings-changed' | 'retention-disabled' | 'context-key-changed' | 'forced-abort' | 'failed' | 'page-exit';
 export interface ImageClient {
+  // A shared wrapper may reserve the lane without loading/replacing any model.
+  reserve?({ signal }: { signal: AbortSignal }): { release(): void };
   generate({ request, signal, onProgress, onPreview, onDiagnostic }: { request: Request, signal: AbortSignal, onProgress: Report,
     onPreview?: ({ frame }: { frame: PreviewFrame }) => void, onDiagnostic?: ImageDiagnosticListener }): Promise<WorkerResult>;
   updatePreview({ settings }: { settings: PreviewSettings }): void;

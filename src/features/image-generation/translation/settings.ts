@@ -1,4 +1,6 @@
-import type { Endpoint } from '@/01-models/types';
+import { resolveLmParameterLayers } from '@/logic/chat-settings-resolver';
+import { cloneLmParameters } from '@/utils/lm-parameters';
+import type { Endpoint, LmParameters } from '@/01-models/types';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import type { UiLocale } from '@/01-models/ui-locale';
@@ -7,6 +9,7 @@ export type TranslationSource = 'session' | 'workspace' | 'global';
 export type ImagePromptTranslationTarget = {
   endpoint: Endpoint,
   modelId: string | undefined,
+  lmParameters: LmParameters | undefined,
   endpointSource: TranslationSource,
   modelSource: TranslationSource,
 };
@@ -16,17 +19,21 @@ export type ImagePromptTranslationTarget = {
 export function resolveImagePromptTranslation({ session, workspace, global }: {
   session: ImageGenerationTranslationOverride | undefined,
   workspace: ImageGenerationTranslationOverride | undefined,
-  global: { endpoint: Endpoint, modelId: string | undefined },
+  global: { endpoint: Endpoint, modelId: string | undefined, lmParameters: LmParameters | undefined },
 }): ImagePromptTranslationTarget {
   return {
     endpoint: cloneEndpoint({ endpoint: session?.endpoint ?? workspace?.endpoint ?? global.endpoint }),
     modelId: session?.modelId ?? workspace?.modelId ?? global.modelId,
+    lmParameters: resolveLmParameterLayers({ layers: [global.lmParameters, workspace?.lmParameters, session?.lmParameters] }),
     endpointSource: session?.endpoint !== undefined ? 'session' : workspace?.endpoint !== undefined ? 'workspace' : 'global',
     modelSource: session?.modelId !== undefined ? 'session' : workspace?.modelId !== undefined ? 'workspace' : 'global',
   };
 }
 export function cloneImagePromptTranslationOverride({ value }: { value: ImageGenerationTranslationOverride | undefined }): ImageGenerationTranslationOverride | undefined {
-  return value === undefined ? undefined : { endpoint: value.endpoint === undefined ? undefined : cloneEndpoint({ endpoint: value.endpoint }), modelId: value.modelId };
+  if (value === undefined) return undefined;
+  const { endpoint, modelId, lmParameters, ...unhandled } = value;
+  unhandled satisfies Record<PropertyKey, never>;
+  return { endpoint: endpoint === undefined ? undefined : cloneEndpoint({ endpoint }), modelId, lmParameters: cloneLmParameters({ lmParameters }) };
 }
 export const imagePromptTranslationLanguages: readonly { locale: UiLocale, name: string, instructionName: string }[] = [
   { locale: 'en', name: 'English', instructionName: 'English' },

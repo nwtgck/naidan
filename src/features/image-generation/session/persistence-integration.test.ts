@@ -25,12 +25,13 @@ async function createStore(): Promise<{ store: ImageGenerationStoreAccess, catal
 }
 async function start({ count }: { count: number }) {
   const { store, catalog } = await createStore();
-  const session = generationSessionFixture({ id: 'session-aB' });
-  await saveImageGenerationSession({ store, session, expectedRevision: undefined });
+  const session = await saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'session-aB' }), expectedRevision: undefined });
   const run = generationRunFixture({ id: 'run-cD', sessionId: session.id, count, seed: '42' });
   await createImageGenerationRun({ store, run, writeInputs: async () => {} });
+  const accepted = await loadImageGenerationRun({ store, sessionId: session.id, runId: run.id });
+  if (!accepted) throw new Error('Missing accepted fixture run.');
   await updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, execution: { type: 'running', startedAt: 3 }, expectedRevision: 0 });
-  return { store, catalog, session, run };
+  return { store, catalog, session, run: accepted };
 }
 async function published() {
   const context = await start({ count: 1 });
@@ -368,7 +369,7 @@ describe('additional publication boundary failures', () => {
     await expect(saveImageGenerationSession({ store, session, expectedRevision: undefined })).rejects.toThrow('Injected');
     expect((await listImageGenerationSessions({ store })).items).toHaveLength(0);
     await saveImageGenerationSession({ store, session, expectedRevision: undefined });
-    expect(await loadImageGenerationSession({ store, sessionId: session.id })).toEqual(session);
+    expect(await loadImageGenerationSession({ store, sessionId: session.id })).toEqual({ ...session, activityOrder: expect.any(Number) });
   });
   it('does not lose a committed title when removing the dirty marker fails', async () => {
     const { store, session } = await start({ count: 1 });

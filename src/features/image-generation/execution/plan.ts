@@ -2,14 +2,16 @@ import type { ImageExecutionJob, PreparedImageExecution } from './types';
 
 /** One immutable request, one physical job at a time. Handles from an earlier
  * image must not control a later job, even when both use the same engine. */
-export function createImageExecutionPlan<Snapshot>({ snapshot, copySnapshot, start }: {
+export function createImageExecutionPlan<Snapshot>({ snapshot, copySnapshot, start, reserve }: {
   snapshot: Snapshot,
   copySnapshot({ snapshot }: { snapshot: Snapshot }): Snapshot,
   start: PreparedImageExecution<Snapshot>['start'],
+  reserve?: PreparedImageExecution<Snapshot>['reserve'],
 }): PreparedImageExecution<Snapshot> {
   const captured = copySnapshot({ snapshot });
   let active: object | undefined;
   return {
+    reserve,
     get snapshot() {
       return copySnapshot({ snapshot: captured });
     },
@@ -19,7 +21,20 @@ export function createImageExecutionPlan<Snapshot>({ snapshot, copySnapshot, sta
       const token = {}; active = token;
       let job: ImageExecutionJob;
       try {
-        job = start({ seed, signal, onProgress, onPreview });
+        job = start({ seed, signal,
+          onProgress({ event }) {
+            if (active !== token || signal.aborted) return;
+            try {
+              void Promise.resolve(onProgress({ event })).catch(() => undefined);
+            } catch { /* Presentation cannot own native success. */ }
+          },
+          onPreview({ frame }) {
+            if (active !== token || signal.aborted) return;
+            try {
+              void Promise.resolve(onPreview({ frame })).catch(() => undefined);
+            } catch { /* Presentation cannot own native success. */ }
+          },
+        });
       } catch (error) {
         active = undefined; throw error;
       }

@@ -37,7 +37,7 @@ it('opens without inference workers or model reads', async () => {
   expect(wrapper.get('h1').text()).toBe('Image generation entirely in your browser');
   expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
 });
-it('defaults to F32 and releases retained weights when BF16 conversion changes before the next request', async () => {
+it('defaults to F32 and retains weights while BF16 conversion is edited for the next request', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob(['PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
   wrapper = mount(ImageGenerationLab); await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
@@ -48,9 +48,14 @@ it('defaults to F32 and releases retained weights when BF16 conversion changes b
   expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
   mocks.release.mockClear();
   await wrapper.get('[data-testid="image-bf16-weight-type"]').setValue('f16'); await flushPromises();
-  expect(mocks.release).toHaveBeenCalledOnce();
-  expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
+  // Editing changes only the next request. Native context replacement belongs
+  // to the client's session-key check at explicit Generate, not a UI watcher.
+  expect(mocks.release).not.toHaveBeenCalled();
+  expect(mocks.generate).toHaveBeenCalledOnce();
+  expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
+  expect(mocks.generate.mock.calls[0]?.[0].request.parameters.bf16WeightType).toBe('f32');
   await wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
+  expect(mocks.generate).toHaveBeenCalledTimes(2);
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
 });
 it('snapshots LoRA files and strength, excludes disabled adapters, and clears selections when the base model changes', async () => {
