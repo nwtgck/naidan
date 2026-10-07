@@ -923,6 +923,7 @@ it('b', () => {});`);
     expect(config.languageOptions.parserOptions.project).toEqual([
       './tsconfig.app.json',
       './tsconfig.node.json',
+      './pwa/tsconfig.json',
     ]);
   });
 
