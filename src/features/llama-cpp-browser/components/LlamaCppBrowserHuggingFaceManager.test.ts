@@ -281,6 +281,6 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-delete"]').trigger('click'); await flushPromises();
     expect(wrapper.get('[data-testid="llama-delete-details"]').text()).toContain('model-Q4_K_M.gguf');
     await wrapper.get('[data-testid="dialog-confirm-button"]').trigger('click'); await flushPromises();
-    expect(cancelDownload).toHaveBeenCalledWith({ repository: 'owner/repo', plan });
+    expect(cancelDownload).toHaveBeenCalledWith({ repository: 'owner/repo', plan, destination: { kind: 'opfs' } });
   });
 });

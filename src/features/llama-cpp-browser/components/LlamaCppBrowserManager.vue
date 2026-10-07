@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getHostModelInventoryIssues, type HostModelInventoryIssue } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
 import LlamaCppBrowserDefaultModelDialog from './LlamaCppBrowserDefaultModelDialog.vue';
@@ -8,6 +9,9 @@ import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { AlertCircleIcon, BrainCircuitIcon, HardDriveIcon, Loader2Icon, RefreshCcwIcon, Trash2Icon, SearchIcon, XIcon } from 'lucide-vue-next';
+import { idToRaw } from '@/01-models/ids';
+import { useSettings } from '@/composables/useSettings';
+import { hostModelDirectoryLabel } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { lazyStrings } from '@/strings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
@@ -26,10 +30,16 @@ defineSlots<{ catalog({ disabled, inspect }: { disabled: boolean, inspect: typeo
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [name: string], runtimeReady: [ready: boolean] }>();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const models = ref<LocalModel[]>([]);
+const { settings } = useSettings();
+function modelSourceLabel({ model }: { model: LocalModel }): string | undefined {
+  const source = model.source;
+  if (!source) return lazyStrings.LlamaCppBrowserDownloadDestination__browser_storage();
+  return hostModelDirectoryLabel({ id: source.directoryId, name: source.directoryName, entries: (settings.value.experimental?.hostModelDirectories ?? []).map(({ id, name }) => ({ id: idToRaw({ id }), name })) });
+}
 const nameFilter = ref('');
 const filteredModels = computed(() => {
   const query = nameFilter.value.trim().toLocaleLowerCase();
-  return query ? models.value.filter(model => model.name.toLocaleLowerCase().includes(query)) : models.value;
+  return query ? models.value.filter(model => [model.name, model.source?.directoryName, model.source?.repository, model.source?.path].some(value => value?.toLocaleLowerCase().includes(query))) : models.value;
 });
 const defaultSelection = shallowRef<LocalModel>();
 const queue = getDownloadQueue();
@@ -45,6 +55,7 @@ const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => 
 const localError = ref<ErrorCode>();
 const removalChanged = ref(false);
 const listError = ref<ErrorCode>();
+const hostIssues = ref<readonly HostModelInventoryIssue[]>([]);
 const displayedError = computed(() => localError.value ?? listError.value);
 const active = ref<AbortController>();
 const refreshing = ref(false);
@@ -72,7 +83,7 @@ function refresh(): Promise<void> {
       try {
         const found = await llamaCppBrowserService.listModels({ signal: controller.signal });
         if (!disposed && !controller.signal.aborted && !refreshRequested) {
-          models.value = found; emit('modelsChanged', found);
+          models.value = found; hostIssues.value = [...getHostModelInventoryIssues()]; emit('modelsChanged', found);
         }
       } catch (error) {
         if (!disposed && !controller.signal.aborted) listError.value = errorCode({ error });
@@ -129,7 +140,7 @@ onMounted(() => {
       void refresh();
     },
   });
-  // The authoritative list comes from OPFS on every mount, not module-local state.
+  // The authoritative list combines browser storage and linked folders on every mount, not module-local state.
   void refresh();
 });
 onUnmounted(() => {
@@ -153,7 +164,7 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
     </div>
     <!-- Privacy: bundled suggestions render without external I/O. Only explicit
          inspect/download actions (or a model-preset URL) authorize Hugging Face. -->
-    <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :models="models" :disabled="unavailable || importing || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" />
+    <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :models="models" :disabled="unavailable || importing || active !== undefined || refreshing" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" @select-default="defaultSelection = $event" @changed="refresh" />
     <section tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
         <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><HardDriveIcon tw-class="w-4 h-4 text-purple-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ nameFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>
@@ -164,13 +175,16 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
         <input v-model="nameFilter" type="search" data-testid="llama-imported-model-search" :aria-label="lazyStrings.llamaCppBrowserDownloads__search_model_names()" :placeholder="lazyStrings.llamaCppBrowserDownloads__search_model_names()" tw-class="w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-400 transition-colors" />
         <button v-if="nameFilter" type="button" data-testid="llama-imported-model-clear-search" :aria-label="lazyStrings.llamaCppBrowserDownloads__clear_search()" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" @click="nameFilter = ''"><XIcon tw-class="w-4 h-4" /></button>
       </div>
+      <ul v-if="hostIssues.length" data-testid="llama-host-model-inventory-issues" tw-class="space-y-1 text-xs text-amber-700 dark:text-amber-400">
+        <li v-for="issue in hostIssues" :key="issue.directoryId">{{ issue.directoryName }}: {{ issue.message }} · {{ lazyStrings.LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings() }}</li>
+      </ul>
       <p v-if="refreshing && models.length === 0" role="status" data-testid="llama-cpp-browser-list-loading" tw-class="flex items-center justify-center gap-2 py-8 text-xs text-gray-500"><Loader2Icon tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.llamaCppBrowser__loading_model_list() }}</p>
       <div v-else-if="models.length === 0" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-6 text-center text-sm text-gray-500 dark:text-gray-400"><p>{{ lazyStrings.llamaCppBrowser__no_imported_models() }}</p></div>
       <p v-else-if="filteredModels.length === 0" role="status" data-testid="llama-imported-model-no-results" tw-class="py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__no_matching_models() }}</p>
       <ul v-else data-testid="llama-cpp-browser-model-list" tw-class="space-y-2">
         <li v-for="model in filteredModels" :key="model.id" tw-class="flex flex-wrap items-center gap-3 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900/30">
           <div tw-class="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-500 flex items-center justify-center shrink-0"><BrainCircuitIcon tw-class="w-4 h-4" /></div>
-          <div tw-class="min-w-0 flex-1"><p tw-class="text-sm font-bold text-gray-800 dark:text-gray-100 break-all">{{ model.name }}</p><p tw-class="text-[10px] text-gray-400 font-mono tabular-nums mt-1">{{ formatSize({ bytes: model.size }) }} · GGUF</p></div>
+          <div tw-class="min-w-0 flex-1"><p tw-class="text-sm font-bold text-gray-800 dark:text-gray-100 break-all">{{ model.source?.kind === 'host' ? model.source.path : model.name }}</p><p v-if="model.source?.kind === 'host'" data-testid="llama-imported-model-source" tw-class="text-[10px] text-gray-500 dark:text-gray-400 break-all mt-1">{{ modelSourceLabel({ model }) }} / {{ model.source.repository }} / {{ model.source.path }}</p><p v-else data-testid="llama-imported-model-source" tw-class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">{{ modelSourceLabel({ model }) }}</p><p tw-class="text-[10px] text-gray-400 font-mono tabular-nums mt-1">{{ formatSize({ bytes: model.size }) }} · GGUF</p></div>
           <div tw-class="flex items-center justify-end gap-1 ml-auto">
             <LlamaCppBrowserDefaultModelAction :model="model" :current="defaultModel" :disabled="unavailable || importing || active !== undefined || refreshing || defaultActionDisabled" @select="defaultSelection = $event" />
             <button type="button" :disabled="unavailable || importing || active !== undefined || downloading || queuedDownloadBusy || refreshing" :data-testid="`llama-cpp-browser-delete-${model.id}`" :aria-label="lazyStrings.llamaCppBrowser__delete_model()" :title="lazyStrings.llamaCppBrowser__delete_model()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="remove({ id: model.id })"><Trash2Icon tw-class="w-4 h-4" /></button>

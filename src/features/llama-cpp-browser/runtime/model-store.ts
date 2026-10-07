@@ -1,3 +1,6 @@
+import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
+import { resolveHostModel } from './host-model-store';
+import { parseHostModelReference, hostModelRoot, withDestinationLock } from './model-destination';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
@@ -57,11 +60,18 @@ function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undef
 }
 async function removalTarget({ id, sharedProjector }: { id: string, sharedProjector: 'include' | 'keep' | undefined }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined, projectors: string[], affectedVariants: number }> {
   let parent: FileSystemDirectoryHandle; let name: string; let selectedPaths: string[] | undefined; let projectors: string[] = []; let affectedVariants = 0;
-  if (id.startsWith('hf.co/')) {
-    const { repository, variant } = parseModelReference({ name: id });
-    parent = await opfsRoot();
-    for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
-    name = 'main'; const folder = await parent.getDirectoryHandle(name);
+  if (id.startsWith('hf.co/') || id.startsWith('host/')) {
+    const host = id.startsWith('host/') ? parseHostModelReference({ name: id }) : undefined;
+    const { repository, variant } = host ? { repository: host.repository, variant: host.modelPath } : parseModelReference({ name: id });
+    if (host) {
+      parent = await hostModelRoot({ destination: host.destination, mode: 'readwrite' });
+      parent = await parent.getDirectoryHandle(repository.split('/')[0]!); name = repository.split('/')[1]!;
+    } else {
+      parent = await opfsRoot();
+      for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
+      name = 'main';
+    }
+    const folder = await parent.getDirectoryHandle(name);
     let pending;
     if (variant === undefined) {
       try {
@@ -71,12 +81,15 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
       }
     }
     if (pending) {
-      selectedPaths = [pendingName, ...pending.selection.files.filter((_file, index) => !pending.reused?.[index]).map(file => file.path)];
+      if (host) for (let index = 0; index < pending.selection.files.length; index++) {
+        if (!pending.reused?.[index]) await hostDownloadMarker({ folder, selection: pending.selection, index, action: 'check' });
+      }
+      selectedPaths = [pendingName, ...pending.selection.files.filter((_file, index) => !pending.reused?.[index]).flatMap(file => host ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])];
     } else {
-      const directory = await resolveRepositoryModel({ name: id });
+      const directory = host ? await resolveHostModel({ name: id }) : await resolveRepositoryModel({ name: id });
       projectors = directory.projectorPath ? [directory.projectorPath] : [];
       selectedPaths = directory.files.filter(file => !projectors.includes(file.path)).map(file => file.path);
-      affectedVariants = Math.max(0, (await repositoryDirectories({ repository })).length - 1);
+      affectedVariants = Math.max(0, (await repositoryDirectories({ repository, destination: host?.destination })).length - 1);
     }
   } else {
     name = userModelName({ id });
@@ -91,6 +104,10 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
   return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths, projectors, affectedVariants };
 }
 async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, operation: () => Promise<T> }): Promise<T> {
+  if (id.startsWith('host/')) {
+    const { destination, repository } = parseHostModelReference({ name: id });
+    return withDestinationLock({ destination, operation: () => withRepositoryLock({ repository, operation }) });
+  }
   return id.startsWith('hf.co/') ? withRepositoryLock({ repository: parseModelReference({ name: id }).repository, operation }) : operation();
 }
 export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan | undefined, affectedVariants: number };
@@ -134,6 +151,7 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
   });
 }
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
+  if (name.startsWith('host/')) return resolveHostModel({ name });
   if (name.startsWith('hf.co/')) return resolveRepositoryModel({ name });
   const directory = userModelName({ id: name });
   try {

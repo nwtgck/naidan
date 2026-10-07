@@ -303,6 +303,20 @@ import { imageGeneration__no_chat_choices } from '@/strings/messages/imageGenera
 import { imageGeneration__export_notice } from '@/strings/messages/imageGeneration__export_notice/ja';
 import { imageGeneration__capture_for_assistant } from '@/strings/messages/imageGeneration__capture_for_assistant/ja';
 import { ChatPaneHeader__model_and_chat_settings } from '@/strings/messages/ChatPaneHeader__model_and_chat_settings/ja';
+import { LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings/ja';
+import { LlamaCppBrowserDownloadDestination__not_linked } from '@/strings/messages/LlamaCppBrowserDownloadDestination__not_linked/ja';
+import { LlamaCppBrowserDownloadDestination__unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unavailable/ja';
+import { LlamaCppBrowserDownloadDestination__download_to } from '@/strings/messages/LlamaCppBrowserDownloadDestination__download_to/ja';
+import { LlamaCppBrowserDownloadDestination__linked_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folder/ja';
+import { LlamaCppBrowserDownloadDestination__folder_access } from '@/strings/messages/LlamaCppBrowserDownloadDestination__folder_access/ja';
+import { LlamaCppBrowserDownloadDestination__browser_storage } from '@/strings/messages/LlamaCppBrowserDownloadDestination__browser_storage/ja';
+import { LlamaCppBrowserDownloadDestination__link_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder/ja';
+import { LlamaCppBrowserDownloadDestination__choose_folder_above_owner } from '@/strings/messages/LlamaCppBrowserDownloadDestination__choose_folder_above_owner/ja';
+import { LlamaCppBrowserDownloadDestination__unlink_keeps_files } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink_keeps_files/ja';
+import { LlamaCppBrowserDownloadDestination__reconnect } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect/ja';
+import { LlamaCppBrowserDownloadDestination__unlink } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink/ja';
+import { LlamaCppBrowserDownloadDestination__linked_folders_unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folders_unavailable/ja';
+import { LlamaCppBrowserDownloadDestination__link_folder_to_download } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder_to_download/ja';
 import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/ja';
 import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/ja';
 import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/ja';
@@ -2901,6 +2915,20 @@ export const catalog = {
   imageGeneration__export_notice,
   imageGeneration__capture_for_assistant,
   ChatPaneHeader__model_and_chat_settings,
+  LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings,
+  LlamaCppBrowserDownloadDestination__not_linked,
+  LlamaCppBrowserDownloadDestination__unavailable,
+  LlamaCppBrowserDownloadDestination__download_to,
+  LlamaCppBrowserDownloadDestination__linked_folder,
+  LlamaCppBrowserDownloadDestination__folder_access,
+  LlamaCppBrowserDownloadDestination__browser_storage,
+  LlamaCppBrowserDownloadDestination__link_folder,
+  LlamaCppBrowserDownloadDestination__choose_folder_above_owner,
+  LlamaCppBrowserDownloadDestination__unlink_keeps_files,
+  LlamaCppBrowserDownloadDestination__reconnect,
+  LlamaCppBrowserDownloadDestination__unlink,
+  LlamaCppBrowserDownloadDestination__linked_folders_unavailable,
+  LlamaCppBrowserDownloadDestination__link_folder_to_download,
   LlamaCppBrowserDownloadSources__copy_failed,
   LlamaCppBrowserDownloadSources__url_copied,
   LlamaCppBrowserDownloadSources__copy_url,

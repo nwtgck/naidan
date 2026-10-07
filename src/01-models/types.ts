@@ -420,6 +420,10 @@ export type BrowserImageModelSelection = {
   loras: { location: BrowserImageModelLocation, enabled: 'enabled' | 'disabled', strength: number }[],
 };
 
+export type LlamaCppBrowserSettings = {
+  modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
+};
+
 export type BrowserImageGenerationSettings = {
   width?: number,
   height?: number,
@@ -497,6 +501,7 @@ export interface Settings {
       previewMode?: 'always' | 'peek' | 'disabled',
       previewContextSize?: number | 'full',
     },
+    llamaCppBrowser?: LlamaCppBrowserSettings,
     browserImageGeneration?: BrowserImageGenerationSettings,
     readonly unreadable?: {
       readonly [key: string]: unknown,

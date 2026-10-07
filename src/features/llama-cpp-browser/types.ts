@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { parseHostModelReference } from './runtime/model-destination-types';
+
 export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm64', 'cpu-wasm32']);
 export type LlamaCppProfile = z.infer<typeof profileSchema>;
 export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
@@ -17,11 +19,26 @@ export const runtimeOptionsSchema = z.object({
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({
-  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)),
-  name: z.string().min(1).max(512),
+  id: z.string().min(1).max(1024).refine(value => {
+    if (value.startsWith('host/')) {
+      try {
+        parseHostModelReference({ name: value }); return true;
+      } catch {
+        return false;
+      }
+    }
+    return /^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i.test(value);
+  }).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)),
+  name: z.string().min(1).max(1024),
+  source: z.object({ kind: z.literal('host'), directoryId: z.string(), directoryName: z.string(), repository: z.string(), path: z.string() }).strict().optional(),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
-}).strict();
+}).strict().refine(({ id, name }) => name.length <= 512 || (id.startsWith('host/') && name === id), {
+  // Linked model names remain routable canonical IDs, including nested paths.
+  // Preserve the existing display-name limit for every other model source.
+  path: ['name'],
+  error: 'Long model names must match a canonical linked model ID',
+});
 export const modelDirectoryInputSchema = z.object({ name: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), file: z.instanceof(File) }).strict()).min(1) }).strict();
 export type ModelDirectoryInput = z.infer<typeof modelDirectoryInputSchema>;
 export type LocalModel = z.infer<typeof modelSchema>;
@@ -93,7 +110,16 @@ export type GenerationResult = z.infer<typeof generationResultSchema>;
 export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const generateInputSchema = z.object({
   debug: z.enum(['off', 'on']).optional(),
-  model: z.string().min(1).max(512),
+  model: z.string().min(1).max(1024).refine(value => {
+    // Generation must admit every canonical linked name accepted by inventory,
+    // without widening the existing limit for ordinary model names.
+    if (!value.startsWith('host/')) return value.length <= 512;
+    try {
+      parseHostModelReference({ name: value }); return true;
+    } catch {
+      return false;
+    }
+  }),
   messages: z.array(chatMessageSchema).min(1),
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),

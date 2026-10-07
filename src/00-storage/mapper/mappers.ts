@@ -1,6 +1,7 @@
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcConnectionId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
+import { llamaCppBrowserSettingsToDomain, llamaCppBrowserSettingsToDto } from './llama-cpp-browser-settings';
 /**
  * Mappers
  */
@@ -2256,6 +2257,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
+      llamaCppBrowser,
       browserImageGeneration,
       unreadable,
       hostModelDirectories,
@@ -2294,6 +2296,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       naidanRpc: naidanRpc ?? 'disabled',
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
+      llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
@@ -2373,6 +2376,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
+      llamaCppBrowser,
       browserImageGeneration,
       unreadable: _unreadable,
       hostModelDirectories,
@@ -2421,6 +2425,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       }),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
+      llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
       unreadable: undefined,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {

@@ -1,3 +1,4 @@
+import { openModelFileAccess } from './model-file-access';
 import type { AudioBackend } from '@/features/audio-generation/types';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -20,13 +21,6 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
   checkCancelled();
-  const handle = file.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<{
-    getSize(): number,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Native OPFS callback ABI.
-    read(destination: Uint8Array, options: { at: number }): number,
-    close(): void,
-  }> };
-  if (!handle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
   const reportFileReads = (() => {
     switch (debug) {
     case 'on': return true;
@@ -34,7 +28,7 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
     }
   })();
-  const access = await handle.createSyncAccessHandle();
+  const access = await openModelFileAccess({ entry: file });
   const readCache = createModelReadCache({ mode: 'read-ahead', now: reportFileReads ? () => performance.now() : undefined });
   let mounted: ReturnType<typeof mountReadOnlyFile> | undefined;
   let trace: ReturnType<typeof createProjectorTrace> | undefined;

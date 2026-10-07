@@ -1,3 +1,4 @@
+import { openModelFileAccess } from './model-file-access';
 import type { AudioBackend } from '@/features/audio-generation/types';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
@@ -217,14 +218,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     try {
       for (const entry of directory.files.filter(file => file.path !== directory.projectorPath)) {
         checkCancelled();
-        const nativeHandle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<{
-          getSize(): number,
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Native OPFS callback ABI.
-          read(destination: Uint8Array, options: { at: number }): number,
-          close(): void,
-        }> };
-        if (!nativeHandle.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
-        const access = await nativeHandle.createSyncAccessHandle(); accesses.push(access);
+        const access = await openModelFileAccess({ entry }); accesses.push(access);
         // Retain ownership before cancellation can throw. Do not open the next
         // shard or start native loading after a cancelled storage acquisition.
         checkCancelled();

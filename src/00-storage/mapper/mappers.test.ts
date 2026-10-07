@@ -797,6 +797,7 @@ describe('Settings Mapping', () => {
         },
         unreadable: undefined,
         hostModelDirectories: undefined,
+        llamaCppBrowser: undefined,
         browserImageGeneration: undefined,
         naidanRpc: undefined,
       },

@@ -1,3 +1,5 @@
+import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
+export type { HostModelDirectoriesView, HostModelDirectoryChoice } from '@/composables/useHostModelDirectories';
 import type { ModelCandidate } from './logic/model-candidates';
 import type { InspectionProgress } from './inventory-worker/types';
 import type { CatalogDownloadProgress } from './logic/catalog-download';
@@ -23,19 +25,6 @@ export type ImageRecipeAvailability = { available: number, total: number, select
 export type ImageDownloadQueueEntry = {
   id: string, label: string, destination: string,
   state: 'queued' | 'downloading' | 'paused' | 'failed' | 'incomplete', error: string,
-};
-export type HostModelDirectoryChoice = {
-  id: string, name: string,
-  access: 'readwrite' | 'read' | 'prompt' | 'missing' | 'error' | 'unsupported',
-  error: string | undefined,
-};
-export type HostModelDirectoriesView = {
-  supported: ComputedRef<boolean>, entries: ComputedRef<HostModelDirectoryChoice[]>, busy: Ref<boolean>,
-  destination: Ref<string>,
-  add(): Promise<void>,
-  reconnect({ id }: { id: string }): Promise<void>,
-  remove({ id }: { id: string }): Promise<void>,
-  selectDestination({ id }: { id: string }): void,
 };
 /** Known primary model, with its explicitly resolved local component set. */
 export type ImageBenchmarkTarget = {
