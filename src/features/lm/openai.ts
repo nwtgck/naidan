@@ -92,10 +92,14 @@ export class OpenAIProvider implements LmProvider {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
     const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
-    return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+    return createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
       const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
       const body: OpenAICompletionRequest = {
-        model, messages: await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal }), stream: true,
+        model,
+        messages: await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal }),
+        stream: true,
       };
       if (snapshot.parameters) {
         const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
@@ -108,8 +112,10 @@ export class OpenAIProvider implements LmProvider {
       let response: Response;
       try {
         response = await fetcher(url, {
-          method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])],
-          body: JSON.stringify(body), signal,
+          method: 'POST',
+          headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])],
+          body: JSON.stringify(body),
+          signal,
         });
       } catch (error) {
         if (signal.aborted) throw error;
@@ -173,7 +179,8 @@ export class OpenAIProvider implements LmProvider {
               const argumentsOffset = draft.arguments.length;
               draft.name += piece.function?.name ?? '';
               draft.arguments += piece.function?.arguments ?? '';
-              await writer.callDraft({ key: draft.key,
+              await writer.callDraft({
+                key: draft.key,
                 name: piece.function?.name === undefined ? undefined : draft.name,
                 arguments: piece.function?.arguments === undefined ? undefined : { offset: argumentsOffset, text: piece.function.arguments },
               });
@@ -196,7 +203,8 @@ export class OpenAIProvider implements LmProvider {
         if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
         throw error;
       }
-    } });
+    },
+    });
   }
 
   async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {

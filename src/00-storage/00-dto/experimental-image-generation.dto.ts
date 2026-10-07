@@ -105,15 +105,21 @@ export const ExperimentalImageGenerationSchemaDto = z.object({
   result: z.union([
     z.object({
       binaryObjectId: ImageHistoryRawIdSchemaDto,
-      width: z.number().int().positive(), height: z.number().int().positive(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
       elapsedMs: z.number().finite().nonnegative(),
-      confirmation: z.literal('confirmed').optional(), modelVersion: z.string(), uniformOutput: z.boolean(),
+      confirmation: z.literal('confirmed').optional(),
+      modelVersion: z.string(),
+      uniformOutput: z.boolean(),
     }),
     z.object({
       binaryObjectId: ImageHistoryRawIdSchemaDto,
-      width: z.number().int().positive(), height: z.number().int().positive(),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
       elapsedMs: z.number().finite().nonnegative(),
-      confirmation: z.literal('unconfirmed'), modelVersion: z.string().optional(), uniformOutput: z.boolean().optional(),
+      confirmation: z.literal('unconfirmed'),
+      modelVersion: z.string().optional(),
+      uniformOutput: z.boolean().optional(),
     }),
   ]),
   previews: z.array(z.object({
@@ -214,7 +220,8 @@ export const ExperimentalImageGenerationActivityJournalSchemaDto = z.object({
   version: z.literal(1),
   sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1),
   pending: z.array(z.object({
-    sessionId: ExperimentalImageGenerationIdSchemaDto, runId: ExperimentalImageGenerationIdSchemaDto,
+    sessionId: ExperimentalImageGenerationIdSchemaDto,
+    runId: ExperimentalImageGenerationIdSchemaDto,
     order: ExperimentalImageGenerationActivityOrderSchemaDto,
   }).strict()).max(4096),
 }).strict().superRefine((value, context) => {
@@ -276,9 +283,15 @@ const ExperimentalImageGenerationRequestSchemaDto = ExperimentalImageGenerationL
 }).strict();
 
 const ExperimentalImageGenerationDraftParametersSchemaDto = ExperimentalImageGenerationLegacyRequestSchemaDto.shape.parameters.extend({
-  prompt: z.string().max(4096), negativePrompt: z.string().max(4096), seed: z.string().max(20),
-  width: z.number().finite(), height: z.number().finite(), steps: z.number().finite(), guidance: z.number().finite(),
-  vaeTileSize: z.number().finite().optional(), conditioningCacheSize: z.number().finite().optional(),
+  prompt: z.string().max(4096),
+  negativePrompt: z.string().max(4096),
+  seed: z.string().max(20),
+  width: z.number().finite(),
+  height: z.number().finite(),
+  steps: z.number().finite(),
+  guidance: z.number().finite(),
+  vaeTileSize: z.number().finite().optional(),
+  conditioningCacheSize: z.number().finite().optional(),
 }).strict();
 
 // Workspace-owned selections reject unknown fields during read-modify-write.

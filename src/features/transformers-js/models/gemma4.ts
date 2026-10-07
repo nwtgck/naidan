@@ -100,9 +100,12 @@ export async function buildGemma4TemplateInput({
     const toolFields = {
       ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
-      ...(tool_calls === undefined ? {} : { tool_calls: tool_calls.map(call => ({
-        ...call, function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
-      })) }),
+      ...(tool_calls === undefined ? {} : {
+        tool_calls: tool_calls.map(call => ({
+        ...call,
+        function: { ...call.function, arguments: parseGemma4ToolArguments({ argumentsText: call.function.arguments }) },
+      })),
+      }),
     };
 
     // Content is model-visible text, not a display projection. Native channel

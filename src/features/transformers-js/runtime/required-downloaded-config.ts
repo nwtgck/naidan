@@ -10,7 +10,10 @@ export async function requireDownloadedModelConfig({ modelId, revision, modelCac
   workerLocationUrl: string;
 }): Promise<void> {
   const response = await modelCache.match(downloadedModelResourceUrl({
-    modelId, revision, repositoryPath: 'config.json', workerLocationUrl,
+    modelId,
+    revision,
+    repositoryPath: 'config.json',
+    workerLocationUrl,
   }));
   if (response === undefined) {
     // Only an actual cache miss is incomplete. I/O errors and subsequent JSON

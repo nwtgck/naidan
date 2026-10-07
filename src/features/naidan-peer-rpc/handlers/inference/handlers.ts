@@ -14,19 +14,28 @@ export type InferenceDependencies = { resources: ReadOnlyInferenceResources; inp
 const chatItemSchema = z.strictObject({ ref: chatModelReferenceSchema, label: z.string().min(1).max(1024) });
 
 export function listChatModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listChatModels'>) {
-  return computationSource<z.infer<typeof chatItemSchema>>({ signal, run: async ({ signal, emit }) => {
+  return computationSource<z.infer<typeof chatItemSchema>>({
+    signal,
+    run: async ({ signal, emit }) => {
     const models = z.array(chatItemSchema).max(256).parse(await resources.listChatModels({ signal }));
     for (const value of models) await emit({ value });
-  } });
+  },
+  });
 }
 export function listImageModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listImageModels'>) {
-  return computationSource<z.infer<typeof imageCatalogItemSchema>>({ signal, run: async ({ signal, emit }) => {
+  return computationSource<z.infer<typeof imageCatalogItemSchema>>({
+    signal,
+    run: async ({ signal, emit }) => {
     const models = z.array(imageCatalogItemSchema).max(256).parse(await resources.listImageModels({ signal }));
     for (const value of models) await emit({ value });
-  } });
+  },
+  });
 }
 export function generateChat({ resources, inputBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateChat'>) {
-  return { events: computationSource<Uint8Array>({ signal, run: async ({ signal, emit }) => {
+  return {
+    events: computationSource<Uint8Array>({
+    signal,
+    run: async ({ signal, emit }) => {
     const { model, transcript, images, ...rest } = input; rest satisfies Record<PropertyKey, never>;
     const encoded = images.reduce((bytes, image) => bytes + image.byteLength, 0);
     if (encoded > 64 * 1024 * 1024) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
@@ -61,11 +70,16 @@ export function generateChat({ resources, inputBudget, input, signal, notify }: 
       let transmitted = 0;
       let result: Awaited<ReturnType<ReadOnlyInferenceResources['generateChat']>>;
       try {
-        result = await resources.generateChat({ input: request, signal, onProgress: notify.progress, onEvent: async ({ event }) => {
+        result = await resources.generateChat({
+          input: request,
+          signal,
+          onProgress: notify.progress,
+          onEvent: async ({ event }) => {
           const bytes = eventBytes({ event: peerChatEventSchema.parse(event) });
           if ((transmitted += bytes.length) > OUTPUT_LIMIT) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
           await emit({ value: bytes });
-        } });
+        },
+        });
       } catch (error) {
         signal.throwIfAborted();
         // Preserve the base's title-only fallback without leaking native error
@@ -81,11 +95,18 @@ export function generateChat({ resources, inputBudget, input, signal, notify }: 
     } finally {
       for (const lease of leases) lease.release();
     }
-  } }) };
+  },
+  }),
+  };
 }
 export function generateImage({ resources, inputBudget, deliveryBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateImage'>) {
   const { modelSelection, parameters, preview, imageInputs, ...rest } = input; rest satisfies Record<PropertyKey, never>;
-  return createImageResponse({ signal, seed: parameters.seed, width: parameters.width, height: parameters.height, budget: deliveryBudget,
+  return createImageResponse({
+    signal,
+    seed: parameters.seed,
+    width: parameters.width,
+    height: parameters.height,
+    budget: deliveryBudget,
     run: async ({ signal, onPreview }) => {
       const { initial, references, strength, ...rest } = imageInputs; rest satisfies Record<PropertyKey, never>;
       const uploads = [...(initial ? [initial] : []), ...references];
@@ -107,9 +128,17 @@ export function generateImage({ resources, inputBudget, deliveryBudget, input, s
         }
         signal.throwIfAborted();
         generating = true;
-        return await resources.generateImage({ input: { modelSelection, parameters, preview,
-          imageInputs: { initial: initial ? files[0] : undefined, references: initial ? files.slice(1) : files, strength } },
-        signal, onProgress: notify.progress, onPreview });
+        return await resources.generateImage({
+          input: {
+          modelSelection,
+          parameters,
+          preview,
+          imageInputs: { initial: initial ? files[0] : undefined, references: initial ? files.slice(1) : files, strength },
+        },
+        signal,
+          onProgress: notify.progress,
+          onPreview,
+        });
       } catch (error) {
         signal.throwIfAborted();
         throw createImageGenerationFailure({ error, stage: generating ? 'generation' : 'input', reason: generating ? 'generation-failed' : 'invalid-input', profile: undefined, gpu: false, nativeContext: undefined });

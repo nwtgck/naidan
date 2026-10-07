@@ -135,7 +135,8 @@ vi.mock('../00-storage/service', () => ({
     switchProvider: vi.fn().mockResolvedValue(undefined),
     hasAttachments: vi.fn().mockResolvedValue(false),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -926,7 +927,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const customSettings = {
         ...mockSettings,
-        titleGeneration: { endpoint: 'same_scope', model: { id: 'special-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'special-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref(customSettings),
@@ -1325,16 +1326,22 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await vm.handleImportRecipes({ recipes });
 
       expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
-      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({
+        name: 'Recipe 1',
+        options: expect.objectContaining({
         modelId: 'm1',
         systemPrompt: { content: 'p1', behavior: 'override' },
         lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } }),
-      }) });
-      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 2', options: expect.objectContaining({
+      }),
+      });
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({
+        name: 'Recipe 2',
+        options: expect.objectContaining({
         modelId: undefined,
         systemPrompt: undefined,
         lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }),
-      }) });
+      }),
+      });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: 'Successfully imported 2 recipes as chat groups',

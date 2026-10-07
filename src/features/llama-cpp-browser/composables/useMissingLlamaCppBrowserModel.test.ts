@@ -23,27 +23,37 @@ let queue: ReturnType<typeof createDownloadQueue>;
 const tasks: { cancelled: boolean, task: () => Promise<void> }[] = [];
 const modelListeners = new Set<() => void>();
 const stateListeners = new Set<({ state }: { state: EngineState }) => void>();
-vi.mock('@/utils/idle-task', () => ({ scheduleIdleTask: ({ task }: { task: () => Promise<void> }) => {
-  const entry = { cancelled: false, task }; tasks.push(entry); return { cancel: () => {
+vi.mock('@/utils/idle-task', () => ({
+  scheduleIdleTask: ({ task }: { task: () => Promise<void> }) => {
+  const entry = { cancelled: false, task }; tasks.push(entry); return {
+    cancel: () => {
     entry.cancelled = true;
-  } };
-} }));
+  },
+  };
+},
+}));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { captureModelLaunchStorage: () => {
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+  captureModelLaunchStorage: () => {
   const version = storageVersion; return () => version === storageVersion;
-} } }));
+},
+},
+}));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
 vi.mock('../model-recovery/download-target', () => ({ resolveRecoveryDownload: calls.plan }));
 vi.mock('../hugging-face/storage', () => ({ installedSelection: calls.installed }));
 vi.mock('../hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => queue }));
-vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
+vi.mock('@/features/llama-cpp-browser', () => ({
+  llamaCppBrowserService: {
   subscribeModelList: ({ listener }: { listener: () => void }) => {
     modelListeners.add(listener); return () => modelListeners.delete(listener);
   },
   subscribe: ({ listener }: { listener: ({ state }: { state: EngineState }) => void }) => {
     stateListeners.add(listener); return () => stateListeners.delete(listener);
   },
-} }));
+},
+}));
 const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
 const scopes: ReturnType<typeof effectScope>[] = [];
 const wrappers: ReturnType<typeof mount>[] = [];

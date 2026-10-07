@@ -17,7 +17,8 @@ export const runtimeOptionsSchema = z.object({
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({
-  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)), name: z.string().min(1).max(512),
+  id: z.string().min(1).max(1024).regex(/^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)),
+  name: z.string().min(1).max(512),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
 }).strict();
@@ -48,7 +49,8 @@ export function errorCode({ error }: { error: unknown }): ErrorCode {
 }
 export const progressSchema = z.object({
   phase: z.enum(['importing', 'initializing', 'loading', 'prefill', 'generating', 'decoding-audio']),
-  completed: z.number().nonnegative().finite(), total: z.number().nonnegative().finite(),
+  completed: z.number().nonnegative().finite(),
+  total: z.number().nonnegative().finite(),
 }).strict();
 export type Progress = z.infer<typeof progressSchema>;
 export type EngineState =
@@ -58,12 +60,17 @@ export type EngineState =
   | { status: 'error', code: ErrorCode };
 export const toolCallSchema = z.object({ id: z.string(), type: z.literal('function'), function: z.object({ name: z.string(), arguments: z.string() }).strict() }).strict();
 const chatMessageSchema = z.object({
-  role: z.enum(['system', 'user', 'assistant', 'tool']), content: z.union([z.string(), z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }).strict(), z.object({ type: z.literal('image'), blob: z.instanceof(Blob) }).strict()]))]),
-  reasoning_content: z.string().optional(), tool_calls: z.array(toolCallSchema).optional(),
-  tool_call_id: z.string().optional(), name: z.string().optional(),
+  role: z.enum(['system', 'user', 'assistant', 'tool']),
+  content: z.union([z.string(), z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }).strict(), z.object({ type: z.literal('image'), blob: z.instanceof(Blob) }).strict()]))]),
+  reasoning_content: z.string().optional(),
+  tool_calls: z.array(toolCallSchema).optional(),
+  tool_call_id: z.string().optional(),
+  name: z.string().optional(),
 }).strict();
 export const generationResultSchema = z.object({
-  content: z.string(), reasoningContent: z.string(), toolCalls: z.array(toolCallSchema),
+  content: z.string(),
+  reasoningContent: z.string(),
+  toolCalls: z.array(toolCallSchema),
   finishReason: z.enum(['stop', 'length', 'stop_sequence']),
 }).strict();
 // Draft arguments are native parser snapshots, which may normalize or revise
@@ -73,7 +80,8 @@ export const generationEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('reasoning'), text: z.string() }).strict(),
   z.object({ type: z.literal('tool_call_start'), index: z.number().int().nonnegative() }).strict(),
   z.object({
-    type: z.literal('tool_call_draft'), index: z.number().int().nonnegative(),
+    type: z.literal('tool_call_draft'),
+    index: z.number().int().nonnegative(),
     name: z.string().optional(),
     arguments: z.object({ offset: z.number().int().nonnegative(), text: z.string() }).strict().optional(),
   }).strict(),
@@ -89,10 +97,13 @@ export const generateInputSchema = z.object({
   messages: z.array(chatMessageSchema).min(1),
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
-  temperature: z.number().min(0).max(10), topP: z.number().min(0).max(1),
+  temperature: z.number().min(0).max(10),
+  topP: z.number().min(0).max(1),
   maxTokens: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
-  presencePenalty: z.number().min(-2).max(2), frequencyPenalty: z.number().min(-2).max(2),
-  stop: z.array(z.string().min(1).max(512)).max(32), options: runtimeOptionsSchema,
+  presencePenalty: z.number().min(-2).max(2),
+  frequencyPenalty: z.number().min(-2).max(2),
+  stop: z.array(z.string().min(1).max(512)).max(32),
+  options: runtimeOptionsSchema,
 }).strict();
 export const TEST_ONLY = {
 };

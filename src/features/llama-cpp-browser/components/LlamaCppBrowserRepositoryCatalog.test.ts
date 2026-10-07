@@ -19,8 +19,12 @@ const service = vi.hoisted(() => ({
   getState: vi.fn<LlamaCppBrowserService['getState']>(() => ({ status: 'idle' })),
   getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(() => ({ profile: 'auto' })),
   getProfileState: vi.fn<LlamaCppBrowserService['getProfileState']>(() => ({ status: 'idle' })),
-  subscribe: vi.fn(() => () => {}), subscribeModelList: vi.fn(() => () => {}), subscribeProfiles: vi.fn(() => () => {}),
-  listModels: vi.fn(async () => []), probeProfiles: vi.fn(async () => ({ profiles: [] })), release: vi.fn(),
+  subscribe: vi.fn(() => () => {}),
+  subscribeModelList: vi.fn(() => () => {}),
+  subscribeProfiles: vi.fn(() => () => {}),
+  listModels: vi.fn(async () => []),
+  probeProfiles: vi.fn(async () => ({ profiles: [] })),
+  release: vi.fn(),
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 vi.mock('../hugging-face/catalog', async original => ({ ...await original<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
@@ -36,10 +40,16 @@ const families = [
 function render(): VueWrapper {
   wrapper = mount(LlamaCppBrowserManager, {
     props: { suggestions: 'none' },
-    slots: { catalog: ({ disabled, inspect }: { disabled: boolean, inspect: ({ input }: { input: string }) => Promise<void> }) =>
-      h(LlamaCppBrowserRepositoryCatalog, { entries: repositoryCatalog, disabled, onInspect: input => {
+    slots: {
+      catalog: ({ disabled, inspect }: { disabled: boolean, inspect: ({ input }: { input: string }) => Promise<void> }) =>
+      h(LlamaCppBrowserRepositoryCatalog, {
+        entries: repositoryCatalog,
+        disabled,
+        onInspect: input => {
         void inspect({ input });
-      } }) },
+      },
+      }),
+    },
   });
   return wrapper;
 }
@@ -80,7 +90,8 @@ describe('reusable repository catalog and shared model manager', () => {
     await view.get('[data-testid="llama-hf-download"]').trigger('click'); await flushPromises();
     expect(downloadRepository).toHaveBeenCalledOnce();
     expect(vi.mocked(downloadRepository).mock.calls[0]![0].selection).toEqual({
-      repository: parseRepository({ input: repositoryCatalog[index]!.input }).repository, revision,
+      repository: parseRepository({ input: repositoryCatalog[index]!.input }).repository,
+      revision,
       files: [{ path: `${families[index]!.name}.Q4_K_M.gguf`, size: 128 }, { path: families[index]!.projector, size: 128 }],
     });
   });

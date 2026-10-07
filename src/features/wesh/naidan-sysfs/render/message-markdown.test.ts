@@ -15,7 +15,7 @@ describe('renderMessageMarkdown', () => {
         {
           type: 'text',
           text: 'hello',
-          completeness: 'complete'
+          completeness: 'complete',
         },
         {
           type: 'attachment',
@@ -27,10 +27,10 @@ describe('renderMessageMarkdown', () => {
             size: 1234,
             uploadedAt: 99,
             status: 'persisted',
-          }
+          },
         }
       ],
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     expect(renderMessageMarkdown({ node })).toBe(`\
@@ -70,10 +70,10 @@ note.pdf (application/pdf, 1234 bytes, binary hidden)
               type: 'text',
               text: longText,
             },
-          }
+          },
         }
       ],
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     expect(renderMessageMarkdown({ node })).toBe(`\

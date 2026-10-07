@@ -397,7 +397,9 @@ export function createChatDataStore({
       }
     }
 
-    await storageService.updateChatMeta({ id: id, updater: async ({ current: curr }) => {
+    await storageService.updateChatMeta({
+      id: id,
+      updater: async ({ current: curr }) => {
       const fullChat = curr ? await storageService.loadChat({ id }) : null;
       const updatedFull = await updater({ current: fullChat });
       if (!updatedFull) return curr!;
@@ -405,7 +407,8 @@ export function createChatDataStore({
       return {
         ...meta,
       } as ChatMeta;
-    } });
+    },
+    });
   }
 
   async function updateChatScopedSettings({
@@ -570,7 +573,8 @@ export function createChatDataStore({
     }
   }
 
-  storageService.subscribeToChanges({ listener: async ({ event }) => {
+  storageService.subscribeToChanges({
+    listener: async ({ event }) => {
     switch (event.type) {
     case 'chat_meta_and_chat_group': {
       debouncedSidebarReload();
@@ -647,7 +651,8 @@ export function createChatDataStore({
       throw new Error(`Unhandled event: ${_ex}`);
     }
     }
-  } });
+  },
+  });
 
   return {
     rootItems,

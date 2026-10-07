@@ -7,7 +7,8 @@ it('treats the transported Transformers.js optional configuration origin as term
   expect(classifyProductionAcceptanceError({ error })).toBe('terminal');
   expect(productionAcceptanceFailureStatus({ error })).toBe('failed');
   expect(serializeProductionAcceptanceError({ error })).toEqual({
-    name: 'TransformersJsOptionalConfigurationError', message: error.message,
+    name: 'TransformersJsOptionalConfigurationError',
+    message: error.message,
   });
 });
 

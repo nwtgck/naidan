@@ -231,13 +231,15 @@ async function forkChatFromTarget({
     id: newChatId,
     updater: () => newChat,
   });
-  await storageService.updateHierarchy({ updater: ({ current }) => {
+  await storageService.updateHierarchy({
+    updater: ({ current }) => {
     return prependForkedChatToHierarchy({
       current,
       newChatId,
       chatGroupId: mutableChat.groupId,
     });
-  } });
+  },
+  });
   await loadData();
   await useChatNavigation().openChat({ chatId: newChat.id, leafId: undefined });
   return newChat.id;

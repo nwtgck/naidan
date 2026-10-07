@@ -11,9 +11,16 @@ const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registr
 
 it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link and does not return its owner lease', async mode => {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
-  const record: NaidanRpcConnection = { id: toNaidanRpcConnectionId({ raw: 'late-startup-connection' }),
-    peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }), autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Peer',
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0 };
+  const record: NaidanRpcConnection = {
+    id: toNaidanRpcConnectionId({ raw: 'late-startup-connection' }),
+    peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
+    autoConnect: 'disabled',
+    localPublicKey: encodePeerKey({ bytes: local }),
+    label: 'Peer',
+    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] },
+    allowedMethods: [],
+    revision: 0,
+  };
   const opening = Promise.withResolvers<RpcLink>(), linkClosed = Promise.withResolvers<void>();
   const open = vi.fn(() => opening.promise), release = vi.fn(), failure = new Error('Unaccepted link cleanup failed');
   const abort = vi.fn(() => {
@@ -22,14 +29,23 @@ it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link
   const resourcesDone = Promise.withResolvers<void>(), retireResources = vi.fn(() => resourcesDone.promise);
   const dependencies: RpcManagerDependencies = {
     storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
-    identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }), acquireOwner: async () => ({ release }), open,
-    inference: { inputBudget: createInferenceBudget({ capacity: 1024 }), deliveryBudget: createInferenceBudget({ capacity: 1024 }),
-      resources: { listChatModels: async () => [], listImageModels: async () => [],
+    identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
+    acquireOwner: async () => ({ release }),
+    open,
+    inference: {
+      inputBudget: createInferenceBudget({ capacity: 1024 }),
+      deliveryBudget: createInferenceBudget({ capacity: 1024 }),
+      resources: {
+        listChatModels: async () => [],
+        listImageModels: async () => [],
         generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
         generateImage: async () => {
           throw new Error('Not used');
-        } } },
-    retireResources, changed: () => {},
+        },
+      },
+    },
+    retireResources,
+    changed: () => {},
   };
   const manager = new NaidanPeerManager({ dependencies });
   try {
@@ -49,10 +65,16 @@ it.each(['connect', 'pair'] as const)('retains cleanup failure of a late %s link
     }, () => {
       settled = true;
     });
-    opening.resolve({ peerIdentity: remote, confirmResponse: async () => {}, incomingStreams: { async *[Symbol.asyncIterator]() {} }, closed: linkClosed.promise,
+    opening.resolve({
+      peerIdentity: remote,
+      confirmResponse: async () => {},
+      incomingStreams: { async *[Symbol.asyncIterator]() {} },
+      closed: linkClosed.promise,
       openStream: async () => {
         throw new Error('Not used');
-      }, abort });
+      },
+      abort,
+    });
     await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
     expect(settled).toBe(false); expect(retireResources).not.toHaveBeenCalled(); expect(release).not.toHaveBeenCalled();
     linkClosed.resolve();

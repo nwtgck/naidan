@@ -72,8 +72,17 @@ export function verifySingleTextPartsObservation({ recordedEvents, invocation, c
   expected.push({ kind: 'assistant_message', messageId, sequence: 0, phase: 'before-settlement' });
   let applied = '';
   const snapshot = ({ completeness }: { completeness: 'partial' | 'complete' }) => {
-    expected.push({ kind: 'part_text', messageId, partId, index: 0, partType: 'text', text: applied, completeness,
-      sequence: expected.length, phase: 'before-settlement' });
+    expected.push({
+      kind: 'part_text',
+      messageId,
+      partId,
+      index: 0,
+      partType: 'text',
+      text: applied,
+      completeness,
+      sequence: expected.length,
+      phase: 'before-settlement',
+    });
   };
   snapshot({ completeness: 'partial' });
   for (const event of finalized) {
@@ -106,7 +115,9 @@ export function projectSingleTextReplayInput({ input, precedingEvents }: {
   precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
 }): unknown {
   const checked = inputSchema.parse(input);
-  return { ...checked, messages: checked.messages.map(message => {
+  return {
+    ...checked,
+    messages: checked.messages.map(message => {
     if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
     const current = assistantPartsSchema.parse(message);
     const precedingPart = (() => {
@@ -122,7 +133,8 @@ export function projectSingleTextReplayInput({ input, precedingEvents }: {
     })();
     expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);
     return { role: current.role, content: current.parts[0].text };
-  }) };
+  }),
+  };
 }
 
 export const TEST_ONLY = {

@@ -101,7 +101,7 @@ defineExpose({
       openModelSupportInvestigation,
       closeModelSupportInvestigation,
     },
-  }) || {})
+  }) || {}),
 });
 </script>
 

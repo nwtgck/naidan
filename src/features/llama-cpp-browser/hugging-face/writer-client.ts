@@ -10,7 +10,8 @@ export async function createDownloadWriterClient({ signal: _signal }: { signal: 
   const worker = new Worker(new URL('./writer-entry.ts', import.meta.url), { type: 'module', name: 'llama-cpp-browser-download' });
   const remote = wrapWorkerRemote<DownloadWriterApi>({ endpoint: worker });
   return {
-    worker, remote,
+    worker,
+    remote,
     async dispose({ beforeRelease }) {
       try {
         await beforeRelease?.();

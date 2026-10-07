@@ -144,11 +144,13 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     const reader = response.body.getReader();
     let ended = false;
     let received = 0;
-    const lease = { async cancel() {
+    const lease = {
+      async cancel() {
       if (ended) return;
       ended = true;
       await reader.cancel();
-    } };
+    },
+    };
     ownLease({ lease });
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
@@ -178,7 +180,8 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
   }
 
-  const fetchMetadata: typeof fetch = (input, init) => tracked({ run: async () => {
+  const fetchMetadata: typeof fetch = (input, init) => tracked({
+    run: async () => {
     // Request merges method/headers/signal with the platform's own precedence.
     // Relative remote requests are not valid for this exact HF-only operation.
     const request = new Request(input, init);
@@ -226,7 +229,8 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     request.signal.throwIfAborted();
     check();
     return owned;
-  } });
+  },
+  });
 
   const cache = {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- TJS Cache-compatible boundary.

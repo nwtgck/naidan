@@ -27,9 +27,12 @@ describe('window and Blob Worker OPFS agreement', () => {
   });
   it('removes the temporary file when cancellation interrupts a stalled worker', async () => {
     const entered = Promise.withResolvers<void>(); const controller = new AbortController();
-    const operation = verifySharedStorage({ verify: () => {
+    const operation = verifySharedStorage({
+      verify: () => {
       entered.resolve(); return new Promise(() => {});
-    }, signal: controller.signal });
+    },
+      signal: controller.signal,
+    });
     const rejection = expect(operation).rejects.toThrow('aborted');
     await entered.promise; controller.abort(); await rejection;
     expect(root.children.size).toBe(0);
@@ -37,9 +40,12 @@ describe('window and Blob Worker OPFS agreement', () => {
   it('bounds an unresponsive storage verification without misclassifying it as unsupported', async () => {
     vi.useFakeTimers();
     const entered = Promise.withResolvers<void>();
-    const operation = verifySharedStorage({ verify: () => {
+    const operation = verifySharedStorage({
+      verify: () => {
       entered.resolve(); return new Promise(() => {});
-    }, signal: undefined });
+    },
+      signal: undefined,
+    });
     const rejection = expect(operation).rejects.toThrow('worker-failed');
     await entered.promise; await vi.advanceTimersByTimeAsync(10_000); await rejection;
     expect(root.children.size).toBe(0);

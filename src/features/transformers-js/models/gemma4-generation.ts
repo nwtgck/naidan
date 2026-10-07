@@ -171,9 +171,14 @@ export function createGemma4Generation({ emit, toolCalls }: {
       if (settled) throw new Error('Gemma generation was settled twice.');
       settled = true;
       flushNewline(); close({ completeness: 'partial' });
-      emit({ event: { type: 'result', result: terminal === undefined || terminal === 'incomplete'
+      emit({
+        event: {
+        type: 'result',
+        result: terminal === undefined || terminal === 'incomplete'
         ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal } } });
+        : { type: 'finished', next: terminal },
+      },
+      });
     },
   };
 }

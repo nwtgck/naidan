@@ -58,10 +58,14 @@ export function publishDownloadProgress({ callback, event }: { callback: Downloa
     switch (event.kind) {
     case 'candidate': return { ...event, candidate: { ...event.candidate } };
     case 'plan': return { ...event, paths: [...event.paths] };
-    case 'file': return { ...event, info: { ...event.info,
+    case 'file': return {
+      ...event,
+      info: {
+      ...event.info,
       ...event.info.downloadTiming === undefined ? {} : { downloadTiming: typeof event.info.downloadTiming === 'object' ? { ...event.info.downloadTiming } : event.info.downloadTiming },
       ...event.info.downloadCumulativeTiming === undefined ? {} : { downloadCumulativeTiming: typeof event.info.downloadCumulativeTiming === 'object' ? { ...event.info.downloadCumulativeTiming } : event.info.downloadCumulativeTiming },
-    } };
+    },
+    };
     case 'sizes': return { ...event, sizes: event.sizes.map(size => ({ ...size })) };
     case 'phase': case 'metadata': case 'acceptance': case 'prefetch-complete': case 'cached-acceptance': return { ...event };
     default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
@@ -316,12 +320,17 @@ export function createDownloadProgressTracker() {
       const known = rows.length > 0 && Number.isSafeInteger(total) && rows.every(row => row.total !== undefined && row.total > 0 && row.status !== 'failed');
       const remaining = known ? rows.reduce((sum, row) => sum + Math.max(0, row.total! - row.loaded), 0) : undefined;
       return {
-        phase, overallProgress: overall === undefined ? undefined : Math.floor(overall), attemptNumber: index === undefined ? undefined : index + 1,
-        estimateGeneration, revisionReason,
+        phase,
+        overallProgress: overall === undefined ? undefined : Math.floor(overall),
+        attemptNumber: index === undefined ? undefined : index + 1,
+        estimateGeneration,
+        revisionReason,
         completedFileCount: rows.filter(row => row.status === 'complete' || row.status === 'cached').length,
         totalFileCount: rows.length,
         downloadEta: eta.snapshot({ remainingBytes: remaining, active: phase === 'transferring' && eta.matchesReceivedBytes({ bytes: receivedBytes }) }),
-        attemptCount: count, candidate: candidate === undefined ? undefined : { ...candidate }, files: rows,
+        attemptCount: count,
+        candidate: candidate === undefined ? undefined : { ...candidate },
+        files: rows,
         receivedBytes,
         cachedBytes,
         knownTotalBytes: Number.isSafeInteger(total) ? total : 0,

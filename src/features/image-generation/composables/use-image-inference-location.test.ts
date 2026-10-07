@@ -30,10 +30,21 @@ function setup() {
   const reload = vi.fn(async () => {}), list = vi.fn(() => [connection, second].map(connection => ({ connection, phase: 'connected' } as RpcConnectionView)));
   mocks.get.mockResolvedValue({ bindClient, reload, list });
   const selection: PeerImageModelSelection = { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/model.gguf' } } }, components: [], loras: [] };
-  return { inferenceLocation, form, connection, second, selection, unexpected, bindClient, reload, listImageModels, scope,
+  return {
+    inferenceLocation,
+    form,
+    connection,
+    second,
+    selection,
+    unexpected,
+    bindClient,
+    reload,
+    listImageModels,
+    scope,
     block() {
       blocked = true;
-    } };
+    },
+  };
 }
 it('selection and snapshot restoration do not fetch models, upload or compute', async () => {
   const h = setup(); expect(mocks.get).not.toHaveBeenCalled();
@@ -65,9 +76,11 @@ it('drops late catalog output after switching connections and cancels the old ca
   const reading = h.inferenceLocation.loadModels(); await vi.waitFor(() => expect(h.listImageModels).toHaveBeenCalledOnce());
   const signal = h.listImageModels.mock.calls[0]![0].signal!;
   h.inferenceLocation.chooseConnection({ id: h.second.id }); expect(signal.aborted).toBe(true);
-  gate.resolve(new ReadableStream({ start(controller) {
+  gate.resolve(new ReadableStream({
+    start(controller) {
     controller.close();
-  } })); await reading;
+  },
+  })); await reading;
   expect(h.inferenceLocation.catalog.value).toEqual([]); expect(h.inferenceLocation.connectionId.value).toBe(h.second.id); expect(h.inferenceLocation.loading.value).toBe(false);
 });
 it('prevents model and connection edits while a run owns the form', async () => {
@@ -103,8 +116,10 @@ it('keeps exact model components and disabled adapters separately for each peer'
 it('restores a missing peer reference and explicit empty editor without replacing it on refresh', async () => {
   const h = setup();
   const savedPeer = toNaidanRpcPeerId({ raw: 'D'.repeat(43) });
-  h.inferenceLocation.restorePreferences({ inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: h.connection.id, peerId: savedPeer } },
-    remoteModelEditors: [{ connectionId: h.connection.id, peerId: savedPeer, editor: { primary: undefined, components: [], loras: [] } }] });
+  h.inferenceLocation.restorePreferences({
+    inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: h.connection.id, peerId: savedPeer } },
+    remoteModelEditors: [{ connectionId: h.connection.id, peerId: savedPeer, editor: { primary: undefined, components: [], loras: [] } }],
+  });
   await h.inferenceLocation.refresh({ fromStorage: true });
   expect(h.inferenceLocation.peerId.value).toBe(savedPeer); expect(h.inferenceLocation.connected.value).toBe(false); expect(h.inferenceLocation.editor.value.primary).toBeUndefined();
   expect(h.inferenceLocation.capturePreferences().inferenceLocation).toEqual({ kind: 'naidan_rpc', connection: { connectionId: h.connection.id, peerId: savedPeer } });

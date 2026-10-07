@@ -10,7 +10,9 @@ import { createDownloadWriterClient } from '@/features/llama-cpp-browser/hugging
 
 export async function downloadRepository({ selection, signal, onProgress }: { selection: DownloadSelection, signal: AbortSignal, onProgress: ({ progress }: { progress: DownloadProgress }) => void }): Promise<void> {
   selection = selectionSchema.parse(selection);
-  await withRepositoryLock({ repository: selection.repository, operation: async () => {
+  await withRepositoryLock({
+    repository: selection.repository,
+    operation: async () => {
     const session = await createDownloadWriterClient({ signal });
     const { worker, remote: writer } = session;
     const network = new AbortController();
@@ -83,11 +85,13 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         case 'supported': {
           const stream = body; body = undefined;
           let previousPosition = start;
-          const onPosition = workerProxy({ value: async ({ position }: { position: number }): Promise<void> => {
+          const onPosition = workerProxy({
+            value: async ({ position }: { position: number }): Promise<void> => {
             if (!Number.isSafeInteger(position) || position < previousPosition || position > file.size) throw new Error('Invalid download progress');
             processed += position - previousPosition; previousPosition = position;
             journal.bytes[index] = position; report();
-          } });
+          },
+          });
           await call({ promise: writer.consume(workerTransfer({ value: workerCapability({ value: { stream }, capability: 'readable-stream-transfer' }), transferables: [stream] }), onPosition) });
           check(); journal.complete[index] = true; continue;
         }
@@ -133,7 +137,8 @@ export async function downloadRepository({ selection, signal, onProgress }: { se
         worker.removeEventListener('error', onError); worker.removeEventListener('messageerror', onError);
       }
     }
-  } });
+  },
+  });
 }
 export async function cancelDownload({ repository, plan }: { repository: string, plan: DeletionPlan }): Promise<DeletionResult> {
   return withRepositoryLock({ repository, operation: () => deleteRepository({ repository, plan }) });

@@ -22,11 +22,17 @@ export const PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH = 'generation-native/captu
 export const productionProviderNativeCaptureReferenceSchema = z.object({ format: z.literal('production-provider-native-reference-v1'), path: z.literal(PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH) }).strict();
 const summaryCount = z.number().int().nonnegative().safe();
 const nativeRecordingSummarySchema = z.object({
-  phase: z.enum(['not-requested', 'collecting', 'finished']), refusedEpochCount: summaryCount,
+  phase: z.enum(['not-requested', 'collecting', 'finished']),
+  refusedEpochCount: summaryCount,
   recording: z.enum(['recorded', 'partial', 'not-recorded']),
-  capturedCallCount: summaryCount, enteredNativeInvocationCount: summaryCount, issuedNotObservedCallCount: summaryCount,
-  unavailableEpochCount: summaryCount, incompleteEpochCount: summaryCount,
-  unobservedLoadCount: summaryCount, incompleteInvocationCount: summaryCount, unrecordedValueCount: summaryCount,
+  capturedCallCount: summaryCount,
+  enteredNativeInvocationCount: summaryCount,
+  issuedNotObservedCallCount: summaryCount,
+  unavailableEpochCount: summaryCount,
+  incompleteEpochCount: summaryCount,
+  unobservedLoadCount: summaryCount,
+  incompleteInvocationCount: summaryCount,
+  unrecordedValueCount: summaryCount,
 }).strict();
 export interface ProductionProviderNativeEvidenceSidecar {
   readonly path: typeof PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH;
@@ -142,10 +148,19 @@ function summarizeNativeRecording({ native, refusedEpochs }: { native: Productio
   const partial = native.phase !== 'finished' || native.unrecordedWorkerCreations > 0 || native.incompleteReasons.length > 0
     || refusedEpochs.size > 0 || issuedNotObservedCallCount > 0 || unavailableEpochCount > 0 || incompleteEpochCount > 0
     || unobservedLoadCount > 0 || incompleteInvocationCount > 0 || unrecordedValueCount > 0;
-  return Object.freeze({ phase: native.phase, refusedEpochCount: refusedEpochs.size,
+  return Object.freeze({
+    phase: native.phase,
+    refusedEpochCount: refusedEpochs.size,
     recording: enteredNativeInvocationCount === 0 ? 'not-recorded' : partial ? 'partial' : 'recorded',
-    capturedCallCount, enteredNativeInvocationCount, issuedNotObservedCallCount, unavailableEpochCount, incompleteEpochCount,
-    unobservedLoadCount, incompleteInvocationCount, unrecordedValueCount });
+    capturedCallCount,
+    enteredNativeInvocationCount,
+    issuedNotObservedCallCount,
+    unavailableEpochCount,
+    incompleteEpochCount,
+    unobservedLoadCount,
+    incompleteInvocationCount,
+    unrecordedValueCount,
+  });
 }
 
 function invalid(): never {
@@ -226,9 +241,12 @@ function createDescriptorChecks() {
     }
   }
   function boundedArray({ check, maximum }: { check: Check; maximum: number }): Check {
-    return array({ maximum, check: ({ value }) => {
+    return array({
+      maximum,
+      check: ({ value }) => {
       charge({ kind: 'nodes', amount: 1 }); check({ value });
-    } });
+    },
+    });
   }
   const contextCheck: Check = ({ value }) => record<Native['calls'][number]['context']>({ value, fields: { runId: scalar, workerEpoch: scalar, requestId: scalar, generationCallId: scalar }, optional: [] });
   const identityCheck: Check = ({ value }) => record<Event['identity']>({ value, fields: { runId: scalar, workerEpoch: scalar, requestId: scalar, generationCallId: scalar, nativeInvocationOrdinal: scalar }, optional: [] });
@@ -236,8 +254,15 @@ function createDescriptorChecks() {
   type Load = z.infer<typeof productionLoadIdentitySchema>;
   switch (discriminant<Load['status']>({ value, key: 'status', variants: { ready: true, 'not-observed': true } })) {
   case 'not-observed': record<Extract<Load, { status: 'not-observed' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] }); break;
-  case 'ready': record<Extract<Load, { status: 'ready' }>>({ value, fields: {
-    status: scalar, workerLoadOrdinal: scalar, requestedModelId: scalar, cleanModelId: scalar, autoClass: scalar, processor: scalar,
+  case 'ready': record<Extract<Load, { status: 'ready' }>>({
+    value,
+    fields: {
+    status: scalar,
+    workerLoadOrdinal: scalar,
+    requestedModelId: scalar,
+    cleanModelId: scalar,
+    autoClass: scalar,
+    processor: scalar,
     requestedRevision: ({ value }) => {
       type Revision = Extract<Load, { status: 'ready' }>['requestedRevision'];
       switch (discriminant<Revision['status']>({ value, key: 'status', variants: { provided: true, omitted: true } })) {
@@ -249,15 +274,27 @@ function createDescriptorChecks() {
     selectedCandidate: ({ value }) => record<Extract<Load, { status: 'ready' }>['selectedCandidate']>({ value, fields: { device: scalar, dtype: scalar }, optional: [] }),
     resolvedRevision: ({ value }) => record<Extract<Load, { status: 'ready' }>['resolvedRevision']>({ value, fields: { status: scalar }, optional: [] }),
     sessionExecutionProvider: ({ value }) => record<Extract<Load, { status: 'ready' }>['sessionExecutionProvider']>({ value, fields: { status: scalar }, optional: [] }),
-  }, optional: [] }); break;
+  },
+    optional: [],
+  }); break;
   default: invalid();
   }
   };
   const tensorCheck: Check = ({ value }) => {
     switch (discriminant<TensorSnapshot['status']>({ value, key: 'status', variants: { captured: true, scalar: true, 'image-sizes': true, 'not-recorded': true } })) {
-    case 'captured': record<Extract<TensorSnapshot, { status: 'captured' }>>({ value, fields: { status: boundedScalar, dtype: boundedScalar, dims: boundedArray({ check: boundedScalar, maximum: 8 }), byteLength: boundedScalar, bytes: ({ value }) => {
+    case 'captured': record<Extract<TensorSnapshot, { status: 'captured' }>>({
+      value,
+      fields: {
+      status: boundedScalar,
+      dtype: boundedScalar,
+      dims: boundedArray({ check: boundedScalar, maximum: 8 }),
+      byteLength: boundedScalar,
+      bytes: ({ value }) => {
       charge({ kind: 'tensors', amount: byteView({ value }).byteLength });
-    } }, optional: [] }); break;
+    },
+    },
+      optional: [],
+    }); break;
     case 'scalar': record<Extract<TensorSnapshot, { status: 'scalar' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedScalar, maximum: 8 }) }, optional: [] }); break;
     case 'image-sizes': record<Extract<TensorSnapshot, { status: 'image-sizes' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedArray({ check: boundedScalar, maximum: 2 }), maximum: 8 }) }, optional: [] }); break;
     case 'not-recorded': record<Extract<TensorSnapshot, { status: 'not-recorded' }>>({ value, fields: { status: boundedScalar, reason: boundedScalar }, optional: [] }); break;
@@ -273,14 +310,26 @@ function createDescriptorChecks() {
   default: invalid();
   }
   };
-  const settingsCheck: Check = ({ value }) => record<Settings>({ value, fields: {
+  const settingsCheck: Check = ({ value }) => record<Settings>({
+    value,
+    fields: {
     requested: ({ value }) => record<Settings['requested']>({ value, fields: { maxCompletionTokens: propertyCheck, temperature: propertyCheck, topP: propertyCheck }, optional: [] }),
     budget: ({ value }) => record<Settings['budget']>({ value, fields: { maxNewTokens: boundedScalar, source: boundedScalar, contextLimit: boundedScalar, promptTokenCount: boundedScalar, pastTokenCount: boundedScalar, usedContextTokenCount: boundedScalar }, optional: ['maxNewTokens', 'contextLimit', 'promptTokenCount', 'usedContextTokenCount'] }),
-    kwargs: ({ value }) => record<Settings['kwargs']>({ value, fields: {
+    kwargs: ({ value }) => record<Settings['kwargs']>({
+      value,
+      fields: {
       keys: ({ value }) => record<Settings['kwargs']['keys']>({ value, fields: { status: boundedScalar, totalCount: boundedScalar, values: boundedArray({ check: boundedScalar, maximum: 64 }), incompleteReasons: boundedArray({ check: boundedScalar, maximum: 3 }) }, optional: [] }),
-      maxNewTokens: propertyCheck, temperature: propertyCheck, topP: propertyCheck, doSample: propertyCheck, returnDictInGenerate: propertyCheck,
-    }, optional: [] }),
-  }, optional: [] });
+      maxNewTokens: propertyCheck,
+      temperature: propertyCheck,
+      topP: propertyCheck,
+      doSample: propertyCheck,
+      returnDictInGenerate: propertyCheck,
+    },
+      optional: [],
+    }),
+  },
+    optional: [],
+  });
   const streamCheck: Check = ({ value }) => {
   type Stream = Native['calls'][number]['invocations'][number]['stream'];
   switch (discriminant<Stream['status']>({ value, key: 'status', variants: { 'not-attempted': true, available: true, unavailable: true } })) {
@@ -293,9 +342,23 @@ function createDescriptorChecks() {
   const detailCheck: Check = ({ value }) => {
   type Detail = Extract<Event, { kind: 'native-stream' }>['detail'];
   switch (discriminant<Detail['kind']>({ value, key: 'kind', variants: { tokens: true, 'finalized-text': true, none: true, 'not-recorded': true } })) {
-  case 'tokens': record<Extract<Detail, { kind: 'tokens' }>>({ value, fields: { kind: boundedScalar, tokenType: boundedScalar, groups: boundedArray({ check: boundedArray({ check: ({ value }) => {
+  case 'tokens': record<Extract<Detail, { kind: 'tokens' }>>({
+    value,
+    fields: {
+    kind: boundedScalar,
+    tokenType: boundedScalar,
+    groups: boundedArray({
+    check: boundedArray({
+    check: ({ value }) => {
     charge({ kind: 'tokens', amount: 1 }); boundedScalar({ value });
-  }, maximum: 65536 }), maximum: 8 }) }, optional: [] }); break;
+  },
+    maximum: 65536,
+  }),
+    maximum: 8,
+  }),
+  },
+    optional: [],
+  }); break;
   case 'finalized-text': record<Extract<Detail, { kind: 'finalized-text' }>>({ value, fields: { kind: boundedScalar, text: boundedScalar, streamEnd: boundedScalar }, optional: [] }); break;
   case 'none': record<Extract<Detail, { kind: 'none' }>>({ value, fields: { kind: boundedScalar }, optional: [] }); break;
   case 'not-recorded': record<Extract<Detail, { kind: 'not-recorded' }>>({ value, fields: { kind: boundedScalar, reason: boundedScalar }, optional: [] }); break;
@@ -310,30 +373,70 @@ function createDescriptorChecks() {
     settings: ({ value }) => record<Extract<Event, { kind: 'settings' }>>({ value, fields: { kind: boundedScalar, identity: identityCheck, value: settingsCheck }, optional: [] }),
     chunk: ({ value }) => record<Extract<Event, { kind: 'chunk' }>>({ value, fields: { kind: boundedScalar, identity: identityCheck, phase: boundedScalar, text: boundedScalar }, optional: [] }),
   } satisfies Record<Event['kind'], Check>;
-  const nativeCheck: Check = ({ value }) => record<Native>({ value, fields: {
-    schemaVersion: scalar, runId: scalar, workerEpoch: scalar, byteOrder: scalar,
+  const nativeCheck: Check = ({ value }) => record<Native>({
+    value,
+    fields: {
+    schemaVersion: scalar,
+    runId: scalar,
+    workerEpoch: scalar,
+    byteOrder: scalar,
     limits: ({ value }) => record<Native['limits']>({ value, fields: { maxCalls: scalar, maxInvocationsPerCall: scalar, maxEvents: scalar, maxTextBytes: scalar, maxTensorBytes: scalar, maxTotalTensorBytes: scalar, maxTokensPerStreamEvent: scalar, maxTotalStreamTokens: scalar, maxTotalStreamTokenBytes: scalar }, optional: [] }),
     calls: array({ maximum: 32, check: ({ value }) => record<Native['calls'][number]>({ value, fields: { context: contextCheck, loadIdentity: loadIdentityCheck, outcome: scalar, invocations: array({ maximum: 8, check: ({ value }) => record<Native['calls'][number]['invocations'][number]>({ value, fields: { nativeInvocationOrdinal: scalar, stream: streamCheck }, optional: [] }) }) }, optional: [] }) }),
-    events: array({ maximum: 4096, check: ({ value }) => {
+    events: array({
+      maximum: 4096,
+      check: ({ value }) => {
       charge({ kind: 'events', amount: 1 });
       const kind = data({ value, key: 'kind' }); if (typeof kind !== 'string' || !Object.hasOwn(eventChecks, kind)) invalid(); eventChecks[kind as Event['kind']]({ value });
-    } }),
-    incompleteReasons: array({ check: scalar, maximum: 32 }), unobserved: array({ check: scalar, maximum: 32 }),
-  }, optional: [] });
-  const revisionSelectionCheck: Check = ({ value }) => record<{ kind: 'pinned' | 'discover-cached'; revision?: string }>({
-    value, fields: { kind: scalar, revision: scalar }, optional: ['revision'],
+    },
+    }),
+    incompleteReasons: array({ check: scalar, maximum: 32 }),
+    unobserved: array({ check: scalar, maximum: 32 }),
+  },
+    optional: [],
   });
-  const loadDiagnosticCheck: Check = ({ value }) => record<LoadDiagnostics>({ value, fields: {
-    format: scalar, byteAccounting: scalar, coverage: scalar,
+  const revisionSelectionCheck: Check = ({ value }) => record<{ kind: 'pinned' | 'discover-cached'; revision?: string }>({
+    value,
+    fields: { kind: scalar, revision: scalar },
+    optional: ['revision'],
+  });
+  const loadDiagnosticCheck: Check = ({ value }) => record<LoadDiagnostics>({
+    value,
+    fields: {
+    format: scalar,
+    byteAccounting: scalar,
+    coverage: scalar,
     owner: ({ value }) => record<LoadDiagnostics['owner']>({ value, fields: { runId: scalar, workerEpoch: scalar }, optional: [] }),
     limits: ({ value }) => record<LoadDiagnostics['limits']>({ value, fields: { maxEvents: scalar, maxResources: scalar }, optional: [] }),
-    events: array({ maximum: 512, check: ({ value }) => record<LoadDiagnosticEvent>({ value, fields: {
-      loadOrdinal: scalar, sequence: scalar, candidateOrdinal: scalar, kind: scalar, resource: scalar, readOrdinal: scalar, requestedBytes: scalar,
-      errorName: scalar, errorCategory: scalar, device: scalar, dtype: scalar, priorRuntime: scalar, revision: scalar,
-      candidateScopeAllocatedBytes: scalar, returnedReadBufferBytes: scalar, activeReadCount: scalar, scope: scalar,
-    }, optional: ['resource', 'readOrdinal', 'requestedBytes', 'errorName', 'errorCategory', 'device', 'dtype', 'priorRuntime', 'revision'] }) }),
+    events: array({
+      maximum: 512,
+      check: ({ value }) => record<LoadDiagnosticEvent>({
+      value,
+      fields: {
+      loadOrdinal: scalar,
+      sequence: scalar,
+      candidateOrdinal: scalar,
+      kind: scalar,
+      resource: scalar,
+      readOrdinal: scalar,
+      requestedBytes: scalar,
+      errorName: scalar,
+      errorCategory: scalar,
+      device: scalar,
+      dtype: scalar,
+      priorRuntime: scalar,
+      revision: scalar,
+      candidateScopeAllocatedBytes: scalar,
+      returnedReadBufferBytes: scalar,
+      activeReadCount: scalar,
+      scope: scalar,
+    },
+      optional: ['resource', 'readOrdinal', 'requestedBytes', 'errorName', 'errorCategory', 'device', 'dtype', 'priorRuntime', 'revision'],
+    }),
+    }),
     incompleteReasons: array({ check: scalar, maximum: 6 }),
-  }, optional: [] });
+  },
+    optional: [],
+  });
   const lifetimeCheck: Check = ({ value }) => record<GenerationCaptureClientLifetime>({ value, fields: { runId: scalar, workerEpoch: scalar, session: scalar, loadDiagnostics: loadDiagnosticCheck, issuedCalls: array({ check: contextCheck, maximum: 32 }), loadRequests: array({ maximum: 32, check: ({ value }) => record<GenerationCaptureClientLifetime['loadRequests'][number]>({ value, fields: { requestedModelId: scalar, requestedRevision: scalar, revisionSelection: revisionSelectionCheck }, optional: ['revisionSelection'] }) }), incompleteReasons: array({ check: scalar, maximum: 5 }) }, optional: ['loadDiagnostics'] });
   const resultCheck: Check = ({ value }) => {
     const loadObservationCheck: Check = ({ value }) => {
@@ -372,7 +475,18 @@ function createDescriptorChecks() {
     }
   };
   function preflight({ value }: { value: unknown }): ProductionProviderNativeCollectionSnapshot {
-    record<ProductionProviderNativeCollectionSnapshot>({ value, fields: { format: scalar, runId: scalar, maximumWorkerEpochs: scalar, phase: scalar, unrecordedWorkerCreations: scalar, incompleteReasons: array({ check: scalar, maximum: 1 }), epochs: array({ maximum: 8, check: ({ value }) => {
+    record<ProductionProviderNativeCollectionSnapshot>({
+      value,
+      fields: {
+      format: scalar,
+      runId: scalar,
+      maximumWorkerEpochs: scalar,
+      phase: scalar,
+      unrecordedWorkerCreations: scalar,
+      incompleteReasons: array({ check: scalar, maximum: 1 }),
+      epochs: array({
+      maximum: 8,
+      check: ({ value }) => {
       const before = { ...budget };
       try {
         checkEpoch({ value });
@@ -397,20 +511,35 @@ function createDescriptorChecks() {
         replacements.set(epoch, captureHeader);
         refusals.set(epoch, 'native-export-budget');
       }
-    } }) }, optional: [] });
+    },
+    }),
+    },
+      optional: [],
+    });
     const native = value as ProductionProviderNativeCollectionSnapshot;
-    return { ...native, epochs: native.epochs.map(epoch => replacements.has(epoch.workerEpoch)
+    return {
+      ...native,
+      epochs: native.epochs.map(epoch => replacements.has(epoch.workerEpoch)
       ? { ...epoch, collection: { status: 'returned', result: { status: 'captured', capture: replacements.get(epoch.workerEpoch)! } } }
-      : epoch) };
+      : epoch),
+    };
   }
   function checkEpoch({ value }: { value: unknown }): void {
-    record<Epoch>({ value, fields: { workerEpoch: scalar, lifetime: ({ value }) => {
+    record<Epoch>({
+      value,
+      fields: {
+      workerEpoch: scalar,
+      lifetime: ({ value }) => {
       switch (discriminant<Epoch['lifetime']['status']>({ value, key: 'status', variants: { observed: true, unavailable: true } })) {
       case 'observed': record<Extract<Epoch['lifetime'], { status: 'observed' }>>({ value, fields: { status: scalar, value: lifetimeCheck }, optional: [] }); break;
       case 'unavailable': record<Extract<Epoch['lifetime'], { status: 'unavailable' }>>({ value, fields: { status: scalar }, optional: [] }); break;
       default: invalid();
       }
-    }, collection: collectionCheck }, optional: [] });
+    },
+      collection: collectionCheck,
+    },
+      optional: [],
+    });
   }
   return { preflight, nativeCollectionSchema, refusals };
 }
@@ -643,9 +772,14 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
         switch (event.kind) {
         case 'inputs': {
           const { kind, identity, phase, values, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return { kind, identity, phase, values: values.map(({ name, snapshot, ...rest }) => {
+          return {
+            kind,
+            identity,
+            phase,
+            values: values.map(({ name, snapshot, ...rest }) => {
             rest satisfies Record<PropertyKey, never>; return { name, snapshot: encodeTensor({ snapshot }) };
-          }) };
+          }),
+          };
         }
         case 'sequence': {
           const { kind, identity, resultShape, snapshot, ...rest } = event; rest satisfies Record<PropertyKey, never>;
@@ -658,10 +792,22 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
           unhandledBudget satisfies Record<PropertyKey, never>;
           const optional = ({ key, value }: { key: keyof typeof budget; value: number | undefined }) => Object.hasOwn(budget, key)
             ? { [key]: value ?? undefinedValue } : {};
-          return { kind, identity, value: { requested, kwargs, budget: { source, pastTokenCount,
-            ...optional({ key: 'maxNewTokens', value: maxNewTokens }), ...optional({ key: 'contextLimit', value: contextLimit }),
-            ...optional({ key: 'promptTokenCount', value: promptTokenCount }), ...optional({ key: 'usedContextTokenCount', value: usedContextTokenCount }),
-          } } };
+          return {
+            kind,
+            identity,
+            value: {
+            requested,
+            kwargs,
+            budget: {
+            source,
+            pastTokenCount,
+            ...optional({ key: 'maxNewTokens', value: maxNewTokens }),
+            ...optional({ key: 'contextLimit', value: contextLimit }),
+            ...optional({ key: 'promptTokenCount', value: promptTokenCount }),
+            ...optional({ key: 'usedContextTokenCount', value: usedContextTokenCount }),
+          },
+          },
+          };
         }
         case 'native-stream': {
           const { kind, identity, operation, phase, streamCallOrdinal, detail, ...rest } = event; rest satisfies Record<PropertyKey, never>;
@@ -684,8 +830,14 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
     });
     const { format: sourceFormat, epochs: _sourceEpochs, ...metadata } = parsed;
     return {
-      binaries, references,
-      document: { format: 'production-provider-native-evidence-v1', sourceFormat, providerCapture: 'production-provider/capture.json', ...metadata, epochs,
+      binaries,
+      references,
+      document: {
+        format: 'production-provider-native-evidence-v1',
+        sourceFormat,
+        providerCapture: 'production-provider/capture.json',
+        ...metadata,
+        epochs,
         limitations: { replayEligibility: 'not-established', realModelSuccess: 'not-certified', providerAndNativeSettlement: 'independent-observations' },
       },
       summary: summarizeNativeRecording({ native: parsed, refusedEpochs: new Set(epochs.filter(epoch => epoch.collection.status === 'export-refused').map(epoch => epoch.workerEpoch)) }),
@@ -711,15 +863,19 @@ async function sealPreparedNativeEvidence({ prepared }: { prepared: ReturnType<t
     }
     const json = JSON.stringify(document, undefined, 2) + '\n';
     if (json.length > PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS) invalid();
-    return freezeNativeSidecar({ evidence: {
-      path: PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH, json, binaries: binaries.map(binary => {
+    return freezeNativeSidecar({
+      evidence: {
+      path: PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH,
+      json,
+      binaries: binaries.map(binary => {
         const { path, bytes, byteLength, sha256, ...rest } = binary;
         rest satisfies Record<PropertyKey, never>;
         return { path, blob: new Blob([bytes]), byteLength, sha256 };
       }),
       reference: productionProviderNativeCaptureReferenceSchema.parse({ format: 'production-provider-native-reference-v1', path: PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH }),
       summary,
-    } });
+    },
+    });
   } catch {
     return invalid();
   }
@@ -747,8 +903,10 @@ const encodedCollectionSchema = z.union([
 ]);
 const encodedEpochSchema = z.object({ workerEpoch: epochSchema.shape.workerEpoch, lifetime: z.unknown(), collection: encodedCollectionSchema, correlation: correlationSchema.optional() }).strict();
 const nativeEvidenceEnvelopeSchema = nativeCollectionSchema.omit({ format: true, epochs: true }).extend({
-  format: z.literal('production-provider-native-evidence-v1'), sourceFormat: z.literal('production-provider-native-collection-v1'),
-  providerCapture: z.literal('production-provider/capture.json'), epochs: z.array(encodedEpochSchema).max(8),
+  format: z.literal('production-provider-native-evidence-v1'),
+  sourceFormat: z.literal('production-provider-native-collection-v1'),
+  providerCapture: z.literal('production-provider/capture.json'),
+  epochs: z.array(encodedEpochSchema).max(8),
   limitations: z.object({ replayEligibility: z.literal('not-established'), realModelSuccess: z.literal('not-certified'), providerAndNativeSettlement: z.literal('independent-observations') }).strict(),
 }).strict();
 export const PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS = 32 * 1024 * 1024;
@@ -834,9 +992,12 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
       const event = jsonRecord({ value });
       const kind = discriminant<Event['kind']>({ value: event, key: 'kind', variants: { inputs: true, sequence: true, settings: true, 'native-stream': true, 'native-call': true, chunk: true } });
       switch (kind) {
-      case 'inputs': return { ...event, values: jsonArray({ value: event.values, maximum: 64 }).map(value => {
+      case 'inputs': return {
+        ...event,
+        values: jsonArray({ value: event.values, maximum: 64 }).map(value => {
         const input = jsonRecord({ value }); return { ...input, snapshot: decodeTensor({ value: input.snapshot }) };
-      }) };
+      }),
+      };
       case 'sequence': return { ...event, snapshot: decodeTensor({ value: event.snapshot }) };
       case 'settings': {
         const settings = jsonRecord({ value: event.value });
@@ -909,8 +1070,15 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
     const { format: _format, sourceFormat, providerCapture: _providerCapture, limitations: _limitations, epochs: _epochs,
       runId: decodedRunId, maximumWorkerEpochs, phase, unrecordedWorkerCreations, incompleteReasons, ...unhandledEnvelope } = envelope;
     unhandledEnvelope satisfies Record<PropertyKey, never>;
-    const decoded = { format: sourceFormat, runId: decodedRunId, maximumWorkerEpochs,
-      phase, unrecordedWorkerCreations, incompleteReasons, epochs: decodedEpochs };
+    const decoded = {
+      format: sourceFormat,
+      runId: decodedRunId,
+      maximumWorkerEpochs,
+      phase,
+      unrecordedWorkerCreations,
+      incompleteReasons,
+      epochs: decodedEpochs,
+    };
     const checks = createDescriptorChecks();
     const checked = checks.preflight({ value: decoded });
     if (checks.refusals.size !== 0) invalid();
@@ -937,13 +1105,15 @@ const nativeSidecarSchema = z.object({
   json: z.string().max(PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS),
   reference: productionProviderNativeCaptureReferenceSchema,
   summary: nativeRecordingSummarySchema,
-  binaries: z.array(nativeBinaryReferenceSchema.extend({ blob: z.custom<Blob>(value => {
+  binaries: z.array(nativeBinaryReferenceSchema.extend({
+    blob: z.custom<Blob>(value => {
     try {
       nativeBlobSize({ value }); return true;
     } catch {
       return false;
     }
-  }) }).strict()).max(4096 * 64),
+  }),
+  }).strict()).max(4096 * 64),
 }).strict();
 
 function nativeBlobSize({ value }: { value: unknown }): number {
@@ -956,19 +1126,47 @@ function nativeBlobSize({ value }: { value: unknown }): number {
 }
 
 function parseNativeSidecar({ evidence }: { evidence: ProductionProviderNativeEvidenceSidecar }): z.infer<typeof nativeSidecarSchema> {
-  record<ProductionProviderNativeEvidenceSidecar>({ value: evidence, optional: [], fields: {
-    path: scalar, json: scalar,
+  record<ProductionProviderNativeEvidenceSidecar>({
+    value: evidence,
+    optional: [],
+    fields: {
+    path: scalar,
+    json: scalar,
     reference: ({ value }) => record<ProductionProviderNativeEvidenceSidecar['reference']>({ value, fields: { format: scalar, path: scalar }, optional: [] }),
-    summary: ({ value }) => record<ProductionProviderNativeEvidenceSidecar['summary']>({ value, fields: {
-      phase: scalar, refusedEpochCount: scalar, recording: scalar, capturedCallCount: scalar, enteredNativeInvocationCount: scalar, issuedNotObservedCallCount: scalar,
-      unavailableEpochCount: scalar, incompleteEpochCount: scalar, unobservedLoadCount: scalar, incompleteInvocationCount: scalar, unrecordedValueCount: scalar,
-    }, optional: [] }),
-    binaries: array({ maximum: 4096 * 64, check: ({ value }) => record<ProductionProviderNativeEvidenceSidecar['binaries'][number]>({ value, optional: [], fields: {
-      path: scalar, byteLength: scalar, sha256: scalar, blob: ({ value }) => {
+    summary: ({ value }) => record<ProductionProviderNativeEvidenceSidecar['summary']>({
+      value,
+      fields: {
+      phase: scalar,
+      refusedEpochCount: scalar,
+      recording: scalar,
+      capturedCallCount: scalar,
+      enteredNativeInvocationCount: scalar,
+      issuedNotObservedCallCount: scalar,
+      unavailableEpochCount: scalar,
+      incompleteEpochCount: scalar,
+      unobservedLoadCount: scalar,
+      incompleteInvocationCount: scalar,
+      unrecordedValueCount: scalar,
+    },
+      optional: [],
+    }),
+    binaries: array({
+      maximum: 4096 * 64,
+      check: ({ value }) => record<ProductionProviderNativeEvidenceSidecar['binaries'][number]>({
+      value,
+      optional: [],
+      fields: {
+      path: scalar,
+      byteLength: scalar,
+      sha256: scalar,
+      blob: ({ value }) => {
         nativeBlobSize({ value });
       },
-    } }) }),
-  } });
+    },
+    }),
+    }),
+  },
+  });
   const parsed = nativeSidecarSchema.parse(evidence);
   const { path: _path, json: _json, reference: _reference, summary, binaries, ...unhandledSidecar } = parsed;
   unhandledSidecar satisfies Record<PropertyKey, never>;
@@ -992,7 +1190,11 @@ function parseNativeSidecar({ evidence }: { evidence: ProductionProviderNativeEv
 function freezeNativeSidecar({ evidence }: { evidence: ProductionProviderNativeEvidenceSidecar }): ProductionProviderNativeEvidenceSidecar {
   const { path, json, reference, summary, binaries, ...rest } = evidence;
   rest satisfies Record<PropertyKey, never>;
-  return Object.freeze({ path, json, reference: Object.freeze({ ...reference }), summary: Object.freeze({ ...summary }),
+  return Object.freeze({
+    path,
+    json,
+    reference: Object.freeze({ ...reference }),
+    summary: Object.freeze({ ...summary }),
     binaries: Object.freeze(binaries.map(binary => {
       const { path, blob, byteLength, sha256, ...rest } = binary;
       rest satisfies Record<PropertyKey, never>;
@@ -1026,7 +1228,10 @@ export async function verifyProductionProviderNativeEvidenceSidecar({ evidence, 
     if (index.phase !== parsed.summary.phase || index.epochs.filter(epoch => epoch.collection.status === 'export-refused').length !== parsed.summary.refusedEpochCount) invalid();
     const owned = freezeNativeSidecar({ evidence: parsed });
     const binariesByPath = new Map(owned.binaries.map(binary => [binary.path, binary]));
-    const verified = await verifyProductionProviderNativeEvidence({ json: owned.json, provider, readBinary: async ({ reference }) => {
+    const verified = await verifyProductionProviderNativeEvidence({
+      json: owned.json,
+      provider,
+      readBinary: async ({ reference }) => {
       const binary = binariesByPath.get(reference.path);
       if (binary === undefined || binary.byteLength !== reference.byteLength || binary.sha256 !== reference.sha256) invalid();
       const bytes = new Uint8Array(await Reflect.apply(Blob.prototype.arrayBuffer, binary.blob, []) as ArrayBuffer);
@@ -1035,7 +1240,8 @@ export async function verifyProductionProviderNativeEvidenceSidecar({ evidence, 
       const sha256 = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
       if (sha256 !== binary.sha256) invalid();
       return bytes;
-    } });
+    },
+    });
     if (verified.referencedPaths.length !== owned.binaries.length) invalid();
     if (JSON.stringify(nativeRecordingSummarySchema.parse(owned.summary)) !== JSON.stringify(nativeRecordingSummarySchema.parse(verified.summary))) invalid();
     return owned;

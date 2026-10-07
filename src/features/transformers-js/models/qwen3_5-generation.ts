@@ -188,9 +188,14 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
       if (settled) throw new Error('Qwen generation was settled twice.');
       settled = true;
       flushSeparator(); flushCallSeparator(); flushThoughtNewline(); close({ completeness: 'partial' });
-      emit({ event: { type: 'result', result: terminal === undefined || terminal === 'incomplete'
+      emit({
+        event: {
+        type: 'result',
+        result: terminal === undefined || terminal === 'incomplete'
         ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal } } });
+        : { type: 'finished', next: terminal },
+      },
+      });
     },
   };
 }

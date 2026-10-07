@@ -137,7 +137,9 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     const localImageFetchCalls: string[] = [];
     const forbiddenTransport: string[] = [];
     const nativeLocalFetch = globalThis.fetch.bind(globalThis);
-    const guard = createDownloadedModelWorkerFetch({ ...identity, originalFetch: async (input, init) => {
+    const guard = createDownloadedModelWorkerFetch({
+      ...identity,
+      originalFetch: async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (allowedImageUrls.has(url)) {
         const request = new Request(input, init);
@@ -156,7 +158,8 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
       }
       runtimeAssetFetchCalls.push(url);
       return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
-    } });
+    },
+    });
     const fetchPolicy: typeof fetch = (input, init) => {
       fetchCalls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
       return guard(input, init);
@@ -256,14 +259,17 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     let activeWorker: ProviderReplayTestWorker | undefined;
     vi.doMock('@/utils/worker-transport', async () => {
       const actual = await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport');
-      return { ...actual, exposeWorkerRemote: ({ api, endpoint }: {
+      return {
+        ...actual,
+        exposeWorkerRemote: ({ api, endpoint }: {
         api: WorkerServerApi<ITransformersJsWorker>, endpoint: Parameters<typeof actual.exposeWorkerRemote>[0]['endpoint'],
       }) => {
         if (endpoint !== undefined || !activeWorker) throw new Error('Unexpected replay Worker exposure');
         // Only supplies the native Worker-global endpoint. Serialization, callback
         // transfer, method this binding and RPC completion remain actual Comlink.
         actual.exposeWorkerRemote<ITransformersJsWorker>({ api, endpoint: activeWorker.endpoint });
-      } };
+      },
+      };
     });
     restorations.push(() => vi.doUnmock('@/utils/worker-transport'));
     vi.doMock('@/features/transformers-js/runtime/import-production-runtime-module', () => ({
@@ -274,20 +280,27 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
       },
     }));
     restorations.push(() => vi.doUnmock('@/features/transformers-js/runtime/import-production-runtime-module'));
-    setOwnedGlobal({ key: 'Worker', value: createProviderReplayTestWorkerConstructor({
+    setOwnedGlobal({
+      key: 'Worker',
+      value: createProviderReplayTestWorkerConstructor({
       scriptUrl: new URL('../../worker/bootstrap.ts', import.meta.url),
       onConstructed: ({ worker }) => workers.push(worker),
       start: async ({ worker }) => {
         activeWorker = worker;
-        await startProductionWorkerRuntime({ loadEntry: async () => {
+        await startProductionWorkerRuntime({
+          loadEntry: async () => {
           const entry = await import('@/features/transformers-js/worker/entry');
           const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
-          return entry.initializeProductionWorkerRuntime({ requestRuntimeModule,
+          return entry.initializeProductionWorkerRuntime({
+            requestRuntimeModule,
             postLoadDiagnostic: ({ message }) => worker.sendFromWorker({ message }),
           });
-        }, postMessage: ({ message }) => worker.sendFromWorker({ message }) });
+        },
+          postMessage: ({ message }) => worker.sendFromWorker({ message }),
+        });
       },
-    }) });
+    }),
+    });
     restorations.push(() => {
       // A host terminal event disposes its real session and module URL lease.
       for (const worker of workers) {
@@ -301,7 +314,9 @@ export async function createProviderReplayTestRuntime({ modelId, expectedRevisio
     const { TransformersJsProvider } = await import('@/features/transformers-js/provider-hosted');
     const { transformersJsService: service } = await import('@/features/transformers-js/index-hosted');
     return {
-      provider: new TransformersJsProvider(), service, runtime,
+      provider: new TransformersJsProvider(),
+      service,
+      runtime,
       observations: { fs, fetchCalls, runtimeAssetFetchCalls, localImageFetchCalls, forbiddenTransport, ortCalls, inferenceCalls, modelLoadCalls, processors, workers, platform, cleanupErrors, expectedRuntimeAssetUrl: assets.mjsUrl },
       async close() {
         try {

@@ -7,8 +7,10 @@ import { createDownloadedModelWorkerFetch } from './offline-worker-fetch';
 import { productionRuntimeModuleFixtureBytes } from './fixtures/production-runtime-startup-fixture';
 
 const identity = {
-  workerLocationUrl: 'http://localhost/assets/worker.js', environment: 'development' as const,
-  userAgent: 'Chrome', vendor: 'Google Inc.',
+  workerLocationUrl: 'http://localhost/assets/worker.js',
+  environment: 'development' as const,
+  userAgent: 'Chrome',
+  vendor: 'Google Inc.',
 };
 const assets = resolveHostedTransformersRuntimeAssetUrls(identity);
 const originalBytes = productionRuntimeModuleFixtureBytes({ variant: 'asyncify' });
@@ -24,9 +26,11 @@ afterEach(() => vi.restoreAllMocks());
 
 it('fetches the complete pinned module once through the real runtime guard without importing or creating a URL', async () => {
   const createObjectURL = vi.spyOn(URL, 'createObjectURL');
-  const h = guardedResponse({ response: new Response(originalBytes, {
+  const h = guardedResponse({
+    response: new Response(originalBytes, {
     headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Content-Length': '47389' },
-  }) });
+  }),
+  });
   const bytes = await fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch });
   expect(bytes.byteLength).toBe(47_389);
   expect(bytes.byteOffset).toBe(0);
@@ -45,9 +49,11 @@ it('verifies the independently pinned standard module without accepting an async
 });
 
 it('uses decoded bytes rather than compressed Content-Length for full module verification', async () => {
-  const h = guardedResponse({ response: new Response(originalBytes, {
+  const h = guardedResponse({
+    response: new Response(originalBytes, {
     headers: { 'Content-Type': 'text/javascript', 'Content-Encoding': 'gzip', 'Content-Length': '123' },
-  }) });
+  }),
+  });
   const bytes = await fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch });
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(originalSha256);
 });
@@ -55,9 +61,12 @@ it('uses decoded bytes rather than compressed Content-Length for full module ver
 it('rejects HTTP 206 before reading the body and owns its cancellation', async () => {
   const pull = vi.fn();
   const cancel = vi.fn();
-  const h = guardedResponse({ response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-    status: 206, headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-1/47389' },
-  }) });
+  const h = guardedResponse({
+    response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
+    status: 206,
+    headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-1/47389' },
+  }),
+  });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
   expect(pull).not.toHaveBeenCalled();
   expect(cancel).toHaveBeenCalledOnce();
@@ -65,9 +74,11 @@ it('rejects HTTP 206 before reading the body and owns its cancellation', async (
 
 it('rejects a Content-Range response even when its HTTP status is 200', async () => {
   const cancel = vi.fn();
-  const h = guardedResponse({ response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
+  const h = guardedResponse({
+    response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
     headers: { 'Content-Type': 'text/javascript', 'Content-Range': 'bytes 0-47388/99999' },
-  }) });
+  }),
+  });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
   expect(cancel).toHaveBeenCalledOnce();
 });
@@ -75,9 +86,11 @@ it('rejects a Content-Range response even when its HTTP status is 200', async ()
 it('rejects non-JavaScript MIME without consuming its unread body', async () => {
   const pull = vi.fn();
   const cancel = vi.fn();
-  const h = guardedResponse({ response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
+  const h = guardedResponse({
+    response: new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
     headers: { 'Content-Type': 'text/html' },
-  }) });
+  }),
+  });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('not JavaScript');
   expect(pull).not.toHaveBeenCalled();
   expect(cancel).toHaveBeenCalledOnce();
@@ -117,9 +130,11 @@ it('rejects corruption at the correct byte length instead of accepting length al
 
 it('keeps a read error primary even when cancellation rejects and reader release throws', async () => {
   const failure = new Error('fixture read failed');
-  const stream = new ReadableStream<Uint8Array>({ pull: () => {
+  const stream = new ReadableStream<Uint8Array>({
+    pull: () => {
     throw failure;
-  } }, { highWaterMark: 0 });
+  },
+  }, { highWaterMark: 0 });
   const response = new Response(stream, { headers: { 'Content-Type': 'text/javascript' } });
   const reader = stream.getReader();
   vi.spyOn(stream, 'getReader').mockReturnValue(reader);
@@ -136,9 +151,11 @@ it('keeps a read error primary even when cancellation rejects and reader release
 });
 
 it('does not certify successful reading when the only failure is reader release', async () => {
-  const stream = new ReadableStream<Uint8Array>({ start: controller => {
+  const stream = new ReadableStream<Uint8Array>({
+    start: controller => {
     controller.enqueue(originalBytes); controller.close();
-  } });
+  },
+  });
   const response = new Response(stream, { headers: { 'Content-Type': 'text/javascript' } });
   const reader = stream.getReader();
   vi.spyOn(stream, 'getReader').mockReturnValue(reader);
@@ -154,9 +171,12 @@ it('does not certify successful reading when the only failure is reader release'
 it('returns the known HTTP error without waiting for a cancellation that never settles', async () => {
   const pending = Promise.withResolvers<void>();
   const cancel = vi.fn(() => pending.promise);
-  const h = guardedResponse({ response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
-    status: 503, headers: { 'Content-Type': 'text/javascript' },
-  }) });
+  const h = guardedResponse({
+    response: new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
+    status: 503,
+    headers: { 'Content-Type': 'text/javascript' },
+  }),
+  });
   try {
     await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
     expect(cancel).toHaveBeenCalledOnce();

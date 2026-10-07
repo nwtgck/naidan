@@ -7,11 +7,18 @@ import { settingsToDomain, settingsToDto } from './mappers';
 
 it('round trips a remote editor separately from the local selection without rewriting remote paths', () => {
   const connectionId = toNaidanRpcConnectionId({ raw: 'connection-one' }), peerId = toNaidanRpcPeerId({ raw: 'B'.repeat(43) });
-  const settings: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { browserImageGeneration: {
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: {
+    browserImageGeneration: {
     modelSelection: { primary: { slot: 'model', location: { kind: 'opfs', path: 'models/local.gguf' } }, components: [], loras: [] },
     inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId, peerId } },
     remoteModelEditors: [{ connectionId, peerId, editor: { primary: undefined, components: [], loras: [{ file: { location: { kind: 'host', directoryId: 'remote-directory', path: 'models/ off.gguf' }, expected: { size: 16, lastModified: 123 } }, strength: 0.7, enabled: 'disabled' }] } }],
-  } } };
+  },
+  },
+  };
   const actual = settingsToDomain({ dto: SettingsSchemaDto.parse(settingsToDto({ domain: settings })) });
   expect(actual.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
   expect(actual.experimental?.browserImageGeneration?.remoteModelEditors?.[0]?.editor.primary).toBeUndefined();

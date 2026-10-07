@@ -88,7 +88,9 @@ async function writeText({ directory, name, text }: { directory: FileSystemDirec
 
 function summarize({ record }: { record: ExperimentalImageGenerationDto }): ExperimentalImageGenerationSummaryDto {
   return {
-    id: record.id, createdAt: record.createdAt, prompt: record.request.parameters.prompt,
+    id: record.id,
+    createdAt: record.createdAt,
+    prompt: record.request.parameters.prompt,
     modelName: (() => {
       const runtime = record.request.runtime;
       switch (runtime.profile) {
@@ -97,7 +99,9 @@ function summarize({ record }: { record: ExperimentalImageGenerationDto }): Expe
       default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
       }
     })(),
-    binaryObjectId: record.result.binaryObjectId, width: record.result.width, height: record.result.height,
+    binaryObjectId: record.result.binaryObjectId,
+    width: record.result.width,
+    height: record.result.height,
     previewCount: record.previews.length,
   };
 }
@@ -146,11 +150,13 @@ async function readIndex({ directory, shard }: { directory: FileSystemDirectoryH
 /** Called once when a direct-generation save owner is created. */
 export async function captureImageGenerationHistoryTarget({ storageType }: { storageType: StorageType }): Promise<FileSystemDirectoryHandle> {
   assertStorage({ storageType });
-  return withHistoryLock({ operation: async () => {
+  return withHistoryLock({
+    operation: async () => {
     const directory = await getDirectory({ create: true });
     if (!directory) throw new Error('Image generation directory unavailable');
     return directory;
-  } });
+  },
+  });
 }
 
 async function isDeleted({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<boolean> {
@@ -169,7 +175,8 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
 }): Promise<void> {
   assertStorage({ storageType });
   const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));
-  await withHistoryLock({ operation: async () => {
+  await withHistoryLock({
+    operation: async () => {
     const parent = await getDirectory({ create: expectedDirectory === undefined });
     if (expectedDirectory && (!parent || !await expectedDirectory.isSameEntry(parent))) throw new Error('Image history store changed or was removed');
     if (!parent) throw new Error('Image generation directory unavailable');
@@ -181,21 +188,26 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
     if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) throw new Error('Image generation records are immutable');
     const root = await imageGenerationRoot({ create: false });
     if (!root) throw new Error('Image generation directory unavailable');
-    await assertImageGenerationBinariesNotDeleted({ directory: root, ids: [dto.result.binaryObjectId,
+    await assertImageGenerationBinariesNotDeleted({
+      directory: root,
+      ids: [dto.result.binaryObjectId,
       ...dto.previews.map(image => image.binaryObjectId),
       ...(dto.request.imageInputs.initImage ? [dto.request.imageInputs.initImage.binaryObjectId] : []),
-      ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
+      ...dto.request.imageInputs.referenceImages.map(image => image.binaryObjectId)],
+    });
     await writeImages();
     if (!existing) await writeText({ directory, name: `${dto.id}.json`, text: JSON.stringify(dto) });
     Object.defineProperty(index.generations, dto.id, { value: summarize({ record: dto }), configurable: true, enumerable: true, writable: true });
     await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
-  } });
+  },
+  });
 }
 
 export async function loadImageGenerationRecord({ storageType, id }: { storageType: StorageType, id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
   assertStorage({ storageType });
   const rawId = rawIdSchema.parse(idToRaw({ id }));
-  return withHistoryLock({ operation: async () => {
+  return withHistoryLock({
+    operation: async () => {
     const parent = await getDirectory({ create: false });
     if (!parent) return undefined;
     let directory: FileSystemDirectoryHandle;
@@ -206,13 +218,15 @@ export async function loadImageGenerationRecord({ storageType, id }: { storageTy
     }
     const dto = await readRecord({ directory, rawId });
     return dto && imageGenerationToDomain({ dto });
-  } });
+  },
+  });
 }
 
 export async function deleteImageGenerationRecord({ storageType, id }: { storageType: StorageType, id: ImageGenerationId }): Promise<void> {
   assertStorage({ storageType });
   const rawId = rawIdSchema.parse(idToRaw({ id }));
-  await withHistoryLock({ operation: async () => {
+  await withHistoryLock({
+    operation: async () => {
     const parent = await getDirectory({ create: true });
     if (!parent) return;
     const shard = rawId.slice(-2).toLowerCase();
@@ -232,7 +246,8 @@ export async function deleteImageGenerationRecord({ storageType, id }: { storage
     await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
     // Binary objects may be reused as input images or by chats. Deleting a
     // history record deliberately keeps those immutable bytes available.
-  } });
+  },
+  });
 }
 
 async function queryShard({ directory, shard, warn }: {
@@ -277,7 +292,8 @@ export async function queryImageGenerationHistory({ storageType, query }: {
   assertStorage({ storageType });
   const { text, offset, limit } = querySchema.parse(query);
   const words = text.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-  return withHistoryLock({ operation: async () => {
+  return withHistoryLock({
+    operation: async () => {
     const parent = await getDirectory({ create: false });
     if (!parent) return { items: [], total: 0, warnings: [], warningCount: 0 };
     const matches: ExperimentalImageGenerationSummaryDto[] = [];
@@ -296,7 +312,8 @@ export async function queryImageGenerationHistory({ storageType, query }: {
     }
     matches.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id));
     return { items: matches.slice(offset, offset + limit).map(dto => imageGenerationSummaryToDomain({ dto })), total: matches.length, warnings, warningCount };
-  } });
+  },
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

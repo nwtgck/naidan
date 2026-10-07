@@ -56,11 +56,28 @@ describe('SearchPreview Component', () => {
       id: 'chat1',
       root: {
         items: [
-          { id: 'm1', modelId: undefined, lmParameters: undefined,
-            parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
-              { id: 'm2', modelId: undefined, lmParameters: undefined, interruption: undefined,
-                parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [] } },
-            ] } },
+          {
+            id: 'm1',
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [{ type: 'text', text: 'Msg 1', completeness: 'complete' }],
+            role: 'user',
+            createdAt: 1,
+            replies: {
+              items: [
+              {
+                id: 'm2',
+                modelId: undefined,
+                lmParameters: undefined,
+                interruption: undefined,
+                parts: [{ type: 'text', text: 'Msg 2', completeness: 'complete' }],
+                role: 'assistant',
+                createdAt: 2,
+                replies: { items: [] },
+              },
+            ],
+            },
+          },
         ],
       },
       currentLeafId: 'm2',
@@ -97,21 +114,25 @@ describe('SearchPreview Component', () => {
       root: {
         items: [{
           id: 'm1',
-          modelId: undefined, lmParameters: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
           parts: [{ type: 'text', text: 'M1', completeness: 'complete' }],
           role: 'user',
           createdAt: 1,
           replies: {
             items: [{
               id: 'm2',
-              modelId: undefined, lmParameters: undefined, interruption: undefined,
+              modelId: undefined,
+              lmParameters: undefined,
+              interruption: undefined,
               parts: [{ type: 'text', text: 'M2', completeness: 'complete' }],
               role: 'assistant',
               createdAt: 2,
               replies: {
                 items: [{
                   id: 'm3',
-                  modelId: undefined, lmParameters: undefined,
+                  modelId: undefined,
+                  lmParameters: undefined,
                   parts: [{ type: 'text', text: 'M3', completeness: 'complete' }],
                   role: 'user',
                   createdAt: 3,
@@ -156,14 +177,40 @@ describe('SearchPreview Component', () => {
       id: 'chat1',
       root: {
         items: [
-          { id: 'm1', modelId: undefined, lmParameters: undefined,
-            parts: [{ type: 'text', text: 'M1', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [
-              { id: 'm2', modelId: undefined, lmParameters: undefined, interruption: undefined,
-                parts: [{ type: 'text', text: 'M2', completeness: 'complete' }], role: 'assistant', createdAt: 2, replies: { items: [
-                  { id: 'm3', modelId: undefined, lmParameters: undefined,
-                    parts: [{ type: 'text', text: 'M3', completeness: 'complete' }], role: 'user', createdAt: 3, replies: { items: [] } },
-                ] } },
-            ] } },
+          {
+            id: 'm1',
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [{ type: 'text', text: 'M1', completeness: 'complete' }],
+            role: 'user',
+            createdAt: 1,
+            replies: {
+              items: [
+              {
+                id: 'm2',
+                modelId: undefined,
+                lmParameters: undefined,
+                interruption: undefined,
+                parts: [{ type: 'text', text: 'M2', completeness: 'complete' }],
+                role: 'assistant',
+                createdAt: 2,
+                replies: {
+                  items: [
+                  {
+                    id: 'm3',
+                    modelId: undefined,
+                    lmParameters: undefined,
+                    parts: [{ type: 'text', text: 'M3', completeness: 'complete' }],
+                    role: 'user',
+                    createdAt: 3,
+                    replies: { items: [] },
+                  },
+                ],
+                },
+              },
+            ],
+            },
+          },
         ],
       },
       currentLeafId: 'm3',
@@ -186,7 +233,8 @@ describe('SearchPreview Component', () => {
     mockSearchContextSize.value = 4;
     const items = Array.from({ length: 11 }, (_, index) => ({
       id: `m${index + 1}`,
-      modelId: undefined, lmParameters: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
       parts: [{ type: 'text', text: `M${index + 1}`, completeness: 'complete' }],
       role: index % 2 === 0 ? 'user' : 'assistant',
       createdAt: index + 1,
@@ -238,8 +286,17 @@ describe('SearchPreview Component', () => {
         resolveFirst = resolve;
       }))
       .mockResolvedValueOnce({
-        root: { items: [{ id: 'new-message', modelId: undefined, lmParameters: undefined,
-          parts: [{ type: 'text', text: 'New preview', completeness: 'complete' }], role: 'user', createdAt: 2, replies: { items: [] } }] },
+        root: {
+          items: [{
+          id: 'new-message',
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'New preview', completeness: 'complete' }],
+          role: 'user',
+          createdAt: 2,
+          replies: { items: [] },
+        }],
+        },
         currentLeafId: 'new-message',
       } as any);
 
@@ -254,8 +311,17 @@ describe('SearchPreview Component', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     resolveFirst?.({
-      root: { items: [{ id: 'old-message', modelId: undefined, lmParameters: undefined,
-        parts: [{ type: 'text', text: 'Old preview', completeness: 'complete' }], role: 'user', createdAt: 1, replies: { items: [] } }] },
+      root: {
+        items: [{
+        id: 'old-message',
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'Old preview', completeness: 'complete' }],
+        role: 'user',
+        createdAt: 1,
+        replies: { items: [] },
+      }],
+      },
       currentLeafId: 'old-message',
     });
     await new Promise(resolve => setTimeout(resolve, 0));

@@ -15,7 +15,8 @@ const notifications = vi.hoisted(() => ({
   profiles: [] as RuntimeOptions['profile'][],
 }));
 vi.mock('@/features/llama-cpp-browser/runtime/profile-policy', () => ({ selectableProfiles: notifications.profiles }));
-vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
+vi.mock('@/features/llama-cpp-browser', () => ({
+  llamaCppBrowserService: {
   getProfileState: vi.fn<() => ProfileState>(() => ({ status: 'idle' })),
   probeProfiles: vi.fn(),
   subscribeProfiles: vi.fn(({ listener }: { listener: (event: { state: ProfileState }) => void }) => {
@@ -35,9 +36,15 @@ vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: {
       notifications.models.delete(listener);
     };
   }),
-  listModels: vi.fn(async () => []), setOptions: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(),
-  release: vi.fn(), cancel: vi.fn(),
-} }));
+  listModels: vi.fn(async () => []),
+  setOptions: vi.fn(),
+  importModel: vi.fn(),
+  importDirectory: vi.fn(),
+  removeModel: vi.fn(),
+  release: vi.fn(),
+  cancel: vi.fn(),
+},
+}));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(async () => []), installedSelection: vi.fn(async () => undefined) }));
 vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
@@ -51,7 +58,9 @@ function render(): VueWrapper {
 function deferredFileDrop({ file }: { file: File }) {
   const read = Promise.withResolvers<File>();
   const entry = {
-    isFile: true, isDirectory: false, name: file.name,
+    isFile: true,
+    isDirectory: false,
+    name: file.name,
     file: (resolve: FileCallback, reject: ErrorCallback) => {
       void read.promise.then(resolve, reject);
     },
@@ -66,9 +75,13 @@ function deferredFileDrop({ file }: { file: File }) {
       return readable ? [file] : [];
     },
   } as unknown as DataTransfer;
-  return { transfer, read, protect: () => {
+  return {
+    transfer,
+    read,
+    protect: () => {
     readable = false;
-  } };
+  },
+  };
 }
 function dispatchDrop({ wrapper, transfer }: { wrapper: VueWrapper, transfer: DataTransfer }): Event {
   const event = new Event('drop', { bubbles: true, cancelable: true });
@@ -80,10 +93,13 @@ beforeEach(async () => {
   vi.clearAllMocks(); notifications.capabilities.clear(); notifications.state.clear(); notifications.models.clear();
   vi.mocked(llamaCppBrowserService.getProfileState).mockReturnValue({ status: 'idle' });
   vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
-    const capabilities: ProfileCapabilities = { recommended: 'webgpu-wasm64-jspi', profiles: [
+    const capabilities: ProfileCapabilities = {
+      recommended: 'webgpu-wasm64-jspi',
+      profiles: [
       { profile: 'webgpu-wasm64-jspi', status: 'available' }, { profile: 'webgpu-wasm32-jspi', status: 'available' },
       { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
-    ] };
+    ],
+    };
     for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
     return capabilities;
   });
@@ -122,10 +138,13 @@ describe('local GGUF manager', () => {
   });
   it('shows the resolved automatic profile and disables unavailable choices without disabling model storage', async () => {
     vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
-      const capabilities: ProfileCapabilities = { recommended: 'webgpu-wasm32-jspi', profiles: [
+      const capabilities: ProfileCapabilities = {
+        recommended: 'webgpu-wasm32-jspi',
+        profiles: [
         { profile: 'webgpu-wasm32-jspi', status: 'available' },
         { profile: 'webgpu-wasm64-jspi', status: 'unavailable', reason: 'memory64' },
-      ] };
+      ],
+      };
       for (const listener of notifications.capabilities) listener({ state: { status: 'ready', capabilities } });
       return capabilities;
     });
@@ -327,19 +346,28 @@ describe('local GGUF manager', () => {
     const file = new File(['fixture'], 'weights.gguf');
     const read = Promise.withResolvers<File>();
     const child = {
-      isFile: true, isDirectory: false, name: file.name,
+      isFile: true,
+      isDirectory: false,
+      name: file.name,
       file: (resolve: FileCallback, reject: ErrorCallback) => {
         void read.promise.then(resolve, reject);
       },
     };
     function directoryEntry({ name, entries }: { name: string, entries: unknown[] }) {
-      return { isDirectory: true, isFile: false, name, createReader: () => {
+      return {
+        isDirectory: true,
+        isFile: false,
+        name,
+        createReader: () => {
         let delivered = false;
-        return { readEntries: (resolve: (entries: unknown[]) => void) => {
+        return {
+          readEntries: (resolve: (entries: unknown[]) => void) => {
           const batch = delivered ? [] : entries; delivered = true;
           queueMicrotask(() => resolve(batch));
-        } };
-      } };
+        },
+        };
+      },
+      };
     }
     const folder = directoryEntry({ name: 'original-GGUF', entries: [directoryEntry({ name: 'nested', entries: [child] })] });
     const items = [{ kind: 'file', webkitGetAsEntry: () => folder }];

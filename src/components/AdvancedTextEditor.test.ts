@@ -211,10 +211,13 @@ Line 3`;
       });
 
       const wrapper = mount(AdvancedTextEditor, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 Line 1
 Line 2
-Line 3` },
+Line 3`,
+        },
         attachTo: document.body,
       });
       const vm = wrapper.vm as any;
@@ -261,10 +264,13 @@ Line 3` },
 
     it('syncs line numbers on scroll', async () => {
       const wrapper = mount(AdvancedTextEditor, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 Line 1
 Line 2
-Line 3` },
+Line 3`,
+        },
       });
 
       const textarea = wrapper.find('textarea');

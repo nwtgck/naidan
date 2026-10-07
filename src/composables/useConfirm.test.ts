@@ -48,7 +48,8 @@ describe('useConfirm', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
-    mount(TestComponent, { // No longer assign to wrapper
+    mount(TestComponent, {
+      // No longer assign to wrapper
       global: {
         stubs: {
           CustomDialog: MockCustomDialog,

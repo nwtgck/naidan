@@ -1221,7 +1221,8 @@ No commits yet
 nothing to commit (create/copy files and use "git add" to track)
 `);
 
-    const clean = await execute({ script: `\
+    const clean = await execute({
+      script: `\
 git init -q repo
 cd repo
 git config user.name Tester
@@ -1229,7 +1230,8 @@ git config user.email tester@example.com
 printf x > a
 git add a
 GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m initial >/dev/null
-git status` });
+git status`,
+    });
     expect(clean.result.exitCode).toBe(0);
     expect(clean.stderr.text).toBe('');
     expect(clean.stdout.text).toBe(`\

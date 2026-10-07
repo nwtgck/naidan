@@ -63,12 +63,16 @@ describe('model choices for an embedded ChatPane', () => {
   });
   it('lets existing descendants use the provided identity without new component props', async () => {
     let adapter: ChatModelsAdapter | undefined;
-    const child = defineComponent({ setup() {
+    const child = defineComponent({
+      setup() {
       adapter = useChatModels(); return () => h('div');
-    } });
-    const parent = defineComponent({ setup() {
+    },
+    });
+    const parent = defineComponent({
+      setup() {
       provideChatViewScope({ chatId: ref(chatB) }); return () => h(child);
-    } });
+    },
+    });
     wrappers.push(mount(parent)); mocks.chat.mockResolvedValueOnce(['embedded']);
     await adapter!.fetchForChat({ chatId: chatB });
     expect(adapter!.availableModels.value).toEqual(['embedded']); expect(availableModels.value).toEqual(['global-model']);

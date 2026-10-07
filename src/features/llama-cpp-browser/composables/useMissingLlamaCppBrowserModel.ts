@@ -56,7 +56,10 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     verification.value = 'checking';
     // Yield to the Chat's initial paint. Never make navigation await disk IO or
     // initialize an inference Worker just to decide whether a notice is needed.
-    scheduled = scheduleIdleTask({ timeoutMs: 250, fallbackDelayMs: 0, task: async () => {
+    scheduled = scheduleIdleTask({
+      timeoutMs: 250,
+      fallbackDelayMs: 0,
+      task: async () => {
       const result = await localModelAvailability.check({ modelId: id });
       if (disposed || request !== generation || current !== context.value) return;
       if (!isStorageCurrent()) {
@@ -68,7 +71,8 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
       case 'missing': case 'unreadable': break;
       default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
       }
-    } });
+    },
+    });
   }
   watch(context, () => {
     actionController?.abort(); operation.value = 'idle'; target.value = undefined; failure.value = false;
@@ -79,9 +83,11 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
   // Queue.changed is a terminal transition, not each byte-progress update.
   watch(queue.changed, () => localModelAvailability.invalidate());
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => localModelAvailability.invalidate() });
-  const unsubscribeState = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
+  const unsubscribeState = llamaCppBrowserService.subscribe({
+    listener: ({ state }) => {
     if (state.status === 'error' && state.code === 'missing-model') localModelAvailability.invalidate();
-  } });
+  },
+  });
   function onFocus(): void {
     if (context.value !== undefined && document.visibilityState !== 'hidden') localModelAvailability.invalidate();
   }
@@ -115,7 +121,9 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
       default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
       }
       const plan = target.value ?? (job.value?.selection === undefined || reference.value === undefined ? undefined : {
-        modelId: id, mainFilePath: reference.value.mainFilePath, selection: job.value.selection,
+        modelId: id,
+        mainFilePath: reference.value.mainFilePath,
+        selection: job.value.selection,
       });
       if (plan === undefined || plan.modelId !== id) return;
       // Another tab may have installed the same files since the notice appeared.
@@ -148,7 +156,21 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onFocus);
   });
-  return { modelId, availability, verification, operation, target, failure, canDownload, job, busy, visible, maySend, retry, review, download,
+  return {
+    modelId,
+    availability,
+    verification,
+    operation,
+    target,
+    failure,
+    canDownload,
+    job,
+    busy,
+    visible,
+    maySend,
+    retry,
+    review,
+    download,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }

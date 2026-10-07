@@ -19,17 +19,29 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
     const directoryId = 'linked-models';
     const destination: ImageDownloadDestination = kind === 'opfs' ? { kind } : { kind, directoryId };
     vi.mocked(hostModelHandles.get).mockResolvedValue(root as unknown as HostModelDirectoryHandle);
-    vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: {
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: async () => root },
+      locks: {
       request: async (_name: string, _options: unknown, run: () => Promise<void>) => run(),
-    } });
+    },
+    });
     const bytes = new Uint8Array(32), view = new DataView(bytes.buffer);
     view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true);
     const file = { repository: 'org/model', revision: 'a'.repeat(40), path: 'model.gguf', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
     const fetch = vi.fn<CatalogFetch>(async () => ({
-      url: '', status: 200, statusText: '', ok: true, redirected: false, responseType: 'basic', policyName: 'huggingface_models', headers: new Headers(),
-      body: new ReadableStream({ start(controller) {
+      url: '',
+      status: 200,
+      statusText: '',
+      ok: true,
+      redirected: false,
+      responseType: 'basic',
+      policyName: 'huggingface_models',
+      headers: new Headers(),
+      body: new ReadableStream({
+        start(controller) {
         controller.enqueue(bytes); controller.close();
-      } }),
+      },
+      }),
     }));
     const original = MemoryFile.prototype.createWritable;
     let failFirstPending = true;
@@ -39,12 +51,18 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
         const failure = new DOMException('Storage is full', 'QuotaExceededError');
         if (phase === 'open') throw failure;
         const writer = await original.call(this, options);
-        if (phase === 'write') return { ...writer, write: async () => {
+        if (phase === 'write') return {
+          ...writer,
+          write: async () => {
           throw failure;
-        } };
-        return { ...writer, close: async () => {
+        },
+        };
+        return {
+          ...writer,
+          close: async () => {
           throw failure;
-        } };
+        },
+        };
       }
       return original.call(this, options);
     });

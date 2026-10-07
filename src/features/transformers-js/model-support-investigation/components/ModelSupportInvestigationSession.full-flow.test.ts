@@ -38,16 +38,28 @@ const models = [
 ];
 type WorkerKind = 'planning' | 'production' | 'evidence' | 'fresh-metadata' | 'request-observer';
 const productionLoadEnvelope = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('loadDownloadedModel')]) }).passthrough();
-const nativeLoadIndexSchema = z.object({ runId: z.string(), epochs: z.array(z.object({
-  workerEpoch: z.number(), collection: z.object({ status: z.literal('returned'), result: z.object({
-    status: z.enum(['captured', 'not-started']), loadObservation: productionLoadObservationSchema,
-  }) }),
-})) });
+const nativeLoadIndexSchema = z.object({
+  runId: z.string(),
+  epochs: z.array(z.object({
+  workerEpoch: z.number(),
+  collection: z.object({
+    status: z.literal('returned'),
+    result: z.object({
+    status: z.enum(['captured', 'not-started']),
+    loadObservation: productionLoadObservationSchema,
+  }),
+  }),
+})),
+});
 const archivedAcceptanceSchema = z.object({
-  status: z.enum(['accepted', 'failed', 'exhausted']), source: z.literal('ordinary-provider-load'),
-  repositoryResolvedRevision: z.string(), cacheRevision: z.string().nullable(), loaderRevisionOption: z.string().nullable(),
+  status: z.enum(['accepted', 'failed', 'exhausted']),
+  source: z.literal('ordinary-provider-load'),
+  repositoryResolvedRevision: z.string(),
+  cacheRevision: z.string().nullable(),
+  loaderRevisionOption: z.string().nullable(),
   revisionIdentity: z.enum(['exact-resolved-revision', 'legacy-main-unverified', 'unverified']).nullable(),
-  receipt: productionLoadReceiptSchema.nullable(), cacheReuse: z.null(),
+  receipt: productionLoadReceiptSchema.nullable(),
+  cacheReuse: z.null(),
 });
 
 function artifactsForModel({ modelId, revision, extraShards }: typeof models[number]) {
@@ -98,7 +110,11 @@ describe('complete Full collection through Session and actual Worker transports'
     // model's directory. Only the independently successful second target exists.
     const seededModel = firstTarget === 'missing-cache' ? models[1]! : first;
     const harness = await createProviderReplayTestRuntime({
-      modelId: seededModel.modelId, expectedRevision: seededModel.revision, cacheRevision: seededModel.revision, metadataCache: "all-fixture", artifacts: artifactsForModel(seededModel),
+      modelId: seededModel.modelId,
+      expectedRevision: seededModel.revision,
+      cacheRevision: seededModel.revision,
+      metadataCache: "all-fixture",
+      artifacts: artifactsForModel(seededModel),
       imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [image.dataUrl] },
       generate: async () => {
         throw new Error('The platform setup runtime must not perform Worker inference');
@@ -199,14 +215,22 @@ describe('complete Full collection through Session and actual Worker transports'
       }
       fs.activity.length = 0; fs.enter({ nextPhase: 'full-investigation', mutationPolicy: 'read-only' });
       const assets = resolveHostedTransformersRuntimeAssetUrls({ workerLocationUrl: 'http://localhost/assets/planning-worker.js', environment: import.meta.env.DEV ? 'development' : 'production', userAgent: 'Vitest', vendor: '' });
-      const http = createInvestigationFullFlowTestHttp({ models, assets, externalNetworkPolicy: preset === 'full' ? 'allow' : 'deny',
+      const http = createInvestigationFullFlowTestHttp({
+        models,
+        assets,
+        externalNetworkPolicy: preset === 'full' ? 'allow' : 'deny',
         repositoryRevisions: new Map(firstTarget === 'different-revision' ? [[first.modelId, 'a'.repeat(40)]] : []),
       });
       const planningFetch = http.fetch;
       vi.stubGlobal('MessageChannel', MessageChannel);
-      vi.stubGlobal('navigator', { ...navigator, userAgent: 'Vitest', vendor: '', hardwareConcurrency: 2,
+      vi.stubGlobal('navigator', {
+        ...navigator,
+        userAgent: 'Vitest',
+        vendor: '',
+        hardwareConcurrency: 2,
         gpu: { requestAdapter: async () => ({ features: new Set(['shader-f16']), limits: {} }) },
-        storage: { getDirectory: async () => fs.root } });
+        storage: { getDirectory: async () => fs.root },
+      });
       const ort = await import(/* @vite-ignore */ artifact.ortWebGpuUrl) as {
         InferenceSession: { create: (...args: unknown[]) => Promise<unknown> },
       };
@@ -244,11 +268,14 @@ describe('complete Full collection through Session and actual Worker transports'
       }));
       vi.doMock('@/utils/worker-transport', async () => {
         const actual = await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport');
-        return { ...actual, exposeWorkerRemote: ({ api, endpoint }: Parameters<typeof actual.exposeWorkerRemote>[0]) => {
+        return {
+          ...actual,
+          exposeWorkerRemote: ({ api, endpoint }: Parameters<typeof actual.exposeWorkerRemote>[0]) => {
           startupStages.push('expose');
           if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Worker-global exposure');
           actual.exposeWorkerRemote({ api, endpoint: activeWorker.endpoint });
-        } };
+        },
+        };
       });
       vi.stubGlobal('Worker', class extends ProviderReplayTestWorker {
         readonly kind: WorkerKind;
@@ -261,7 +288,8 @@ describe('complete Full collection through Session and actual Worker transports'
                   : pathname.endsWith('/download-verification/model-artifact-request-worker/entry.ts') ? 'request-observer' : undefined;
           if (kind === undefined) throw new Error(`Unexpected Full Worker entry: ${pathname}`);
           expect(options?.type).toBe('module');
-          super({ start: async ({ worker }) => {
+          super({
+            start: async ({ worker }) => {
             startupStages.push('start-' + kind);
             if (kind === 'planning' && workers.filter(item => item.kind === 'planning').length === 1) {
               firstPlanningStarted.resolve();
@@ -291,11 +319,14 @@ describe('complete Full collection through Session and actual Worker transports'
             case 'production': {
               vi.stubGlobal('self', nativeSelf); vi.stubGlobal('fetch', originalFetch);
               const { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } = await import('@/features/transformers-js/worker/production-worker-startup');
-              await startProductionWorkerRuntime({ loadEntry: async () => {
+              await startProductionWorkerRuntime({
+                loadEntry: async () => {
                 const entry = await import('@/features/transformers-js/worker/entry');
                 const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: worker.startupEndpoint });
                 return entry.initializeProductionWorkerRuntime({ requestRuntimeModule });
-              }, postMessage: ({ message }) => worker.sendFromWorker({ message }) });
+              },
+                postMessage: ({ message }) => worker.sendFromWorker({ message }),
+              });
               break;
             }
             case 'evidence': await import('@/features/transformers-js/model-support-investigation/evidence-worker/entry'); break;
@@ -309,7 +340,8 @@ describe('complete Full collection through Session and actual Worker transports'
               break;
             default: { const exhaustive: never = kind; throw new Error('Unexpected Worker: ' + exhaustive); }
             }
-          } });
+          },
+          });
           this.kind = kind; workers.push(this);
           this.addEventListener('error', event => {
             const error: unknown = (event as MessageEvent).data;
@@ -423,11 +455,14 @@ describe('complete Full collection through Session and actual Worker transports'
           const model = models.find(model => model.modelId === run.modelId)!;
           const receipt = observation.outcome.receipt;
           expect(receipt).toMatchObject({
-            modelId: model.modelId, loaderRevisionOption: { status: 'provided', value: model.revision },
+            modelId: model.modelId,
+            loaderRevisionOption: { status: 'provided', value: model.revision },
             cacheLookup: { source: 'read-only-opfs-scoped-match', revision: model.revision },
             candidate: { device: 'webgpu', dtype: 'q4f16' },
-            autoClass: 'AutoModelForImageTextToText', processor: 'qwen3_5-processor',
-            completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close',
+            autoClass: 'AutoModelForImageTextToText',
+            processor: 'qwen3_5-processor',
+            completion: 'model-session-and-tokenizer-processor-ready',
+            resourceHealth: 'healthy-after-close',
             accessBoundary: 'production-offline-read-only',
             limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
           });
@@ -510,9 +545,14 @@ describe('complete Full collection through Session and actual Worker transports'
       }
       const indexSchema = z.object({ generatedAt: z.string(), batchId: z.string(), targets: z.array(z.object({ runId: z.string(), status: z.enum(['passed', 'failed']) }).passthrough()) }).passthrough();
       const indexes = await Promise.all(archives.map(async archive => indexSchema.parse(JSON.parse(await archive.file('batch.json')!.async('string')))));
-      const runStepsSchema = z.object({ runId: z.string(), steps: z.array(z.object({
-        id: z.string(), status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']), detail: z.string().optional(),
-      })) });
+      const runStepsSchema = z.object({
+        runId: z.string(),
+        steps: z.array(z.object({
+        id: z.string(),
+        status: z.enum(['not-run', 'running', 'passed', 'failed', 'blocked', 'skipped']),
+        detail: z.string().optional(),
+      })),
+      });
       for (const archive of archives) {
         for (const path of paths.filter(path => path.endsWith('/run.json'))) {
           const archived = runStepsSchema.parse(JSON.parse(await archive.file(path)!.async('string')));
@@ -528,8 +568,12 @@ describe('complete Full collection through Session and actual Worker transports'
             const acceptance = archivedAcceptanceSchema.parse(JSON.parse(await archive.file(acceptancePath)!.async('string')));
             const completion = retained!.downloadEvidence!.runtimeCompletion!;
             expect(acceptance).toMatchObject({
-              status: completion.status, source: 'ordinary-provider-load', repositoryResolvedRevision: retained!.repository!.resolvedRevision,
-              cacheRevision: completion.cacheRevision, loaderRevisionOption: completion.loaderRevisionOption, receipt: completion.receipt ?? null,
+              status: completion.status,
+              source: 'ordinary-provider-load',
+              repositoryResolvedRevision: retained!.repository!.resolvedRevision,
+              cacheRevision: completion.cacheRevision,
+              loaderRevisionOption: completion.loaderRevisionOption,
+              receipt: completion.receipt ?? null,
             });
             const firstRun = retained!.modelId === first.modelId;
             expect(acceptance.revisionIdentity).toBe(firstRun && firstTarget === 'missing-cache' ? null

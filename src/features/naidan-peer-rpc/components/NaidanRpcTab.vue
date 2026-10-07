@@ -160,9 +160,11 @@ async function toggleAutoConnect({ event }: { event: Event }): Promise<void> {
   // Display saved intent only. A failed save must not leave the native control
   // showing an enabled policy that the manager never accepted.
   input.checked = current.value?.connection.autoConnect === 'enabled';
-  await action({ run: async () => {
+  await action({
+    run: async () => {
     if (current.value) await manager.value?.setAutoConnect({ id: current.value.connection.id, autoConnect });
-  } });
+  },
+  });
 }
 function phaseLabel({ phase }: { phase: RpcConnectionPhase }): string | undefined {
   switch (phase) {

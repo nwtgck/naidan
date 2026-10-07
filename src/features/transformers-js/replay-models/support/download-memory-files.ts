@@ -116,7 +116,10 @@ export function createMemoryFiles() {
     } as unknown as FileSystemDirectoryHandle;
   }
   return {
-    files, activity, writerCloseErrors, root: directory({ prefix: '' }),
+    files,
+    activity,
+    writerCloseErrors,
+    root: directory({ prefix: '' }),
     enter({ nextPhase, mutationPolicy }: { nextPhase: string, mutationPolicy: typeof policy }) {
       phase = nextPhase; policy = mutationPolicy;
     },

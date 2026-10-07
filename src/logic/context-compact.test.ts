@@ -74,22 +74,39 @@ describe('context-compact', () => {
   it('builds an English compact instruction and request messages', () => {
     const requestMessages = buildCompactRequestMessages({
       prefix: [
-        { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: `\
+        {
+          id: toMessageId({ raw: 'msg-1' }),
+          role: 'user',
+          parts: [{
+          type: 'text',
+          text: `\
 messageId=msg-1
 
-Question`, completeness: 'complete' }] },
+Question`,
+          completeness: 'complete',
+        }],
+        },
       ],
       promptMode: 'with_message_ids',
       instructionContent: undefined,
     });
 
     expect(requestMessages).toEqual([
-      { id: toMessageId({ raw: 'msg-1' }), role: 'user', parts: [{ type: 'text', text: `\
+      {
+        id: toMessageId({ raw: 'msg-1' }),
+        role: 'user',
+        parts: [{
+        type: 'text',
+        text: `\
 messageId=msg-1
 
-Question`, completeness: 'complete' }] },
+Question`,
+        completeness: 'complete',
+      }],
+      },
       {
-        id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
+        id: toMessageId({ raw: 'compact_instruction' }),
+        role: 'user',
         parts: [{ type: 'text', text: createCompactInstruction({ promptMode: 'with_message_ids' }), completeness: 'complete' }],
       },
     ]);
@@ -104,7 +121,8 @@ Question`, completeness: 'complete' }] },
 
     expect(requestMessages).toEqual([
       {
-        id: toMessageId({ raw: 'compact_instruction' }), role: 'user',
+        id: toMessageId({ raw: 'compact_instruction' }),
+        role: 'user',
         parts: [{ type: 'text', text: 'Custom compact prompt', completeness: 'complete' }],
       },
     ]);

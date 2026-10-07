@@ -10,8 +10,13 @@ function setup() {
   const queue: { sender: string, message: RpcControlMessage }[] = [];
   let sequence = 0;
   const make = ({ name }: { name: string }) => {
-    const control = createRpcStopControl({ send: ({ message }) => queue.push({ sender: name, message }),
-      nextId: () => `${name}-${++sequence}`, changed: vi.fn(), registryChanged: vi.fn(), timeoutMs: 100 });
+    const control = createRpcStopControl({
+      send: ({ message }) => queue.push({ sender: name, message }),
+      nextId: () => `${name}-${++sequence}`,
+      changed: vi.fn(),
+      registryChanged: vi.fn(),
+      timeoutMs: 100,
+    });
     disposers.push(control.dispose); return control;
   };
   const a = make({ name: 'a' }), b = make({ name: 'b' });
@@ -29,9 +34,12 @@ it('does not connect, stop or send on creation or owner registration', () => {
 });
 it('discovers the current owner and separates admission acknowledgement from retirement', async () => {
   const { a, b, deliver } = setup(); const retired = Promise.withResolvers<void>(); let admission = 'open';
-  b.registerOwner({ ownerId: 'epoch-b', stop: () => {
+  b.registerOwner({
+    ownerId: 'epoch-b',
+    stop: () => {
     admission = 'closed'; return retired.promise;
-  } });
+  },
+  });
   a.requestStop(); expect(a.status()).toBe('checking'); deliver();
   expect(admission).toBe('closed'); expect(a.status()).toBe('applied');
   retired.resolve(); await Promise.resolve(); deliver(); expect(a.status()).toBe('retired');
@@ -64,16 +72,22 @@ it('stops a locally owned manager synchronously and only once for repeated reque
   a.requestStop(); expect(stop).toHaveBeenCalledOnce(); gate.resolve(); await Promise.resolve(); expect(a.status()).toBe('retired');
 });
 it('never claims retirement when native cleanup fails', async () => {
-  const { a } = setup(); a.registerOwner({ ownerId: 'a', stop: async () => {
+  const { a } = setup(); a.registerOwner({
+    ownerId: 'a',
+    stop: async () => {
     throw new Error('cleanup failed');
-  } });
+  },
+  });
   a.requestStop(); await Promise.resolve(); expect(a.status()).toBe('unconfirmed');
   a.requestStop(); expect(a.status()).toBe('unconfirmed');
 });
 it('does not acknowledge a stop whose synchronous admission boundary threw', async () => {
-  vi.useFakeTimers(); const { a } = setup(); a.registerOwner({ ownerId: 'a', stop: () => {
+  vi.useFakeTimers(); const { a } = setup(); a.registerOwner({
+    ownerId: 'a',
+    stop: () => {
     throw new Error('not applied');
-  } });
+  },
+  });
   a.requestStop(); await vi.advanceTimersByTimeAsync(101); expect(a.status()).toBe('unconfirmed');
 });
 it('drops malformed messages and never interprets a grant command', () => {

@@ -6,9 +6,11 @@ import { lazyStrings } from '@/strings';
 
 const globalTools = useGlobalToolConfigs();
 
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && {
+defineExpose({
+  ...((__BUILD_MODE_IS_TEST__ && {
   TEST_ONLY: {},
-}) || {}) });
+}) || {}),
+});
 
 </script>
 

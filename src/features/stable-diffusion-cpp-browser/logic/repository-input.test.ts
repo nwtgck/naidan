@@ -31,9 +31,16 @@ it('preserves roots in FileList fallback and rejects partial/opaque directory dr
 it('cancels traversal before a delayed entry batch can become a stored repository', async () => {
   const controller = new AbortController();
   let finish: ((entries: FileSystemEntry[]) => void) | undefined;
-  const folder = { name: 'repo', isDirectory: true, isFile: false, createReader: () => ({ readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
+  const folder = {
+    name: 'repo',
+    isDirectory: true,
+    isFile: false,
+    createReader: () => ({
+    readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
     finish = callback;
-  } }) };
+  },
+  }),
+  };
   const transfer = { items: [{ kind: 'file', webkitGetAsEntry: () => folder }], files: [] } as unknown as DataTransfer;
   const pending = imageDirectoriesFromDrop({ transfer, signal: controller.signal }); controller.abort(); finish?.([]);
   await expect(pending).rejects.toThrow();

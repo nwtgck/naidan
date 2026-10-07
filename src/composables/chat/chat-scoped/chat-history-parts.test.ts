@@ -7,8 +7,18 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
 
-const state = vi.hoisted(() => ({ current: undefined as Chat | undefined, fork: undefined as Chat | undefined,
-  stored: new Map<ChatId, ChatContent>(), save: vi.fn(), metadata: vi.fn(), sent: vi.fn(), opened: vi.fn(), abort: vi.fn(), processing: false, persistBinary: false, saveFile: vi.fn(),
+const state = vi.hoisted(() => ({
+  current: undefined as Chat | undefined,
+  fork: undefined as Chat | undefined,
+  stored: new Map<ChatId, ChatContent>(),
+  save: vi.fn(),
+  metadata: vi.fn(),
+  sent: vi.fn(),
+  opened: vi.fn(),
+  abort: vi.fn(),
+  processing: false,
+  persistBinary: false,
+  saveFile: vi.fn(),
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   getLiveChatById: ({ chatId }: { chatId: ChatId }) => state.current?.id === chatId ? state.current : null,
@@ -17,24 +27,44 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   registerLiveInstance: ({ chat }: { chat: Chat }) => {
     state.fork = chat;
   },
-  triggerCurrentChat: vi.fn(), loadData: vi.fn(), updateChatContent: state.save, updateChatMeta: state.metadata,
+  triggerCurrentChat: vi.fn(),
+  loadData: vi.fn(),
+  updateChatContent: state.save,
+  updateChatMeta: state.metadata,
 }));
 vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({ sendMessageToTargetChat: state.sent }));
-vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({ abortProcessingForChat: () => {
+vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
+  abortProcessingForChat: () => {
   state.abort(); state.processing = false;
-} }));
+},
+}));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: state.opened }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { get canPersistBinary() {
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+  get canPersistBinary() {
   return state.persistBinary;
-}, saveFile: state.saveFile, updateHierarchy: async ({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy }) => updater({ current: { items: [] } }) } }));
+},
+  saveFile: state.saveFile,
+  updateHierarchy: async ({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy }) => updater({ current: { items: [] } }),
+},
+}));
 import { commitFullHistoryManipulationForChat, editMessageForChat, forkChatForChat, switchVersionForChat } from './chat-history-flow';
 
 function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessageNode } {
-  const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 2, modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } }, interruption: { type: 'error', message: '記録済みの理由' }, parts: [
+  const assistant: AssistantMessageNode = {
+    id: toMessageId({ raw: 'a' }),
+    role: 'assistant',
+    createdAt: 2,
+    modelId: 'm',
+    lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['STOP'], reasoning: { effort: 'high' } },
+    interruption: { type: 'error', message: '記録済みの理由' },
+    parts: [
     { type: 'reasoning', text: '  R\n', completeness: 'complete' },
     { type: 'text', text: '<think>literal</think>A ', completeness: 'partial' },
     { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "n": 1 }' } } },
-  ], replies: { items: [] } };
+  ],
+    replies: { items: [] },
+  };
   const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [assistant] } };
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: 'Original', root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   state.current = chat;

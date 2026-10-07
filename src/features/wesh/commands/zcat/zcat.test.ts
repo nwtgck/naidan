@@ -20,7 +20,6 @@ async function gzipBytes({
       }
       controller.close();
     },
-
   }).pipeThrough(new CompressionStream('gzip') as any);
   const response = new Response(compressedStream);
   return new Uint8Array(await response.arrayBuffer());

@@ -23,7 +23,8 @@ Before<|channel>thought
  Reason <channel|>After<turn|>`;
     for (let index = 0; index <= source.length; index++) {
       expect(parse({ chunks: [source.slice(0, index), source.slice(index)] })).toEqual({
-        text: 'Before<think> Reason </think>After', calls: [],
+        text: 'Before<think> Reason </think>After',
+        calls: [],
       });
     }
   });
@@ -41,9 +42,11 @@ Partial`;
   });
 
   it('preserves an explicitly empty recognized thought without manufacturing body text', () => {
-    expect(parse({ chunks: [`\
+    expect(parse({
+      chunks: [`\
 <|channel>thought
-<channel|>Answer`] })).toEqual({ text: '<think></think>Answer', calls: [] });
+<channel|>Answer`],
+    })).toEqual({ text: '<think></think>Answer', calls: [] });
   });
 
   it('keeps native thought framing inside the parser at every chunk boundary', () => {
@@ -52,7 +55,8 @@ Partial`;
 Reason<channel|>Answer<turn|>`;
     for (let index = 0; index <= source.length; index++) {
       expect(parse({ chunks: [source.slice(0, index), source.slice(index)] })).toEqual({
-        text: '<think>Reason</think>Answer', calls: [],
+        text: '<think>Reason</think>Answer',
+        calls: [],
       });
     }
   });
@@ -76,7 +80,9 @@ Reason<channel|>Answer<turn|>`;
 
   it('drops known outside special tokens without deleting them from quoted tool arguments', () => {
     const text: string[] = [];
-    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: ['<bos>', '<pad>'],
+    const parser = new Gemma4ToolCallParser({
+      toolCalls: 'enabled',
+      ignoredSpecialTokens: ['<bos>', '<pad>'],
       onText: ({ text: chunk }) => text.push(chunk),
     });
     for (const output of [...'<bos><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><pad>Answer']) parser.feed({ output });
@@ -102,17 +108,22 @@ Reason<channel|>Answer<turn|>`;
     const source = `\
 <|channel>analysis
 Unknown <|tool_call>call:probe{}<tool_call|><channel|>Answer`;
-    expect(parse({ chunks: [...source] })).toEqual({ text: `\
+    expect(parse({ chunks: [...source] })).toEqual({
+      text: `\
 analysis
-Unknown call:probe{}Answer`, calls: [] });
+Unknown call:probe{}Answer`,
+      calls: [],
+    });
   });
 
   it('closes only the public thought interval when native generation aborts', () => {
     const text: string[] = [];
     const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text: chunk }) => text.push(chunk) });
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <|channel>thought
-Partial` });
+Partial`,
+    });
     expect(text.join('')).toBe('<think>Partial');
     parser.abort();
     parser.abort();
@@ -263,9 +274,11 @@ B<channel|>After`;
   it('closes an already published thought when a buffered close precedes oversized protocol', () => {
     const chunks: string[] = [];
     const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text }) => chunks.push(text) });
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <|channel>thought
-Partial` });
+Partial`,
+    });
     expect(() => parser.feed({ output: `<channel|>${open}${'x'.repeat(65537)}` })).toThrow(Gemma4ToolCallProtocolError);
     expect(chunks.join('')).toBe('<think>Partial</think>');
     expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
@@ -274,9 +287,11 @@ Partial` });
   it('removes unquoted terminal and padding controls from a bounded thought but preserves quoted data', () => {
     const chunks: string[] = [];
     const parser = new Gemma4ToolCallParser({ toolCalls: 'disabled', ignoredSpecialTokens: ['<pad>', '<bos>'], onText: ({ text }) => chunks.push(text) });
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <|channel>thought
-Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>` });
+Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>`,
+    });
     parser.flush();
     expect(chunks.join('')).toBe('<think>Partial<|"|><eos><pad><|"|></think>');
     expect(parser.drainToolCalls()).toEqual([]);
@@ -303,24 +318,37 @@ Partial<|"|><eos><pad><|"|><eos><turn|><pad><bos>` });
 
   it('preserves callback failure and prevents tools from escaping a failed text delivery', () => {
     const failure = new Error('synthetic delivery failure');
-    const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: () => {
+    const parser = new Gemma4ToolCallParser({
+      toolCalls: 'enabled',
+      ignoredSpecialTokens: [],
+      onText: () => {
       throw failure;
-    } });
+    },
+    });
     parser.feed({ output: `${open}call:probe{}${close}after` });
     expect(() => parser.flush()).toThrow(failure);
     expect(() => parser.drainToolCalls()).toThrow(Gemma4ToolCallProtocolError);
   });
 
   describe('actual pinned native formatter controls, not sampled generation', () => {
-    const NativeTemplate = bundledJinjaTemplate({ code: applyTransformersJsFixes({
-      code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'), version: '4.2.0',
-    }).code });
+    const NativeTemplate = bundledJinjaTemplate({
+      code: applyTransformersJsFixes({
+      code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'),
+      version: '4.2.0',
+    }).code,
+    });
     const template = new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--gemma-4-e2b-it-onnx/model-chat_template.jinja', 'utf8'));
 
     function renderCall({ name, args }: { name: string, args: Record<string, unknown> }): string {
-      const rendered = template.render({ bos_token: '<bos>', tools: [], add_generation_prompt: false,
-        messages: [{ role: 'user', content: 'Synthetic protocol control.' }, { role: 'assistant', content: '',
-          tool_calls: [{ id: 'synthetic-call', type: 'function', function: { name, arguments: args } }] }],
+      const rendered = template.render({
+        bos_token: '<bos>',
+        tools: [],
+        add_generation_prompt: false,
+        messages: [{ role: 'user', content: 'Synthetic protocol control.' }, {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'synthetic-call', type: 'function', function: { name, arguments: args } }],
+        }],
       });
       const position = rendered.indexOf(open);
       expect(position).toBeGreaterThanOrEqual(0);

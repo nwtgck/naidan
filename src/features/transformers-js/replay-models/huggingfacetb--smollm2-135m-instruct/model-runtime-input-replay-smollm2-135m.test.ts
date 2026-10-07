@@ -6,7 +6,8 @@ import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@
 
 const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
   files: {
@@ -17,7 +18,8 @@ installRawReplay({ evidence: {
     'generation_config.json': { sha256: '87b916edaaab66b3899b9d0dd0752727dff6666686da0504d89ae0a6e055a013', byteLength: 132 },
     'tokenizer.json': { sha256: '9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c', byteLength: 2104556 },
   },
-} });
+},
+});
 
 describe('smollm2-135m raw metadata replay', () => {
   it('constructs the Production tokenizer/processor and renders its original template', async () => {
@@ -26,8 +28,11 @@ describe('smollm2-135m raw metadata replay', () => {
 
   it.each(['q4f16', 'q4'] as const)('observes repository-listed %s paths without real ONNX execution', async dtype => {
     await assertRawModelSelection({
-      modelId, dtype, sessions: { model: 0 },
-      probeOnly: [], expectedMissing: [],
+      modelId,
+      dtype,
+      sessions: { model: 0 },
+      probeOnly: [],
+      expectedMissing: [],
     });
   });
 });
@@ -39,7 +44,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', chunks: { q4f16: { model: 0 }, q4: { model: 0 } }, registryExtra: [], missing: [] },
-      dtype, expectedAutoClass: 'AutoModelForCausalLM',
+      dtype,
+      expectedAutoClass: 'AutoModelForCausalLM',
     });
   });
 });

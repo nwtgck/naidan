@@ -10,12 +10,18 @@ let selections: ImageLoraSelection[];
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   selections = [];
-  wrapper = mount(ImageLoraControls, { props: { active: true, modelValue: selections, saved: [], disabled: false,
+  wrapper = mount(ImageLoraControls, {
+    props: {
+    active: true,
+    modelValue: selections,
+    saved: [],
+    disabled: false,
     'onUpdate:modelValue': value => {
       selections = value;
       void wrapper?.setProps({ modelValue: value });
     },
-  } });
+  },
+  });
 });
 afterEach(() => wrapper?.unmount());
 

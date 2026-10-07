@@ -216,7 +216,8 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       imageInvalidation.value = { binaryObjectId, revision: ++imageRevision };
     }
   }
-  const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
+  const unsubscribe = storageService.subscribeToChanges({
+    listener: ({ event }) => {
     switch (event.type) {
     case 'migration': break;
     case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
@@ -235,7 +236,8 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     warnings.value = [];
     warningCount.value = 0;
     refreshAvailability();
-  } });
+  },
+  });
   async function dispose(): Promise<void> {
     unsubscribe();
     disposed = true;
@@ -248,13 +250,36 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     await runningQuery;
     await ownedClient?.dispose();
   }
-  return { items, total, currentPage, pageCount, loading, error, warnings, warningCount, selected, detailLoading, detailError, imageInvalidation, available, setQuery, reload, goToPage, select, remove, removeImage, getImage, clearSelection, dispose,
+  return {
+    items,
+    total,
+    currentPage,
+    pageCount,
+    loading,
+    error,
+    warnings,
+    warningCount,
+    selected,
+    detailLoading,
+    detailError,
+    imageInvalidation,
+    available,
+    setQuery,
+    reload,
+    goToPage,
+    select,
+    remove,
+    removeImage,
+    getImage,
+    clearSelection,
+    dispose,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.
         // ESLint-required for useXxx return objects.
       },
-    }) || {}), };
+    }) || {}),
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -12,9 +12,16 @@ type ReuseOptions = {
 };
 type ReusePurpose = { type: 'history' } | { type: 'draft', loraStates: { enabled: boolean, strength: number }[] };
 const draftParametersSchema = parametersSchema.extend({
-  prompt: z.string().max(4096), negativePrompt: z.string().max(4096), seed: z.string().max(20),
-  width: z.number().finite(), height: z.number().finite(), steps: z.number().finite(), guidance: z.number().finite(),
-  distilledGuidance: z.number().finite(), vaeTileSize: z.number().finite(), conditioningCacheSize: z.number().finite(),
+  prompt: z.string().max(4096),
+  negativePrompt: z.string().max(4096),
+  seed: z.string().max(20),
+  width: z.number().finite(),
+  height: z.number().finite(),
+  steps: z.number().finite(),
+  guidance: z.number().finite(),
+  distilledGuidance: z.number().finite(),
+  vaeTileSize: z.number().finite(),
+  conditioningCacheSize: z.number().finite(),
 });
 export function prepareImageHistoryReuse({ record, findFile, getImage }: ReuseOptions) {
   return prepareImageRequestReuse({ record, findFile, getImage, purpose: { type: 'history' } });

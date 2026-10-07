@@ -47,27 +47,48 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
       if (shape === 'native_failure') throw fault;
       return { past_key_values: null };
     });
-    const model = { config: jsonBody({ archive, path: 'config.json' }), configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
-      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config, generate,
+    const model = {
+      config: jsonBody({ archive, path: 'config.json' }),
+      configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
+      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config,
+      generate,
     } as unknown as Context['model'];
     const onChunk = vi.fn(); const onToolCalls = vi.fn(); const controller = new AbortController(); const node = assistant();
     const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hel', completeness: 'complete' }, { type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController: controller,
+      onChange: () => {},
+      items: createInferenceGeneration({
+      signal: controller.signal,
       generate: async ({ onEvent }) => {
         const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
         try {
           const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
-          await strategy.generate({ model, tokenizer, messages: input.messages, params: undefined, tools: undefined,
-            onChunk, onToolCalls, onRawChunk: () => {}, debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
+          await strategy.generate({
+            model,
+            tokenizer,
+            messages: input.messages,
+            params: undefined,
+            tools: undefined,
+            onChunk,
+            onToolCalls,
+            onRawChunk: () => {},
+            debugLog: () => {},
+            observationSink: undefined,
+            generationCapture: undefined,
             runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} }, onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
           });
         } finally {
           await queue.finish();
         }
       },
-    }) });
+    }),
+    });
     let settled = false; void operation.then(() => {
       settled = true;
     });

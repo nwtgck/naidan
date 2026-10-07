@@ -164,7 +164,9 @@ export function resolveCalculatorHelp({ input }: { input: string }): CalculatorH
   if (parts.length === 1) return { status: 'success', topic: 'overview', text: renderOverview() };
   if (parts.length !== 2) {
     return failCalculatorInput({
-      code: 'invalid_help_usage', message: 'Calculator help accepts exactly one topic.', span: undefined,
+      code: 'invalid_help_usage',
+      message: 'Calculator help accepts exactly one topic.',
+      span: undefined,
       hint: 'Evaluate `help` to see all available topics.',
     });
   }
@@ -177,7 +179,9 @@ export function resolveCalculatorHelp({ input }: { input: string }): CalculatorH
   if (definition !== undefined) return { status: 'success', topic, text: renderFunctionHelp({ definition }) };
   const suggestions = getHelpSuggestions({ topic });
   return failCalculatorInput({
-    code: 'unknown_help_topic', message: `Unknown calculator help topic: ${topic}`, span: undefined,
+    code: 'unknown_help_topic',
+    message: `Unknown calculator help topic: ${topic}`,
+    span: undefined,
     hint: suggestions.length === 0 ? 'Evaluate `help` to see all available topics.' : `Related topics: ${suggestions.join(', ')}`,
   });
 }

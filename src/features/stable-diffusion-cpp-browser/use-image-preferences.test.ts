@@ -42,12 +42,44 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
       if (!isCurrent()) return 'changed';
       await updateExperimental({ updater }); return 'saved';
     });
-    const preferences = useImagePreferences({ settings, initialized: ready, captureStorage() {
+    const preferences = useImagePreferences({
+      settings,
+      initialized: ready,
+      captureStorage() {
       const captured = generation; return () => captured === generation;
-    }, updateForStorage, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed });
-    return { preferences, scope, settings, ready, localModels, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, updateForStorage, download, onSelection, list, replaceStorage() {
+    },
+      updateForStorage,
+      form,
+      seedMode,
+      historyEnabled,
+      library,
+      localModels,
+      restoring,
+      restored,
+      failed,
+    });
+    return {
+      preferences,
+      scope,
+      settings,
+      ready,
+      localModels,
+      form,
+      seedMode,
+      historyEnabled,
+      library,
+      restoring,
+      restored,
+      failed,
+      updateExperimental,
+      updateForStorage,
+      download,
+      onSelection,
+      list,
+      replaceStorage() {
       generation++;
-    } };
+    },
+    };
   })!;
 }
 async function settled(): Promise<void> {
@@ -131,11 +163,15 @@ it('restores exact host/OPFS locations, explicit component none and LoRA control
   const entries = repositories();
   entries[0]!.hostSource = { directoryId: 'chosen-root', directoryName: 'Chosen', repository: 'org/image' };
   const sameNamed = { ...entries[0]!, id: 'other', hostSource: { directoryId: 'other-root', directoryName: 'Other', repository: 'org/image' } };
-  const saved: BrowserImageGenerationSettings = { modelSelection: {
+  const saved: BrowserImageGenerationSettings = {
+    modelSelection: {
     primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
     components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/2/text.gguf' } } }],
     loras: [{ location: { kind: 'opfs', path: 'models/user/3/adapter.gguf' }, enabled: 'disabled', strength: 0.7 }],
-  }, preview: { enabled: 'enabled', mode: 'projection' }, width: 768 };
+  },
+    preview: { enabled: 'enabled', mode: 'projection' },
+    width: 768,
+  };
   const h = harness({ initialized: true, saved, entries: [sameNamed, ...entries] });
   await vi.waitFor(() => expect(h.restoring.value).toBe(false)); await settled();
   expect(h.library.main.value).toContain('user/0');

@@ -493,14 +493,20 @@ v1.10
   });
 
   it('supports merge mode with already sorted files', async () => {
-    await writeFile({ path: 'left.txt', data: `\
+    await writeFile({
+      path: 'left.txt',
+      data: `\
 a
 c
-` });
-    await writeFile({ path: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right.txt',
+      data: `\
 b
 d
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -519,14 +525,20 @@ d
   });
 
   it('supports merge mode together with key selection', async () => {
-    await writeFile({ path: 'left.txt', data: `\
+    await writeFile({
+      path: 'left.txt',
+      data: `\
 a2
 b1
-` });
-    await writeFile({ path: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right.txt',
+      data: `\
 a3
 b0
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'sort -m -k1,1 left.txt right.txt',
@@ -577,10 +589,13 @@ b
   });
 
   it('writes output to a file with -o', async () => {
-    await writeFile({ path: 'input.txt', data: `\
+    await writeFile({
+      path: 'input.txt',
+      data: `\
 beta
 alpha
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -617,10 +632,13 @@ beta
   });
 
   it('supports the long --output form', async () => {
-    await writeFile({ path: 'input.txt', data: `\
+    await writeFile({
+      path: 'input.txt',
+      data: `\
 beta
 alpha
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'sort --output=output.txt input.txt',
@@ -637,10 +655,13 @@ beta
   });
 
   it('supports root-relative input and output paths from /', async () => {
-    await writeFile({ path: 'root-input.txt', data: `\
+    await writeFile({
+      path: 'root-input.txt',
+      data: `\
 beta
 alpha
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cd /; sort /root-input.txt -o root-output.txt',
@@ -1102,10 +1123,13 @@ a.1
   });
 
   it('rejects incompatible global ordering modes and multi-character field separators', async () => {
-    const modes = await execute({ script: 'sort -n -V', stdinText: `\
+    const modes = await execute({
+      script: 'sort -n -V',
+      stdinText: `\
 2
 10
-` });
+`,
+    });
     const separator = await execute({ script: "sort -t '::'", stdinText: 'a::b\n' });
     const multibyteSeparator = await execute({
       script: "LC_ALL=C.utf8 sort -t 'é'",
@@ -1323,10 +1347,13 @@ describe('wesh sort Linux character classification compatibility', () => {
   }
 
   it('accepts only ASCII blanks before numeric, general numeric, human numeric, and month keys', async () => {
-    const numeric = await execute({ script: 'sort -n', stdinText: `\
+    const numeric = await execute({
+      script: 'sort -n',
+      stdinText: `\
  10
 2
-` });
+`,
+    });
     expect(numeric.stdout.text).toBe(`\
 2
  10
@@ -1450,10 +1477,12 @@ describe('wesh sort key character positions', () => {
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
       source: createTextShellSource({ text: 'LC_ALL=C.utf8 sort -k1.2,1.2' }),
-      stdin: createTestReadHandleFromText({ text: `\
+      stdin: createTestReadHandleFromText({
+        text: `\
 éA
 ê0
-` }),
+`,
+      }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -1475,13 +1504,15 @@ describe('wesh sort key character positions', () => {
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
       source: createTextShellSource({ text: 'LC_ALL=C sort -k1.2,1.4' }),
-      stdin: createTestReadHandleFromText({ text: `\
+      stdin: createTestReadHandleFromText({
+        text: `\
 #
 !\t4KiB
 _ # Feb
 0 4KiB x
  v1.2 3M 01
-` }),
+`,
+      }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -1505,21 +1536,25 @@ _ # Feb
     const ignoredStdout = createTestWriteCaptureHandle();
     const significant = await wesh.execute({
       source: createTextShellSource({ text: 'LC_ALL=C sort -f -k1,1 -s' }),
-      stdin: createTestReadHandleFromText({ text: `\
+      stdin: createTestReadHandleFromText({
+        text: `\
  -1 inf
 ! z
 - a
-` }),
+`,
+      }),
       stdout: significantStdout.handle,
       stderr: createTestWriteCaptureHandle().handle,
     });
     const ignored = await wesh.execute({
       source: createTextShellSource({ text: 'LC_ALL=C sort -b -f -k1,1 -s' }),
-      stdin: createTestReadHandleFromText({ text: `\
+      stdin: createTestReadHandleFromText({
+        text: `\
  -1 inf
 ! z
 - a
-` }),
+`,
+      }),
       stdout: ignoredStdout.handle,
       stderr: createTestWriteCaptureHandle().handle,
     });

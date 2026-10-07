@@ -35,7 +35,9 @@ describe('message DTO versions', () => {
 
   it('keeps empty parts, literal thinking tags, partial content, and interruption separate', () => {
     const parsed = MessageNodeSchemaDtoV2.parse({
-      id: 'assistant', role: 'assistant', createdAt: 0,
+      id: 'assistant',
+      role: 'assistant',
+      createdAt: 0,
       parts: [
         { type: 'reasoning', text: '' },
         { type: 'text', text: '<think>literal</think>', completeness: 'partial' },

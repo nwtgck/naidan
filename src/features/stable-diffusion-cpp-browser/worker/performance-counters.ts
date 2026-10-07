@@ -24,9 +24,16 @@ export function createWaitAccounting({ now }: { now: () => number }) {
     },
     snapshot() {
       const time = now();
-      return { started, settled, rejected, pending, peakPending: peak, maxCompletedMs: maxMs,
+      return {
+        started,
+        settled,
+        rejected,
+        pending,
+        peakPending: peak,
+        maxCompletedMs: maxMs,
         wallSumMs: completedMs + Math.max(0, pending * time - pendingStarts),
-        wallUnionMs: unionMs + (pending ? Math.max(0, time - unionStart) : 0) };
+        wallUnionMs: unionMs + (pending ? Math.max(0, time - unionStart) : 0),
+      };
     },
   };
 }

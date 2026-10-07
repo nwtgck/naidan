@@ -38,7 +38,12 @@ export async function acceptDownloadedProductionRevision({
   onTiming?: DownloadTimingCallback;
   createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationRevisionAcceptanceObservation> {
-  return await measureDownloadAcceptance({ revision: cacheRevision, candidate: undefined, route: 'revision', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
+  return await measureDownloadAcceptance({
+    revision: cacheRevision,
+    candidate: undefined,
+    route: 'revision',
+    callback: onTiming,
+    operation: async ({ attempt, cleanup, load }) => {
     if (loadRevision === undefined && cacheRevision !== 'main') {
       throw new Error(`A revision-less Production load can only target the legacy main cache, not ${cacheRevision}`);
     }
@@ -138,7 +143,8 @@ export async function acceptDownloadedProductionRevision({
     } finally {
       await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: cleanup });
     }
-  } });
+  },
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

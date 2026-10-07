@@ -143,8 +143,8 @@ export function downloadedModelCandidatePlanError({
     // miss would authorize the explicit Download coordinator to fetch again.
     return new DownloadedModelResourcePlanningError({ modelId, revision, details });
   }
-  return new MissingDownloadedModelArtifactError({ message:
-    `Downloaded model is incomplete; loadDownloadedModel() MUST NOT fetch model artifacts, `
+  return new MissingDownloadedModelArtifactError({
+    message: `Downloaded model is incomplete; loadDownloadedModel() MUST NOT fetch model artifacts, `
     + `and offline Load will not download or repair files `
     + `(model=${modelId}, revision=${revision ?? 'main'}): ${details}`,
   });

@@ -73,7 +73,9 @@ describe('generateChatShareURL', () => {
             modelId: undefined,
             parts: [
               { type: 'text', text: 'Here is an image', completeness: 'complete' },
-              { type: 'attachment', attachment: {
+              {
+                type: 'attachment',
+                attachment: {
                 id: 'att-1',
                 binaryObjectId: 'bin-1',
                 originalName: 'image.png',
@@ -81,7 +83,8 @@ describe('generateChatShareURL', () => {
                 size: 100,
                 uploadedAt: Date.now(),
                 status: 'persisted' as const,
-              } },
+              },
+              },
             ],
             replies: { items: [] },
             lmParameters: EMPTY_LM_PARAMETERS,
@@ -119,16 +122,39 @@ describe('parts sharing binary references', () => {
     const imageText = `\`\`\`${IMAGE_BLOCK_LANG}\n{"binaryObjectId":"image","displayWidth":4,"displayHeight":4}\n\`\`\``;
     const attachment = { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'memory' }), originalName: 'memory.png', mimeType: 'image/png', size: 4, uploadedAt: 1, status: 'memory' as const, blob: new Blob(['memo']) };
     const content: Chat = {
-      id: toChatId({ raw: 'share' }), title: 'Shared', createdAt: 1, updatedAt: 1, debugEnabled: false,
-      root: { items: [
-        { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
+      id: toChatId({ raw: 'share' }),
+      title: 'Shared',
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
+      root: {
+        items: [
+        {
+          id: toMessageId({ raw: 'assistant' }),
+          role: 'assistant',
+          createdAt: 1,
+          modelId: undefined,
+          lmParameters: undefined,
+          interruption: { type: 'cancelled' },
           parts: [{ type: 'reasoning', text: imageText.replace('image', 'not-a-reference'), completeness: 'complete' }, { type: 'text', text: imageText, completeness: 'partial' }],
-          replies: { items: [{ id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined, parts: [
+          replies: {
+            items: [{
+            id: toMessageId({ raw: 'tool' }),
+            role: 'tool',
+            createdAt: 2,
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [
             { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'good' }) } } },
             { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c2' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
-          ], replies: { items: [] } }] } },
+          ],
+            replies: { items: [] },
+          }],
+          },
+        },
         { id: toMessageId({ raw: 'other' }), role: 'user', createdAt: 3, modelId: undefined, lmParameters: EMPTY_LM_PARAMETERS, parts: [{ type: 'attachment', attachment }], replies: { items: [] } },
-      ] },
+      ],
+      },
     };
     const settings: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'local', providerProfiles: [], mounts: [], titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS } };
     vi.mocked(storageService.loadChat).mockResolvedValue(content);

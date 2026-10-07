@@ -451,15 +451,18 @@ export function createModelSupportInvestigationWorkerClient({
               executionPlan,
               replayMetadataBudgetBytes,
             },
-            workerProxy({ value: ({ event }) => {
+            workerProxy({
+              value: ({ event }) => {
               if (!planningAcceptingCallbacks) return;
               // Planning has no Provider collection owner. Do not forward a
               // forged host-only progress projection from that Worker boundary.
               if (Object.hasOwn(event, 'productionProviderProgress')) return;
               planningStage = event.stepId;
               publishEvent({ event });
-            } }),
-            workerProxy({ value: ({ run, replayMetadata }) => {
+            },
+            }),
+            workerProxy({
+              value: ({ run, replayMetadata }) => {
               if (!planningAcceptingCallbacks) return;
               checkpoint = replaceInvestigationCheckpointRun({
                 checkpoint,
@@ -468,8 +471,10 @@ export function createModelSupportInvestigationWorkerClient({
               });
               if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
               publishCheckpoint();
-            } }),
-            workerProxy({ value: async ({ request: input }) => {
+            },
+            }),
+            workerProxy({
+              value: async ({ request: input }) => {
               if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
               const request = freshMetadataRequestSchema.parse(input);
               if (configuration.externalNetworkPolicy !== 'allow' || !executionPlan.repositoryDownload
@@ -494,14 +499,20 @@ export function createModelSupportInvestigationWorkerClient({
               activeRuntimeAbortController = controller;
               try {
                 return await client.run({
-                  ...request, repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })), signal: controller.signal,
+                  ...request,
+                  repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })),
+                  signal: controller.signal,
                   onObservation: ({ summary }) => {
                     if (!planningAcceptingCallbacks || userInterruptionRequested) return;
                     checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: { ...checkpoint.run, freshMetadata: summary }, now });
                     const last = summary.requests.at(-1);
-                    publishEvent({ event: { stepId: 'download-evidence', status: 'running',
+                    publishEvent({
+                      event: {
+                      stepId: 'download-evidence',
+                      status: 'running',
                       detail: `Fresh metadata: ${summary.status}; ${last?.consumer ?? 'runtime-preparation'}; file=${last?.path ?? 'starting'}; response=${last?.httpStatus ?? 'pending'}; received=${summary.receivedBytes}/${summary.maximumBytes} bytes; preparation-stage=${summary.preparationStage ?? 'not-recorded'}; failure-category=${summary.failureCategory ?? 'not-recorded'}`,
-                    } });
+                    },
+                    });
                   },
                 });
               } finally {
@@ -509,9 +520,11 @@ export function createModelSupportInvestigationWorkerClient({
                 activeMetadataClients.delete(client);
                 if (activeRuntimeAbortController === controller) activeRuntimeAbortController = undefined;
               }
-            } }),
+            },
+            }),
           );
-          const planningRun = await awaitInterruptible({ operation: withPlanningTimeout({
+          const planningRun = await awaitInterruptible({
+            operation: withPlanningTimeout({
             operation,
             timeoutMs: planningTimeoutMs,
             timeoutError: () => new PlanningTimeoutError({ stage: planningStage, timeoutMs: planningTimeoutMs }),
@@ -549,7 +562,8 @@ export function createModelSupportInvestigationWorkerClient({
                 },
               });
             },
-          }) });
+          }),
+          });
           partialRun = withExecutionPolicy({ run: fromPlanningWorkerRun({ run: planningRun }) });
           planningAcceptingCallbacks = false;
         } finally {
@@ -567,18 +581,34 @@ export function createModelSupportInvestigationWorkerClient({
           // sleep or a claim that normal collection requires thirty minutes.
           const deadlines = { runMs: productionLaneTimeoutMs, collectionMs: 10_000, sealingMs: 30_000, cleanupMs: 5_000 };
           const owned = createProductionProviderInvestigation({
-            runId: partialRun.runId, modelId: partialRun.modelId, plan,
-            maximumWorkerEpochs: 8, maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, deadlines,
+            runId: partialRun.runId,
+            modelId: partialRun.modelId,
+            plan,
+            maximumWorkerEpochs: 8,
+            maximumNativeBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
+            deadlines,
             createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => createTransformersJsGenerationCaptureClient({
-              runId, workerEpoch, getActiveRequest,
-              limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144,
-                maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864,
-                maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
+              runId,
+              workerEpoch,
+              getActiveRequest,
+              limits: {
+                maxCalls: 32,
+                maxInvocationsPerCall: 8,
+                maxEvents: 4096,
+                maxTextBytes: 262144,
+                maxTensorBytes: 16777216,
+                maxTotalTensorBytes: 67108864,
+                maxTokensPerStreamEvent: 65536,
+                maxTotalStreamTokens: 262144,
+                maxTotalStreamTokenBytes: 8388608,
+              },
             }),
             createUnrecordedWorkerClient: createTransformersJsWorkerClient,
             onProgress: ({ progress }) => {
               if (providerInvestigation !== owned || disposed) return;
-              const event = { stepId: 'loading-investigation', status: 'running',
+              const event = {
+                stepId: 'loading-investigation',
+                status: 'running',
                 detail: `Public Provider collection: ${progress.phase}; settled ${progress.provider.settledRequests}/${progress.provider.selectedRequests}; active ${progress.provider.activeRequest?.scenario ?? 'none'}`,
                 productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress, deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
               } satisfies Parameters<typeof onEvent>[0]['event'];
@@ -589,14 +619,19 @@ export function createModelSupportInvestigationWorkerClient({
             },
           });
           providerInvestigation = owned;
-          publishEvent({ event: { stepId: 'loading-investigation', status: 'running',
+          publishEvent({
+            event: {
+            stepId: 'loading-investigation',
+            status: 'running',
             detail: `Public Provider collection ${plan}; maximum deadlines run=${deadlines.runMs}ms, collection=${deadlines.collectionMs}ms, sealing=${deadlines.sealingMs}ms, cleanup=${deadlines.cleanupMs}ms`,
             productionProviderProgress: validateProductionProviderInvestigationLiveProgress({ value: { progress: owned.getProgress(), deadlines }, runId: partialRun.runId, modelId: partialRun.modelId }),
-          } });
+          },
+          });
           const result = await owned.run();
           const summary = readProductionProviderInvestigationSummaryEvidence({
             ...createProductionProviderInvestigationSummaryEvidence({ summary: result.summary, runId: partialRun.runId, modelId: partialRun.modelId }),
-            runId: partialRun.runId, modelId: partialRun.modelId,
+            runId: partialRun.runId,
+            modelId: partialRun.modelId,
           });
           if (providerInvestigation !== owned) throw new Error('Investigation result owner changed');
           retainedNativeEvidence = result.nativeEvidence;
@@ -609,9 +644,12 @@ export function createModelSupportInvestigationWorkerClient({
             || summary.cleanup !== 'completed' || summary.sealOwnership !== 'settled';
           const detail = `Public Provider collection ended; ${rejected} rejected, ${unexecuted} unexecuted, ${incomplete} incomplete callback projections; native=${summary.nativeEvidenceStatus}; native recording=${result.nativeEvidence?.summary.recording ?? 'unavailable'}; cleanup=${summary.cleanup}`;
           const completedRun: ModelSupportInvestigationRun = {
-            ...partialRun, completedAt: now(), currentOperation: detail,
+            ...partialRun,
+            completedAt: now(),
+            currentOperation: detail,
             status: partialRun.status === 'failed' || failed ? 'failed' : 'passed',
-            productionProviderCapture: result.provider, productionProviderInvestigation: summary,
+            productionProviderCapture: result.provider,
+            productionProviderInvestigation: summary,
             steps: partialRun.steps.map(step => {
               switch (step.id) {
               case 'loading-investigation': return { ...step, status: failed ? 'failed' : 'passed', detail };
@@ -624,8 +662,10 @@ export function createModelSupportInvestigationWorkerClient({
             }),
           };
           const runtimeCompletion = completedRun.downloadEvidence === undefined ? undefined : providerLoadRuntimeCompletion({
-            repositoryResolvedRevision: completedRun.downloadEvidence.run.resolvedRevision, provider: completedRun.productionProviderCapture,
-            summary: completedRun.productionProviderInvestigation, nativeJson: retainedNativeEvidence?.json,
+            repositoryResolvedRevision: completedRun.downloadEvidence.run.resolvedRevision,
+            provider: completedRun.productionProviderCapture,
+            summary: completedRun.productionProviderInvestigation,
+            nativeJson: retainedNativeEvidence?.json,
           });
           if (completedRun.downloadEvidence !== undefined && runtimeCompletion !== undefined) {
             completedRun.downloadEvidence = { ...completedRun.downloadEvidence, mode: 'runtime-complete', runtimeCompletion };
@@ -633,7 +673,8 @@ export function createModelSupportInvestigationWorkerClient({
             completedRun.steps = completedRun.steps.map(step => {
               switch (step.id) {
               case 'download-evidence': return {
-                ...step, detail: `${step.detail ?? 'Bounded probe collection ended'}; ordinary Provider Load receipt=${runtimeCompletion.status}; frozen-revision identity=${identity ?? 'not-observed'}; no independent acceptance Load`,
+                ...step,
+                detail: `${step.detail ?? 'Bounded probe collection ended'}; ordinary Provider Load receipt=${runtimeCompletion.status}; frozen-revision identity=${identity ?? 'not-observed'}; no independent acceptance Load`,
               };
               case 'runtime-assets': case 'repository-information': case 'existing-model-data': case 'model-declarations':
               case 'model-file-plan': case 'loading-investigation': case 'template-behavior': case 'lane-comparison': case 'evidence-export': return step;
@@ -668,9 +709,14 @@ export function createModelSupportInvestigationWorkerClient({
           let progressDetail = '';
           const flushAcceptanceProgress = (): void => {
             const sample = progressTracker?.flush();
-            if (sample !== undefined) publishEvent({ event: {
-              stepId: 'download-evidence', status: 'running', detail: progressDetail, progress: sample,
-            } });
+            if (sample !== undefined) publishEvent({
+              event: {
+              stepId: 'download-evidence',
+              status: 'running',
+              detail: progressDetail,
+              progress: sample,
+            },
+            });
           };
           flushActiveProductionInterruptionEvidence = flushAcceptanceProgress;
           publishEvent({
@@ -717,14 +763,18 @@ export function createModelSupportInvestigationWorkerClient({
                     progressDetail = `Production cache acceptance: ${acceptancePhase}; revision=${progress.revision ?? 'unselected'}; candidate=${candidateId}; deadline=${acceptanceDeadline}`;
                     const sample = progressTracker?.observe({
                       info: progress.info ?? { status: progress.phase },
-                      at: now(), nowMs: performance.now(),
+                      at: now(),
+                      nowMs: performance.now(),
                     });
                     if (sample === undefined) return;
-                    publishEvent({ event: {
-                      stepId: 'download-evidence', status: 'running',
+                    publishEvent({
+                      event: {
+                      stepId: 'download-evidence',
+                      status: 'running',
                       detail: progressDetail,
                       progress: sample,
-                    } });
+                    },
+                    });
                   },
                   allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
                   ...(runtimeCandidateSelection === undefined ? {} : {
@@ -881,21 +931,28 @@ export function createModelSupportInvestigationWorkerClient({
                 templateBehavior,
                 candidate,
                 { generation: executionPlan.generation, capabilityProbes: executionPlan.capabilityProbes },
-                workerProxy({ value: ({ event }) => {
+                workerProxy({
+                  value: ({ event }) => {
                   if (!attemptAcceptingCallbacks) return;
                   publishEvent({ event });
-                } }),
-                workerProxy({ value: ({ event }) => {
+                },
+                }),
+                workerProxy({
+                  value: ({ event }) => {
                   if (!attemptAcceptingCallbacks) return;
                   lastStage = event.stage;
                   attemptEvents.push(event);
-                } }),
-                workerProxy({ value: ({ attempt }) => {
+                },
+                }),
+                workerProxy({
+                  value: ({ attempt }) => {
                   if (!attemptAcceptingCallbacks) return;
                   onAttemptCheckpoint({ attempt });
-                } }),
+                },
+                }),
               );
-              const result = await awaitInterruptible({ operation: withCandidateAttemptTimeout({
+              const result = await awaitInterruptible({
+                operation: withCandidateAttemptTimeout({
                 operation,
                 timeoutMs: candidateAttemptTimeoutMs,
                 timeoutError: () => new CandidateAttemptTimeoutError({
@@ -915,7 +972,8 @@ export function createModelSupportInvestigationWorkerClient({
                     },
                   });
                 },
-              }) });
+              }),
+              });
               attemptAcceptingCallbacks = false;
               return result;
             } finally {
@@ -1053,9 +1111,11 @@ export function createModelSupportInvestigationWorkerClient({
                 onObservationCheckpoint({ observation: interruptedCandidateObservation() });
               };
               try {
-                const operation = productionHandle.session.run({ operation: ({ remote }) => remote.runModelSupportInvestigationScenario(
+                const operation = productionHandle.session.run({
+                  operation: ({ remote }) => remote.runModelSupportInvestigationScenario(
                   candidateScenario,
-                  workerProxy({ value: ({ event }) => {
+                  workerProxy({
+                    value: ({ event }) => {
                     if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
                     switch (event.kind) {
                     case "model-load":
@@ -1090,14 +1150,19 @@ export function createModelSupportInvestigationWorkerClient({
                       return _ex;
                     }
                     }
-                  } }),
-                  workerProxy({ value: ({ observation }) => {
+                  },
+                  }),
+                  workerProxy({
+                    value: ({ observation }) => {
                     if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
                     latestCandidateObservation = structuredClone(observation);
                     onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
-                  } }),
-                ) });
-                const result = await awaitInterruptible({ operation: withProductionLaneTimeout({
+                  },
+                  }),
+                ),
+                });
+                const result = await awaitInterruptible({
+                  operation: withProductionLaneTimeout({
                   operation,
                   timeoutMs: productionLaneTimeoutMs,
                   timeoutError: () => new ProductionLaneTimeoutError({
@@ -1116,7 +1181,8 @@ export function createModelSupportInvestigationWorkerClient({
                       },
                     });
                   },
-                }) });
+                }),
+                });
                 productionAcceptingCallbacks = false;
                 return mergeObservation({ observation: result });
               } catch (cause) {

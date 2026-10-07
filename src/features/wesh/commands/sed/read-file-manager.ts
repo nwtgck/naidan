@@ -136,8 +136,7 @@ export function createSedReadFileManager({
       const result = iterator === undefined ? undefined : await iterator.next();
       const line = result?.done === false ? result.value : undefined;
       await writer.writeReadFile({
-        lines:
-          line === undefined
+        lines: line === undefined
             ? undefined
             : (async function* (): AsyncGenerator<SedReadFileLine> {
               yield line;

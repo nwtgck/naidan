@@ -49,7 +49,10 @@ export function formatLfm2MessagesForToolHandling({ messages, handling }: {
   const withoutReasoning = messages.map(message => {
     const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
-    return exactObject<InferenceMessage>()({ role, content, reasoning: undefined,
+    return exactObject<InferenceMessage>()({
+      role,
+      content,
+      reasoning: undefined,
       ...(tool_calls === undefined ? {} : { tool_calls }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
     });

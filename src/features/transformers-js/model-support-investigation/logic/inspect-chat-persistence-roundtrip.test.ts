@@ -20,36 +20,60 @@ describe('inspectChatPersistenceRoundTrip', () => {
     expect(result.restoredMessages.map(message => message.role)).toEqual(['system', 'user', 'assistant', 'tool', 'assistant', 'user']);
     const assistant = result.restoredMessages.find(message => message.role === 'assistant');
     expect(assistant).toEqual({
-      id: 'model-support-investigation-assistant', role: 'assistant',
+      id: 'model-support-investigation-assistant',
+      role: 'assistant',
       parts: [
-        { type: 'reasoning', text: `\
+        {
+          type: 'reasoning',
+          text: `\
   Check the forecast.
-`, completeness: 'complete' },
+`,
+          completeness: 'complete',
+        },
         { type: 'text', text: '', completeness: 'complete' },
         { type: 'text', text: '<think>preserve this exact model-visible tool-call prefix</think>', completeness: 'complete' },
-        { type: 'tool_call', toolCall: {
-          id: 'model-support-investigation-tool-call-1', type: 'function',
-          function: { name: 'lookup_weather', arguments: `\
+        {
+          type: 'tool_call',
+          toolCall: {
+          id: 'model-support-investigation-tool-call-1',
+          type: 'function',
+          function: {
+            name: 'lookup_weather',
+            arguments: `\
 {
   "city": "Tokyo",
   "unit": "C"
-}` },
-        } },
+}`,
+          },
+        },
+        },
       ],
     });
     const tool = result.restoredMessages.find(message => message.role === 'tool');
     expect(tool).toEqual({
-      id: 'model-support-investigation-tool-result', role: 'tool',
-      parts: [{ type: 'tool_result', result: {
-        toolCallId: 'model-support-investigation-tool-call-1', status: 'success',
-        content: { type: 'text', text: `\
+      id: 'model-support-investigation-tool-result',
+      role: 'tool',
+      parts: [{
+        type: 'tool_result',
+        result: {
+        toolCallId: 'model-support-investigation-tool-call-1',
+        status: 'success',
+        content: {
+          type: 'text',
+          text: `\
 {"temperatureC":20,"condition":"clear"}
-source=fixture` },
-      } }],
+source=fixture`,
+        },
+      },
+      }],
     });
-    expect(result.restoredMessages[4]?.parts).toEqual([{ type: 'text', text: `\
+    expect(result.restoredMessages[4]?.parts).toEqual([{
+      type: 'text',
+      text: `\
   Tokyo 🙂
-`, completeness: 'partial' }]);
+`,
+      completeness: 'partial',
+    }]);
   });
 
   it('produces deterministic fixed evidence without fetching or mutating a storage provider', async () => {
@@ -89,7 +113,9 @@ source=fixture` },
     });
     const result = await inspectChatPersistenceRoundTrip();
     expect(result).toMatchObject({
-      status: 'failed', fixtureId: 'parts_history_v2', method: 'chat_content_parts_json_roundtrip_v2',
+      status: 'failed',
+      fixtureId: 'parts_history_v2',
+      method: 'chat_content_parts_json_roundtrip_v2',
       error: { name: 'Error', message: 'Bearer [REDACTED]' },
     });
     expect(JSON.stringify(result)).not.toContain('secret-value');

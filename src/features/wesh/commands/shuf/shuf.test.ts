@@ -81,10 +81,13 @@ describe('wesh shuf', () => {
   it('prints help and rejects invalid options', async () => {
     const help = await execute({ script: 'shuf --help' });
     const invalid = await execute({ script: 'shuf -x' });
-    const extra = await execute({ script: 'shuf - -', stdinText: `\
+    const extra = await execute({
+      script: 'shuf - -',
+      stdinText: `\
 one
 two
-` });
+`,
+    });
 
     expect(help.stdout.text).toContain('Randomly shuffle lines');
     expect(help.stdout.text).toContain('usage: shuf [OPTION]... [FILE]');

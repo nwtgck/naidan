@@ -32,14 +32,18 @@ describe('BlockMarkdownRenderer: Streaming Update Stability', () => {
 
   it('correctly handles incomplete block tokens during stream', async () => {
     // Stage 1: Partial list
-    const wrapper = mountRenderer({ content: `\
-* item 1` });
+    const wrapper = mountRenderer({
+      content: `\
+* item 1`,
+    });
     expect(wrapper.find('li').text()).toBe('item 1');
 
     // Stage 2: Second item being typed
-    await wrapper.setProps({ content: `\
+    await wrapper.setProps({
+      content: `\
 * item 1
-* item 2` });
+* item 2`,
+    });
     await nextTick();
     const items = wrapper.findAll('li');
     expect(items.length).toBe(2);
@@ -77,11 +81,13 @@ ${'```'}
     const wrapper = mountRenderer({ content: initialCode });
 
     // Changing the code content should replace the block or its inner HTML
-    await wrapper.setProps({ content: `\
+    await wrapper.setProps({
+      content: `\
 ${'```'}js
 const a = 2;
 ${'```'}
-` });
+`,
+    });
     await nextTick();
     await flushPromises();
     await nextTick();

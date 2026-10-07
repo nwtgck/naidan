@@ -12,7 +12,8 @@ export function sparseFile({ name, header, size }: { name: string, header: Uint8
   const file = new File([header], name);
   const reads: { offset: number, length: number }[] = [];
   Object.defineProperty(file, 'size', { value: size });
-  Object.defineProperty(file, 'slice', { value: (start: number | undefined, end: number | undefined): Blob => {
+  Object.defineProperty(file, 'slice', {
+    value: (start: number | undefined, end: number | undefined): Blob => {
     const offset = start ?? 0, length = Math.min(end ?? size, size) - offset;
     if (length < 0 || length > 16 * 1024 * 1024) throw new Error('Fixture forbids whole-model reads');
     reads.push({ offset, length }); const bytes = new Uint8Array(length);
@@ -20,10 +21,13 @@ export function sparseFile({ name, header, size }: { name: string, header: Uint8
     const blob = new Blob([bytes]); ranges.set(blob, bytes.buffer);
     Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
     return blob;
-  } });
-  Object.defineProperty(file, 'arrayBuffer', { value: () => {
+  },
+  });
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => {
     throw new Error('Never materialize a complete model');
-  } });
+  },
+  });
   return { file, reads };
 }
 export function ggufFixture({ name, tensors, metadata, extraBytes }: { name: string, tensors: TensorInfo[], metadata: Record<string, string | number>, extraBytes: number }): { file: File, reads: { offset: number, length: number }[] } {

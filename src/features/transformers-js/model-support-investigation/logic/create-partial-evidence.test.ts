@@ -62,30 +62,70 @@ function nativeRecords({ runId, modelId }: { runId: string; modelId: string }) {
   const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId, now: () => '2026-09-09T00:00:00.000Z' });
   const context = { runId, workerEpoch: 1, requestId: `${runId}-first-turn`, generationCallId: 1 };
   const provider: ProductionProviderCaptureSnapshot = {
-    format: 'production-provider-capture-v2', runId, modelId, plan: 'first-only', run: { status: 'completed' },
-    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
-    requests: [{ runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined, input: {
-      messages: [{ role: 'user', content: 'Template probe user message.' }], tools: [],
+    format: 'production-provider-capture-v2',
+    runId,
+    modelId,
+    plan: 'first-only',
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
+    events: [],
+    requests: [{
+      runId,
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
+      input: {
+      messages: [{ role: 'user', content: 'Template probe user message.' }],
+      tools: [],
       parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-    }, trace: {
-      format: 'production-provider-trace-v2', requestId: context.requestId,
+    },
+      trace: {
+      format: 'production-provider-trace-v2',
+      requestId: context.requestId,
       limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
-      completeness: 'complete', failure: undefined, events: [], lateEvents: [], retainedCharacters: 0,
+      completeness: 'complete',
+      failure: undefined,
+      events: [],
+      lateEvents: [],
+      retainedCharacters: 0,
       settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
-    } }],
+    },
+    }],
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
   checkpoint.run.productionProviderCapture = provider;
   const native: ProductionProviderNativeCollectionSnapshot = {
-    format: 'production-provider-native-collection-v1', runId, maximumWorkerEpochs: 8, phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [],
-    epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
-      collection: { status: 'returned', result: { status: 'captured', capture: {
-        schemaVersion: 1, runId, workerEpoch: 1, byteOrder: 'little-endian',
+    format: 'production-provider-native-collection-v1',
+    runId,
+    maximumWorkerEpochs: 8,
+    phase: 'finished',
+    unrecordedWorkerCreations: 0,
+    incompleteReasons: [],
+    epochs: [{
+      workerEpoch: 1,
+      lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: {
+        status: 'returned',
+        result: {
+        status: 'captured',
+        capture: {
+        schemaVersion: 1,
+        runId,
+        workerEpoch: 1,
+        byteOrder: 'little-endian',
         limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
         calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
         events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      } } } }],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
+      },
+      },
+    }],
   };
   return { ...checkpoint, native };
 }
@@ -102,10 +142,15 @@ describe('native sidecars in generated Evidence ZIPs', () => {
       const collection = item.native.epochs[0]!.collection;
       if (collection.status !== 'returned' || collection.result.status !== 'captured') throw new Error('Expected native fixture');
       const capture = collection.result.capture;
-      capture.events.push({ kind: 'inputs', identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 }, phase: 'native-kwargs', values: [
+      capture.events.push({
+        kind: 'inputs',
+        identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 },
+        phase: 'native-kwargs',
+        values: [
         { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[index + 1, index + 2]] } },
         { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512]] } },
-      ] });
+      ],
+      });
       return { target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, nativeEvidence: await savedNativeEvidence({ run: item.run, native: item.native }), error: undefined };
     }));
     const verifyInner = vi.spyOn(archiveVerifier, 'verifyGeneratedEvidenceFiles');
@@ -133,9 +178,13 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     vi.stubGlobal('Worker', vi.fn(() => {
       throw new Error('Export must not create a Worker or call Load/RPC');
     }));
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(() => {
+    vi.stubGlobal('navigator', {
+      storage: {
+      getDirectory: vi.fn(() => {
       throw new Error('Export must not access OPFS');
-    }) } });
+    }),
+    },
+    });
   });
   afterEach(() => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -166,9 +215,15 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     vi.spyOn(evidenceArchive, 'openEvidenceArchive').mockImplementation(async input => {
       const opened = await open(input);
       close.mockImplementation(opened.close);
-      return { reader: { paths: opened.reader.paths, async read() {
+      return {
+        reader: {
+        paths: opened.reader.paths,
+        async read() {
         throw failure;
-      } }, close };
+      },
+      },
+        close,
+      };
     });
     await expect(createBatchModelSupportEvidence({ batchId: 'reader-close', items: [{ target: item.run.modelId, status: 'passed', run: item.run, recovery: item.recovery, error: undefined }] })).rejects.toBe(failure);
     expect(close).toHaveBeenCalledTimes(1);
@@ -308,7 +363,8 @@ describe('native sidecars in generated Evidence ZIPs', () => {
       { target: two.run.modelId, status: 'passed' as const, run: two.run, recovery: two.recovery, nativeEvidence: second, error: undefined },
     ];
     const measure = nativeEvidence.measureProductionProviderNativeEvidenceSidecar;
-    vi.spyOn(nativeEvidence, 'measureProductionProviderNativeEvidenceSidecar').mockImplementation(input => ({ ...measure(input),
+    vi.spyOn(nativeEvidence, 'measureProductionProviderNativeEvidenceSidecar').mockImplementation(input => ({
+      ...measure(input),
       // Model the capacity of the replacement without allocating a huge JSON document.
       ...(input.evidence === replacement ? { jsonCharacters: 64 * 1024 * 1024 } : {}),
     }));
@@ -344,10 +400,14 @@ describe("createPartialModelSupportEvidence", () => {
 
   it('exports Provider capture once with a typed run reference and verified archive manifest', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/provider', runId: 'zip-provider', now: () => '2026-09-09T00:00:00.000Z' });
-    const owner = createProductionProviderCaptureOwner({ runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only',
+    const owner = createProductionProviderCaptureOwner({
+      runId: checkpoint.run.runId,
+      modelId: checkpoint.run.modelId,
+      plan: 'first-only',
       createWorkerClient: () => {
         throw new Error('Not-started export must not create a Worker');
-      }, traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
+      },
+      traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
     try {
       checkpoint.run.productionProviderCapture = owner.snapshot();
@@ -374,10 +434,14 @@ describe("createPartialModelSupportEvidence", () => {
 
   it('rejects a raw capture carrying extra private fields instead of copying it into run.json', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/provider', runId: 'zip-private', now: () => '2026-09-09T00:00:00.000Z' });
-    const owner = createProductionProviderCaptureOwner({ runId: checkpoint.run.runId, modelId: checkpoint.run.modelId, plan: 'first-only',
+    const owner = createProductionProviderCaptureOwner({
+      runId: checkpoint.run.runId,
+      modelId: checkpoint.run.modelId,
+      plan: 'first-only',
       createWorkerClient: () => {
         throw new Error('Export must not create a Worker');
-      }, traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
+      },
+      traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
     try {
       const capture = { ...owner.snapshot(), privatePath: '/private/not-for-export' };
@@ -391,12 +455,23 @@ describe("createPartialModelSupportEvidence", () => {
   it('summarizes nested failures and selected blocked work independently of a passed collection boundary', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/nested', runId: 'nested', now: () => '2026-09-09T00:00:00.000Z' });
     checkpoint.run.status = 'passed';
-    checkpoint.run.productionLane = { status: 'passed', observation: undefined, error: undefined, partialObservation: {
-      modelId: 'org/nested', resolvedRevision: 'a'.repeat(40), candidate: undefined, route: undefined, isEncoderDecoder: undefined,
+    checkpoint.run.productionLane = {
+      status: 'passed',
+      observation: undefined,
+      error: undefined,
+      partialObservation: {
+      modelId: 'org/nested',
+      resolvedRevision: 'a'.repeat(40),
+      candidate: undefined,
+      route: undefined,
+      isEncoderDecoder: undefined,
       firstTurn: { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } },
       continuity: { status: 'not-run', reason: 'First turn did not generate' },
-      toolResultContinuation: undefined, reasoning: undefined, multimodal: undefined,
-    } };
+      toolResultContinuation: undefined,
+      reasoning: undefined,
+      multimodal: undefined,
+    },
+    };
     const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: { ...checkpoint.recovery, status: 'completed' } });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
     const summary = await archive.file('SUMMARY.md')!.async('string');
@@ -410,12 +485,21 @@ describe("createPartialModelSupportEvidence", () => {
 
   it('exports a failed preparation stage separately from successful HTTP responses', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'preparation-failure', now: () => '2026-09-09T00:00:00.000Z' });
-    const run: ModelSupportInvestigationRun = { ...checkpoint.run, freshMetadata: {
-      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
-      status: 'failed', maximumBytes: 1024, receivedBytes: 2,
-      preparationStage: 'configuration', failureCategory: 'syntax-error',
+    const run: ModelSupportInvestigationRun = {
+      ...checkpoint.run,
+      freshMetadata: {
+      schemaVersion: 1,
+      modelId: 'org/model',
+      revision: 'a'.repeat(40),
+      source: 'fresh-network-memory',
+      status: 'failed',
+      maximumBytes: 1024,
+      receivedBytes: 2,
+      preparationStage: 'configuration',
+      failureCategory: 'syntax-error',
       requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', httpStatus: 200, status: 'complete', receivedBytes: 2 }],
-    } };
+    },
+    };
     const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
     expect(JSON.parse(await archive.file('download-lane/fresh-metadata.json')!.async('string'))).toEqual(run.freshMetadata);
@@ -427,12 +511,20 @@ describe("createPartialModelSupportEvidence", () => {
 
   it('exports fresh HTTP preparation separately without certifying full Download or Load', async () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'fresh-metadata-export', now: () => '2026-09-09T00:00:00.000Z' });
-    const run: ModelSupportInvestigationRun = { ...checkpoint.run, freshMetadata: {
-      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
-      status: 'prepared', maximumBytes: 1024, receivedBytes: 1,
+    const run: ModelSupportInvestigationRun = {
+      ...checkpoint.run,
+      freshMetadata: {
+      schemaVersion: 1,
+      modelId: 'org/model',
+      revision: 'a'.repeat(40),
+      source: 'fresh-network-memory',
+      status: 'prepared',
+      maximumBytes: 1024,
+      receivedBytes: 1,
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: { 'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] } } },
       requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'size-probe', httpStatus: 206, contentRange: 'bytes 0-0/100', status: 'cancelled', receivedBytes: 1 }],
-    } };
+    },
+    };
     const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
     const preparation = archive.file('download-lane/fresh-metadata.json');
@@ -727,7 +819,8 @@ describe("createPartialModelSupportEvidence", () => {
     expect(archive.file("model-files/plans.json")).not.toBeNull();
     expect(archive.file("continuity/persistence-roundtrip.json")).not.toBeNull();
     expect(JSON.parse(await archive.file("continuity/persistence-roundtrip.json")!.async("text"))).toMatchObject({
-      status: 'observed', exactModelVisibleMatch: true,
+      status: 'observed',
+      exactModelVisibleMatch: true,
     });
     expect(parsed.steps[1].status).toBe("not-run");
     expect(archive.file("load-attempts/index.json")).toBeNull();
@@ -986,11 +1079,15 @@ describe("createPartialModelSupportEvidence", () => {
       productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
       laneComparison: undefined,
       persistenceRoundTrip: {
-        status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-        serializedByteLength: 128, serializedSha256: "b".repeat(64),
+        status: "observed",
+        fixtureId: "tool-call-history-v1",
+        method: "chat-content-dto-json-roundtrip-v1",
+        serializedByteLength: 128,
+        serializedSha256: "b".repeat(64),
         originalMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
         restoredMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
-        exactModelVisibleMatch: true, firstMismatchIndex: undefined,
+        exactModelVisibleMatch: true,
+        firstMismatchIndex: undefined,
       },
       error: undefined,
     };
@@ -1341,17 +1438,37 @@ describe("createPartialModelSupportEvidence", () => {
             disabledEffort: "none",
             enabledEffort: "high",
             disabledTurn: {
-              messages: [], inputKeys: ["input_ids"], inputTensors: [], inputTokenIds: [70, 0], fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" }, cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" }, pastKeyValuesProvided: false,
+              messages: [],
+              inputKeys: ["input_ids"],
+              inputTensors: [],
+              inputTokenIds: [70, 0],
+              fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" },
+              cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" },
+              pastKeyValuesProvided: false,
               inputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
               outputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
-              generatedSequenceTokenIds: [70, 0, 80], generatedTokenIds: [80], generatedText: "none", streamChunks: ["none"], toolCalls: [],
+              generatedSequenceTokenIds: [70, 0, 80],
+              generatedTokenIds: [80],
+              generatedText: "none",
+              streamChunks: ["none"],
+              toolCalls: [],
               effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
             },
             enabledTurn: {
-              messages: [], inputKeys: ["input_ids"], inputTensors: [], inputTokenIds: [70, 1], fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" }, cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" }, pastKeyValuesProvided: false,
+              messages: [],
+              inputKeys: ["input_ids"],
+              inputTensors: [],
+              inputTokenIds: [70, 1],
+              fullConversationInput: { status: "unavailable", reason: "test fixture does not observe reconstructed full conversation input" },
+              cacheDecision: { status: "unavailable", reason: "test fixture does not observe cache decision" },
+              pastKeyValuesProvided: false,
               inputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
               outputPastKeyValuesSummary: { kind: "nullish", valueType: "undefined", constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
-              generatedSequenceTokenIds: [70, 1, 81], generatedTokenIds: [81], generatedText: "high", streamChunks: ["high"], toolCalls: [],
+              generatedSequenceTokenIds: [70, 1, 81],
+              generatedTokenIds: [81],
+              generatedText: "high",
+              streamChunks: ["high"],
+              toolCalls: [],
               effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
             },
             inputTokenExactMatch: false,

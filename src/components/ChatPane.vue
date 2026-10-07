@@ -158,7 +158,8 @@ const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
 const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
 const modelRecovery = useMissingLlamaCppBrowserModel({
-  chat, resolved: computed(() => resolvedSettings.value ?? undefined),
+  chat,
+  resolved: computed(() => resolvedSettings.value ?? undefined),
   enabled: computed(() => !modelLaunch.visible.value || (chat.value?.root.items.length ?? 0) > 0),
 });
 const inheritedSettings = chatPaneState.inheritedSettings;
@@ -427,8 +428,12 @@ async function exportChat() {
   const resultLabel = await ensureStrings.ChatPane__result();
   const processSequenceLabel = await ensureStrings.ChatPane__process_sequence();
   try {
-    await downloadStream({ filename: `${snapshot.title || 'new_chat'}.txt`, size: undefined, signal: undefined,
-      openStream: async () => createTextExportStream({ produce: async ({ write }) => {
+    await downloadStream({
+      filename: `${snapshot.title || 'new_chat'}.txt`,
+      size: undefined,
+      signal: undefined,
+      openStream: async () => createTextExportStream({
+        produce: async ({ write }) => {
         await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
 
         const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
@@ -563,7 +568,8 @@ async function exportChat() {
         };
 
         await processFlowItems({ items: flow });
-      } }),
+      },
+      }),
     });
   } catch (error) {
     addToast({ message: error instanceof Error ? error.message : String(error), duration: 5000 });
@@ -601,13 +607,15 @@ async function openChatFileExplorer() {
     naidanSysfsAccessScope: chatAreaNaidanSysfsAccessScope.value,
   });
 
-  openFileExplorer({ options: {
+  openFileExplorer({
+    options: {
     kind: 'wesh-mounts',
     title: await ensureStrings.fileExplorer__files(),
     rootName: await ensureStrings.fileExplorer__files(),
     mounts,
     initialPath: undefined,
-  } });
+  },
+  });
 }
 
 async function handlePrint(): Promise<void> {
@@ -755,7 +763,9 @@ watch(
 );
 
 // Expose for testing and current chat pane forwarding.
-defineExpose({ scrollToBottom, container,
+defineExpose({
+  scrollToBottom,
+  container,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

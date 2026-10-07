@@ -16,10 +16,14 @@ describe('message parts', () => {
       parts: [
         { type: 'reasoning', text: '  Reason\n', completeness: 'complete' },
         { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
-        { type: 'tool_call', toolCall: {
-          id: toToolCallId({ raw: 'call-1' }), type: 'function',
+        {
+          type: 'tool_call',
+          toolCall: {
+          id: toToolCallId({ raw: 'call-1' }),
+          type: 'function',
           function: { name: 'calculator', arguments: ' { "expression": "1 + 1" } ' },
-        } },
+        },
+        },
       ],
       interruption: { type: 'cancelled' },
       replies: { items: [] },

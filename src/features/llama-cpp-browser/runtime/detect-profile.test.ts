@@ -9,9 +9,12 @@ function browser({ memory64, jspi, adapter }: { memory64: boolean, jspi: boolean
     if (adapter === 'missing') return undefined;
     return { features: new Set(adapter === 'ready' ? ['shader-f16'] : []) };
   });
-  vi.stubGlobal('navigator', { gpu: { requestAdapter }, get userAgent() {
+  vi.stubGlobal('navigator', {
+    gpu: { requestAdapter },
+    get userAgent() {
     throw new Error('Profile selection must use feature detection');
-  } });
+  },
+  });
   return { requestAdapter, validate };
 }
 afterEach(() => vi.unstubAllGlobals());

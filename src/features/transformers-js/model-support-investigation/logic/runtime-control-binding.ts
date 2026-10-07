@@ -71,7 +71,8 @@ export async function withVerifiedRuntimeControl<T>({
       // The existing preflight already records selected assets. Retain only
       // equality here: arbitrary configured URLs may contain credentials.
       const observation = runtimeControlBindingSchema.parse({
-        format: 'runtime-control-binding-v1', executionProvider,
+        format: 'runtime-control-binding-v1',
+        executionProvider,
         constructorModule: 'onnxruntime-web/webgpu',
         environmentMatchesConfigured: configuredEnvironment === controlEnvironment,
         mjs: {

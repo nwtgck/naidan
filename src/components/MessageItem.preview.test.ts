@@ -118,9 +118,13 @@ describe('MessageItem.vue Preview Integration', () => {
       id: toMessageId({ raw: 'msg-2' }),
       role: 'assistant',
       replies: { items: [] },
-      parts: [...([{ type: 'text' as const, text: `Here is your image:\n\n\`\`\`naidan_experimental_image
+      parts: [...([{
+        type: 'text' as const,
+        text: `Here is your image:\n\n\`\`\`naidan_experimental_image
 {"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
-\`\`\``, completeness: 'complete' as const }])],
+\`\`\``,
+        completeness: 'complete' as const,
+      }])],
       createdAt: 2000,
       modelId: undefined,
       lmParameters: undefined,

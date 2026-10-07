@@ -52,26 +52,44 @@ export function imageGenerationSessionToDomain({ dto }: { dto: ExperimentalImage
 
 export function imageGenerationRunToDto({ run }: { run: ImageGenerationRun }): ExperimentalImageGenerationRunDto {
   const { id, sessionId, request, sources, ...metadata } = run;
-  return exactObject<ExperimentalImageGenerationRunDto>()({ ...metadata, id: idToRaw({ id }), sessionId: idToRaw({ id: sessionId }), request: imageGenerationRequestToDto({ request }),
+  return exactObject<ExperimentalImageGenerationRunDto>()({
+    ...metadata,
+    id: idToRaw({ id }),
+    sessionId: idToRaw({ id: sessionId }),
+    request: imageGenerationRequestToDto({ request }),
     sources: sources.map(({ sessionId, assetId, ...source }) => ({ ...source, sessionId: idToRaw({ id: sessionId }), assetId: idToRaw({ id: assetId }) })),
   });
 }
 export function imageGenerationRunToDomain({ dto }: { dto: ExperimentalImageGenerationRunDto }): ImageGenerationRun {
   const { id, sessionId, request, sources, ...metadata } = dto;
-  return exactObject<ImageGenerationRun>()({ ...metadata, id: toImageGenerationRunId({ raw: id }), sessionId: toImageGenerationSessionId({ raw: sessionId }), request: imageGenerationRequestToDomain({ request }),
+  return exactObject<ImageGenerationRun>()({
+    ...metadata,
+    id: toImageGenerationRunId({ raw: id }),
+    sessionId: toImageGenerationSessionId({ raw: sessionId }),
+    request: imageGenerationRequestToDomain({ request }),
     sources: sources.map(({ sessionId, assetId, ...source }) => ({ ...source, sessionId: toImageGenerationSessionId({ raw: sessionId }), assetId: toImageGenerationAssetId({ raw: assetId }) })),
   });
 }
 export function imageGenerationAssetToDto({ asset }: { asset: ImageGenerationAsset }): ExperimentalImageGenerationAssetDto {
   const { id, sessionId, runId, result, previews, ...metadata } = asset;
-  return exactObject<ExperimentalImageGenerationAssetDto>()({ ...metadata, id: idToRaw({ id }), sessionId: idToRaw({ id: sessionId }), runId: idToRaw({ id: runId }),
-    result: { ...result, binaryObjectId: idToRaw({ id: result.binaryObjectId }) }, previews: previews.map(preview => ({ ...preview, binaryObjectId: idToRaw({ id: preview.binaryObjectId }) })),
+  return exactObject<ExperimentalImageGenerationAssetDto>()({
+    ...metadata,
+    id: idToRaw({ id }),
+    sessionId: idToRaw({ id: sessionId }),
+    runId: idToRaw({ id: runId }),
+    result: { ...result, binaryObjectId: idToRaw({ id: result.binaryObjectId }) },
+    previews: previews.map(preview => ({ ...preview, binaryObjectId: idToRaw({ id: preview.binaryObjectId }) })),
   });
 }
 export function imageGenerationAssetToDomain({ dto }: { dto: ExperimentalImageGenerationAssetDto }): ImageGenerationAsset {
   const { id, sessionId, runId, result, previews, ...metadata } = dto;
-  return exactObject<ImageGenerationAsset>()({ ...metadata, id: toImageGenerationAssetId({ raw: id }), sessionId: toImageGenerationSessionId({ raw: sessionId }), runId: toImageGenerationRunId({ raw: runId }),
-    result: { ...result, binaryObjectId: toBinaryObjectId({ raw: result.binaryObjectId }) }, previews: previews.map(preview => ({ ...preview, binaryObjectId: toBinaryObjectId({ raw: preview.binaryObjectId }) })),
+  return exactObject<ImageGenerationAsset>()({
+    ...metadata,
+    id: toImageGenerationAssetId({ raw: id }),
+    sessionId: toImageGenerationSessionId({ raw: sessionId }),
+    runId: toImageGenerationRunId({ raw: runId }),
+    result: { ...result, binaryObjectId: toBinaryObjectId({ raw: result.binaryObjectId }) },
+    previews: previews.map(preview => ({ ...preview, binaryObjectId: toBinaryObjectId({ raw: preview.binaryObjectId }) })),
   });
 }
 export function imageGenerationTagReferenceToDto({ tag }: { tag: ImageGenerationTagReference }): ExperimentalImageGenerationTagReferenceDto {
@@ -90,7 +108,10 @@ export function imageGenerationTagReferenceToDomain({ dto }: { dto: Experimental
 }
 export function imageGenerationAnnotationsToDomain({ dto }: { dto: ExperimentalImageGenerationAssetAnnotationsDto }): ImageGenerationAssetAnnotations {
   const { assetId, sessionId, tags, ...metadata } = dto;
-  return exactObject<ImageGenerationAssetAnnotations>()({ ...metadata, assetId: toImageGenerationAssetId({ raw: assetId }), sessionId: toImageGenerationSessionId({ raw: sessionId }),
+  return exactObject<ImageGenerationAssetAnnotations>()({
+    ...metadata,
+    assetId: toImageGenerationAssetId({ raw: assetId }),
+    sessionId: toImageGenerationSessionId({ raw: sessionId }),
     tags: tags.map(({ tag, ...assignment }) => ({ ...assignment, tag: imageGenerationTagReferenceToDomain({ dto: tag }) })),
   });
 }

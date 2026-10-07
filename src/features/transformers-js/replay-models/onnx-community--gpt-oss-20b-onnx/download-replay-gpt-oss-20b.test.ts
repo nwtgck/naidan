@@ -11,7 +11,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'onnx-community/gpt-oss-20b-ONNX', revision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
+    phase: 'load',
+    modelId: 'onnx-community/gpt-oss-20b-ONNX',
+    revision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
     corePath: 'onnx/model_q4f16.onnx',
     externalData: [
       { path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' },

@@ -9,14 +9,24 @@ export function createEvidenceStreamRequest({ input }: { input: EvidenceStreamIn
   case 'partial': {
     const { kind, run, recovery, replayMetadata, nativeEvidence, ordinaryDownloadTiming, ...unhandled } = input;
     unhandled satisfies Record<PropertyKey, never>;
-    return { kind, request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), replayMetadata, nativeEvidence,
-      ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-run', runId: run.runId } }) };
+    return {
+      kind,
+      request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
+      replayMetadata,
+      nativeEvidence,
+      ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-run', runId: run.runId } }),
+    };
   }
   case 'batch': {
     const { kind, batchId, items, ordinaryDownloadTiming, ...unhandled } = input;
     unhandled satisfies Record<PropertyKey, never>;
-    return { kind, request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId, items }), replayMetadata: items.map(item => item.replayMetadata), nativeEvidence: items.map(item => item.nativeEvidence),
-      ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-batch', batchId } }) };
+    return {
+      kind,
+      request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId, items }),
+      replayMetadata: items.map(item => item.replayMetadata),
+      nativeEvidence: items.map(item => item.nativeEvidence),
+      ordinaryDownloadTiming: ordinaryDownloadTiming === undefined ? undefined : createOrdinaryDownloadTimingEvidenceFile({ snapshot: ordinaryDownloadTiming, association: { kind: 'investigation-batch', batchId } }),
+    };
   }
   case 'download-verification': {
     const { kind, evidence, ...unhandled } = input;

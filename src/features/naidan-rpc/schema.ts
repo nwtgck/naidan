@@ -74,9 +74,12 @@ export function compile({ schema, capabilitiesAllowed, callbacksAllowed }: {
         return { schema, node: { kind: 'finite' } };
       }
       // Zod's instanceof(Uint8Array) is intentionally custom. Its result is still checked by the finite codec.
-      check({ condition: schema instanceof z.ZodString || schema instanceof z.ZodNumber || schema instanceof z.ZodBoolean ||
+      check({
+        condition: schema instanceof z.ZodString || schema instanceof z.ZodNumber || schema instanceof z.ZodBoolean ||
         schema instanceof z.ZodUndefined || schema instanceof z.ZodVoid || schema instanceof z.ZodLiteral ||
-        schema instanceof z.ZodEnum || schema instanceof z.ZodCustom, code: 'INVALID_ARGUMENT' });
+        schema instanceof z.ZodEnum || schema instanceof z.ZodCustom,
+        code: 'INVALID_ARGUMENT',
+      });
       return { schema, node: { kind: 'finite' } };
     } finally {
       seen.delete(schema);

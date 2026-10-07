@@ -9,9 +9,11 @@ import { requestRpcStop, rpcStopStatus, subscribeRpcState } from '@/features/nai
 const { settings, updateExperimental } = useSettings();
 const pending = ref(false), failed = ref('');
 const stopStatus = ref(rpcStopStatus());
-onScopeDispose(subscribeRpcState({ listener: () => {
+onScopeDispose(subscribeRpcState({
+  listener: () => {
   stopStatus.value = rpcStopStatus();
-} }));
+},
+}));
 const stopMessage = computed(() => {
   const value = stopStatus.value;
   switch (value) {

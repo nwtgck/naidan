@@ -137,10 +137,15 @@ describe('Transformers.js service runtime serialization', () => {
       await entered.promise;
       const body = { type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
       const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [body] }];
-      const parameters: LmParameters = { ...EMPTY_LM_PARAMETERS,
-        temperature: 0.25, topP: undefined, maxCompletionTokens: undefined,
-        presencePenalty: undefined, frequencyPenalty: undefined,
-        reasoning: { effort: undefined }, stop: ['accepted-stop'],
+      const parameters: LmParameters = {
+        ...EMPTY_LM_PARAMETERS,
+        temperature: 0.25,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        reasoning: { effort: undefined },
+        stop: ['accepted-stop'],
       };
       const second = new AbortController();
       operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages, parameters, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: second.signal }), abortController: second }));
@@ -169,10 +174,15 @@ describe('Transformers.js service runtime serialization', () => {
       operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
       await entered.promise;
       const messages: InferenceMessage[] = [{ role: 'user', content: 'Accepted input.' }];
-      const params: LmParameters = { ...EMPTY_LM_PARAMETERS,
-        temperature: 0.25, stop: ['accepted-stop'], topP: undefined,
-        maxCompletionTokens: undefined, presencePenalty: undefined,
-        frequencyPenalty: undefined, reasoning: { effort: undefined },
+      const params: LmParameters = {
+        ...EMPTY_LM_PARAMETERS,
+        temperature: 0.25,
+        stop: ['accepted-stop'],
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        reasoning: { effort: undefined },
       };
       operations.push(owner.service.generateText({ messages, params, onChunk: vi.fn(), onToolCalls: vi.fn() }));
       messages[0]!.content = 'Changed after admission.';

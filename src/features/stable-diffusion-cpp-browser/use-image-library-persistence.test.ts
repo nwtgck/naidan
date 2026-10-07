@@ -18,15 +18,28 @@ let root: MemoryDirectory;
 const scopes: ReturnType<typeof effectScope>[] = [];
 function library() {
   const scope = effectScope(); scopes.push(scope);
-  return scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }), list: listImageRepositories, scan: scanImageRepositories, import: importImageRepository,
-  } }))!;
+  return scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+    download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }),
+    list: listImageRepositories,
+    scan: scanImageRepositories,
+    import: importImageRepository,
+  },
+  }))!;
 }
 beforeEach(() => {
   root = new MemoryDirectory('root'); calls.fetch.mockReset();
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+    request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
     options.signal?.throwIfAborted(); return run();
-  } } });
+  },
+  },
+  });
 });
 afterEach(() => {
   scopes.splice(0).forEach(scope => scope.stop()); vi.unstubAllGlobals();
@@ -39,10 +52,20 @@ async function serve({ layers, failLast }: { layers: number, failLast: boolean }
     const meta = request.url.includes('/api/');
     const status = failLast && !meta && file.role === 'lm' ? 403 : 200;
     const bytes = meta ? new TextEncoder().encode(JSON.stringify([{ type: 'file', path: file.path, size: payload.length, lfs: { size: payload.length, oid: createHash('sha256').update(payload).digest('hex') } }])) : payload;
-    return { url: request.url, status, statusText: '', ok: status === 200, redirected: false, responseType: 'basic', headers: new Headers(), policyName: 'huggingface_models',
-      body: new ReadableStream({ start(controller) {
+    return {
+      url: request.url,
+      status,
+      statusText: '',
+      ok: status === 200,
+      redirected: false,
+      responseType: 'basic',
+      headers: new Headers(),
+      policyName: 'huggingface_models',
+      body: new ReadableStream({
+        start(controller) {
         controller.enqueue(bytes); controller.close();
-      } }),
+      },
+      }),
     };
   });
 }

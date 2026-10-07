@@ -110,8 +110,13 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
   case 'reserved': {
     const reserved = await provider.loadChatGroup({ id: launch.chatGroupId });
     chatGroup = reserved ?? {
-      id: launch.chatGroupId, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
-      endpoint: { type: 'llama_cpp_browser' }, modelId: launch.target.modelId,
+      id: launch.chatGroupId,
+      name: chatGroupName,
+      isCollapsed: false,
+      items: [],
+      updatedAt: Date.now(),
+      endpoint: { type: 'llama_cpp_browser' },
+      modelId: launch.target.modelId,
       titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reserved === null;
@@ -145,8 +150,13 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     const id = primary == null ? primaryId : toChatGroupId({ raw: `${prefix}-${idToRaw({ id: newChatGroupId })}` });
     if (reusable === undefined && primary != null && await provider.loadChatGroup({ id }) !== null) throw new Error('The model chat group ID is already in use');
     chatGroup = reusable ?? {
-      id, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
-      endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId,
+      id,
+      name: chatGroupName,
+      isCollapsed: false,
+      items: [],
+      updatedAt: Date.now(),
+      endpoint: { type: 'llama_cpp_browser' },
+      modelId: target.modelId,
       titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reusable === undefined;

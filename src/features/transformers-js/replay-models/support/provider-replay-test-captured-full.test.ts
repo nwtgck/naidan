@@ -18,9 +18,15 @@ describe('reviewed public contracts remain separate from immutable capture', () 
   it('detaches an explicit finalized-stream correction and leaves all recorded native facts unchanged', () => {
     const before = structuredClone(evidence);
     const expectedFinalized = [{ text: 'literal', streamEnd: true }];
-    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      correctedEvents: [], invalidatedOutputs: [], correctedFinalizedStreams: [{ ...finalizedCorrection, expectedFinalized }],
-    } });
+    const result = TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      correctedEvents: [],
+      invalidatedOutputs: [],
+      correctedFinalizedStreams: [{ ...finalizedCorrection, expectedFinalized }],
+    },
+    });
     expectedFinalized[0]!.text = 'mutated';
     expect(result.correctedFinalizedStreams.get(1)).toEqual([{ text: 'literal', streamEnd: true }]);
     expect(evidence).toEqual(before);
@@ -32,9 +38,15 @@ describe('reviewed public contracts remain separate from immutable capture', () 
     { name: 'wrong finalized scenario', corrections: [{ ...finalizedCorrection, scenario: 'system-user' as const }], error: 'one replayable' },
     { name: 'missing finalized rationale', corrections: [{ ...finalizedCorrection, reason: '' }], error: 'reason' },
   ])('rejects $name', ({ corrections, error }) => {
-    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      correctedEvents: [], invalidatedOutputs: [], correctedFinalizedStreams: corrections,
-    } })).toThrow(error);
+    expect(() => TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      correctedEvents: [],
+      invalidatedOutputs: [],
+      correctedFinalizedStreams: corrections,
+    },
+    })).toThrow(error);
   });
   it('rejects missing or repeated use of a reviewed finalized stream', () => {
     expect(() => TEST_ONLY.verifyFinalizedCorrectionsUsed({ expected: [1], used: [] })).toThrow('used exactly once');
@@ -44,9 +56,14 @@ describe('reviewed public contracts remain separate from immutable capture', () 
   it('detaches explicit corrected events without modifying the captured source', () => {
     const before = structuredClone(evidence);
     const expectedEvents = [{ kind: 'assistant-start' }];
-    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      correctedEvents: [{ ...correction, expectedEvents }], invalidatedOutputs: [],
-    } });
+    const result = TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      correctedEvents: [{ ...correction, expectedEvents }],
+      invalidatedOutputs: [],
+    },
+    });
     expectedEvents.push({ kind: 'mutation' });
     expect(result.correctedEvents.get('first-turn')).toEqual([{ kind: 'assistant-start' }]);
     expect(result.gaps).toEqual([]);
@@ -73,16 +90,27 @@ describe('reviewed public contracts remain separate from immutable capture', () 
   });
   it('rejects unchanged public input as a waiver for still-applicable recorded output', () => {
     const original = evidence.requests.find(request => request.scenario === 'first-turn')!;
-    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      correctedEvents: [], invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
-    } })).toThrow('changed public input');
+    expect(() => TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      correctedEvents: [],
+      invalidatedOutputs: [{ ...invalidated, requestInput: structuredClone(original.input) }],
+    },
+    })).toThrow('changed public input');
   });
   it('keeps current pre-native rejection separate from historical fulfillment and native output', () => {
     const before = structuredClone(evidence);
-    const result = TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [],
+    const result = TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] },
+      correctedEvents: [],
+      invalidatedOutputs: [],
       preNativeRejections: [{ scenario: 'natural-tool-minimal', reason: 'No reviewed structured tool adapter' }],
-    } });
+    },
+    });
     expect([...result.preNativeRejections]).toEqual(['natural-tool-minimal']);
     expect(result.gaps).toEqual([]);
     expect(result.correctedEvents.size).toBe(0);
@@ -94,18 +122,38 @@ describe('reviewed public contracts remain separate from immutable capture', () 
     { name: 'duplicate rejection', rejections: [{ scenario: 'image' as const, reason: 'Image' }, { scenario: 'image' as const, reason: 'Image' }], error: 'Duplicate' },
     { name: 'unrecorded rejection', rejections: [{ scenario: 'missing' as never, reason: 'Missing' }], error: 'one recorded request' },
   ])('rejects $name', ({ rejections, error }) => {
-    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections: rejections,
-    } })).toThrow(error);
+    expect(() => TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] },
+      correctedEvents: [],
+      invalidatedOutputs: [],
+      preNativeRejections: rejections,
+    },
+    })).toThrow(error);
   });
   it('cannot use a native output gap or an unmigrated observation contract as a pre-native rejection', () => {
     const preNativeRejections = [{ scenario: 'first-turn' as const, reason: 'Explicit rejection' }];
-    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [], reviewedPublicContract: {
-      correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
-    } })).toThrow('structured parts');
-    expect(() => TEST_ONLY.validateReviewedProviderContract({ evidence, originalGaps: [invalidated], reviewedPublicContract: {
-      singleTextParts: { endTokenIds: ['2'] }, correctedEvents: [], invalidatedOutputs: [], preNativeRejections,
-    } })).toThrow('conflicting');
+    expect(() => TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [],
+      reviewedPublicContract: {
+      correctedEvents: [],
+      invalidatedOutputs: [],
+      preNativeRejections,
+    },
+    })).toThrow('structured parts');
+    expect(() => TEST_ONLY.validateReviewedProviderContract({
+      evidence,
+      originalGaps: [invalidated],
+      reviewedPublicContract: {
+      singleTextParts: { endTokenIds: ['2'] },
+      correctedEvents: [],
+      invalidatedOutputs: [],
+      preNativeRejections,
+    },
+    })).toThrow('conflicting');
   });
 });
 
@@ -150,8 +198,14 @@ describe('captured Full native inference gate', () => {
     expect(() => verifyCapturedProviderPrefix({ events: [], expected: imageStart })).toThrow('all callbacks before evidence gap');
   });
   it('rejects a missing metadata row before starting the native runtime', async () => {
-    await expect(verifyCapturedFullReplay({ reviewedPublicContract: undefined, evidence: { ...source, metadata: source.metadata.slice(1) },
-      artifactPaths: ['onnx/model_q4f16.onnx'], imagePlatform: undefined, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined,
+    await expect(verifyCapturedFullReplay({
+      reviewedPublicContract: undefined,
+      evidence: { ...source, metadata: source.metadata.slice(1) },
+      artifactPaths: ['onnx/model_q4f16.onnx'],
+      imagePlatform: undefined,
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
     })).rejects.toThrow('complete source metadata path set');
   });
   it('rejects removed local metadata independently of the bounded seed projection', () => {
@@ -164,15 +218,22 @@ describe('captured Full native inference gate', () => {
     const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     let verified = 0;
     const harness = await createProviderReplayTestRuntime({
-      modelId: evidence.modelId, expectedRevision: evidence.metadataRevision, cacheRevision: evidence.metadataRevision, metadataCache: "all-fixture",
-      artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1) }], imagePlatform: undefined,
+      modelId: evidence.modelId,
+      expectedRevision: evidence.metadataRevision,
+      cacheRevision: evidence.metadataRevision,
+      metadataCache: "all-fixture",
+      artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1) }],
+      imagePlatform: undefined,
       generate: async ({ options, runtime, model }) => {
         if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing actual native controls');
         const put = vi.spyOn(options.streamer, 'put');
         const end = vi.spyOn(options.streamer, 'end');
         expect(() => replayCapturedFullInvocation({
           invocation: { ...invocation, inputs: invocation.inputs.filter(input => input.name !== 'attention_mask') },
-          options, runtime, modelConfig: model.config, parameters,
+          options,
+          runtime,
+          modelConfig: model.config,
+          parameters,
         }), 'missing input evidence must not release output').toThrow();
         expect(put).not.toHaveBeenCalled();
         expect(end).not.toHaveBeenCalled();
@@ -221,10 +282,18 @@ describe('captured Full native inference gate', () => {
       },
     });
     try {
-      const observed = captureProviderChat({ provider: harness.provider, request: {
-        model: evidence.modelId, messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
-        tools: [], parameters, debug: undefined, readBinaryObject: undefined, signal: undefined,
-      } });
+      const observed = captureProviderChat({
+        provider: harness.provider,
+        request: {
+        model: evidence.modelId,
+        messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
+        tools: [],
+        parameters,
+        debug: undefined,
+        readBinaryObject: undefined,
+        signal: undefined,
+      },
+      });
       await observed.completion;
       expect(verified).toBe(13);
       expect(observed.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });

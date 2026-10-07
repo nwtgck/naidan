@@ -7,7 +7,11 @@ const errorCause = z.object({ name: z.string(), message: z.string(), stack: z.st
 const error = errorCause.extend({ cause: errorCause.optional(), causeChain: z.array(errorCause).optional() });
 // Unknown advisory fields are deliberately outside core I/O validation.
 const core = z.object({
-  requestedCount: count, cachedCount: count, downloadedCount: count, failedCount: count, complete: z.boolean(),
+  requestedCount: count,
+  cachedCount: count,
+  downloadedCount: count,
+  failedCount: count,
+  complete: z.boolean(),
   timing: z.unknown().optional(),
   files: z.array(z.union([
     z.object({ status: z.enum(['cached', 'downloaded']), url: z.string(), path: z.string(), byteLength: count, expectedByteLength: count.optional(), timing: z.unknown().optional() }),

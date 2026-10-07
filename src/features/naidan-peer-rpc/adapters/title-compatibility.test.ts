@@ -32,17 +32,36 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
   };
   const inputBudget = createInferenceBudget({ capacity: 64 * 1024 * 1024 });
   const deliveryBudget = createInferenceBudget({ capacity: 64 * 1024 * 1024 });
-  const callee = new NaidanRpcPeer({ transport: transport.b, signal: lifetime.signal, limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
-    exports: [expose({ contract: naidanPeerContract, allowedMethods: ['generateChat'], implementation: createNaidanPeerImplementation({ providedMethods: () => ({ status: 'ready', methods: [] }), inference: {
-      inputBudget, deliveryBudget, resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected },
-    } }) })] });
+  const callee = new NaidanRpcPeer({
+    transport: transport.b,
+    signal: lifetime.signal,
+    limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
+    exports: [expose({
+      contract: naidanPeerContract,
+      allowedMethods: ['generateChat'],
+      implementation: createNaidanPeerImplementation({
+      providedMethods: () => ({ status: 'ready', methods: [] }),
+      inference: {
+      inputBudget,
+      deliveryBudget,
+      resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected },
+    },
+    }),
+    })],
+  });
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], signal: lifetime.signal, limits: { maxCalls: 4, maxCallTimeoutMs: 1000 } });
   // Replace only connection discovery; the provider, protocol and handlers below are real.
-  const manager = new NaidanPeerManager({ dependencies: {
+  const manager = new NaidanPeerManager({
+    dependencies: {
     storage: { readIdentity: unexpected, list: unexpected, update: unexpected, remember: unexpected, remove: unexpected },
-    identity: unexpected, acquireOwner: unexpected, open: unexpected, retireResources: unexpected, changed: () => {},
+    identity: unexpected,
+    acquireOwner: unexpected,
+    open: unexpected,
+    retireResources: unexpected,
+    changed: () => {},
     inference: { inputBudget, deliveryBudget, resources: { generateChat: generate, listChatModels: unexpected, listImageModels: unexpected, generateImage: unexpected } },
-  } });
+  },
+  });
   vi.spyOn(manager, 'client').mockImplementation(() => caller.client({ contract: naidanPeerContract }));
   vi.mocked(getRpcManager).mockResolvedValue(manager);
   cleanups.push(async () => {
@@ -50,8 +69,17 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
     expect(inputBudget.reserved).toBe(0);
   });
   const provider = new NaidanRpcLmProvider({ connectionId });
-  return { provider, title: ({ effective }: { effective: LmParameters }) => collectTitleGeneration({ provider,
-    endpoint: { type: 'naidan_rpc', connectionId }, messages, model: 'models/local.gguf', parameters: effective, signal: new AbortController().signal }) };
+  return {
+    provider,
+    title: ({ effective }: { effective: LmParameters }) => collectTitleGeneration({
+    provider,
+    endpoint: { type: 'naidan_rpc', connectionId },
+    messages,
+    model: 'models/local.gguf',
+    parameters: effective,
+    signal: new AbortController().signal,
+  }),
+  };
 }
 const successful: ReadOnlyInferenceResources['generateChat'] = async ({ onEvent }) => {
   await onEvent({ event: { type: 'text', text: 'Title' } });
@@ -73,8 +101,18 @@ it('preserves 124 title-only off fallback across the typed RPC boundary', async 
 it('never retries regular chat or discloses the provider error text', async () => {
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>().mockRejectedValue(new LlamaCppBrowserError({ code: 'reasoning-unsupported' }));
   const { provider } = fixture({ generate }); const abortController = new AbortController();
-  const output = await collectChatGeneration({ items: provider.chat({ messages, model: 'models/local.gguf', parameters,
-    tools: undefined, readBinaryObject: undefined, debug: undefined, signal: abortController.signal }), abortController });
+  const output = await collectChatGeneration({
+    items: provider.chat({
+    messages,
+    model: 'models/local.gguf',
+    parameters,
+    tools: undefined,
+    readBinaryObject: undefined,
+    debug: undefined,
+    signal: abortController.signal,
+  }),
+    abortController,
+  });
   expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();
 });
 

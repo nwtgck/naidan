@@ -86,10 +86,14 @@ describe('privacy stream transport', () => {
     vi.mocked(getReadableStreamTransferSupport).mockResolvedValue('supported');
     const bytes = new Uint8Array(300 * 1024).fill(9);
     const { buffer } = mockResponse({
-      body: new ReadableStream({ start(controller) {
+      body: new ReadableStream({
+        start(controller) {
         controller.enqueue(bytes); controller.close();
-      } }),
-      status: 206, headers: {}, responseUrl: url,
+      },
+      }),
+      status: 206,
+      headers: {},
+      responseUrl: url,
     });
     const client = portStream({ signal: undefined });
     const response = await client.response;
@@ -113,10 +117,14 @@ describe('privacy stream transport', () => {
 
   it('returns headers without buffering and preserves range statuses and visible headers', async () => {
     const { buffer, fetchMock } = mockResponse({
-      body: new ReadableStream({ start(controller) {
+      body: new ReadableStream({
+        start(controller) {
         controller.enqueue(new Uint8Array([4, 5])); controller.close();
-      } }),
-      status: 206, headers: { 'Content-Range': 'bytes 3-4/5', ETag: '"tag"' }, responseUrl: url,
+      },
+      }),
+      status: 206,
+      headers: { 'Content-Range': 'bytes 3-4/5', ETag: '"tag"' },
+      responseUrl: url,
     });
     const result = await privacyFetchStream({ request: { url, headers: [['Range', 'bytes=3-'], ['If-Range', '"tag"']] } });
     expect(result.status).toBe(206);
@@ -132,9 +140,16 @@ describe('privacy stream transport', () => {
 
   it('retains regular metadata arrayBuffer support', async () => {
     const metadataUrl = 'https://huggingface.co/api/models/owner/model';
-    mockResponse({ body: new ReadableStream({ start(controller) {
+    mockResponse({
+      body: new ReadableStream({
+      start(controller) {
       controller.enqueue(new TextEncoder().encode('{}')); controller.close();
-    } }), status: 200, headers: {}, responseUrl: metadataUrl });
+    },
+    }),
+      status: 200,
+      headers: {},
+      responseUrl: metadataUrl,
+    });
     const result = await privacyFetch({ request: { url: metadataUrl } });
     expect(new TextDecoder().decode(result.body)).toBe('{}');
   });
@@ -147,9 +162,16 @@ describe('privacy stream transport', () => {
   });
 
   it('normalizes caller headers without interpreting their HTTP meaning', async () => {
-    const { fetchMock } = mockResponse({ body: new ReadableStream({ start(controller) {
+    const { fetchMock } = mockResponse({
+      body: new ReadableStream({
+      start(controller) {
       controller.close();
-    } }), status: 416, headers: {}, responseUrl: url });
+    },
+    }),
+      status: 416,
+      headers: {},
+      responseUrl: url,
+    });
     const response = await privacyFetchStream({ request: { url, headers: [['Range', 'bytes=3-'], ['If-Range', '"tag"']] } });
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('range')).toBe('bytes=3-');
     await response.body.cancel();
@@ -164,10 +186,14 @@ describe('privacy stream transport', () => {
   it.each([200, 206, 416])('streams a %s response through ports with bounded demand', async status => {
     let reads = 0;
     const { buffer } = mockResponse({
-      body: new ReadableStream({ pull(controller) {
+      body: new ReadableStream({
+        pull(controller) {
         reads++; controller.enqueue(new Uint8Array(300 * 1024).fill(7)); controller.close();
-      } }, { highWaterMark: 0 }),
-      status, headers: { 'Content-Range': 'bytes 3-307202/307203', Link: '<https://huggingface.co/api/models/owner/model/tree/main?cursor=x>; rel="next"' }, responseUrl: url,
+      },
+      }, { highWaterMark: 0 }),
+      status,
+      headers: { 'Content-Range': 'bytes 3-307202/307203', Link: '<https://huggingface.co/api/models/owner/model/tree/main?cursor=x>; rel="next"' },
+      responseUrl: url,
     });
     const client = portStream({ signal: undefined });
     const response = await client.response;
@@ -218,9 +244,16 @@ describe('privacy stream transport', () => {
   });
 
   it('propagates stream failure without exposing native error text', async () => {
-    mockResponse({ body: new ReadableStream({ pull(controller) {
+    mockResponse({
+      body: new ReadableStream({
+      pull(controller) {
       controller.error(new Error('private-token'));
-    } }, { highWaterMark: 0 }), status: 200, headers: {}, responseUrl: url });
+    },
+    }, { highWaterMark: 0 }),
+      status: 200,
+      headers: {},
+      responseUrl: url,
+    });
     const client = portStream({ signal: undefined });
     const result = await client.response;
     await expect(result.body.getReader().read()).rejects.toMatchObject({ code: 'fetch_failed', message: 'Privacy fetch stream failed: fetch_failed' });

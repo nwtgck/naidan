@@ -10,20 +10,29 @@ const localInvocationSchema = capturedInvocationSchema.omit({ scenario: true, ca
 const localGapSchema = localInvocationSchema.pick({ localOrdinal: true, preInputs: true, inputs: true, settings: true }).extend({ requestInput: z.json() }).strict();
 const contextSchema = capturedFullEvidenceSchema.pick({ modelId: true, metadataRevision: true, observedCacheRevision: true, loadReceipt: true, localMetadataPaths: true, metadata: true }).extend({ format: z.literal('provider-resource-context-v1') }).strict();
 const caseSchema = z.object({
-  format: z.literal('provider-request-evidence-v1'), caseId: scenarioSchema, contextSha256: digestSchema, provenanceSha256: digestSchema,
+  format: z.literal('provider-request-evidence-v1'),
+  caseId: scenarioSchema,
+  contextSha256: digestSchema,
+  provenanceSha256: digestSchema,
   request: capturedFullEvidenceSchema.shape.requests.element.omit({ scenario: true }).optional(),
-  invocations: z.array(localInvocationSchema), inputGaps: z.array(localGapSchema),
+  invocations: z.array(localInvocationSchema),
+  inputGaps: z.array(localGapSchema),
   unavailableOutputOrdinals: z.array(z.number().int().positive()),
 }).strict();
 const correlationSchema = z.object({ caseId: scenarioSchema, localOrdinal: z.number().int().positive(), sourceCallOrdinal: z.number().int().positive() }).strict();
 const provenanceSchema = z.object({
-  format: z.literal('provider-source-provenance-v1'), sourceDigests: capturedFullEvidenceSchema.shape.sourceDigests,
+  format: z.literal('provider-source-provenance-v1'),
+  sourceDigests: capturedFullEvidenceSchema.shape.sourceDigests,
   attributions: z.array(z.object({ caseId: scenarioSchema, sourceDigests: capturedFullEvidenceSchema.shape.sourceDigests }).strict()),
-  requestOrder: z.array(scenarioSchema), invocations: z.array(correlationSchema), inputGaps: z.array(correlationSchema),
+  requestOrder: z.array(scenarioSchema),
+  invocations: z.array(correlationSchema),
+  inputGaps: z.array(correlationSchema),
   optionalFields: z.object({ unavailableRecordedCalls: z.boolean(), nativeInputGaps: z.boolean() }).strict(),
 }).strict();
 const sequenceSchema = z.object({
-  format: z.literal('provider-sequence-evidence-v1'), contextSha256: digestSchema, provenanceSha256: digestSchema,
+  format: z.literal('provider-sequence-evidence-v1'),
+  contextSha256: digestSchema,
+  provenanceSha256: digestSchema,
   cases: z.array(referenceSchema),
 }).strict();
 
@@ -47,12 +56,14 @@ export function providerCaseSourceDigest({ provenance: value, caseId }: { proven
   const provenance = provenanceSchema.parse(value);
   const matches = provenance.attributions.filter(row => row.caseId === caseId);
   if (matches.length !== 1) throw new Error('Missing or duplicate request source attribution');
-  return providerEvidenceDigest({ value: {
+  return providerEvidenceDigest({
+    value: {
     sourceDigests: matches[0]!.sourceDigests,
     requestPresent: provenance.requestOrder.includes(caseId),
     invocations: provenance.invocations.filter(row => row.caseId === caseId),
     inputGaps: provenance.inputGaps.filter(row => row.caseId === caseId),
-  } });
+  },
+  });
 }
 
 function same({ label, actual, expected }: { label: string; actual: unknown; expected: unknown }) {
@@ -127,12 +138,17 @@ export function assembleProviderSequenceEvidence({ catalog }: { catalog: Provide
     ['input gap', provenance.inputGaps, selected.flatMap(item => item.evidence.inputGaps.map(call => `${item.evidence.caseId}/${call.localOrdinal}`))],
   ] as const) same({ label: `${kind} correlation inventory`, actual: rows.map(item => `${item.caseId}/${item.localOrdinal}`).sort(), expected: [...expected].sort() });
   const unavailableRecordedCalls = provenance.invocations.filter(item => selected.find(source => source.evidence.caseId === item.caseId)!.evidence.unavailableOutputOrdinals.includes(item.localOrdinal)).map(item => item.sourceCallOrdinal);
-  return parseCapturedFullReplay({ value: {
-    format: 'captured-production-full-replay-v1', ...resources, sourceDigests: provenance.sourceDigests,
-    requests, invocations,
+  return parseCapturedFullReplay({
+    value: {
+    format: 'captured-production-full-replay-v1',
+    ...resources,
+    sourceDigests: provenance.sourceDigests,
+    requests,
+    invocations,
     ...(provenance.optionalFields.unavailableRecordedCalls ? { unavailableRecordedCalls } : {}),
     ...(provenance.optionalFields.nativeInputGaps ? { nativeInputGaps } : {}),
-  } });
+  },
+  });
 }
 
 export const TEST_ONLY = {

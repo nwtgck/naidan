@@ -129,7 +129,8 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
   const requestId = requestIdSchema.parse(inputRequestId);
   const { maximumEvents, maximumCharacters } = limitsSchema.parse(limits);
   const configuredLimits = Object.freeze({
-    maximumEvents, maximumCharacters,
+    maximumEvents,
+    maximumCharacters,
     maximumFieldCharacters: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters,
   });
   let events: readonly ProductionProviderTraceEvent[] = [];
@@ -254,8 +255,17 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
         const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
         const rawId = idToRaw({ id: callId });
         if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
-        append({ project: ({ text }) => ({ kind: 'part_call', messageId: text({ value: messageId }), partId: text({ value: id }), index,
-          toolCallId: text({ value: rawId }), toolName: text({ value: name }), modelVisibleArguments: text({ value: args }) }) });
+        append({
+          project: ({ text }) => ({
+          kind: 'part_call',
+          messageId: text({ value: messageId }),
+          partId: text({ value: id }),
+          index,
+          toolCallId: text({ value: rawId }),
+          toolName: text({ value: name }),
+          modelVisibleArguments: text({ value: args }),
+        }),
+        });
         if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
         break;
       }
@@ -280,7 +290,8 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
 
   return {
     callbacks: Object.freeze(callbacks),
-    observeAssistant, observeResult,
+    observeAssistant,
+    observeResult,
     /** Call synchronously immediately after the caller's direct await or catch. */
     settle({ outcome: requestedOutcome, error }: { outcome: 'fulfilled'; error: undefined } | { outcome: 'rejected'; error: unknown }): ProductionProviderSettledSnapshot {
       if (settled !== undefined) {
@@ -306,10 +317,15 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     },
     snapshot(): ProductionProviderTraceSnapshot {
       return Object.freeze({
-        format, requestId, limits: configuredLimits,
-        completeness: failure === undefined ? 'complete' : 'incomplete', failure,
+        format,
+        requestId,
+        limits: configuredLimits,
+        completeness: failure === undefined ? 'complete' : 'incomplete',
+        failure,
         events: settled === undefined ? Object.freeze(pendingEvents.slice()) : events,
-        settled, lateEvents: Object.freeze(lateEvents.slice()), retainedCharacters,
+        settled,
+        lateEvents: Object.freeze(lateEvents.slice()),
+        retainedCharacters,
       });
     },
   };

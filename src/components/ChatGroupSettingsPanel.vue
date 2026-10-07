@@ -160,13 +160,15 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: Volume
   }
 
   const clickedMount = mounts.find(mount => mount.volumeId === volumeId);
-  openFileExplorer({ options: {
+  openFileExplorer({
+    options: {
     kind: 'wesh-mounts',
     title: await ensureStrings.ChatGroupSettingsPanel__folders(),
     rootName: await ensureStrings.ChatGroupSettingsPanel__files(),
     mounts: workerMounts,
     initialPath: clickedMount?.mountPath.split('/').filter(Boolean),
-  } });
+  },
+  });
 }
 
 function handleCreateRecipe(): void {

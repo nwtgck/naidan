@@ -10,7 +10,8 @@ import { runProviderReplayTurn } from '@/features/transformers-js/replay-models/
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
 const tool: Tool = {
-  name: 'lookup_weather', description: 'Read the synthetic weather fixture.',
+  name: 'lookup_weather',
+  description: 'Read the synthetic weather fixture.',
   parametersSchema: z.object({ city: z.string() }),
   execute: async () => ({ status: 'success', content: '{"city":"Tokyo","condition":"sunny"}' }),
 };
@@ -23,7 +24,11 @@ describe('GPT-OSS public conversation cache ownership', () => {
     let secondInput: bigint[] | undefined;
     let templateSpy: ReturnType<typeof vi.spyOn> | undefined;
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: 'all-fixture', imagePlatform: undefined,
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: 'all-fixture',
+      imagePlatform: undefined,
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)]
         .map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
@@ -58,7 +63,9 @@ describe('GPT-OSS public conversation cache ownership', () => {
       },
     });
     const request = {
-      model: modelId, debug: undefined, readBinaryObject: undefined,
+      model: modelId,
+      debug: undefined,
+      readBinaryObject: undefined,
       parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     };
     try {
@@ -68,9 +75,14 @@ describe('GPT-OSS public conversation cache ownership', () => {
         abortController: new AbortController(),
         onChange: undefined,
         request: {
-          ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
+          ...request,
+          messages: [{
+            id: toMessageId({ raw: 'user' }),
+            role: 'user',
+            parts: [
             { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
-          ] }],
+          ],
+          }],
         },
       });
       expect(first.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
@@ -89,15 +101,29 @@ describe('GPT-OSS public conversation cache ownership', () => {
         abortController: new AbortController(),
         onChange: undefined,
         request: {
-          ...request, messages: [
+          ...request,
+          messages: [
             { id: toMessageId({ raw: 'separate-user' }), role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
-            { id: toMessageId({ raw: 'separate-assistant' }), role: 'assistant', parts: [
+            {
+              id: toMessageId({ raw: 'separate-assistant' }),
+              role: 'assistant',
+              parts: [
               { type: 'text', text: '', completeness: 'complete' },
               { type: 'tool_call', toolCall: { id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-            ] },
-            { id: toMessageId({ raw: 'separate-tool' }), role: 'tool', parts: [{ type: 'tool_result', result: {
-              toolCallId: id, status: 'success', content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
-            } }] },
+            ],
+            },
+            {
+              id: toMessageId({ raw: 'separate-tool' }),
+              role: 'tool',
+              parts: [{
+              type: 'tool_result',
+              result: {
+              toolCallId: id,
+              status: 'success',
+              content: { type: 'text', text: '{"city":"Tokyo","condition":"sunny"}' },
+            },
+            }],
+            },
           ],
         },
       });
@@ -110,9 +136,14 @@ describe('GPT-OSS public conversation cache ownership', () => {
         abortController: new AbortController(),
         onChange: undefined,
         request: {
-          ...request, messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
+          ...request,
+          messages: [{
+            id: toMessageId({ raw: 'user' }),
+            role: 'user',
+            parts: [
             { type: 'text', text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', completeness: 'complete' },
-          ] }],
+          ],
+          }],
         },
       });
       expect(repeated.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });

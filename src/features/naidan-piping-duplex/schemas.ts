@@ -11,10 +11,16 @@ export const snapshotSchema = z.strictObject({
   finished: bitmap,
   reset: bitmap,
   states: z.array(z.strictObject({
-    id, flags: z.number().int().min(0).max(3), rxNext: offset, rxLimit: offset, final: offset,
+    id,
+    flags: z.number().int().min(0).max(3),
+    rxNext: offset,
+    rxLimit: offset,
+    final: offset,
   })).max(32),
   data: z.array(z.strictObject({
-    id, offset, bytes: z.instanceof(Uint8Array).refine(value => value.byteLength > 0 && value.byteLength <= SEGMENT_BYTES),
+    id,
+    offset,
+    bytes: z.instanceof(Uint8Array).refine(value => value.byteLength > 0 && value.byteLength <= SEGMENT_BYTES),
   })).max(2),
 });
 

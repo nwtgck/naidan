@@ -13,7 +13,8 @@ vi.mock('../00-storage/service', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn().mockResolvedValue(undefined),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn().mockResolvedValue(undefined),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))).mockResolvedValue(undefined),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -62,14 +63,16 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     vi.clearAllMocks();
 
     // Reset Settings
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
       defaultModelId: 'gpt-4',
       titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    } });
+    },
+    });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
@@ -97,10 +100,12 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOpenAIChat.mock.calls[0]![0].model).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-    } });
+    },
+    });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
@@ -114,19 +119,25 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   });
 
   it('should fallback to first available model if defaultModelId is also missing', async () => {
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       defaultModelId: 'missing-default',
-    } });
+    },
+    });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
-    __testOnlySetCurrentChat({ chat: reactive({
+    __testOnlySetCurrentChat({
+      chat: reactive({
       id: 'fallback-test',
       title: 'Fallback Test',
       root: { items: [] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false,
-    }) as any });
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    }) as any,
+    });
 
     await sendMessage({ content: 'Test' });
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('first-available');

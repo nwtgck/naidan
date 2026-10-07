@@ -125,7 +125,9 @@ export function createStandardGeneration({ emit, endTokens, handling, tools }: {
         if (draft === undefined) throw new Error('Standard tool close has no open call.');
         const parsed = parseDelimitedPythonicToolCallPayload({ content: draft.text });
         if (!parsed?.length || parsed.some(call => !allowedTools.has(call.name))) throw new Error('Invalid or undeclared native standard tool call.');
-        const calls: ToolCall[] = parsed.map(call => ({ id: generateId<ToolCallId>(), type: 'function',
+        const calls: ToolCall[] = parsed.map(call => ({
+          id: generateId<ToolCallId>(),
+          type: 'function',
           function: { name: call.name, arguments: JSON.stringify(call.arguments) },
         }));
         // The native payload is not JSON. Its parsed values are mapped to the
@@ -152,9 +154,14 @@ export function createStandardGeneration({ emit, endTokens, handling, tools }: {
       if (terminal === 'tool_results' && firstPostCallTextIndex !== undefined) {
         throw new Error('The standard input adapter cannot represent text after a tool call.');
       }
-      emit({ event: { type: 'result', result: terminal === undefined || terminal === 'incomplete'
+      emit({
+        event: {
+        type: 'result',
+        result: terminal === undefined || terminal === 'incomplete'
         ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal } } });
+        : { type: 'finished', next: terminal },
+      },
+      });
     },
   };
 }

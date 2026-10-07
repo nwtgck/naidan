@@ -97,9 +97,12 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
       onState({ next: { kind: 'ready', handler: apply } });
     } else if (updateSeen) {
       // Keep the deliberate network choice even if full precaching has failed.
-      onState({ next: { kind: 'preparing',
+      onState({
+        next: {
+        kind: 'preparing',
         handler: sw.controller && sw.controller === current.active && current.active.state === 'activated' ? apply : undefined,
-      } });
+      },
+      });
     } else {
       onState({ next: { kind: 'idle' } });
       if (firstInstallation && current.active?.state === 'activated' && !offlineAnnounced) {
@@ -131,13 +134,15 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
     if (!disposed()) onError({ message: 'Failed to register the service worker.', error });
   });
 
-  return { dispose() {
+  return {
+    dispose() {
     lifetime.abort();
     sw.removeEventListener('controllerchange', synchronize);
     registration?.removeEventListener('updatefound', synchronize);
     for (const [worker, listener] of observed) worker.removeEventListener('statechange', listener);
     observed.clear();
-  } };
+  },
+  };
 }
 
 export const TEST_ONLY = {

@@ -6,8 +6,11 @@ import { createImageRecoveryStore } from './recovery';
 
 function recovered() {
   const run = generationRunFixture({ id: 'run-example', sessionId: toImageGenerationSessionId({ raw: 'session-example' }), count: 1, seed: '42' });
-  return recoverImageGenerationSnapshot({ snapshot: { id: toImageGenerationId({ raw: 'output-example' }), createdAt: 1, request: run.request, inputFiles: [] },
-    elapsedMs: 2, output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined } });
+  return recoverImageGenerationSnapshot({
+    snapshot: { id: toImageGenerationId({ raw: 'output-example' }), createdAt: 1, request: run.request, inputFiles: [] },
+    elapsedMs: 2,
+    output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined },
+  });
 }
 it('retains unconfirmed pixels after the original view unsubscribes', () => {
   const store = createImageRecoveryStore({ capacity: 100 }), listener = vi.fn();

@@ -35,8 +35,17 @@ export function prepareTranscript({ input }: { input: Parameters<LlamaCppBrowser
     });
     return { role, content: body, reasoning_content, tool_calls, tool_call_id, name };
   });
-  const document = { messages: projected, tools, reasoningEffort, temperature, topP,
-    maxTokens: maxTokens ?? 4096, presencePenalty, frequencyPenalty, stop };
+  const document = {
+    messages: projected,
+    tools,
+    reasoningEffort,
+    temperature,
+    topP,
+    maxTokens: maxTokens ?? 4096,
+    presencePenalty,
+    frequencyPenalty,
+    stop,
+  };
   // Tool schemas also originate in local/imported settings. Bound their shape
   // before recursive validation, rather than relying on the serializer later.
   assertDocumentBounds({ value: document });
@@ -64,17 +73,34 @@ export async function receiveTranscript({ transcript, images, model, signal }: {
   }
   const { messages, tools, reasoningEffort, temperature, topP, maxTokens, presencePenalty, frequencyPenalty, stop, ...rest } = value;
   rest satisfies Record<PropertyKey, never>;
-  return { model, debug: 'off', tools, reasoningEffort, temperature, topP, maxTokens, presencePenalty, frequencyPenalty, stop,
+  return {
+    model,
+    debug: 'off',
+    tools,
+    reasoningEffort,
+    temperature,
+    topP,
+    maxTokens,
+    presencePenalty,
+    frequencyPenalty,
+    stop,
     messages: messages.map(message => {
       const { role, content, reasoning_content, tool_calls, tool_call_id, name, ...rest } = message;
       rest satisfies Record<PropertyKey, never>;
-      return { role, reasoning_content, tool_calls, tool_call_id, name, content: typeof content === 'string' ? content : content.map(part => {
+      return {
+        role,
+        reasoning_content,
+        tool_calls,
+        tool_call_id,
+        name,
+        content: typeof content === 'string' ? content : content.map(part => {
         switch (part.type) {
         case 'text': return { type: 'text' as const, text: part.text };
         case 'image': { const blob = blobs[part.attachment]; if (!blob) throw new Error('Missing remote attachment'); return { type: 'image' as const, blob }; }
         default: { const unreachable: never = part; throw new Error(String(unreachable)); }
         }
-      }) };
+      }),
+      };
     }),
   };
 }

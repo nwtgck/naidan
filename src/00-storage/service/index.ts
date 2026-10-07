@@ -81,7 +81,8 @@ export class StorageService {
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
-    await this.synchronizer.withLock({ fn: async () => {
+    await this.synchronizer.withLock({
+      fn: async () => {
       this.providerGeneration++;
       if (this.provider) this.emitRpcRegistryChange();
       const isOPFSSupported = await checkOPFSSupport();
@@ -109,7 +110,10 @@ export class StorageService {
       }
       }
       await this.provider.init();
-    }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'init' }) });
+    },
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({ source: 'init' }),
+    });
   }
 
   getCurrentType(): 'local' | 'opfs' | 'memory' {
@@ -138,13 +142,15 @@ export class StorageService {
    * pages. A hint requires reading storage; it never contains authority. */
   subscribeNaidanRpcRegistryChanges({ listener }: { listener(): void }): () => void {
     this.rpcRegistryListeners.add(listener);
-    const unsubscribe = this.synchronizer.subscribe({ listener: ({ event }) => {
+    const unsubscribe = this.synchronizer.subscribe({
+      listener: ({ event }) => {
       if (event.type === 'naidan_rpc_registry' || event.type === 'migration') {
         try {
           listener();
         } catch { /* Synchronization hints are observation only. */ }
       }
-    } });
+    },
+    });
     return () => {
       this.rpcRegistryListeners.delete(listener); unsubscribe();
     };
@@ -170,13 +176,17 @@ export class StorageService {
    */
   async updateHierarchy({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy | Promise<Hierarchy> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const current = await this.loadHierarchy();
         const before = structuredClone(current);
         const updated = await updater({ current: current });
         await detachRemovedModelLaunchOwners({ provider: this.getProvider(), before, after: updated });
         await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateHierarchy' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateHierarchy' });
@@ -202,7 +212,8 @@ export class StorageService {
     updater({ current }: { current: Settings | null }): Settings | Promise<Settings>,
   }): Promise<'saved' | 'changed'> {
     try {
-      const outcome = await this.synchronizer.withLock({ fn: async () => {
+      const outcome = await this.synchronizer.withLock({
+        fn: async () => {
         if (!isCurrent()) return 'changed' as const;
         const provider = this.getProvider();
         const current = await provider.loadSettings();
@@ -211,7 +222,10 @@ export class StorageService {
         if (!isCurrent()) return 'changed' as const;
         await provider.saveSettings({ settings: updated });
         return 'saved' as const;
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettingsForStorage' }) });
+      },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'updateSettingsForStorage' }),
+      });
       switch (outcome) {
       case 'saved': this.notify({ event: { type: 'settings', timestamp: Date.now() } }); return outcome;
       case 'changed': return outcome;
@@ -229,13 +243,16 @@ export class StorageService {
 
   async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: Omit<Parameters<typeof restoreModelLaunch>[0], 'provider'> & { signal: AbortSignal }) {
     const provider = this.getProvider();
-    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: async () => {
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      fn: async () => {
       signal.throwIfAborted();
       if (provider !== this.getProvider()) return undefined;
       const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
       signal.throwIfAborted();
       return provider === this.getProvider() ? restored : undefined;
-    } });
+    },
+    });
   }
 
   /** A launch never holds a storage lock across metadata or payload requests. */
@@ -243,8 +260,11 @@ export class StorageService {
     const provider = this.getProvider();
     if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) throw new Error('Model launch requires storage locking');
     try {
-      const chat = await this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: () => this.synchronizer.withLock({
-        lockKey: SYNC_LOCK_KEY, fn: () => this.synchronizer.withLock({
+      const chat = await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        fn: () => this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: () => this.synchronizer.withLock({
           lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
           fn: async () => {
             signal.throwIfAborted();
@@ -253,7 +273,8 @@ export class StorageService {
             return prepareModelLaunchChat({ provider, request });
           },
         }),
-      }) });
+      }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
       return chat;
     } catch (error) {
@@ -269,13 +290,17 @@ export class StorageService {
   async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | undefined | Promise<ChatMeta | undefined> }): Promise<void> {
     try {
       let written = false;
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const current = await this.loadChatMeta({ id });
         const updated = await updater({ current: current });
         if (updated === undefined) return;
         await this.getProvider().saveChatMeta({ meta: updated });
         written = true;
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateChatMeta' }),
+      });
       if (written) this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatMeta' });
@@ -297,11 +322,15 @@ export class StorageService {
 
   async updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const current = await this.loadChatContent({ id });
         const updated = await updater({ current: current });
         await this.getProvider().saveChatContent({ id, content: updated });
-      }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
+      },
+        lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`,
+        ...this.getLockOptions({ source: 'updateChatContent' }),
+      });
       this.notify({ event: { type: 'chat_content', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatContent' });
@@ -315,9 +344,13 @@ export class StorageService {
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         await this.getProvider().deleteChat({ id });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteChat' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteChat' });
@@ -327,11 +360,15 @@ export class StorageService {
 
   async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const current = await this.loadChatGroup({ id });
         const updated = await updater({ current: current });
         await this.getProvider().saveChatGroup({ chatGroup: updated });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateChatGroup' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatGroup' });
@@ -345,9 +382,13 @@ export class StorageService {
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         await this.getProvider().deleteChatGroup({ id });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteChatGroup' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteChatGroup' });
@@ -379,10 +420,14 @@ export class StorageService {
   }
 
   async loadNaidanRpcRegistry(): Promise<NaidanRpcRegistrySnapshot> {
-    return this.synchronizer.withLock({ lockKey: SYNC_LOCK_KEY, fn: async () => readNaidanRpcRegistry({
-      provider: this.getProvider(), providerGeneration: this.providerGeneration,
+    return this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => readNaidanRpcRegistry({
+      provider: this.getProvider(),
+      providerGeneration: this.providerGeneration,
       persistence: this.rpcRegistryPersistence(),
-    }) });
+    }),
+    });
   }
   async updateNaidanRpcRegistry({ access, updater }: {
     access: NaidanRpcRegistryAccess,
@@ -396,14 +441,20 @@ export class StorageService {
     case 'session': break;
     default: { const exhaustive: never = persistence; throw new Error(String(exhaustive)); }
     }
-    const updated = await this.synchronizer.withLock({ lockKey: SYNC_LOCK_KEY, fn: async () => {
+    const updated = await this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => {
       const provider = this.getProvider();
-      const current = await readNaidanRpcRegistry({ provider, providerGeneration: this.providerGeneration,
-        persistence: this.rpcRegistryPersistence() });
+      const current = await readNaidanRpcRegistry({
+        provider,
+        providerGeneration: this.providerGeneration,
+        persistence: this.rpcRegistryPersistence(),
+      });
       if (!sameNaidanRpcRegistry({ left: access, right: current.access })) throw new Error('The RPC storage registry changed. Reload before saving.');
       const connections = await updater({ connections: current.connections });
       return writeNaidanRpcRegistry({ provider, current, connections });
-    } });
+    },
+    });
     this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
     return updated;
   }
@@ -413,11 +464,15 @@ export class StorageService {
    */
   async updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const current = await this.loadSettings();
         const updated = await updater({ current: current });
         await this.getProvider().saveSettings({ settings: updated });
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettings' }) });
+      },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'updateSettings' }),
+      });
       this.notify({ event: { type: 'settings', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateSettings' });
@@ -431,11 +486,15 @@ export class StorageService {
 
   async clearAll(): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         this.providerGeneration++;
         this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
         await this.getProvider().clearAll();
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
+      },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'clearAll' }),
+      });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'clearAll' });
@@ -451,14 +510,18 @@ export class StorageService {
     name: string,
   }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         await this.getProvider().saveFile({
           blob,
           binaryObjectId,
           name,
           mimeType: blob.type || undefined,
         });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'saveFile' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'saveFile' }),
+      });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'saveFile' });
       throw e;
@@ -484,9 +547,13 @@ export class StorageService {
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     try {
       const provider = this.getProvider();
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         await provider.deleteBinaryObject({ binaryObjectId });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
+      },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteBinaryObject' }),
+      });
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
@@ -520,9 +587,11 @@ export class StorageService {
     // Preparing a writer need not await storage before the caller can retain
     // pixels. A failed open remains a rejected target, never a silent new store.
     void target.catch(() => {});
-    return { ready: async (): Promise<void> => {
+    return {
+      ready: async (): Promise<void> => {
       await target;
-    }, save: async ({ record, files }: {
+    },
+      save: async ({ record, files }: {
       record: ImageGenerationRecord,
       files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
     }): Promise<void> => {
@@ -536,7 +605,8 @@ export class StorageService {
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'saveImageGeneration' }),
         fn: () => saveImageGenerationRecord({
-          storageType, expectedDirectory,
+          storageType,
+          expectedDirectory,
           record: snapshot,
           writeImages: async () => {
             const referenced = new Set([
@@ -573,7 +643,8 @@ export class StorageService {
           },
         }),
       });
-    } };
+    },
+    };
   }
 
   /** Pin binary publication and metadata to one store. Never call saveFile from
@@ -607,7 +678,10 @@ export class StorageService {
       }
     })();
     const write = () => publishImageGenerationBinaries({ provider, referenced, files: images });
-    await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'publishImageGeneration' }), fn: async () => {
+    await this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'publishImageGeneration' }),
+      fn: async () => {
       // A queued callback must not publish through a provider that was replaced
       // before it acquired its lock. Once started, write uses only this provider.
       if (this.getProvider() !== provider) throw new Error('Image Generation storage changed before publication.');
@@ -617,7 +691,8 @@ export class StorageService {
       case 'draft': return service.saveImageGenerationDraft({ store, draft: accepted.draft, expectedRevision: accepted.expectedRevision, writeInputs: write });
       default: { const exhaustive: never = accepted; throw new Error(String(exhaustive)); }
       }
-    } });
+    },
+    });
   }
 
   async deleteImageGenerationOutput({ store, sessionId, assetId, expectedRevision }: {
@@ -627,10 +702,14 @@ export class StorageService {
     const provider = this.getProvider();
     const { deleteImageGenerationAsset } = await import('./image-generation-curation');
     try {
-      await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteImageGenerationOutput' }), fn: async () => {
+      await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteImageGenerationOutput' }),
+        fn: async () => {
         if (this.getProvider() !== provider) throw new Error('The storage provider changed before deletion.');
         await deleteImageGenerationAsset({ store, sessionId, assetId, expectedRevision, removeBinary: ({ binaryObjectId }) => provider.deleteBinaryObject({ binaryObjectId }) });
-      } });
+      },
+      });
     } finally {
       // Notify even on partial failure: completed byte removals are irreversible.
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
@@ -641,7 +720,10 @@ export class StorageService {
     if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
     const provider = this.getProvider();
     const { collectImageGenerationSessionMetadata } = await import('./image-generation-export');
-    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'captureImageGenerationExport' }), fn: async () => {
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'captureImageGenerationExport' }),
+      fn: async () => {
       if (this.getProvider() !== provider) throw new Error('The storage provider changed before export.');
       const { metadata, binaryObjectIds } = await collectImageGenerationSessionMetadata({ store, sessionId });
       const binaries: ImageGenerationExportSnapshot['binaries'] = [];
@@ -651,7 +733,8 @@ export class StorageService {
         binaries.push({ id, blob });
       }
       return { metadata, binaries };
-    } });
+    },
+    });
   }
 
   async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
@@ -735,7 +818,8 @@ export class StorageService {
     mountPath: string,
     readOnly: boolean,
   }): Promise<void> {
-    await this.updateSettings({ updater: ({ current: settings }) => {
+    await this.updateSettings({
+      updater: ({ current: settings }) => {
       if (!settings) throw new Error('Settings not initialized');
       const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
       if (exists) return settings;
@@ -744,25 +828,31 @@ export class StorageService {
         ...settings,
         mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
       };
-    } });
+    },
+    });
   }
 
   async unmountVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    await this.updateSettings({ updater: ({ current: settings }) => {
+    await this.updateSettings({
+      updater: ({ current: settings }) => {
       if (!settings) return null as unknown as Settings;
       return {
         ...settings,
         mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    } });
+    },
+    });
   }
 
   async addMountToChat({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
-    } });
+    },
+    });
   }
 
   async addMountToChatIfPathAvailable({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<'added' | 'path_occupied'> {
@@ -814,17 +904,22 @@ export class StorageService {
   }
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId, volumeId: VolumeId }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    } });
+    },
+    });
   }
 
   async updateChatMount({ chatId, volumeId, readOnly }: { chatId: ChatId, volumeId: VolumeId, readOnly: boolean }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
         ...current,
@@ -832,29 +927,38 @@ export class StorageService {
           m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m,
         ),
       };
-    } });
+    },
+    });
   }
 
   async addMountToChatGroup({ groupId, mount }: { groupId: ChatGroupId, mount: Mount }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
-    } });
+    },
+    });
   }
 
   async removeMountFromChatGroup({ groupId, volumeId }: { groupId: ChatGroupId, volumeId: VolumeId }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    } });
+    },
+    });
   }
 
   async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: ChatGroupId, volumeId: VolumeId, mountPath: string, readOnly: boolean }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
         ...current,
@@ -862,12 +966,14 @@ export class StorageService {
           m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m,
         ),
       };
-    } });
+    },
+    });
   }
 
   async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         const activeProvider = this.getProvider();
         if (this.currentType === type) return;
 
@@ -950,10 +1056,12 @@ export class StorageService {
           }
         };
 
-        await newProvider.restore({ snapshot: {
+        await newProvider.restore({
+          snapshot: {
           structure: snapshot.structure,
           contentStream: migrationStream(),
-        } });
+        },
+        });
         // Transfer local trust only during an explicit provider switch. It is
         // absent from general JSON backups, which cannot carry CryptoKey.
         await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
@@ -965,7 +1073,10 @@ export class StorageService {
         this.provider = newProvider;
         this.currentType = actualType;
         this.providerGeneration++;
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
+      },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }),
+      });
 
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
@@ -992,11 +1103,15 @@ export class StorageService {
    */
   async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
+      await this.synchronizer.withLock({
+        fn: async () => {
         this.providerGeneration++;
         this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
         await this.getProvider().restore({ snapshot });
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
+      },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }),
+      });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'restore' });

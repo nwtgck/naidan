@@ -112,7 +112,9 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
   function wrapPass({ pass }: { pass: GPUComputePassEncoder }): GPUComputePassEncoder {
     let current: GPUComputePipeline | undefined;
     const bindings = new Map<number, Binding>();
-    return facade({ target: pass, overrides: {
+    return facade({
+      target: pass,
+      overrides: {
       setPipeline(pipeline) {
         pass.setPipeline(pipeline); current = pipeline;
       },
@@ -145,7 +147,9 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
         // resource must not leave a partly encoded split operation.
         const prepared = chunks.map(chunk => {
           const selected = variant({ state, original, offset: chunk.offset, grid });
-          const selectedBindings = [...bindings].map(([index, binding]) => ({ index, ...binding,
+          const selectedBindings = [...bindings].map(([index, binding]) => ({
+            index,
+            ...binding,
             group: binding.group && selected.pipeline !== original && state.shader!.bindingGroups.includes(index) ? compatibleGroup({ variant: selected, index, original: binding.group }) : binding.group,
           }));
           return { ...chunk, pipeline: selected.pipeline, bindings: selectedBindings };
@@ -171,9 +175,12 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
           }
         }
       },
-    } });
+    },
+    });
   }
-  return facade({ target: device, overrides: {
+  return facade({
+    target: device,
+    overrides: {
     createShaderModule(descriptor) {
       const module = device.createShaderModule(descriptor);
       shaders.set(module, { ...descriptor }); return module;
@@ -188,18 +195,28 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
     },
     createBindGroup(descriptor) {
       const group = device.createBindGroup(descriptor);
-      groups.set(group, { ...descriptor, entries: descriptor.entries.map(entry => ({ ...entry,
+      groups.set(group, {
+        ...descriptor,
+        entries: descriptor.entries.map(entry => ({
+        ...entry,
         resource: 'buffer' in entry.resource ? { ...entry.resource } : entry.resource,
-      })) });
+      })),
+      });
       return group;
     },
     createCommandEncoder(descriptor) {
       const encoder = device.createCommandEncoder(descriptor);
-      return facade({ target: encoder, overrides: { beginComputePass(passDescriptor) {
+      return facade({
+        target: encoder,
+        overrides: {
+        beginComputePass(passDescriptor) {
         return wrapPass({ pass: encoder.beginComputePass(passDescriptor) });
-      } } });
+      },
+      },
+      });
     },
-  } });
+  },
+  });
 }
 
 /** Passed only into this core factory's lexical navigator binding. No global
@@ -212,15 +229,28 @@ export function createCoreWebGpuNavigator({ navigator, report }: {
   // Snapshot the entry point before a caller installs this scoped facade into
   // its dedicated Worker. Looking it up again would recurse into that hook.
   const requestAdapter = gpu.requestAdapter.bind(gpu);
-  return facade({ target: navigator, overrides: { gpu: facade({ target: gpu, overrides: {
+  return facade({
+    target: navigator,
+    overrides: {
+    gpu: facade({
+    target: gpu,
+    overrides: {
     async requestAdapter(options) {
       const adapter = await requestAdapter(options);
       if (!adapter) return adapter;
-      return facade({ target: adapter, overrides: { async requestDevice(descriptor) {
+      return facade({
+        target: adapter,
+        overrides: {
+        async requestDevice(descriptor) {
         return wrapDevice({ device: await adapter.requestDevice(descriptor), report });
-      } } });
+      },
+      },
+      });
     },
-  } }) } });
+  },
+  }),
+  },
+  });
 }
 export const TEST_ONLY = {
   planDispatch,

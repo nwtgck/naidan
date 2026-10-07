@@ -28,9 +28,12 @@ function page({ label }: { label: string }): ImageGenerationHistoryPage {
 function record({ label }: { label: string }): ImageGenerationRecord {
   const form = createImageForm({ profile: 'webgpu-wasm64-jspi' });
   return {
-    id: toImageGenerationId({ raw: label }), createdAt: 1000,
+    id: toImageGenerationId({ raw: label }),
+    createdAt: 1000,
     request: {
-      parameters: { ...form.parameters.value, prompt: label }, models: [], loras: [],
+      parameters: { ...form.parameters.value, prompt: label },
+      models: [],
+      loras: [],
       imageInputs: { initImage: undefined, strength: 0.75, referenceImages: [] },
       preview: { ...form.preview.value },
       runtime: { sourceCommit: 'a'.repeat(40), profile: 'webgpu-wasm64-jspi', weightResidency: 'auto', gpuBudgetMiB: undefined },
@@ -192,7 +195,10 @@ describe('image history query ownership', () => {
   it('bounds the visible collection to 40 records while navigating a large library', async () => {
     const records = Array.from({ length: 10_005 }, (_, index) => page({ label: `image-${index}` }).items[0]!);
     mocks.query.mockImplementation(async ({ query }: { query: ImageGenerationHistoryQuery }) => ({
-      items: records.slice(query.offset, query.offset + query.limit), total: records.length, warnings: [], warningCount: 0,
+      items: records.slice(query.offset, query.offset + query.limit),
+      total: records.length,
+      warnings: [],
+      warningCount: 0,
     }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     await view.reload();
@@ -255,7 +261,10 @@ describe('image history query ownership', () => {
   it('stays on the current page when refreshed after new images are added', async () => {
     const records = Array.from({ length: 85 }, (_, index) => page({ label: `image-${index}` }).items[0]!);
     mocks.query.mockImplementation(async ({ query }: { query: ImageGenerationHistoryQuery }) => ({
-      items: records.slice(query.offset, query.offset + query.limit), total: records.length, warnings: [], warningCount: 0,
+      items: records.slice(query.offset, query.offset + query.limit),
+      total: records.length,
+      warnings: [],
+      warningCount: 0,
     }));
     const selected = record({ label: 'selected' });
     mocks.load.mockResolvedValueOnce(selected);

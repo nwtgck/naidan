@@ -7,12 +7,15 @@ import type { TextStreamer } from '@huggingface/transformers';
 const tokenIdsSchema = z.array(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER));
 const tensorFactSchema = z.object({
   name: z.enum(['input_ids', 'attention_mask']),
-  dtype: z.literal('int64'), dims: z.tuple([z.literal(1), z.number().int().positive()]),
+  dtype: z.literal('int64'),
+  dims: z.tuple([z.literal(1), z.number().int().positive()]),
   location: z.literal('cpu'),
 }).strict();
 const requestedSettingsSchema = z.object({
-  maxNewTokens: z.number().int().positive(), temperature: z.number(),
-  topP: z.number(), doSample: z.boolean(),
+  maxNewTokens: z.number().int().positive(),
+  temperature: z.number(),
+  topP: z.number(),
+  doSample: z.boolean(),
 }).strict();
 
 // This is the recorded stateless text boundary, not a universal conversation
@@ -20,8 +23,10 @@ const requestedSettingsSchema = z.object({
 const textEvidenceSchema = z.object({
   schemaVersion: z.literal(1),
   identity: z.object({
-    modelId: z.string().min(1), resolvedRevision: z.string().regex(/^[a-f0-9]{40}$/u),
-    investigationRunId: z.string().min(1), transformersJsVersion: z.string().min(1),
+    modelId: z.string().min(1),
+    resolvedRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+    investigationRunId: z.string().min(1),
+    transformersJsVersion: z.string().min(1),
   }).strict(),
   scenario: z.object({
     id: z.string().min(1),
@@ -32,28 +37,37 @@ const textEvidenceSchema = z.object({
     // ending. Neither records the native stop cause. Do not promote the count
     // or last token into an observed EOS/max-token termination mechanism.
     boundary: z.discriminatedUnion('kind', [z.object({
-      kind: z.literal('natural-prefix'), lengthRelation: z.literal('equals-requested-budget'),
+      kind: z.literal('natural-prefix'),
+      lengthRelation: z.literal('equals-requested-budget'),
       stopCause: z.literal('not-recorded'),
     }).strict(), z.object({
-      kind: z.literal('recorded-ending'), lengthRelation: z.literal('below-requested-budget'),
-      lastTokenId: z.number().int().nonnegative().safe(), stopCause: z.literal('not-recorded'),
+      kind: z.literal('recorded-ending'),
+      lengthRelation: z.literal('below-requested-budget'),
+      lastTokenId: z.number().int().nonnegative().safe(),
+      stopCause: z.literal('not-recorded'),
     }).strict()]),
   }).strict(),
   inputContract: z.object({
-    renderedPrompt: z.string().optional(), inputTokenIds: tokenIdsSchema.min(1),
+    renderedPrompt: z.string().optional(),
+    inputTokenIds: tokenIdsSchema.min(1),
     inputTensorFacts: z.array(tensorFactSchema).length(2),
     // Legacy MSI records four requested settings, not all actual kwargs after
     // budget clipping, model defaults, processors and stopping criteria.
     effectiveGenerationConfig: requestedSettingsSchema,
   }).strict(),
   modelReplay: z.object({
-    source: z.literal('production-lane'), sourceInputTokenIds: tokenIdsSchema.min(1),
-    sourceInputSha256: z.string().regex(/^[a-f0-9]{64}$/u), generatedTokenIds: tokenIdsSchema.min(1),
-    generatedSequenceTokenIds: tokenIdsSchema.optional(), generatedText: z.string(),
+    source: z.literal('production-lane'),
+    sourceInputTokenIds: tokenIdsSchema.min(1),
+    sourceInputSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    generatedTokenIds: tokenIdsSchema.min(1),
+    generatedSequenceTokenIds: tokenIdsSchema.optional(),
+    generatedText: z.string(),
   }).strict(),
   expectedProviderSemantic: z.object({
-    basis: z.enum(['production-positive-control', 'native-template-contract']), captureScope: z.enum(['prefix', 'recorded-output']),
-    visibleContent: z.string(), thinking: z.string().optional(),
+    basis: z.enum(['production-positive-control', 'native-template-contract']),
+    captureScope: z.enum(['prefix', 'recorded-output']),
+    visibleContent: z.string(),
+    thinking: z.string().optional(),
   }).strict(),
 }).strict();
 
@@ -72,10 +86,16 @@ export function parseProviderReplayTextEvidence({ value }: { value: unknown }): 
   for (const fact of inputContract.inputTensorFacts) {
     requireExact({ label: 'recorded tensor dimensions', actual: fact.dims, expected: [1, modelReplay.sourceInputTokenIds.length] });
   }
-  requireExact({ label: 'recorded request settings', actual: inputContract.effectiveGenerationConfig, expected: {
-    maxNewTokens: scenario.lmParameters.maxCompletionTokens, temperature: scenario.lmParameters.temperature,
-    topP: scenario.lmParameters.topP, doSample: scenario.lmParameters.temperature > 0,
-  } });
+  requireExact({
+    label: 'recorded request settings',
+    actual: inputContract.effectiveGenerationConfig,
+    expected: {
+    maxNewTokens: scenario.lmParameters.maxCompletionTokens,
+    temperature: scenario.lmParameters.temperature,
+    topP: scenario.lmParameters.topP,
+    doSample: scenario.lmParameters.temperature > 0,
+  },
+  });
   const boundary = scenario.boundary;
   switch (boundary.kind) {
   case 'natural-prefix':
@@ -101,8 +121,10 @@ export function parseProviderReplayTextEvidence({ value }: { value: unknown }): 
 }
 
 const nativeTensorSchema = z.object({
-  type: z.literal('int64'), dims: z.tuple([z.literal(1), z.number().int().positive()]),
-  data: z.instanceof(BigInt64Array), location: z.literal('cpu'),
+  type: z.literal('int64'),
+  dims: z.tuple([z.literal(1), z.number().int().positive()]),
+  data: z.instanceof(BigInt64Array),
+  location: z.literal('cpu'),
 });
 
 /**
@@ -117,10 +139,14 @@ export function replayRecordedText({ evidence, options }: {
 }): { sequenceTokenIds: bigint[], releasedTokenCount: number } {
   // Revalidate on every invocation, including after a caller mutates a fixture.
   const checked = parseProviderReplayTextEvidence({ value: evidence });
-  requireExact({ label: 'unrecorded generation options', actual: Object.keys(options).sort(), expected: [
+  requireExact({
+    label: 'unrecorded generation options',
+    actual: Object.keys(options).sort(),
+    expected: [
     'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
     'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-  ].sort() });
+  ].sort(),
+  });
   const input = nativeTensorSchema.parse(options['input_ids']);
   const mask = nativeTensorSchema.parse(options['attention_mask']);
   const tensors = { input_ids: input, attention_mask: mask };
@@ -133,10 +159,16 @@ export function replayRecordedText({ evidence, options }: {
     const tensor = tensors[fact.name];
     requireExact({ label: 'actual tensor facts', actual: { name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }, expected: fact });
   }
-  requireExact({ label: 'actual requested settings', actual: {
-    maxNewTokens: options['max_new_tokens'], temperature: options['temperature'],
-    topP: options['top_p'], doSample: options['do_sample'],
-  }, expected: checked.inputContract.effectiveGenerationConfig });
+  requireExact({
+    label: 'actual requested settings',
+    actual: {
+    maxNewTokens: options['max_new_tokens'],
+    temperature: options['temperature'],
+    topP: options['top_p'],
+    doSample: options['do_sample'],
+  },
+    expected: checked.inputContract.effectiveGenerationConfig,
+  });
   if (options['past_key_values'] !== undefined && options['past_key_values'] !== null) throw new Error('Replay evidence gap: KV-cache input');
   requireExact({ label: 'dictionary generate return contract', actual: options['return_dict_in_generate'], expected: true });
   const streamer = z.object({ put: z.custom<TextStreamer['put']>(value => typeof value === 'function'), end: z.custom<TextStreamer['end']>(value => typeof value === 'function') }).parse(options['streamer']);

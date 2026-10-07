@@ -102,7 +102,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
             if (node.type === 'chat_group') {
               const group = s.groups.get(node.id);
               return {
-                id: `chat_group:${node.id}`, type: 'chat_group',
+                id: `chat_group:${node.id}`,
+                type: 'chat_group',
                 chatGroup: {
                   ...group,
                   items: (node.chat_ids || []).map((cid: string) => {

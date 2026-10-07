@@ -55,8 +55,12 @@ it('keeps result images while typing a larger retention limit, including when an
   view.maxResults.value = 20;
   const gallery = createImageGallery<Omit<typeof view.results.value[number], 'id' | 'url'>>({ initialLimit: 20, maxBytes: 10000 });
   const add = () => {
-    gallery.add({ blob: new Blob(['image']), width: 1, height: 1,
-      metadata: { parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 } });
+    gallery.add({
+      blob: new Blob(['image']),
+      width: 1,
+      height: 1,
+      metadata: { parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 },
+    });
     view.results.value = gallery.entries();
   };
   // Connect the real gallery to the view using the hosted owner's limit contract.

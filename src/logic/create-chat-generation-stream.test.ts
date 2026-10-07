@@ -35,20 +35,29 @@ describe('generation stream producer bridge', () => {
   });
   it('retains received text and closes partial on upstream failure', async () => {
     const fault = new Error('connection lost'); const controller = new AbortController();
-    const { node, result } = await collect({ controller, items: createChatGenerationStream({ signal: controller.signal, run: async ({ writer }) => {
+    const { node, result } = await collect({
+      controller,
+      items: createChatGenerationStream({
+      signal: controller.signal,
+      run: async ({ writer }) => {
       await writer.text({ type: 'text', text: 'partial' }); throw fault;
-    } }) });
+    },
+    }),
+    });
     expect(node.parts[0]).toMatchObject({ text: 'partial', completeness: 'partial' });
     expect(result).toEqual({ type: 'error', error: fault });
   });
   it('does not publish drafts and preserves their position before a later completed call', async () => {
     const controller = new AbortController();
     const published: { partId: string, index: number }[] = [];
-    const generation = createChatGenerationStream({ signal: undefined, run: async ({ writer }) => {
+    const generation = createChatGenerationStream({
+      signal: undefined,
+      run: async ({ writer }) => {
       writer.reserveCall({ key: 0 }); writer.reserveCall({ key: 1 });
       await writer.call({ key: 1, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
       return { type: 'interrupted', reason: 'limit' };
-    } });
+    },
+    });
     const items = (async function* () {
       for await (const item of generation) {
         if (item.type === 'tool_call') published.push({ partId: item.partId, index: item.index });
@@ -62,22 +71,28 @@ describe('generation stream producer bridge', () => {
   });
   it('wakes an aborted pending network operation, draining its accepted content', async () => {
     const controller = new AbortController(); const started = Promise.withResolvers<void>();
-    const items = createChatGenerationStream({ signal: controller.signal, run: async ({ writer, signal }) => {
+    const items = createChatGenerationStream({
+      signal: controller.signal,
+      run: async ({ writer, signal }) => {
       await writer.text({ type: 'text', text: 'A' }); started.resolve();
       await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
       return { type: 'finished', next: 'user' };
-    } });
+    },
+    });
     const pending = collect({ items, controller }); await started.promise; controller.abort();
     const { node, result } = await pending;
     expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
   });
   it('can discard unread bounded queues without leaving the producer waiting', async () => {
     const cancelled = vi.fn();
-    const items = createChatGenerationStream({ signal: undefined, run: async ({ writer, signal }) => {
+    const items = createChatGenerationStream({
+      signal: undefined,
+      run: async ({ writer, signal }) => {
       signal.addEventListener('abort', cancelled);
       for (let i = 0; i < 50; i++) await writer.text({ type: 'text', text: String(i) });
       return { type: 'finished', next: 'user' };
-    } });
+    },
+    });
     const iterator = items[Symbol.asyncIterator](); const first = await iterator.next();
     expect(first.value.type).toBe('text');
     await iterator.return?.(); expect(cancelled).toHaveBeenCalledOnce();

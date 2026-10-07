@@ -719,8 +719,7 @@ function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
       type: preset.type,
       url: preset.url,
     },
-    defaultModelId:
-      form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID
+    defaultModelId: form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID
         ? ''
         : form.value.defaultModelId,
     titleGeneration: currentSettingsTitleGeneration(),

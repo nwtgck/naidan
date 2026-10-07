@@ -84,9 +84,13 @@ describe('inspectDownloadVerificationCachedRevisions', () => {
     const inventory = await inspectDownloadVerificationCachedRevisions({ modelId: 'org/repo', storageRoot: storageRoot({ revisions: { [sha]: cached } }) });
     const isTemporary = name.endsWith('f28f6802-947c-4b9d-bc99-223d8d469f4b');
     expect(inventory.revisions[0]).toMatchObject({
-      status: isTemporary ? 'committed-file-set' : 'partial', totalBytes: isTemporary ? 110 : 209,
-      fileCount: isTemporary ? 2 : 3, incompleteFileCount: isTemporary ? 0 : 1,
-      zeroByteFileCount: 0, completionMarkerCount: 2, lastModified: isTemporary ? 1 : 99,
+      status: isTemporary ? 'committed-file-set' : 'partial',
+      totalBytes: isTemporary ? 110 : 209,
+      fileCount: isTemporary ? 2 : 3,
+      incompleteFileCount: isTemporary ? 0 : 1,
+      zeroByteFileCount: 0,
+      completionMarkerCount: 2,
+      lastModified: isTemporary ? 1 : 99,
       committedWeightFileCount: 1,
     });
     expect(cached.entries[name]).toBeDefined();
@@ -95,10 +99,12 @@ describe('inspectDownloadVerificationCachedRevisions', () => {
     const sha = 'a'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({
       modelId: 'hf.co/org/repo',
-      storageRoot: storageRoot({ revisions: {
+      storageRoot: storageRoot({
+        revisions: {
         main: revisionDirectory({ lastModified: 10 }),
         [sha]: revisionDirectory({ lastModified: 20 }),
-      } }),
+      },
+      }),
     });
 
     expect(inventory.normalizedModelId).toBe('org/repo');
@@ -136,7 +142,9 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     });
 
     expect(inventory.revisions[0]).toMatchObject({
-      status: 'partial', weightFileCount: 2, committedWeightFileCount: 1,
+      status: 'partial',
+      weightFileCount: 2,
+      committedWeightFileCount: 1,
     });
     expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: current })).toEqual([
       { revision: current, loaderRevisionOption: current, source: 'current-resolved-revision' },
@@ -162,10 +170,12 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     const orphan = '7'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({
       modelId: 'org/repo',
-      storageRoot: storageRoot({ revisions: {
+      storageRoot: storageRoot({
+        revisions: {
         [zero]: revisionDirectory({ weightSize: 0 }),
         [orphan]: directory({ '.model_q4.onnx.complete': file() }),
-      } }),
+      },
+      }),
     });
 
     expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined })).toEqual([]);
@@ -176,11 +186,13 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     const stale = 'd'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({
       modelId: 'org/repo',
-      storageRoot: storageRoot({ revisions: {
+      storageRoot: storageRoot({
+        revisions: {
         main: revisionDirectory({ lastModified: 30 }),
         [stale]: revisionDirectory({ lastModified: 40 }),
         [current]: revisionDirectory({ lastModified: 20 }),
-      } }),
+      },
+      }),
     });
 
     expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: current })).toEqual([
@@ -192,9 +204,11 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
   it('does not silently substitute another immutable SHA when the current resolved SHA is known but absent', async () => {
     const inventory = await inspectDownloadVerificationCachedRevisions({
       modelId: 'org/repo',
-      storageRoot: storageRoot({ revisions: {
+      storageRoot: storageRoot({
+        revisions: {
         ['e'.repeat(40)]: revisionDirectory({ lastModified: 50 }),
-      } }),
+      },
+      }),
     });
 
     expect(planDownloadVerificationCachedRevisionLoadCandidates({
@@ -209,12 +223,14 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     const partialNewest = '3'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({
       modelId: 'org/repo',
-      storageRoot: storageRoot({ revisions: {
+      storageRoot: storageRoot({
+        revisions: {
         main: revisionDirectory({ lastModified: 5 }),
         [older]: revisionDirectory({ lastModified: 10 }),
         [newer]: revisionDirectory({ lastModified: 20 }),
         [partialNewest]: revisionDirectory({ complete: false, lastModified: 30 }),
-      } }),
+      },
+      }),
     });
 
     expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined })).toEqual([

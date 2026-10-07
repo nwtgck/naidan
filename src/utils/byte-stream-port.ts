@@ -72,7 +72,9 @@ export function serveByteStream({ port, openStream, signal }: {
   };
   const onAbort = () => abort({ reason: signal?.reason ?? abortError() });
   const channel = createValidatedMessagePort({
-    port, incomingSchema: requestSchema, outgoingSchema: responseSchema,
+    port,
+    incomingSchema: requestSchema,
+    outgoingSchema: responseSchema,
     onError: abort,
     async onMessage({ message }) {
       if (finished) return;
@@ -171,7 +173,9 @@ export function receiveByteStream({ port }: { port: MessagePort }): {
     },
   }, { highWaterMark: 0 });
   const channel = createValidatedMessagePort({
-    port, incomingSchema: responseSchema, outgoingSchema: requestSchema,
+    port,
+    incomingSchema: responseSchema,
+    outgoingSchema: requestSchema,
     onError: abort,
     onMessage({ message }) {
       if (finished) return;

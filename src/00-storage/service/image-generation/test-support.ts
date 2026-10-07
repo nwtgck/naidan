@@ -112,14 +112,42 @@ export function generationSessionFixture({ id }: { id: string }): ImageGeneratio
 }
 export function generationRunFixture({ id, sessionId, count, seed }: { id: string, sessionId: ImageGenerationSessionId, count: number, seed: string }): ImageGenerationRun {
   return {
-    acceptedOrder: undefined, id: toImageGenerationRunId({ raw: id }), sessionId, revision: 0, createdAt: 2, seeds: planImageGenerationSeeds({ baseSeed: seed, count }), sources: [], execution: { type: 'queued' },
+    acceptedOrder: undefined,
+    id: toImageGenerationRunId({ raw: id }),
+    sessionId,
+    revision: 0,
+    createdAt: 2,
+    seeds: planImageGenerationSeeds({ baseSeed: seed, count }),
+    sources: [],
+    execution: { type: 'queued' },
     request: {
-      parameters: { prompt: '雨夜景 / cinematic night', negativePrompt: 'blur', width: 256, height: 256, steps: 9, guidance: 1, seed,
-        sampler: 'euler', scheduler: 'simple', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 4, modelArguments: '--example',
+      parameters: {
+        prompt: '雨夜景 / cinematic night',
+        negativePrompt: 'blur',
+        width: 256,
+        height: 256,
+        steps: 9,
+        guidance: 1,
+        seed,
+        sampler: 'euler',
+        scheduler: 'simple',
+        distilledGuidance: 3.5,
+        vaeTiling: true,
+        vaeTileSize: 32,
+        flashAttention: false,
+        bf16WeightType: 'f32',
+        qwenVaePolicy: 'bounded',
+        conditioningCacheSize: 4,
+        modelArguments: '--example',
       },
-      models: [{ slot: 'diffusion', path: 'weights/main.gguf', file: { type: 'opfs', path: 'models/custom/main.gguf', name: 'main.gguf', size: 1000, lastModified: 1 }, companions: [
+      models: [{
+        slot: 'diffusion',
+        path: 'weights/main.gguf',
+        file: { type: 'opfs', path: 'models/custom/main.gguf', name: 'main.gguf', size: 1000, lastModified: 1 },
+        companions: [
         { path: 'weights/tokenizer.json', file: { type: 'host', directoryId: toHostModelDirectoryId({ raw: 'host-models' }), path: 'custom/tokenizer.json', name: 'tokenizer.json', size: 100, lastModified: 1 } },
-      ] }],
+      ],
+      }],
       loras: [{ path: 'inactive.gguf', file: { type: 'file', name: 'inactive.gguf', size: 80, lastModified: 2 }, strength: 0 }],
       imageInputs: { initImage: { binaryObjectId: toBinaryObjectId({ raw: 'input-aa' }), name: 'initial.png' }, strength: 0.75, referenceImages: [{ binaryObjectId: toBinaryObjectId({ raw: 'reference-aa' }), name: 'reference.png' }] },
       preview: { enabled: true, interval: 2, startStep: 1, mode: 'projection', maxEdge: 256 },
@@ -130,7 +158,13 @@ export function generationRunFixture({ id, sessionId, count, seed }: { id: strin
 export function generationAssetFixture({ id, run, index }: { id: string, run: ImageGenerationRun, index: number }): ImageGenerationAsset {
   const seed = run.seeds[index];
   if (seed === undefined) throw new Error('Fixture has no planned output at this index.');
-  return { id: toImageGenerationAssetId({ raw: id }), sessionId: run.sessionId, runId: run.id, index, createdAt: 10 + index, seed,
+  return {
+    id: toImageGenerationAssetId({ raw: id }),
+    sessionId: run.sessionId,
+    runId: run.id,
+    index,
+    createdAt: 10 + index,
+    seed,
     result: { binaryObjectId: toBinaryObjectId({ raw: `binary-${id}` }), width: 256, height: 256, modelVersion: 'test-model', uniformOutput: false, elapsedMs: 50 },
     previews: [{ binaryObjectId: toBinaryObjectId({ raw: `preview-${id}` }), width: 128, height: 128, step: 2, steps: 9, mode: 'projection' }],
   };
@@ -139,9 +173,24 @@ export function generationAssetFixture({ id, run, index }: { id: string, run: Im
 
 export function generationDraftFixture({ sessionId }: { sessionId: ImageGenerationSessionId }): import('@/01-models/image-generation').ImageGenerationSessionDraft {
   const run = generationRunFixture({ id: 'draft-run-aa', sessionId, count: 2, seed: '42' });
-  return { sessionId, revision: 0, updatedAt: 3, request: { ...run.request, parameters: { ...run.request.parameters, prompt: '', seed: '' } },
-    inferenceLocation: undefined, seedMode: 'random', layout: 'components', modelSelection: undefined, remoteModelEditor: undefined, loraStates: [{ enabled: false, strength: 0.75 }],
-    count: 2, debug: 'off', retainModel: true, keepPreviews: true, maxPreviews: 8, maxResults: 12 };
+  return {
+    sessionId,
+    revision: 0,
+    updatedAt: 3,
+    request: { ...run.request, parameters: { ...run.request.parameters, prompt: '', seed: '' } },
+    inferenceLocation: undefined,
+    seedMode: 'random',
+    layout: 'components',
+    modelSelection: undefined,
+    remoteModelEditor: undefined,
+    loraStates: [{ enabled: false, strength: 0.75 }],
+    count: 2,
+    debug: 'off',
+    retainModel: true,
+    keepPreviews: true,
+    maxPreviews: 8,
+    maxResults: 12,
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

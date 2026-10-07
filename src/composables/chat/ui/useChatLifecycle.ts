@@ -125,7 +125,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         }
       }
 
-      await storageService.updateHierarchy({ updater: ({ current }) => {
+      await storageService.updateHierarchy({
+        updater: ({ current }) => {
         if (groupId !== undefined) {
           const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;
           if (group !== undefined) {
@@ -138,7 +139,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
         current.items.splice(insertIndex, 0, { type: 'chat', id: chatId });
         return current;
-      } });
+      },
+      });
 
       if (activate) {
         setCurrentChatId({ chatId });
@@ -173,7 +175,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       return;
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat':
@@ -188,7 +191,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         }
       });
       return current;
-    } });
+    },
+    });
 
     if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === id) {
       currentChatRef.value = null;
@@ -215,7 +219,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       actionLabel: await ensureStrings.useChatLifecycle__undo(),
       onAction: async () => {
         const originalGroupId = chat.groupId;
-        await storageService.updateHierarchy({ updater: ({ current }) => {
+        await storageService.updateHierarchy({
+          updater: ({ current }) => {
           if (originalGroupId !== null) {
             const group = current.items.find((item) => {
               switch (item.type) {
@@ -237,7 +242,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
           current.items.push({ type: 'chat', id: chat.id });
           return current;
-        } });
+        },
+        });
         await loadData();
         await chatNavigation.openChat({
           chatId: chat.id,

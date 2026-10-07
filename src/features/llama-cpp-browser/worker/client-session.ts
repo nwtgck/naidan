@@ -71,8 +71,18 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   // eslint-disable-next-line local-rules-named-args/require-named-args -- DOM Worker error listener signature.
   const onError = (event: ErrorEvent): void => {
     const failureKind = lastNativeFailure?.failureKind ?? classifyFailure({ error: event.error instanceof Error ? event.error : event.message });
-    logDiagnostic({ diagnostic: { ...lastOperation, ...dispatchLimitDetails({ message: event.message }), ...lastNativeFailure, event: 'failed', stage: 'worker-error', failureKind,
-      lastStage: lastOperation?.stage, lastEvent: lastOperation?.event } });
+    logDiagnostic({
+      diagnostic: {
+      ...lastOperation,
+      ...dispatchLimitDetails({ message: event.message }),
+      ...lastNativeFailure,
+      event: 'failed',
+      stage: 'worker-error',
+      failureKind,
+      lastStage: lastOperation?.stage,
+      lastEvent: lastOperation?.event,
+    },
+    });
     event.preventDefault(); dispose();
   };
   const onMessageError = (): void => {
@@ -125,11 +135,19 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     let acceptingProgress = true;
     try {
       return modelSchema.parse(await invoke({
-        call: () => call({ generationId, report: workerProxy({ value: ({ ...event }: Progress) => {
+        call: () => call({
+          generationId,
+          report: workerProxy({
+          value: ({ ...event }: Progress) => {
           if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        } }) }), signal, onAbort: () => {
+        },
+        }),
+        }),
+        signal,
+        onAbort: () => {
           void remote.cancelGeneration({ generationId }).catch(dispose);
-        }, abortTimeoutMs: undefined,
+        },
+        abortTimeoutMs: undefined,
       }));
     } finally {
       acceptingProgress = false;
@@ -146,10 +164,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
-    importModel: ({ file, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+    importModel: ({ file, onProgress, signal }) => importWithCancellation({
+      signal,
+      onProgress,
       call: ({ generationId, report }) => remote.importModel({ file, generationId }, report),
     }),
-    importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+    importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({
+      signal,
+      onProgress,
       call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
     }),
     removeModel: async ({ plan, signal }) => {
@@ -159,29 +181,44 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
-        await invoke({ call: () => remote.prepareModel(accepted, workerProxy({ value: ({ ...event }) => {
+        await invoke({
+          call: () => remote.prepareModel(accepted, workerProxy({
+          value: ({ ...event }) => {
           if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        } })), signal, onAbort: () => {
+        },
+        })),
+          signal,
+          onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        },
+          abortTimeoutMs: 5000,
+        });
       } finally {
         acceptingEvents = false;
       }
     },
     generate: async ({ request, onEvent, onProgress, signal }) => {
-      const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
+      const accepted = workerGenerateCallSchema.parse({
+        ...request,
+        generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
       let acceptingEvents = true;
       try {
-        const result = await invoke({ call: () => remote.generate(accepted,
-          workerProxy({ value: async ({ event }) => {
+        const result = await invoke({
+          call: () => remote.generate(accepted,
+          workerProxy({
+            value: async ({ event }) => {
             if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ ...event }) => {
+          },
+          }),
+          workerProxy({
+            value: ({ ...event }) => {
             if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+          },
+          }),
+          workerProxy({
+            value: ({ diagnostic }: { diagnostic: unknown }) => {
             if (!acceptingEvents || disposed || signal?.aborted) return;
             debugEnabled = accepted.debug === 'on';
             const checkpoint = diagnosticSchema.parse(diagnostic);
@@ -189,9 +226,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
             if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
             if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-          } })), signal, onAbort: () => {
+          },
+          })),
+          signal,
+          onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        },
+          abortTimeoutMs: 5000,
+        });
         return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
@@ -223,12 +265,16 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       };
       const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
       try {
-        const result = await invoke({ call: () => {
+        const result = await invoke({
+          call: () => {
           const pending = remote.generateAudio(accepted,
-            workerProxy({ value: ({ ...event }) => {
+            workerProxy({
+              value: ({ ...event }) => {
               if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-            } }),
-            workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
+            },
+            }),
+            workerProxy({
+              value: ({ diagnostic }: { diagnostic: unknown }) => {
               if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
               debugEnabled = accepted.debug === 'on';
               const checkpoint = diagnosticSchema.parse(diagnostic);
@@ -236,21 +282,28 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
               if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
               if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
               if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-            } }), preview ? workerProxy({ value: async ({ ...event }: AudioPreviewEvent) => {
+            },
+            }), preview ? workerProxy({
+              value: async ({ ...event }: AudioPreviewEvent) => {
               if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
               const acceptedEvent = audioPreviewEventSchema.parse(event);
               if (acceptedEvent.requestVersion <= deliveredVersion) return;
               if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
               deliveredVersion = acceptedEvent.requestVersion;
               await preview.onPreview(acceptedEvent);
-            } }) : undefined);
+            },
+            }) : undefined);
           started = true;
           if (completionSignal?.aborted) finish();
           requestPreview();
           return pending;
-        }, signal: cancellationSignal, onAbort: () => {
+        },
+          signal: cancellationSignal,
+          onAbort: () => {
           void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        },
+          abortTimeoutMs: 5000,
+        });
         return audioGenerationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;

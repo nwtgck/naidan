@@ -19,16 +19,38 @@ function fixture({ status, content }: { status: 'success' | 'error', content: Te
   case 'error': result = { toolCallId: callId, status, error: { code: 'other', message: content } }; break;
   default: { const _ex: never = status; throw new Error(`Unhandled test status: ${_ex}`); }
   }
-  const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3, modelId: undefined, lmParameters: undefined,
-    parts: [{ type: 'tool_result', result }], replies: { items: [] } };
-  const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 2, modelId: 'test', lmParameters: undefined, interruption: undefined,
+  const tool: ToolMessageNode = {
+    id: toMessageId({ raw: 'tool' }),
+    role: 'tool',
+    createdAt: 3,
+    modelId: undefined,
+    lmParameters: undefined,
+    parts: [{ type: 'tool_result', result }],
+    replies: { items: [] },
+  };
+  const assistant: AssistantMessageNode = {
+    id: toMessageId({ raw: 'assistant' }),
+    role: 'assistant',
+    createdAt: 2,
+    modelId: 'test',
+    lmParameters: undefined,
+    interruption: undefined,
     parts: [
       { type: 'reasoning', text: '  確認する。\n', completeness: 'complete' },
       { type: 'text', text: '<think>literal</think>', completeness: 'complete' },
       { type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'lookup', arguments: ' {"n": 1} ' } } },
-    ], replies: { items: [tool] } };
-  const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-    parts: [{ type: 'text', text: '質問', completeness: 'complete' }], replies: { items: [assistant] } };
+    ],
+    replies: { items: [tool] },
+  };
+  const user: UserMessageNode = {
+    id: toMessageId({ raw: 'user' }),
+    role: 'user',
+    createdAt: 1,
+    modelId: undefined,
+    lmParameters: undefined,
+    parts: [{ type: 'text', text: '質問', completeness: 'complete' }],
+    replies: { items: [assistant] },
+  };
   const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
   return { chat, tool };
 }
@@ -82,8 +104,11 @@ for (const kind of ['openai', 'ollama'] as const) {
       literal.text = literalText;
       call.toolCall.function.arguments = argumentsText;
       const inactive: AssistantMessageNode = {
-        id: toMessageId({ raw: 'inactive' }), role: 'assistant', createdAt: 4,
-        modelId: 'test', lmParameters: undefined,
+        id: toMessageId({ raw: 'inactive' }),
+        role: 'assistant',
+        createdAt: 4,
+        modelId: 'test',
+        lmParameters: undefined,
         interruption: { type: 'error', message: '記録済みの失敗' },
         parts: [{ type: 'text', text: 'Other branch [Aborted]  ', completeness: 'partial' }],
         replies: { items: [] },
@@ -96,28 +121,47 @@ for (const kind of ['openai', 'ollama'] as const) {
       for (const content of [chat, restored]) {
         const messages = buildChatGenerationMessages({ chat: content, excludedMessageId: undefined, systemPromptMessages: [] });
         expect(messages.map(message => message.id)).toEqual(['user', 'assistant', 'tool']);
-        const { result } = await consumeProviderGenerationForTest({ provider, request: {
-          debug: undefined, messages, model: 'test', parameters: undefined, tools: undefined, signal: undefined,
+        const { result } = await consumeProviderGenerationForTest({
+          provider,
+          request: {
+          debug: undefined,
+          messages,
+          model: 'test',
+          parameters: undefined,
+          tools: undefined,
+          signal: undefined,
           readBinaryObject: async ({ binaryObjectId, signal }) => {
             signal?.throwIfAborted();
             const blob = await storage.getFile({ binaryObjectId });
             if (!blob) throw new Error('Missing stored tool result.');
             return blob;
           },
-        } });
+        },
+        });
         expect(result).toEqual({ type: 'finished', next: 'user' });
       }
 
-      const expected = { model: 'test', stream: true, messages: [
+      const expected = {
+        model: 'test',
+        stream: true,
+        messages: [
         { role: 'user', content: '質問' },
-        { role: 'assistant', content: literalText,
+        {
+          role: 'assistant',
+          content: literalText,
           ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
-          tool_calls: [{ id: 'lookup-1', type: 'function', function: {
-            name: 'lookup', arguments: kind === 'openai' ? argumentsText : { n: 1, label: 'a' },
-          } }],
+          tool_calls: [{
+            id: 'lookup-1',
+            type: 'function',
+            function: {
+            name: 'lookup',
+            arguments: kind === 'openai' ? argumentsText : { n: 1, label: 'a' },
+          },
+          }],
         },
         { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
-      ] };
+      ],
+      };
       expect(fetcher).toHaveBeenCalledTimes(2);
       expect(requestBody({ fetcher, index: 0 })).toEqual(expected);
       expect(requestBody({ fetcher, index: 1 })).toEqual(expected);
@@ -139,10 +183,18 @@ for (const kind of ['openai', 'ollama'] as const) {
           if (!blob) throw new Error('Missing saved tool content.');
           return blob;
         };
-        const invoke = ({ content }: { content: ChatContent }) => consumeProviderGenerationForTest({ provider, request: {
-          debug: undefined, model: 'test', parameters: undefined, tools: undefined, signal: undefined, readBinaryObject,
+        const invoke = ({ content }: { content: ChatContent }) => consumeProviderGenerationForTest({
+          provider,
+          request: {
+          debug: undefined,
+          model: 'test',
+          parameters: undefined,
+          tools: undefined,
+          signal: undefined,
+          readBinaryObject,
           messages: build({ content }),
-        } });
+        },
+        });
         expect((await invoke({ content: chat })).result).toEqual({ type: 'finished', next: 'user' });
         await storage.saveFile({ binaryObjectId, blob: new Blob([text], { type: 'text/plain' }), name: 'result.txt', mimeType: 'text/plain' });
         const saved = { type: 'binary_object' as const, id: binaryObjectId };
@@ -162,14 +214,20 @@ for (const kind of ['openai', 'ollama'] as const) {
         expect((await invoke({ content: loaded })).result).toEqual({ type: 'finished', next: 'user' });
         const resultText = status === 'success' ? text : `Error [other]: ${text}`;
         // Independent expected API bodies: persisted references never become model content.
-        const expected = { model: 'test', stream: true, messages: [
+        const expected = {
+          model: 'test',
+          stream: true,
+          messages: [
           { role: 'user', content: '質問' },
-          { role: 'assistant', content: '<think>literal</think>',
+          {
+            role: 'assistant',
+            content: '<think>literal</think>',
             ...(kind === 'openai' ? { reasoning_content: '  確認する。\n' } : { thinking: '  確認する。\n' }),
             tool_calls: [{ id: 'lookup-1', type: 'function', function: { name: 'lookup', arguments: kind === 'openai' ? ' {"n": 1} ' : { n: 1 } } }],
           },
           { role: 'tool', content: resultText, tool_call_id: 'lookup-1', ...(kind === 'ollama' ? { tool_name: 'lookup' } : {}) },
-        ] };
+        ],
+        };
         expect(fetcher).toHaveBeenCalledTimes(2);
         expect(requestBody({ fetcher, index: 0 })).toEqual(expected);
         expect(requestBody({ fetcher, index: 1 })).toEqual(expected);
@@ -180,11 +238,18 @@ for (const kind of ['openai', 'ollama'] as const) {
       const { provider, fetcher } = providerWithRecording({ kind });
       const { chat } = fixture({ status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'corrupt' }) } });
       const before = structuredClone(chat);
-      const { node, result } = await consumeProviderGenerationForTest({ provider, request: {
-        debug: undefined, messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
-        model: 'test', parameters: undefined, tools: undefined, signal: undefined,
+      const { node, result } = await consumeProviderGenerationForTest({
+        provider,
+        request: {
+        debug: undefined,
+        messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
+        model: 'test',
+        parameters: undefined,
+        tools: undefined,
+        signal: undefined,
         readBinaryObject: async () => new Blob([Uint8Array.of(0xff)]),
-      } });
+      },
+      });
       expect(result.type).toBe('error');
       expect(fetcher).not.toHaveBeenCalled();
       expect(node.parts).toEqual([]);

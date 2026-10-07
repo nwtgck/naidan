@@ -48,7 +48,8 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
   const issuedCalls: GenerationCaptureRequest['context'][] = [];
   const loadRequests: GenerationCaptureClientLifetime['loadRequests'] = [];
   const incompleteReasons = new Set<GenerationCaptureClientLifetime['incompleteReasons'][number]>();
-  const core = createWorkerClientCore({ capture: {
+  const core = createWorkerClientCore({
+    capture: {
     loadReceiptOwner: identity,
     observeLoad({ packet }) {
       loadDiagnostics.observe({ packet });
@@ -103,7 +104,8 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
         loadRequests.push({ requestedModelId: modelId, requestedRevision: revision, revisionSelection: { ...revisionSelection } });
       }
     },
-  } });
+  },
+  });
   return {
     client: core.client,
     async takeGenerationCapture(): Promise<GenerationCaptureReadResult> {
@@ -190,7 +192,9 @@ function createWorkerClientCore({ capture }: {
     { type: 'module' },
   );
 
-  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined,
+  const session = createProductionWorkerSession({
+    worker,
+    startupTimeoutMs: undefined,
     observeLoadDiagnostic: capture === undefined ? undefined : ({ packet }) => capture.observeLoad({ packet }),
   });
   const client: TransformersJsWorkerClient = {

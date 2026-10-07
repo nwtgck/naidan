@@ -10,14 +10,17 @@ import type { TransformersJsInferenceScope } from './inference-operation';
 
 export function snapshotChatRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): Parameters<LmProvider['chat']>[0] {
   return exactObject<Parameters<LmProvider['chat']>[0]>()({
-    messages: messages.map(message => copyChatMessage({ message })), model,
+    messages: messages.map(message => copyChatMessage({ message })),
+    model,
     parameters: cloneLmParameters({ params: parameters }),
     tools: tools?.map(tool => {
       const { name, description, parameters, ...unhandled } = tool;
       unhandled satisfies Record<PropertyKey, never>;
       return { name, description, parameters: z.record(z.string(), z.json()).parse(parameters) };
     }),
-    readBinaryObject, debug, signal,
+    readBinaryObject,
+    debug,
+    signal,
   });
 }
 
@@ -81,7 +84,9 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
           if (source.aborted) abort();
           return () => source.removeEventListener('abort', abort);
         });
-        const items = createInferenceGeneration({ signal: local.signal, generate: async ({ onEvent, signal }) => {
+        const items = createInferenceGeneration({
+          signal: local.signal,
+          generate: async ({ onEvent, signal }) => {
           assertOpen();
           scope.assertActive();
           if (generating) throw new Error('The chat operation already has an active generation.');
@@ -97,7 +102,8 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
             generating = false;
             signal.removeEventListener('abort', abort);
           }
-        } });
+        },
+        });
         const inner = items[Symbol.asyncIterator]();
         const detach = () => {
           for (const remove of relays) remove();

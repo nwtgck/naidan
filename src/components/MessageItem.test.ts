@@ -652,7 +652,7 @@ describe('MessageItem States', () => {
     replies: { items: [] },
     parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
-    interruption: error !== undefined ? {type:'error' as const,message:error} : undefined,
+    interruption: error !== undefined ? { type: 'error' as const, message: error } : undefined,
   } as AssistantMessageNode);
 
   it('displays loading indicator when waiting for response', async () => {

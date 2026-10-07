@@ -24,4 +24,5 @@ export function isPrivacyFetchBrokerChunk({ chunkInfo }: { chunkInfo: {
   return chunkInfo.moduleIds?.some(moduleId => isBrokerRuntimeModule({ moduleId })) ?? false;
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

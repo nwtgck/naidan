@@ -6,7 +6,8 @@ import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@
 
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
   files: {
@@ -19,7 +20,8 @@ installRawReplay({ evidence: {
     'preprocessor_config.json': { sha256: '6a970fd06f30e6943b3e2c14d5d3b42d49b06cf99b99103d56689bef462d90f8', byteLength: 336 },
     'tokenizer.json': { sha256: '89da80cc6689bef4d90cc1028249436975ffb0814618f1d93c65310e05801a9b', byteLength: 19226111 },
   },
-} });
+},
+});
 
 describe('qwen3.5-2b raw metadata replay', () => {
   it('constructs the Production tokenizer/processor and renders its original template', async () => {
@@ -28,8 +30,11 @@ describe('qwen3.5-2b raw metadata replay', () => {
 
   it.each(['q4f16', 'q4'] as const)('observes repository-listed %s paths without real ONNX execution', async dtype => {
     await assertRawModelSelection({
-      modelId, dtype, sessions: { decoder_model_merged: 1, embed_tokens: 1, vision_encoder: 1 },
-      probeOnly: [], expectedMissing: [],
+      modelId,
+      dtype,
+      sessions: { decoder_model_merged: 1, embed_tokens: 1, vision_encoder: 1 },
+      probeOnly: [],
+      expectedMissing: [],
     });
   });
 });
@@ -41,7 +46,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'onnx-community/Qwen3.5-2B-ONNX', chunks: { q4f16: { decoder_model_merged: 1, embed_tokens: 1, vision_encoder: 1 }, q4: { decoder_model_merged: 1, embed_tokens: 1, vision_encoder: 1 } }, registryExtra: [], missing: [] },
-      dtype, expectedAutoClass: 'AutoModelForImageTextToText',
+      dtype,
+      expectedAutoClass: 'AutoModelForImageTextToText',
     });
   });
 });

@@ -87,7 +87,8 @@ it('stops after the first prepared dtype when runtime module initialization fail
   });
 
   expect(result).toMatchObject({
-    status: 'failed', selectedCandidate: undefined,
+    status: 'failed',
+    selectedCandidate: undefined,
     error: { name: 'ProductionWorkerLifecycleError', message: expect.stringContaining(initializationFailure.message) },
   });
   expect(result.attempts).toHaveLength(1);
@@ -107,13 +108,16 @@ it('stops after the first prepared dtype when runtime module initialization fail
 it('rejects real revision reuse after exact cache initialization failure without advancing to legacy main', async () => {
   const acceptRevisions = vi.fn(acceptReusableDownloadedProductionRevisionsForDownload);
   const outcome = reuseDownloadedProductionRevision({
-    modelId, resolvedRevision: revision, storageRoot: {} as FileSystemDirectoryHandle,
+    modelId,
+    resolvedRevision: revision,
+    storageRoot: {} as FileSystemDirectoryHandle,
     candidateOrderByRevision: {
       [revision]: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
       main: [{ device: 'webgpu', dtype: 'q4' }],
     },
     inspectCachedRevisions: async () => ({
-      modelId, normalizedModelId: modelId,
+      modelId,
+      normalizedModelId: modelId,
       revisions: [
         { revision, kind: 'immutable-sha', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 2, status: 'committed-file-set' },
         { revision: 'main', kind: 'legacy-main', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 1, status: 'committed-file-set' },

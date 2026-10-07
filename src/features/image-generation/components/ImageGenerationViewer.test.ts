@@ -42,9 +42,11 @@ it('keeps the photograph unobstructed until details are requested and retains zo
 });
 
 it('leaves editing, selection and modified arrow keys to the control instead of changing images', async () => {
-  wrapper = mount(ImageGenerationViewer, { props: { count: 3, index: 1, downloadEnabled: false },
+  wrapper = mount(ImageGenerationViewer, {
+    props: { count: 3, index: 1, downloadEnabled: false },
     slots: { toolbar: '<input data-testid="toolbar-input">', details: '<div><textarea data-testid="details-prompt"/><select data-testid="tag-picker"><option>a</option></select><button data-testid="details-action">assign</button></div>' },
-    global: { stubs: { Teleport: true } } });
+    global: { stubs: { Teleport: true } },
+  });
   await wrapper.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
   for (const selector of ['toolbar-input', 'details-prompt', 'tag-picker']) {
     await wrapper.get(`[data-testid="${selector}"]`).trigger('keydown', { key: 'ArrowRight' });
@@ -72,8 +74,10 @@ it('does not consume Escape already handled by a control or by an IME', async ()
 it('traps focus across editable details and links, then restores the opener on close', async () => {
   const opener = document.createElement('button'); document.body.append(opener); opener.focus();
   try {
-    wrapper = mount(ImageGenerationViewer, { props: { count: 1, index: 0, downloadEnabled: false },
-      slots: { details: '<div><input disabled><input hidden><a href="#details" data-testid="details-link">Details</a><textarea data-testid="details-last"/><details><summary>Collapsed</summary><input data-testid="hidden-input"></details></div>' } });
+    wrapper = mount(ImageGenerationViewer, {
+      props: { count: 1, index: 0, downloadEnabled: false },
+      slots: { details: '<div><input disabled><input hidden><a href="#details" data-testid="details-link">Details</a><textarea data-testid="details-last"/><details><summary>Collapsed</summary><input data-testid="hidden-input"></details></div>' },
+    });
     const element = document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!;
     const dialog = new DOMWrapper(element);
     expect(document.activeElement).toBe(element);
@@ -105,8 +109,11 @@ it('changes wheel zoom only over the image stage, never over scrollable metadata
 });
 
 it('navigates with arrow keys while a details action has focus, just as the image toolbar does', async () => {
-  wrapper = mount(ImageGenerationViewer, { props: { count: 3, index: 1, downloadEnabled: false, 'onUpdate:index': value => wrapper?.setProps({ index: value }) },
-    slots: { details: '<button data-testid="details-action">Add tag</button>' }, global: { stubs: { Teleport: true } } });
+  wrapper = mount(ImageGenerationViewer, {
+    props: { count: 3, index: 1, downloadEnabled: false, 'onUpdate:index': value => wrapper?.setProps({ index: value }) },
+    slots: { details: '<button data-testid="details-action">Add tag</button>' },
+    global: { stubs: { Teleport: true } },
+  });
   await wrapper.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
   await wrapper.get('[data-testid="details-action"]').trigger('keydown', { key: 'ArrowRight' });
   expect(wrapper.props('index')).toBe(2);

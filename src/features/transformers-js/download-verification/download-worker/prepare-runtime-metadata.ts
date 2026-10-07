@@ -40,9 +40,14 @@ export async function prepareRuntimeMetadata({ modelId, revision, runtime, downl
     onStage({ stage: 'resource-selection' });
     for (const candidate of TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES) {
       try {
-        resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = { status: 'ready', paths: selectProductionModelResources({
-          autoClass: selectTransformersJsProductionAutoClass({ modelId, modelType }), config, candidate,
-        }).paths };
+        resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = {
+          status: 'ready',
+          paths: selectProductionModelResources({
+          autoClass: selectTransformersJsProductionAutoClass({ modelId, modelType }),
+          config,
+          candidate,
+        }).paths,
+        };
       } catch (error) {
         if (!(error instanceof ProductionResourceCandidateError)) throw error;
         resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = { status: 'planning-failed', error: { name: error.name, message: error.message } };

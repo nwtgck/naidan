@@ -6,27 +6,47 @@ import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 const state = vi.hoisted(() => ({
-  chat: undefined as Chat | undefined, request: undefined as Parameters<LmProvider['chat']>[0] | undefined,
-  progress: vi.fn(), save: vi.fn(), meta: vi.fn(), active: undefined as AbortController | undefined,
+  chat: undefined as Chat | undefined,
+  request: undefined as Parameters<LmProvider['chat']>[0] | undefined,
+  progress: vi.fn(),
+  save: vi.fn(),
+  meta: vi.fn(),
+  active: undefined as AbortController | undefined,
   generate: undefined as (() => AsyncIterable<ChatGenerationItem>) | undefined,
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  getLiveChatById: () => state.chat, getLiveChat: ({ chat }: { chat: Chat }) => chat,
-  getReadonlyChat: () => state.chat, isProcessing: () => false, registerLiveInstance: vi.fn(),
-  rootItems: { value: [] }, triggerCurrentChat: vi.fn(), updateChatContent: state.save, updateChatMeta: state.meta,
+  getLiveChatById: () => state.chat,
+  getLiveChat: ({ chat }: { chat: Chat }) => chat,
+  getReadonlyChat: () => state.chat,
+  isProcessing: () => false,
+  registerLiveInstance: vi.fn(),
+  rootItems: { value: [] },
+  triggerCurrentChat: vi.fn(),
+  updateChatContent: state.save,
+  updateChatMeta: state.meta,
   chatRuntimeStore: { startTask: vi.fn(), finishTask: vi.fn() },
-  contextCompactRuntime: { setProgress: state.progress, setActiveContextCompaction: ({ controller }: { controller: AbortController }) => {
+  contextCompactRuntime: {
+    setProgress: state.progress,
+    setActiveContextCompaction: ({ controller }: { controller: AbortController }) => {
     state.active = controller;
   },
   clearActiveContextCompaction: () => {
     state.active = undefined;
-  }, getActiveContextCompaction: () => state.active },
+  },
+    getActiveContextCompaction: () => state.active,
+  },
 }));
 vi.mock('@/logic/context-compact', async importOriginal => {
   const actual = await importOriginal<typeof import('@/logic/context-compact')>();
-  return { ...actual, createProviderForCompact: async () => ({ chat: (request: Parameters<LmProvider['chat']>[0]) => {
+  return {
+    ...actual,
+    createProviderForCompact: async () => ({
+    chat: (request: Parameters<LmProvider['chat']>[0]) => {
     state.request = request; return state.generate!();
-  }, listModels: vi.fn() }) };
+  },
+    listModels: vi.fn(),
+  }),
+  };
 });
 vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ modelId: 'm', endpoint: { type: 'openai', url: 'https://example.invalid', httpHeaders: [] }, lmParameters: EMPTY_LM_PARAMETERS }) }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: {} } }) }));

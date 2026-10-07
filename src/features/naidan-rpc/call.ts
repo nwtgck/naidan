@@ -156,9 +156,13 @@ export class RpcConversation {
       return async (input: unknown): Promise<unknown> => {
         check({ condition: this.active() && state.phase === 'accepted', code: 'CANCELLED' });
         check({ condition: this.invocations.size < CALLBACK_LIMIT && this.nextInvocation <= 1024, code: 'RESOURCE_EXHAUSTED' });
-        const packed = pack({ plan: inputPlan, value: input, allocate: () => {
+        const packed = pack({
+          plan: inputPlan,
+          value: input,
+          allocate: () => {
           throw new Error('Finite callback input required');
-        } });
+        },
+        });
         const invocation = this.nextInvocation++, result = deferred<unknown>();
         this.invocations.set(invocation, { result, plan: resultPlan });
         try {
@@ -213,7 +217,8 @@ export class RpcConversation {
     }
     state.phase = 'stopping'; state.pendingBytes = undefined;
     const sending = state.sending;
-    this.task({ run: async () => {
+    this.task({
+      run: async () => {
       try {
         if (isStream(state.capability)) {
           if (state.reader) await state.reader.cancel();
@@ -228,7 +233,8 @@ export class RpcConversation {
         } catch { /* A cancelled pull may still be settling. */ }
         if (acknowledge && this.active()) await this.send({ frame: { type: 'stopped', id } });
       }
-    } });
+    },
+    });
   }
   private stopImport({ id }: { id: number }): Promise<void> {
     const state = this.imports.get(id); if (!state || phaseIs({ phase: state.phase, expected: 'terminal' })) return Promise.resolve();
@@ -248,7 +254,8 @@ export class RpcConversation {
     if (!state || state.capability.kind !== 'stream') throw new Error('Unknown stream');
     const capability = state.capability, previousSend = state.sending;
     state.phase = 'pulling'; state.sequence = sequence;
-    this.task({ run: async () => {
+    this.task({
+      run: async () => {
       if (previousSend) await previousSend;
       if (!this.active() || state.phase !== 'pulling') return;
       state.reader ??= (state.value as ReadableStream<unknown>).getReader();
@@ -295,7 +302,8 @@ export class RpcConversation {
         }
       }); state.sending = sent;
       await sent; if (state.sending === sent) state.sending = undefined;
-    } });
+    },
+    });
   }
   private receiveItem({ id, sequence, value, ended }: { id: number; sequence: number; value: WireValue; ended: boolean }): void {
     const state = this.imports.get(id);
@@ -318,8 +326,11 @@ export class RpcConversation {
   }
   private receiveFragment({ id, sequence, total, offset, data }: { id: number; sequence: number; total: number; offset: number; data: Uint8Array }): void {
     const state = this.imports.get(id);
-    check({ condition: state?.capability.kind === 'stream' && state.capability.mode === 'items' && state.granted && sequence === state.sequence &&
-      (state.phase === 'pulling' || state.phase === 'stopping'), code: 'PROTOCOL_ERROR' });
+    check({
+      condition: state?.capability.kind === 'stream' && state.capability.mode === 'items' && state.granted && sequence === state.sequence &&
+      (state.phase === 'pulling' || state.phase === 'stopping'),
+      code: 'PROTOCOL_ERROR',
+    });
     if (!state) throw new Error('Missing item stream');
     if (!state.fragment) {
       check({ condition: offset === 0 && total > TRANSFER_BYTES, code: 'PROTOCOL_ERROR' });
@@ -342,8 +353,11 @@ export class RpcConversation {
   }
   private invoke({ id, invocation, value }: { id: number; invocation: number; value: WireValue }): void {
     const target = this.exports.get(id);
-    check({ condition: target?.capability.kind === 'callback' && target.phase === 'accepted' &&
-      invocation > this.lastInvocation && invocation <= 1024, code: 'PROTOCOL_ERROR' });
+    check({
+      condition: target?.capability.kind === 'callback' && target.phase === 'accepted' &&
+      invocation > this.lastInvocation && invocation <= 1024,
+      code: 'PROTOCOL_ERROR',
+    });
     this.lastInvocation = invocation;
     if (!target || target.capability.kind !== 'callback') throw new Error('Callback missing');
     if (this.callbacksRunning >= CALLBACK_LIMIT) {
@@ -375,12 +389,17 @@ export class RpcConversation {
   private notify({ name, value }: { name: string; value: unknown }): void {
     if (!this.active()) return;
     const plan = this.method?.notifications.get(name); if (!plan) throw new Error('Undeclared notification');
-    const packed = pack({ plan, value, allocate: () => {
+    const packed = pack({
+      plan,
+      value,
+      allocate: () => {
       throw new Error('Finite notification required');
-    } });
+    },
+    });
     encode({ value: packed.value, limit: VALUE_BYTES }); this.notices.set(name, packed.value);
     if (this.noticeSending) return; this.noticeSending = true;
-    this.task({ run: async () => {
+    this.task({
+      run: async () => {
       try {
         while (this.active() && this.notices.size) {
           const [key, item] = this.notices.entries().next().value!; this.notices.delete(key);
@@ -389,20 +408,26 @@ export class RpcConversation {
       } finally {
         this.noticeSending = false; this.notices.clear();
       }
-    } });
+    },
+    });
   }
   private notice({ name, value }: { name: string; value: WireValue }): void {
     check({ condition: isCaller({ role: this.role }), code: 'PROTOCOL_ERROR' });
     encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     const plan = this.method?.notifications.get(name); if (!plan) return;
-    const output = project({ plan, value, proxy: () => {
+    const output = project({
+      plan,
+      value,
+      proxy: () => {
       throw new Error('No capabilities in notifications');
-    } }).value;
+    },
+    }).value;
     const observer = this.observers[name]; if (!observer) return;
     const slot = this.observed.get(name) ?? { running: false, latest: undefined, present: false };
     slot.latest = output as WireValue; slot.present = true; this.observed.set(name, slot);
     if (slot.running) return; slot.running = true;
-    this.task({ run: async () => {
+    this.task({
+      run: async () => {
       try {
         while (slot.present && this.active()) {
           const value = slot.latest; slot.latest = undefined; slot.present = false; await observer({ value });
@@ -410,7 +435,8 @@ export class RpcConversation {
       } finally {
         slot.running = false; slot.latest = undefined; slot.present = false;
       }
-    } });
+    },
+    });
   }
   private streamsTerminal({ scope, direction }: { scope: Scope; direction: 'export' | 'import' }): boolean {
     const values = (() => {
@@ -469,9 +495,11 @@ export class RpcConversation {
       // a failed lower abort for successful resource retirement.
       this.retirementFailure ??= { error };
     }
-    this.task({ run: async () => {
+    this.task({
+      run: async () => {
       await this.channel.stop({ error: this.failure }); this.channel.release();
-    } });
+    },
+    });
     this.closed.reject(this.failure); this.maybeRetire();
   }
   private async handle({ frame }: { frame: Frame }): Promise<void> {
@@ -482,8 +510,11 @@ export class RpcConversation {
         this.failure ??= frame.details === undefined ? new NaidanRpcError({ code: frame.code }) : new NaidanRpcPublicError({ code: frame.code, details: frame.details }); this.result.reject(this.failure);
         this.cancelCapabilities({ error: this.failure }); this.finishReceived = 'error';
       } else {
-        check({ condition: isCaller({ role: this.role }) && this.resultReceived && this.callbacksRunning === 0 && this.invocations.size === 0 &&
-          this.streamsTerminal({ scope: 'result', direction: 'import' }) && this.streamsTerminal({ scope: 'input', direction: 'export' }), code: 'PROTOCOL_ERROR' });
+        check({
+          condition: isCaller({ role: this.role }) && this.resultReceived && this.callbacksRunning === 0 && this.invocations.size === 0 &&
+          this.streamsTerminal({ scope: 'result', direction: 'import' }) && this.streamsTerminal({ scope: 'input', direction: 'export' }),
+          code: 'PROTOCOL_ERROR',
+        });
         this.finishReceived = 'success';
       }
       void this.send({ frame: { type: 'ack' } }).then(() => this.channel.finish()).catch(() => this.abort({ code: 'TRANSPORT_ERROR' })); return;
@@ -518,7 +549,8 @@ export class RpcConversation {
       } catch {
         this.reject({ error: new NaidanRpcError({ code: 'INVALID_ARGUMENT' }) }); return;
       }
-      this.task({ run: async () => {
+      this.task({
+        run: async () => {
         if (!this.active()) return;
         this.controller.signal.throwIfAborted();
         this.resolveMethod({ contract: frame.contract, method: frame.method });
@@ -536,7 +568,8 @@ export class RpcConversation {
         }
         this.resultOffered = true;
         await this.send({ frame: { type: 'result', value: packed.value } }); this.handlerReturned = true;
-      } }); return;
+      },
+      }); return;
     }
     case 'result': {
       check({ condition: isCaller({ role: this.role }) && this.inputAccepted && !this.resultReceived && this.method, code: 'PROTOCOL_ERROR' });
@@ -570,9 +603,13 @@ export class RpcConversation {
         pending.result.reject(new NaidanRpcError({ code: 'HANDLER_FAILED' })); break;
       case 'returned': {
         const value = wireValue({ value: frame.value }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
-        const projected = project({ plan: pending.plan, value, proxy: () => {
+        const projected = project({
+          plan: pending.plan,
+          value,
+          proxy: () => {
           throw new Error('Finite callback result');
-        } }).value;
+        },
+        }).value;
         // Keep ownership until validation succeeds so abort rejects a callback
         // awaiting a malformed return and can join its handler.
         this.invocations.delete(frame.invocation);

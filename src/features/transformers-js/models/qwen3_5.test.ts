@@ -79,21 +79,27 @@ describe('transformers-js-qwen3_5', () => {
   it('rejects adjacent users as a continuation rather than reusing an unrelated cache', () => {
     expect(assessQwen3_5NoToolContinuationEligibility({
       messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'next' }],
-      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+      conversationState: { modelId: 'synthetic', messageCount: 1 },
+      activeModelId: 'synthetic',
     })).toEqual({ status: 'ineligible', reason: 'message-count-mismatch' });
   });
 
   it('requires the inserted assistant role even when the message count matches', () => {
     expect(assessQwen3_5NoToolContinuationEligibility({
       messages: [{ role: 'user', content: 'first' }, { role: 'system', content: 'not an assistant' }, { role: 'user', content: 'next' }],
-      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+      conversationState: { modelId: 'synthetic', messageCount: 1 },
+      activeModelId: 'synthetic',
     })).toEqual({ status: 'ineligible', reason: 'preceding-message-is-not-assistant' });
   });
 
   it('preserves a JSON argument named __proto__ while normalizing native dictionaries', () => {
-    const normalized = normalizeQwen3_5ToolCallsForTemplate({ toolCalls: [{
-      id: toToolCallId({ raw: 'synthetic-proto' }), type: 'function', function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
-    }] });
+    const normalized = normalizeQwen3_5ToolCallsForTemplate({
+      toolCalls: [{
+      id: toToolCallId({ raw: 'synthetic-proto' }),
+      type: 'function',
+      function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
+    }],
+    });
     expect(JSON.stringify(normalized[0]!.function.arguments)).toBe('{"__proto__":{"city":"Tokyo"}}');
     expect(Object.getPrototypeOf(normalized[0]!.function.arguments)).toBe(Object.prototype);
   });

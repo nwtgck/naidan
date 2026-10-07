@@ -14,9 +14,12 @@ beforeEach(() => {
 async function mountBypass({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }] });
   await router.push(path);
-  const wrapper = mount(defineComponent({ setup() {
+  const wrapper = mount(defineComponent({
+    setup() {
     return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
-  }, template: '<div>{{ bypass }}</div>' }), { global: { plugins: [router] } });
+  },
+    template: '<div>{{ bypass }}</div>',
+  }), { global: { plugins: [router] } });
   return { router, wrapper };
 }
 describe('model launch onboarding presentation', () => {
@@ -56,9 +59,12 @@ describe('initial model-link navigation', () => {
     const router = createRouter({ history, routes: [{ path: '/', component: { template: '<div />' } }] });
     const guard = Promise.withResolvers<boolean>(); router.beforeEach(() => guard.promise);
     expect(router.currentRoute.value).toBe(START_LOCATION);
-    const wrapper = mount(defineComponent({ setup() {
+    const wrapper = mount(defineComponent({
+      setup() {
       return { bypass: useModelLaunchOnboardingBypass({ initialized: ref(true), storageType }) };
-    }, template: '<div>{{ bypass }}</div>' }), { global: { plugins: [router] } });
+    },
+      template: '<div>{{ bypass }}</div>',
+    }), { global: { plugins: [router] } });
     expect(wrapper.text()).toBe('true'); expect(loadMeta).not.toHaveBeenCalled();
     guard.resolve(true); await router.isReady(); await flushPromises();
     expect(wrapper.text()).toBe('true'); wrapper.unmount();

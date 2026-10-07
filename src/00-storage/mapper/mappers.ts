@@ -872,8 +872,10 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       case 'naidan_rpc': {
         const { type, connectionId, ...rest } = endpoint;
         rest satisfies Record<PropertyKey, never>;
-        return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({ type,
-          connectionId: connectionId === undefined ? undefined : toNaidanRpcConnectionId({ raw: connectionId }) });
+        return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
+          type,
+          connectionId: connectionId === undefined ? undefined : toNaidanRpcConnectionId({ raw: connectionId }),
+        });
       }
       case 'browser_provided_lm': {
         const { type, ...unhandledEndpoint } = endpoint;
@@ -912,10 +914,14 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
   case 'naidan_rpc': {
     const { type, connectionId, ...rest } = endpoint;
     rest satisfies Record<PropertyKey, never>;
-    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({ type,
-      connectionId: connectionId === undefined ? undefined : idToRaw({ id: connectionId }) });
-    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type',
-      experimental: { endpoint: payload, unreadable: undefined } });
+    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({
+      type,
+      connectionId: connectionId === undefined ? undefined : idToRaw({ id: connectionId }),
+    });
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
+      type: 'experimental_type',
+      experimental: { endpoint: payload, unreadable: undefined },
+    });
   }
   case 'openai':
   case 'ollama': {
@@ -1419,7 +1425,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     attachments?.forEach(attachment => parts.push({ type: 'attachment', attachment: attachmentToDomain({ dto: attachment }) }));
     return exactObject<UserMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1433,7 +1442,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     toolCalls?.forEach(call => parts.push({ type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
     return exactObject<AssistantMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: modelId,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       interruption: undefined,
@@ -1446,7 +1458,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const parts: SystemMessageNode['parts'] = [];
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     return exactObject<SystemMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: undefined,
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1458,7 +1473,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const parts: ToolMessageNode['parts'] = [];
     results.forEach(result => parts.push({ type: 'tool_result', result: toolExecutionResultToDomain({ dto: result }) }));
     return exactObject<ToolMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: undefined,
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1479,7 +1497,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<UserMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       parts: parts.map((part): UserMessageNode['parts'][number] => {
@@ -1528,7 +1548,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       }
     }
     return exactObject<AssistantMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: modelId,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       interruption: recordedInterruption,
@@ -1562,7 +1584,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<SystemMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): SystemMessageNode['parts'][number] => {
@@ -1585,7 +1609,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<ToolMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): ToolMessageNode['parts'][number] => {
@@ -1631,7 +1657,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'user' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: lmParametersToDto({ domain: lmParameters }),
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number] => {
@@ -1682,7 +1710,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       }
     }
     return exactObject<Extract<MessageNodeDtoV2, { role: 'assistant' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: modelId,
       lmParameters: lmParametersToDto({ domain: lmParameters }),
       interruption: recordedInterruption,
@@ -1717,7 +1747,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'system' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number] => {
@@ -1741,7 +1773,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'tool' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number] => {
@@ -2114,11 +2148,24 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
-    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
+  return exactObject<BrowserImageGenerationSettings>()({
+    width,
+    height,
+    seedMode,
+    seed,
+    debug,
+    historyPersistence,
+    modelDownloadDestination: destination,
+    imageDownload: mappedDownload,
+    modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }),
+    preview: mappedPreview,
     inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
     remoteModelEditors: remoteModelEditors?.map(dto => remoteImageModelEditorPreferenceToDomain({ dto })),
-    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+    keepPreviews,
+    maxPreviews,
+    maxResults,
+    bf16WeightType,
+  });
 };
 
 const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
@@ -2154,11 +2201,24 @@ const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGeneratio
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
-    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
+  return exactObject<BrowserImageGenerationDto>()({
+    width,
+    height,
+    seedMode,
+    seed,
+    debug,
+    historyPersistence,
+    modelDownloadDestination: destination,
+    imageDownload: mappedDownload,
+    modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }),
+    preview: mappedPreview,
     inferenceLocation: inferenceLocation && imageInferenceLocationToDto({ location: inferenceLocation }),
     remoteModelEditors: remoteModelEditors?.map(preference => remoteImageModelEditorPreferenceToDto({ preference })),
-    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+    keepPreviews,
+    maxPreviews,
+    maxResults,
+    bf16WeightType,
+  });
 };
 
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {

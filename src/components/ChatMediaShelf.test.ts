@@ -13,13 +13,26 @@ vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addE
 vi.mock('./ImageDownloadHydrator', () => ({ ImageDownloadHydrator: { detectSupport, download: vi.fn() } }));
 
 function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
-  const common = { id: toAttachmentId({ raw: 'image' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
-    originalName: 'user.png', mimeType: 'image/png', size: 10, uploadedAt: 7 };
-  return { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 7, modelId: undefined, lmParameters: undefined,
+  const common = {
+    id: toAttachmentId({ raw: 'image' }),
+    binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
+    originalName: 'user.png',
+    mimeType: 'image/png',
+    size: 10,
+    uploadedAt: 7,
+  };
+  return {
+    id: toMessageId({ raw: 'user' }),
+    role: 'user',
+    createdAt: 7,
+    modelId: undefined,
+    lmParameters: undefined,
     parts: [
       { type: 'text', text: '  Uploaded image  ', completeness: 'complete' },
       { type: 'attachment', attachment: blob === undefined ? { ...common, status: 'persisted' } : { ...common, status: 'memory', blob } },
-    ], replies: { items: [] } };
+    ],
+    replies: { items: [] },
+  };
 }
 
 let observed: Element[];

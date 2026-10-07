@@ -12,7 +12,8 @@ describe('new title defaults versus existing preferences', () => {
 
   it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('preserves saved reasoning %s during automatic setup', effort => {
     const source: SettingsTitleGeneration = {
-      endpoint: { type: 'openai', url: 'https://example.test' }, model: { id: 'old' },
+      endpoint: { type: 'openai', url: 'https://example.test' },
+      model: { id: 'old' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.4, stop: ['end'], reasoning: { effort } },
     };
     const result = retargetTitleGenerationToSameScope({ source, model: { id: 'new' } });

@@ -26,57 +26,73 @@ import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/
 
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('4c4091ad7401dcf764c8aac2d8a122412d0fd97f01b1b1bc1820dc45eb8b4d91'),
-  modelId: z.literal('LiquidAI/LFM2.5-350M-ONNX'), revision: z.literal('d11593fd9eb408e322667926656598896c2d5ff9'),
+  modelId: z.literal('LiquidAI/LFM2.5-350M-ONNX'),
+  revision: z.literal('d11593fd9eb408e322667926656598896c2d5ff9'),
   cases: z.array(z.object({
     caseId: z.enum(['system-user-generation', 'multi-turn-generation']),
     messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
     addGenerationPrompt: z.literal(true),
     selectedTemplateSha256: z.literal('013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531'),
-    renderedText: z.string(), inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
+    renderedText: z.string(),
+    inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
   }).strict()).length(2),
 }).strict().parse(inputJson);
 
 const toolUserSchema = z.object({ role: z.literal('user'), content: z.string() }).strict();
 const toolAssistantSchema = z.object({
-  role: z.literal('assistant'), content: z.literal(''),
+  role: z.literal('assistant'),
+  content: z.literal(''),
   tool_calls: z.tuple([z.object({
-    id: z.literal('call_template_probe_1'), type: z.literal('function'),
+    id: z.literal('call_template_probe_1'),
+    type: z.literal('function'),
     function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
   }).strict()]),
 }).strict();
 const toolResultSchema = z.object({
-  role: z.literal('tool'), tool_call_id: z.literal('call_template_probe_1'), content: z.string(),
+  role: z.literal('tool'),
+  tool_call_id: z.literal('call_template_probe_1'),
+  content: z.string(),
 }).strict();
 const nativeToolsSchema = z.tuple([z.object({
   type: z.literal('function'),
   function: z.object({
-    name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+    name: z.literal('lookup_weather'),
+    description: z.literal('Return deterministic weather fixture data.'),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+      type: z.literal('object'),
+      properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
       required: z.tuple([z.literal('city')]),
     }).strict(),
   }).strict(),
 }).strict()]);
 
 const nativeToolCaseSchema = z.object({
-  tools: nativeToolsSchema, addGenerationPrompt: z.literal(true), status: z.literal('passed'),
+  tools: nativeToolsSchema,
+  addGenerationPrompt: z.literal(true),
+  status: z.literal('passed'),
   selectedTemplateSha256: z.literal('013eed60546434b6967e3483153d8c5c37abcb1d667f8b1f914683f2a9411531'),
-  renderedText: z.string(), inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
+  renderedText: z.string(),
+  inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
 }).strict();
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('4c4091ad7401dcf764c8aac2d8a122412d0fd97f01b1b1bc1820dc45eb8b4d91'),
-  modelId: z.literal('LiquidAI/LFM2.5-350M-ONNX'), revision: z.literal('d11593fd9eb408e322667926656598896c2d5ff9'),
+  modelId: z.literal('LiquidAI/LFM2.5-350M-ONNX'),
+  revision: z.literal('d11593fd9eb408e322667926656598896c2d5ff9'),
   cases: z.tuple([
     nativeToolCaseSchema.extend({ caseId: z.literal('tools-generation'), messages: z.tuple([toolUserSchema]) }),
     nativeToolCaseSchema.extend({ caseId: z.literal('tool-result-continuation'), messages: z.tuple([toolUserSchema, toolAssistantSchema, toolResultSchema]) }),
   ]),
 }).strict().parse(toolInputJson);
 const observedToolMessagesSchema = z.array(z.object({
-  role: z.enum(['user', 'assistant', 'tool']), content: z.string(),
-  tool_calls: toolAssistantSchema.shape.tool_calls.optional(), tool_call_id: z.string().optional(),
+  role: z.enum(['user', 'assistant', 'tool']),
+  content: z.string(),
+  tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
+  tool_call_id: z.string().optional(),
 }).strict());
 
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
@@ -104,16 +120,22 @@ describe('LFM2.5 350M Provider / basic', () => {
       imagePlatform: undefined,
       // Identifiable synthetic bodies replace native weight execution only.
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: 'LiquidAI/LFM2.5-350M-ONNX', revision: source.identity.resolvedRevision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: 'LiquidAI/LFM2.5-350M-ONNX', revision: source.identity.resolvedRevision, path }),
       })),
       generate: async ({ options, tokenizer, runtime }) => {
         nativeInputs.push({
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: structuredClone(options.input_ids.data) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: structuredClone(options.attention_mask.data) } : undefined,
-          past: options.past_key_values, version: runtime.env.version, tokenizerInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
-          templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), optionKeys: Object.keys(options).sort(),
+          past: options.past_key_values,
+          version: runtime.env.version,
+          tokenizerInstance: tokenizer instanceof runtime.PreTrainedTokenizer,
+          templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          optionKeys: Object.keys(options).sort(),
           config: { maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample },
-          returnDict: options.return_dict_in_generate, streamerInstance: options.streamer instanceof runtime.TextStreamer, stoppingType: typeof options.stopping_criteria,
+          returnDict: options.return_dict_in_generate,
+          streamerInstance: options.streamer instanceof runtime.TextStreamer,
+          stoppingType: typeof options.stopping_criteria,
         });
         // Never call replayRecordedText, streamer.put/end or return sequences.
         // This positive input test remains independent of callback delivery.
@@ -192,7 +214,7 @@ describe('LFM2.5 350M Provider / basic', () => {
       "modelId": "hf.co/LiquidAI/LFM2.5-350M-ONNX",
       "resolvedRevision": "d11593fd9eb408e322667926656598896c2d5ff9",
       "investigationRunId": "bd78df41-cb6e-4384-9af3-7c69cce1012d",
-      "transformersJsVersion": "4.2.0"
+      "transformersJsVersion": "4.2.0",
     });
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
@@ -246,7 +268,10 @@ describe('LFM2.5 350M Provider / basic', () => {
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
       expect(observed.parts).toEqual([expect.objectContaining({
-        type: 'text', partId: expect.any(String), index: 0, completeness: 'partial',
+        type: 'text',
+        partId: expect.any(String),
+        index: 0,
+        completeness: 'partial',
       })]);
       // Native framing may split a chunk differently; the entire ordered text
       // must still equal the immutable recorded callback stream.
@@ -263,7 +288,7 @@ describe('LFM2.5 350M Provider / basic', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -325,7 +350,7 @@ describe('LFM2.5 350M Provider / system', () => {
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -419,7 +444,8 @@ describe('LFM2.5 350M Provider / history', () => {
       // Provider. Loading and this metadata lookup remain strictly offline.
       await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision, local_files_only: true,
+        revision: inputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
@@ -510,7 +536,8 @@ describe('LFM2.5 350M Provider / history', () => {
       // Provider. Loading and this metadata lookup remain strictly offline.
       await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision, local_files_only: true,
+        revision: inputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
@@ -642,7 +669,7 @@ continuation:
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -730,7 +757,8 @@ A separate synthetic conversation.<|im_end|>
         nativeInputs.push({
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: structuredClone(options.input_ids.data) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: structuredClone(options.attention_mask.data) } : undefined,
-          past: options.past_key_values, templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          past: options.past_key_values,
+          templateSha: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
           rendered: tokenizer.apply_chat_template([{ role: 'user', content: 'A separate synthetic conversation.' }], { tokenize: false, add_generation_prompt: true }),
           expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
         });
@@ -843,7 +871,7 @@ A separate synthetic conversation.<|im_end|>
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity","independent-next-input"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
@@ -897,7 +925,8 @@ A separate synthetic conversation.<|im_end|>
         unhandled satisfies Record<PropertyKey, never>;
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          id: toMessageId({ raw: 'message_1' }),
+          role: 'assistant',
           parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
@@ -1009,7 +1038,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1068,7 +1097,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1127,7 +1156,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1186,7 +1215,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1256,18 +1285,24 @@ describe('LFM2.5 350M Provider / tools', () => {
     }> = [];
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
-    const strictToolDefinitions = [{ type: 'function', function: {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+    const strictToolDefinitions = [{
+      type: 'function',
+      function: {
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: {
         type: 'object',
         properties: { city: { type: 'string' } },
         required: ['city'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-    } }];
+    },
+    }];
     const harness = await createProviderReplayTestRuntime({
       modelId: toolInputEvidence.modelId,
       expectedRevision: toolInputEvidence.revision,
@@ -1275,7 +1310,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       metadataCache: "all-fixture",
       imagePlatform: undefined,
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
       })),
       generate: async context => {
         const { options, tokenizer, runtime } = context;
@@ -1336,7 +1372,8 @@ describe('LFM2.5 350M Provider / tools', () => {
         return { role, content, tool_calls, tool_call_id };
       });
       expect(observedMessages).toStrictEqual(scenario.messages.map(message => ({
-        role: message.role, content: message.content,
+        role: message.role,
+        content: message.content,
         tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
         tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
       })));
@@ -1347,10 +1384,16 @@ describe('LFM2.5 350M Provider / tools', () => {
       const observedInput = nativeInputs[0]!;
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
 
       // Unlike Smol, this template serializes the schema. The reviewed public
@@ -1359,7 +1402,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
       const strictPrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt);
       const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
       expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
@@ -1379,7 +1424,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       // and association IDs do not. Only the role/content survive rendering.
       const roleAndContent = scenario.messages.map(message => ({ role: message.role, content: message.content }));
       expect(tokenizer.apply_chat_template(roleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt);
       const changed = roleAndContent.map(message => ({ ...message }));
       const last = changed.at(-1);
@@ -1389,14 +1436,22 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(strictPrompt.split(originalContent)).toHaveLength(2);
       last.content = 'Changed synthetic final message.';
       expect(tokenizer.apply_chat_template(changed, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt.replace(originalContent, last.content));
       expect(harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']), core, options: ortOptions,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']),
+        core,
+        options: ortOptions,
       }))).toEqual([{
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx',
-        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }], executionProviders: ['webgpu'],
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        corePath: 'onnx/model_q4f16.onnx',
+        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }],
+        executionProviders: ['webgpu'],
       }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1420,18 +1475,24 @@ describe('LFM2.5 350M Provider / tools', () => {
     }> = [];
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
-    const strictToolDefinitions = [{ type: 'function', function: {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+    const strictToolDefinitions = [{
+      type: 'function',
+      function: {
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: {
         type: 'object',
         properties: { city: { type: 'string' } },
         required: ['city'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-    } }];
+    },
+    }];
     const publicMessages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Use the weather tool for Tokyo.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } } }] }, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } }] }];
     const harness = await createProviderReplayTestRuntime({
       modelId: toolInputEvidence.modelId,
@@ -1440,7 +1501,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       metadataCache: "all-fixture",
       imagePlatform: undefined,
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, path }),
       })),
       generate: async context => {
         const { options, tokenizer, runtime } = context;
@@ -1512,10 +1574,16 @@ describe('LFM2.5 350M Provider / tools', () => {
       const observedInput = nativeInputs[0]!;
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_dict: false, return_tensor: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_dict: false,
+        return_tensor: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
 
       // Unlike Smol, this template serializes the schema. The reviewed public
@@ -1524,7 +1592,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
       const strictPrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt);
       const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
       expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
@@ -1556,7 +1626,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       // and association IDs do not. Only the role/content survive rendering.
       const roleAndContent = scenario.messages.map(message => ({ role: message.role, content: message.content }));
       expect(tokenizer.apply_chat_template(roleAndContent, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt);
       const changed = roleAndContent.map(message => ({ ...message }));
       const last = changed.at(-1);
@@ -1566,14 +1638,22 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(strictPrompt.split(originalContent)).toHaveLength(2);
       last.content = 'Changed synthetic final message.';
       expect(tokenizer.apply_chat_template(changed, {
-        tokenize: false, add_generation_prompt: true, tools: strictToolDefinitions,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictToolDefinitions,
       })).toBe(strictPrompt.replace(originalContent, last.content));
       expect(harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']), core, options: ortOptions,
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data']),
+        core,
+        options: ortOptions,
       }))).toEqual([{
-        modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/model_q4f16.onnx',
-        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }], executionProviders: ['webgpu'],
+        modelId: toolInputEvidence.modelId,
+        revision: toolInputEvidence.revision,
+        corePath: 'onnx/model_q4f16.onnx',
+        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }],
+        executionProviders: ['webgpu'],
       }]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
@@ -1600,13 +1680,21 @@ describe('LFM2.5 350M Provider / tools', () => {
     const templates = vi.spyOn(replay.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     try {
       const parameters = {
-        temperature: 0, topP: 1, maxCompletionTokens: 128,
-        presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: undefined },
       };
-      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
+      const messages: ChatMessage[] = [{
+        id: toMessageId({ raw: 'message_0' }),
+        role: 'user',
+        parts: [
         { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-      ] }];
+      ],
+      }];
       const originalMessages = structuredClone(messages);
       replay.beginNativeRequest({ caseId: 'natural-tool-minimal', parameters });
       turn = await runProviderReplayTurn({
@@ -1616,7 +1704,8 @@ describe('LFM2.5 350M Provider / tools', () => {
         },
         abortController: new AbortController(),
         tools: [{
-          name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+          name: 'lookup_weather',
+          description: 'Return deterministic weather fixture data.',
           parametersSchema: z.object({ city: z.string() }),
           execute: async ({ args }) => {
             executions.push({ args: structuredClone(args), prefix: updates.at(-1) });
@@ -1624,8 +1713,11 @@ describe('LFM2.5 350M Provider / tools', () => {
           },
         }],
         request: {
-          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-350M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       // The first call/result are real; the inventory refuses to fabricate a second native output.
@@ -1670,8 +1762,10 @@ describe('LFM2.5 350M Provider / tools', () => {
   }, 30_000);
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog, caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
+      catalog: contentToolProviderReplayCatalog,
+      caseIds: ["natural-tool-minimal"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1692,7 +1786,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1711,8 +1806,11 @@ describe('LFM2.5 350M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-350M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1751,8 +1849,10 @@ describe('LFM2.5 350M Provider / tools', () => {
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog, caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
+      catalog: contentToolProviderReplayCatalog,
+      caseIds: ["natural-tool-representative"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1773,7 +1873,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1792,8 +1893,11 @@ describe('LFM2.5 350M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-350M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1832,8 +1936,10 @@ describe('LFM2.5 350M Provider / tools', () => {
   }, 30_000);
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
-      catalog: contentToolProviderReplayCatalog, caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"], imagePlatform: undefined,
+      catalog: contentToolProviderReplayCatalog,
+      caseIds: ["structured-tool-history"],
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     let settled: typeof turn;
@@ -1854,7 +1960,8 @@ describe('LFM2.5 350M Provider / tools', () => {
       };
       const abortController = new AbortController();
       const tools: Tool[] = [{
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parametersSchema: z.object({ city: z.string() }),
         execute: async ({ args, signal }) => {
           expect(turnSettled).toBe(false);
@@ -1873,8 +1980,11 @@ describe('LFM2.5 350M Provider / tools', () => {
           updates.push(messages);
         },
         request: {
-          model: 'LiquidAI/LFM2.5-350M-ONNX', messages, parameters,
-          readBinaryObject: undefined, debug: undefined,
+          model: 'LiquidAI/LFM2.5-350M-ONNX',
+          messages,
+          parameters,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       turnSettled = true;
@@ -1906,7 +2016,7 @@ describe('LFM2.5 350M Provider / images', () => {
       catalog: providerReplayCatalog,
       caseIds: ["image"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1943,7 +2053,8 @@ describe('LFM2.5 350M Provider / images', () => {
         expect(observed.settlement).toEqual({ status: 'fulfilled' });
         expect(observed.parts).toEqual([]);
         expect(observed.result).toMatchObject({
-          type: 'error', error: { message: 'The standard text strategy cannot preserve an image input.' },
+          type: 'error',
+          error: { message: 'The standard text strategy cannot preserve an image input.' },
         });
         replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
       }
@@ -1955,7 +2066,8 @@ describe('LFM2.5 350M Provider / images', () => {
 });
 
 const lfm350FullStructuredParts = {
-  completionTokenIds: ['7', '11'], endTokenIds: ['7'],
+  completionTokenIds: ['7', '11'],
+  endTokenIds: ['7'],
   invocations: [
     { callOrdinal: 1, terminal: { kind: 'stream-end' } },
     { callOrdinal: 2, terminal: { kind: 'stream-end' } },
@@ -1973,51 +2085,143 @@ const lfm350FullStructuredParts = {
     { callOrdinal: 14, terminal: { kind: 'control', tokenId: '7' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'Sure! Here’s an example of a **template** for a **user', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: `\
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
+      {
+        type: 'text',
+        text: `\
 Sure! Here’s a continuation of the synthetic conversation:
 
 ---
 
-User`, completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+User`,
+        completeness: 'partial',
+      },
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'S', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'system-user', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'system-user',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'The', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'supplied-history',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'Template', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'S', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'reasoning-low',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'S', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'reasoning-medium',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'S', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'reasoning-high',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'S', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'fulfilled',
+      events: [
       { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
+    ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'fulfilled',
+      events: [
       { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'The current weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
+    ],
+      terminal: { type: 'finished', next: 'user' },
+    }],
+    },
     { scenario: 'image', settlement: 'rejected', events: [{ kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' } }] },
   ],
   legacyInputProjections: [{ scenario: 'continuity', assistant: { role: 'assistant', content: 'Sure! Here’s an example of a **template** for a **user' } }],
@@ -2169,7 +2373,7 @@ describe('LFM2.5 350M Provider / sequences', () => {
       catalog: providerReplayCatalog,
       caseIds: ["first-turn","continuity"],
       artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
@@ -2223,7 +2427,8 @@ describe('LFM2.5 350M Provider / sequences', () => {
         unhandled satisfies Record<PropertyKey, never>;
         if (completeness === 'pending') throw new Error('Expected a drained first text part');
         firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }), role: 'assistant',
+          id: toMessageId({ raw: 'message_1' }),
+          role: 'assistant',
           parts: [{ type, text: chunks.join(''), completeness }],
         });
       }
@@ -2291,10 +2496,20 @@ User`]);
     expect(fullEvidenceJson.observedCacheRevision).toBe('main');
     expect(fullEvidenceJson.requests).toHaveLength(13);
     expect(fullEvidenceJson.invocations).toHaveLength(15);
-    await verifyCapturedFullReplay({ reviewedPublicContract: {
-      correctedEvents: [], correctedFinalizedStreams: undefined, invalidatedOutputs: [],
+    await verifyCapturedFullReplay({
+      reviewedPublicContract: {
+      correctedEvents: [],
+      correctedFinalizedStreams: undefined,
+      invalidatedOutputs: [],
       preNativeRejections: [{ scenario: 'image', reason: 'The non-vision LFM2 model cannot preserve image input.' }],
       structuredParts: lfm350FullStructuredParts,
-    }, unavailableOutputs: [], completeResult: undefined, expectedLoadReceipt: undefined, evidence: fullEvidenceJson, imagePlatform: undefined, artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"] });
+    },
+      unavailableOutputs: [],
+      completeResult: undefined,
+      expectedLoadReceipt: undefined,
+      evidence: fullEvidenceJson,
+      imagePlatform: undefined,
+      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+    });
   }, 30_000);
 });

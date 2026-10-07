@@ -63,12 +63,20 @@ it('does not promote an unsolicited HTTP 206 model response to a complete file',
   });
   const cancel = vi.fn();
   h.transport.mockResolvedValueOnce(new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-    status: 206, headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
+    status: 206,
+    headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
   }));
   const result = await h.api.prefetchUrls([url], () => undefined);
-  expect(result).toMatchObject({ complete: false, downloadedCount: 0, failedCount: 1, files: [{
-    status: 'failed', failureStage: 'response-status', httpStatus: 206,
-  }] });
+  expect(result).toMatchObject({
+    complete: false,
+    downloadedCount: 0,
+    failedCount: 1,
+    files: [{
+    status: 'failed',
+    failureStage: 'response-status',
+    httpStatus: 206,
+  }],
+  });
   expect(h.fs.files.has(marker)).toBe(false);
   expect(h.fs.files.has(path)).toBe(false);
   expect(h.fs.activity.filter(item => item.operation !== 'stat')).toEqual([]);
@@ -88,9 +96,17 @@ it('does not mark a fresh split artifact complete after its network stream is in
   const progress = vi.fn();
   const result = await h.api.prefetchUrls([url], progress);
 
-  expect(result).toMatchObject({ complete: false, downloadedCount: 0, failedCount: 1, files: [{
-    status: 'failed', path, failureStage: 'write', error: { message: 'Fixture transfer interrupted' },
-  }] });
+  expect(result).toMatchObject({
+    complete: false,
+    downloadedCount: 0,
+    failedCount: 1,
+    files: [{
+    status: 'failed',
+    path,
+    failureStage: 'write',
+    error: { message: 'Fixture transfer interrupted' },
+  }],
+  });
   // Advisory samples may be coalesced. The RPC result retains final observed
   // bytes even if the progress callback port is still waiting for its ACK.
   expect(result.files[0]).toMatchObject({ transferObservation: { receivedBytes: 1, expectedBytes: 2 } });
@@ -107,9 +123,17 @@ it('does not publish completion when the final promotion writable fails to close
   h.transport.mockResolvedValueOnce(new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '2' } }));
   const result = await h.api.prefetchUrls([url], () => undefined);
 
-  expect(result).toMatchObject({ complete: false, downloadedCount: 0, failedCount: 1, files: [{
-    status: 'failed', path, failureStage: 'write', error: { name: 'QuotaExceededError' },
-  }] });
+  expect(result).toMatchObject({
+    complete: false,
+    downloadedCount: 0,
+    failedCount: 1,
+    files: [{
+    status: 'failed',
+    path,
+    failureStage: 'write',
+    error: { name: 'QuotaExceededError' },
+  }],
+  });
   expect(h.fs.files.has(marker)).toBe(false);
   expect(h.fs.files.has(path)).toBe(false);
   expect([...h.fs.files.keys()].some(key => key.includes('.staging-'))).toBe(false);
@@ -152,7 +176,9 @@ it('reports a cache access failure without downloading a replacement artifact', 
   const h = await fixture();
   h.getDirectory.mockRejectedValue(new DOMException('Fixture permission denied', 'NotAllowedError'));
   expect(await h.api.prefetchUrls([url], () => undefined)).toMatchObject({
-    complete: false, failedCount: 1, files: [{ status: 'failed', failureStage: 'cache-check', error: { name: 'NotAllowedError' } }],
+    complete: false,
+    failedCount: 1,
+    files: [{ status: 'failed', failureStage: 'cache-check', error: { name: 'NotAllowedError' } }],
   });
   expect(h.network).not.toHaveBeenCalled();
   expect(h.fs.files.size).toBe(0);

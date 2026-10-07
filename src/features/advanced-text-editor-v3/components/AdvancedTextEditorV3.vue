@@ -62,12 +62,17 @@ function useTextModel({ initialValue }: {
     lines.value = fullText.value.split('\n');
   };
 
-  return { fullText, lines, updateContent, syncLines,
+  return {
+    fullText,
+    lines,
+    updateContent,
+    syncLines,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
       },
-    }) || {}) };
+    }) || {}),
+  };
 }
 
 const { fullText, lines, updateContent, syncLines } = useTextModel({

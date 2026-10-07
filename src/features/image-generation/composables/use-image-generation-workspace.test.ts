@@ -113,13 +113,31 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   const native = vi.fn(async () => {}); const restored = vi.fn();
   const original = generationRunFixture({ id: 'fixture-aa', sessionId: toImageGenerationSessionId({ raw: 'fixture-aa' }), count: 1, seed: '42' }).request;
   original.loras = []; original.imageInputs = { initImage: undefined, referenceImages: [], strength: 0.75 };
-  const generation: ImageGenerationView = { ...base, busy: computed(() => busy.value), formDisabled: computed(() => busy.value), draftDisabled: computed(() => false), supported: computed(() => true),
+  const generation: ImageGenerationView = {
+    ...base,
+    busy: computed(() => busy.value),
+    formDisabled: computed(() => busy.value),
+    draftDisabled: computed(() => false),
+    supported: computed(() => true),
     captureDraft(): ImageGenerationDraft {
       const remote = generation.inferenceLocation?.kind.value === 'naidan_rpc';
       const request = remote ? generation.inferenceLocation!.captureDraftRequest({ seed: generation.parameters.value.seed }).request : structuredClone({ ...original, parameters: { ...generation.parameters.value } });
-      return { inferenceLocation: generation.inferenceLocation?.captureLocation(), request, seedMode: generation.seedMode.value,
-        layout: generation.layout.value, modelSelection: undefined, remoteModelEditor: remote ? copyRemoteImageModelEditor({ editor: generation.inferenceLocation!.editor.value }) : undefined, loraStates: [], debug: generation.debug.value, retainModel: generation.retainModel.value,
-        keepPreviews: generation.keepPreviews.value, maxPreviews: generation.maxPreviews.value, maxResults: generation.maxResults.value, files: [], modelFiles: [] };
+      return {
+        inferenceLocation: generation.inferenceLocation?.captureLocation(),
+        request,
+        seedMode: generation.seedMode.value,
+        layout: generation.layout.value,
+        modelSelection: undefined,
+        remoteModelEditor: remote ? copyRemoteImageModelEditor({ editor: generation.inferenceLocation!.editor.value }) : undefined,
+        loraStates: [],
+        debug: generation.debug.value,
+        retainModel: generation.retainModel.value,
+        keepPreviews: generation.keepPreviews.value,
+        maxPreviews: generation.maxPreviews.value,
+        maxResults: generation.maxResults.value,
+        files: [],
+        modelFiles: [],
+      };
     },
     async restoreDraft({ draft }) {
       restored(draft); if (draft.inferenceLocation) generation.inferenceLocation?.restoreLocation({ location: draft.inferenceLocation, modelEditor: draft.remoteModelEditor }); generation.parameters.value = { ...generation.parameters.value, ...draft.request.parameters }; generation.seedMode.value = draft.seedMode; generation.layout.value = draft.layout;
@@ -147,8 +165,12 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
           if (cancelled.value) break;
           await native();
           const seed = seeds[index]; if (!seed) throw new Error('Missing seed.');
-          const output = finishImageGenerationSnapshot({ snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } },
-            result: { png: new Blob([`image-${seed}`], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false }, previews: [], elapsedMs: 5 });
+          const output = finishImageGenerationSnapshot({
+            snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } },
+            result: { png: new Blob([`image-${seed}`], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false },
+            previews: [],
+            elapsedMs: 5,
+          });
           await submission.output({ index, ...output });
         }
         await submission.finished({ completion: { type: cancelled.value ? 'cancelled' : 'completed' } });
@@ -161,10 +183,12 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   };
   generation.parameters.value = { ...generation.parameters.value, ...original.parameters }; generation.seedMode.value = 'fixed';
   let view: ImageGenerationWorkspaceView | undefined;
-  const wrapper = mount(defineComponent({ setup() {
+  const wrapper = mount(defineComponent({
+    setup() {
     generation.inferenceLocation = useImageInferenceLocation({ form: generation, blocked: () => busy.value, identifyInput: () => toBinaryObjectId({ raw: 'test-input' }) });
     view = useImageGenerationWorkspace({ generation, requestedSessionId }); return () => h('div');
-  } }));
+  },
+  }));
   if (!view) throw new Error('Missing Workspace.');
   views.push({ wrapper, view });
   return { generation, view, native, restored, wrapper };

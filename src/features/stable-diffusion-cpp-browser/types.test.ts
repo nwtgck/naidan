@@ -38,7 +38,9 @@ describe('image experiment boundary', () => {
   });
   it('allows a 32 GiB explicit GPU budget on Wasm64 without confusing it with the Wasm heap', () => {
     const base = requestFixture();
-    const artifact = { ...base.artifact, profile: 'webgpu-wasm64-jspi',
+    const artifact = {
+      ...base.artifact,
+      profile: 'webgpu-wasm64-jspi',
       modulePath: base.artifact.modulePath.replace('webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'),
       wasmPath: base.artifact.wasmPath.replace('webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'),
     };

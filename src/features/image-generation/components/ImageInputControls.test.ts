@@ -17,11 +17,16 @@ beforeEach(async () => {
   vi.stubGlobal('URL', class extends URL {
     static override createObjectURL = createUrl; static override revokeObjectURL = revokeUrl;
   });
-  wrapper = mount(ImageInputControls, { props: { modelValue: inputs, disabled: false, active: true,
+  wrapper = mount(ImageInputControls, {
+    props: {
+    modelValue: inputs,
+    disabled: false,
+    active: true,
     'onUpdate:modelValue': value => {
       inputs = value; void wrapper?.setProps({ modelValue: value });
     },
-  } });
+  },
+  });
 });
 afterEach(() => {
   wrapper?.unmount(); vi.unstubAllGlobals();
@@ -202,9 +207,11 @@ it('requests clipboard access only after a click and imports one representation 
 it.each(['unavailable', 'denied', 'no-image'] as const)('explains %s clipboard access and preserves native-paste fallback', async state => {
   switch (state) {
   case 'unavailable': Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); break;
-  case 'denied': clipboard({ read: async () => {
+  case 'denied': clipboard({
+    read: async () => {
     throw new DOMException('Denied', 'NotAllowedError');
-  } }); break;
+  },
+  }); break;
   case 'no-image': clipboard({ read: async () => [clipboardItem({ types: ['text/plain'] })] }); break;
   default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
   }

@@ -120,18 +120,27 @@ describe('wesh cmp', () => {
   });
 
   it('returns 0 for equal files and reports the first differing byte and line', async () => {
-    await writeFile({ name: 'left.txt', data: `\
+    await writeFile({
+      name: 'left.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'equal.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'equal.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'right.txt',
+      data: `\
 a
 c
-` });
+`,
+    });
 
     const equal = await execute({ script: 'cmp left.txt equal.txt' });
     const different = await execute({ script: 'cmp left.txt right.txt' });
@@ -146,14 +155,20 @@ c
   });
 
   it('prints differing byte values with -b', async () => {
-    await writeFile({ name: 'left.txt', data: `\
+    await writeFile({
+      name: 'left.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'right.txt',
+      data: `\
 a
 c
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cmp -b left.txt right.txt',

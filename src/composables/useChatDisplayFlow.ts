@@ -87,7 +87,8 @@ export function useChatDisplayFlow({
       case 'user':
       case 'system':
         yield {
-          type: 'content', key: JSON.stringify([idToRaw({ id: node.id }), 'body']),
+          type: 'content',
+          key: JSON.stringify([idToRaw({ id: node.id }), 'body']),
           node,
           content: getMessageText({ message: node }),
           isFirstInNode: true,
@@ -298,7 +299,11 @@ export function useChatDisplayFlow({
         }
       })();
       return {
-        type: 'message', key: atom.key, node: atom.node, mode, partContent: (type === 'thinking' || type === 'content') ? atom.content : undefined,
+        type: 'message',
+        key: atom.key,
+        node: atom.node,
+        mode,
+        partContent: (type === 'thinking' || type === 'content') ? atom.content : undefined,
         ...(() => {
           switch (atom.type) {
           case 'tool_calls': return { toolCalls: atom.toolCalls, ...(atom.toolCallDrafts ? { toolCallDrafts: atom.toolCallDrafts } : {}) };
@@ -308,7 +313,9 @@ export function useChatDisplayFlow({
           default: { const _ex: never = atom; throw new Error(`Unhandled flow atom: ${_ex}`); }
           }
         })(),
-        isFirstInNode: atom.isFirstInNode, isLastInNode: atom.isLastInNode, isFirstInTurn: atom.isFirstInTurn,
+        isFirstInNode: atom.isFirstInNode,
+        isLastInNode: atom.isLastInNode,
+        isFirstInTurn: atom.isFirstInTurn,
         isCompletedThinking,
         flow: { position: 'standalone', nesting: 'none' },
       };

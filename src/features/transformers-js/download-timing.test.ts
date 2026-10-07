@@ -2,9 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadMeasurementClock, createDownloadTimingCollector, disposeWithDownloadTiming, downloadTimingSnapshotSchema, type DownloadAcceptanceTiming } from './download-timing';
 
 const observation: DownloadAcceptanceTiming = {
-  kind: 'acceptance', version: 1, revision: 'a'.repeat(40), route: 'candidate',
-  candidate: { device: 'webgpu', dtype: 'q4f16' }, timingStatus: 'measured', hostDurationMs: 23_000,
-  loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1,
+  kind: 'acceptance',
+  version: 1,
+  revision: 'a'.repeat(40),
+  route: 'candidate',
+  candidate: { device: 'webgpu', dtype: 'q4f16' },
+  timingStatus: 'measured',
+  hostDurationMs: 23_000,
+  loadOutcome: 'accepted',
+  cleanupOutcome: 'completed',
+  hostSettlement: 'fulfilled',
+  attemptCount: 1,
 };
 afterEach(() => vi.restoreAllMocks());
 

@@ -510,10 +510,13 @@ BETA
   });
 
   it('reads an stdin program larger than one internal read chunk', async () => {
-    await writeFile({ path: 'input.txt', data: `\
+    await writeFile({
+      path: 'input.txt',
+      data: `\
 alpha
 beta
-` });
+`,
+    });
     const execution = await execute({
       script: 'awk -f - input.txt',
       stdinText: `${'# padding\n'.repeat(8192)}{ print toupper($0) }\n`,
@@ -1345,14 +1348,20 @@ BETA 20
   });
 
   it('supports nextfile and the standard random-number builtins', async () => {
-    await writeFile({ path: 'one.txt', data: `\
+    await writeFile({
+      path: 'one.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ path: 'two.txt', data: `\
+`,
+    });
+    await writeFile({
+      path: 'two.txt',
+      data: `\
 c
 d
-` });
+`,
+    });
 
     const nextFile = await execute({
       script: `awk '{ print FILENAME, $1; nextfile }' one.txt two.txt`,
@@ -1373,10 +1382,13 @@ two.txt c
   });
 
   it('supports FILENAME, post-program assignments, and exit while still running END', async () => {
-    await writeFile({ path: 'one.txt', data: `\
+    await writeFile({
+      path: 'one.txt',
+      data: `\
 a 1
 b 2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: `awk '{ print prefix FILENAME, FNR, $1; if (FNR == 2) exit 3 } END { print "end" }' prefix=X one.txt`,

@@ -94,10 +94,13 @@ printf 'after\n'
   });
 
   it('supports exec with persistent read-write file descriptors for read -u', async () => {
-    await writeFile({ name: 'fd.txt', data: `\
+    await writeFile({
+      name: 'fd.txt',
+      data: `\
 alpha
 beta
-` });
+`,
+    });
 
     const executed = await execute({
       script: `\

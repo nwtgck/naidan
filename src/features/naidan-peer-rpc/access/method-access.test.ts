@@ -75,18 +75,31 @@ it('fails closed on a storage revision mismatch and supports an explicit retry',
   await controller.update({ allowedMethods: ['generateChat'] }); expect(controller.state().effective).toEqual(['generateChat']);
 });
 it('ignores observational exceptions without rolling back revocations', async () => {
-  const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 0, persist: undefined, apply: () => {}, changed: () => {
+  const controller = createMethodAccess({
+    initial: ['generateChat'],
+    stored: ['generateChat'],
+    revision: 0,
+    persist: undefined,
+    apply: () => {},
+    changed: () => {
     throw new Error('Observer');
-  } });
+  },
+  });
   await controller.update({ allowedMethods: [] }); expect(controller.state().effective).toEqual([]);
 });
 
 it('publishes the restricted set before invoking synchronous revocation observers', async () => {
   const seen: Names[] = [];
-  const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 0, persist: undefined,
+  const controller = createMethodAccess({
+    initial: ['generateChat'],
+    stored: ['generateChat'],
+    revision: 0,
+    persist: undefined,
     apply: () => {
       seen.push(controller.state().effective);
-    }, changed: () => {} });
+    },
+    changed: () => {},
+  });
   await controller.update({ allowedMethods: [] });
   expect(seen).toEqual([[], []]);
 });
@@ -94,13 +107,19 @@ it('publishes the restricted set before invoking synchronous revocation observer
 it('does not restore a temporary grant when revocation synchronously closes its owner', async () => {
   let closeOnApply = true;
   const applied: Names[] = [];
-  const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 0, persist: undefined,
+  const controller = createMethodAccess({
+    initial: ['generateChat'],
+    stored: ['generateChat'],
+    revision: 0,
+    persist: undefined,
     apply: ({ allowedMethods }) => {
       applied.push([...allowedMethods]);
       if (closeOnApply) {
         closeOnApply = false; controller.close();
       }
-    }, changed: () => {} });
+    },
+    changed: () => {},
+  });
   await controller.update({ allowedMethods: ['generateImage'] });
   expect(controller.state().effective).toEqual([]);
   expect(applied).not.toContainEqual(['generateImage']);
@@ -109,24 +128,36 @@ it('does not restore a temporary grant when revocation synchronously closes its 
 it('keeps a newer temporary edit made synchronously during a revocation', async () => {
   let editOnApply = true;
   let newer: Promise<void> | undefined;
-  const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 0, persist: undefined,
+  const controller = createMethodAccess({
+    initial: ['generateChat'],
+    stored: ['generateChat'],
+    revision: 0,
+    persist: undefined,
     apply: () => {
       if (editOnApply) {
         editOnApply = false; newer = controller.update({ allowedMethods: ['listChatModels'] });
       }
-    }, changed: () => {} });
+    },
+    changed: () => {},
+  });
   await controller.update({ allowedMethods: ['generateImage'] }); await newer;
   expect(controller.state()).toMatchObject({ effective: ['listChatModels'], desired: ['listChatModels'] });
 });
 
 it('does not restore saved grants when installation synchronously closes the controller', async () => {
   let closeOnGrant = true;
-  const controller = createMethodAccess({ initial: [], stored: [], revision: 0, persist: async () => 1,
+  const controller = createMethodAccess({
+    initial: [],
+    stored: [],
+    revision: 0,
+    persist: async () => 1,
     apply: ({ allowedMethods }) => {
       if (closeOnGrant && allowedMethods.includes('generateImage')) {
         closeOnGrant = false; controller.close();
       }
-    }, changed: () => {} });
+    },
+    changed: () => {},
+  });
   await controller.update({ allowedMethods: ['generateImage'] });
   expect(controller.state().effective).toEqual([]);
 });
@@ -134,8 +165,14 @@ it('does not restore saved grants when installation synchronously closes the con
 it('keeps the stored method set separate from a retained unsaved restriction', async () => {
   const stored: NaidanPeerControlledMethodName[] = ['listChatModels', 'generateChat'];
   const persist = vi.fn(async () => 8);
-  const controller = createMethodAccess({ initial: ['listChatModels'], stored, revision: 7,
-    persist, apply: () => {}, changed: () => {} });
+  const controller = createMethodAccess({
+    initial: ['listChatModels'],
+    stored,
+    revision: 7,
+    persist,
+    apply: () => {},
+    changed: () => {},
+  });
   stored.length = 0;
   expect(controller.state()).toMatchObject({ effective: ['listChatModels'], desired: ['listChatModels'], saved: ['listChatModels', 'generateChat'], persistence: 'failed' });
   expect(persist).not.toHaveBeenCalled();
@@ -145,7 +182,13 @@ it('keeps the stored method set separate from a retained unsaved restriction', a
 });
 
 it('does not report a different array order as an unsaved policy', () => {
-  const controller = createMethodAccess({ initial: ['generateChat', 'listChatModels'], stored: ['listChatModels', 'generateChat'], revision: 0,
-    persist: async () => 1, apply: () => {}, changed: () => {} });
+  const controller = createMethodAccess({
+    initial: ['generateChat', 'listChatModels'],
+    stored: ['listChatModels', 'generateChat'],
+    revision: 0,
+    persist: async () => 1,
+    apply: () => {},
+    changed: () => {},
+  });
   expect(controller.state().persistence).toBe('saved');
 });

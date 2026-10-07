@@ -14,9 +14,12 @@ export function createImageDownloadFetchBridge({ signal }: { signal: AbortSignal
     signal.throwIfAborted(); if (disposed) throw new Error('Download fetch bridge closed');
     const validated = requestSchema.parse(request);
     const channel = new MessageChannel();
-    const server = servePrivacyStreamWithFetcher({ port: channel.port1, fetchResponse: ({ signal: streamSignal }) => {
+    const server = servePrivacyStreamWithFetcher({
+      port: channel.port1,
+      fetchResponse: ({ signal: streamSignal }) => {
       return privacyFetchStream({ request: { ...validated, signal: AbortSignal.any([signal, streamSignal]) } });
-    } });
+    },
+    });
     connections.add({ channel, dispose: server.dispose });
     return workerTransfer({ value: channel.port2, transferables: [channel.port2] });
   };

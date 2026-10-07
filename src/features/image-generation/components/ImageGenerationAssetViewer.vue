@@ -78,8 +78,13 @@ async function download({ format, includeMetadata }: { format: ImageDownloadForm
   try {
     const png = await props.view.getImage({ binaryObjectId: selected.asset.result.binaryObjectId });
     if (!png) throw new Error('The saved image is unavailable.');
-    const blob = await imageGenerationDownloadBlob({ png, request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
-      image: { kind: 'final', width: selected.asset.result.width, height: selected.asset.result.height }, format, includeMetadata });
+    const blob = await imageGenerationDownloadBlob({
+      png,
+      request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
+      image: { kind: 'final', width: selected.asset.result.width, height: selected.asset.result.height },
+      format,
+      includeMetadata,
+    });
     const extension = (() => {
       switch (format) {
       case 'jpeg': return 'jpg';

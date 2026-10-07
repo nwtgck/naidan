@@ -31,9 +31,24 @@ function fresh({ id, accepted, claimed }: {
     accepted: boolean;
     claimed: boolean;
 }): StreamRecord {
-  return { id, accepted, claimed, status: 'active', txEnd: 0n, ack: 0n, peerLimit: 0n, offeredEnd: 0n,
-    outgoing: undefined, pending: undefined, txFinal: undefined, peerSawFinal: false,
-    rxNext: 0n, consumed: 0n, rxFinal: undefined, unread: ByteQueue.empty() };
+  return {
+    id,
+    accepted,
+    claimed,
+    status: 'active',
+    txEnd: 0n,
+    ack: 0n,
+    peerLimit: 0n,
+    offeredEnd: 0n,
+    outgoing: undefined,
+    pending: undefined,
+    txFinal: undefined,
+    peerSawFinal: false,
+    rxNext: 0n,
+    consumed: 0n,
+    rxFinal: undefined,
+    unread: ByteQueue.empty(),
+  };
 }
 function limit({ stream }: {
     stream: StreamRecord;
@@ -110,12 +125,30 @@ export class Machine {
     return [...this.internalStreams.values()].some(stream => stream.status === 'active');
   }
   debug(): object {
-    return { retained: this.internalStreams.size, incoming: this.internalIncoming.length, nextId: this.internalNextId,
-      goaway: this.internalGoaway, peerGoaway: this.internalPeerGoaway,
-      streams: [...this.internalStreams.values()].map(s => ({ id: s.id, status: s.status, accepted: s.accepted, claimed: s.claimed,
-        peerLimit: String(s.peerLimit), offeredEnd: String(s.offeredEnd), unread: s.unread.length, pages: s.unread.pageCount, rxNext: String(s.rxNext),
-        consumed: String(s.consumed), txEnd: String(s.txEnd), ack: String(s.ack),
-        txFinal: s.txFinal?.toString(), rxFinal: s.rxFinal?.toString(), peerSawFinal: s.peerSawFinal })) };
+    return {
+      retained: this.internalStreams.size,
+      incoming: this.internalIncoming.length,
+      nextId: this.internalNextId,
+      goaway: this.internalGoaway,
+      peerGoaway: this.internalPeerGoaway,
+      streams: [...this.internalStreams.values()].map(s => ({
+        id: s.id,
+        status: s.status,
+        accepted: s.accepted,
+        claimed: s.claimed,
+        peerLimit: String(s.peerLimit),
+        offeredEnd: String(s.offeredEnd),
+        unread: s.unread.length,
+        pages: s.unread.pageCount,
+        rxNext: String(s.rxNext),
+        consumed: String(s.consumed),
+        txEnd: String(s.txEnd),
+        ack: String(s.ack),
+        txFinal: s.txFinal?.toString(),
+        rxFinal: s.rxFinal?.toString(),
+        peerSawFinal: s.peerSawFinal,
+      })),
+    };
   }
   open(): number {
     requireValue({ condition: !this.internalGoaway && !this.internalPeerGoaway, message: 'Session draining' });
@@ -152,8 +185,10 @@ export class Machine {
     }): void {
     const stream = this.internalLookup({ id });
     requireValue({ condition: Number.isSafeInteger(length) && length >= 0, message: 'Write length' });
-    requireValue({ condition: stream.status === 'active' && stream.accepted && stream.txFinal === undefined,
-      message: 'Stream not writable' });
+    requireValue({
+      condition: stream.status === 'active' && stream.accepted && stream.txFinal === undefined,
+      message: 'Stream not writable',
+    });
     requireValue({ condition: stream.outgoing === undefined, message: 'One write at a time' });
     requireValue({ condition: stream.txEnd + BigInt(length) <= MAX_OFFSET, message: 'Offset exhaustion' });
   }
@@ -270,9 +305,13 @@ export class Machine {
       this.internalStreams.delete(id);
   }
   snapshot(): Snapshot {
-    const states = [...this.internalStreams.values()].filter(s => s.status === 'active').map(s => ({ id: s.id,
+    const states = [...this.internalStreams.values()].filter(s => s.status === 'active').map(s => ({
+      id: s.id,
       flags: (s.txFinal !== undefined ? 1 : 0) | (s.rxFinal !== undefined && s.rxNext === s.rxFinal ? 2 : 0),
-      rxNext: s.rxNext, rxLimit: limit({ stream: s }), final: s.txFinal ?? 0n }));
+      rxNext: s.rxNext,
+      rxLimit: limit({ stream: s }),
+      final: s.txFinal ?? 0n,
+    }));
     const active = [...this.internalStreams.values()].filter(s => s.status === 'active').sort((a, b) => a.id - b.id);
     const rotated = [...active.filter(s => s.id >= this.internalCursor), ...active.filter(s => s.id < this.internalCursor)];
     const data: Segment[] = [];
@@ -365,8 +404,10 @@ export class Machine {
       let stream = this.internalStreams.get(id);
       if (!stream) {
         requireValue({ condition: !this.internalLocal({ id }), message: 'State for unallocated local ID' });
-        requireValue({ condition: state.rxNext === 0n && (state.flags & 2) === 0,
-          message: 'Unknown OPEN acknowledges data/final' });
+        requireValue({
+          condition: state.rxNext === 0n && (state.flags & 2) === 0,
+          message: 'Unknown OPEN acknowledges data/final',
+        });
         if (this.internalGoaway || this.internalStreams.size === RETAINED_STREAMS) {
           bitSet({ bitmap: this.internalReset, id });
           continue;
@@ -375,13 +416,20 @@ export class Machine {
         this.internalStreams.set(id, stream);
         this.internalIncoming.push(id);
       }
-      requireValue({ condition: state.rxNext >= stream.ack && state.rxNext <= stream.offeredEnd &&
-                    (state.rxNext === stream.ack || state.rxNext === stream.offeredEnd), message: 'Invalid acknowledgement' });
-      requireValue({ condition: state.rxLimit >= stream.peerLimit && state.rxLimit - state.rxNext <= RECEIVE_WINDOW,
-        message: 'Invalid receive credit' });
+      requireValue({
+        condition: state.rxNext >= stream.ack && state.rxNext <= stream.offeredEnd &&
+                    (state.rxNext === stream.ack || state.rxNext === stream.offeredEnd),
+        message: 'Invalid acknowledgement',
+      });
+      requireValue({
+        condition: state.rxLimit >= stream.peerLimit && state.rxLimit - state.rxNext <= RECEIVE_WINDOW,
+        message: 'Invalid receive credit',
+      });
       if (stream.rxFinal !== undefined)
-        requireValue({ condition: (state.flags & 1) !== 0 && state.final === stream.rxFinal,
-          message: 'Final changed or withdrawn' });
+        requireValue({
+          condition: (state.flags & 1) !== 0 && state.final === stream.rxFinal,
+          message: 'Final changed or withdrawn',
+        });
       if ((state.flags & 1) !== 0) {
         requireValue({ condition: state.final >= stream.rxNext, message: 'Final below accepted data' });
         stream.rxFinal = state.final;
@@ -411,8 +459,10 @@ export class Machine {
       requireValue({ condition: segment.offset >= stream.rxNext, message: 'Partial overlap' });
       if (segment.offset > stream.rxNext)
         continue;
-      requireValue({ condition: end <= limit({ stream }) && (stream.rxFinal === undefined || end <= stream.rxFinal),
-        message: 'DATA exceeds credit/final' });
+      requireValue({
+        condition: end <= limit({ stream }) && (stream.rxFinal === undefined || end <= stream.rxFinal),
+        message: 'DATA exceeds credit/final',
+      });
       stream.unread = stream.unread.append({ bytes: segment.bytes });
       stream.rxNext = end;
     }
@@ -420,8 +470,11 @@ export class Machine {
       if (!bitHas({ bitmap: snapshot.finished, id }) || bitHas({ bitmap: this.internalReset, id }) || bitHas({ bitmap: this.internalFinished, id }))
         continue;
       const stream = this.internalLookup({ id });
-      requireValue({ condition: stream.txFinal !== undefined && stream.rxFinal !== undefined && stream.rxNext === stream.rxFinal &&
-                    stream.offeredEnd === stream.txFinal, message: 'Unproven FINISHED' });
+      requireValue({
+        condition: stream.txFinal !== undefined && stream.rxFinal !== undefined && stream.rxNext === stream.rxFinal &&
+                    stream.offeredEnd === stream.txFinal,
+        message: 'Unproven FINISHED',
+      });
       if (stream.txFinal === undefined)
         throw new Error('Missing local final');
       stream.ack = stream.txFinal;

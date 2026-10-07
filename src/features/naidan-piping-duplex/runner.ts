@@ -18,9 +18,12 @@ export function retryDelay({ failures, baseMs, maximumMs, randomUnit }: {
     maximumMs: number;
     randomUnit: number;
 }): number {
-  requireValue({ condition: Number.isSafeInteger(failures) && failures >= 1 && Number.isInteger(baseMs) && baseMs >= 2 &&
+  requireValue({
+    condition: Number.isSafeInteger(failures) && failures >= 1 && Number.isInteger(baseMs) && baseMs >= 2 &&
             Number.isInteger(maximumMs) && maximumMs >= baseMs && maximumMs <= 2147483647 &&
-            Number.isFinite(randomUnit) && randomUnit >= 0 && randomUnit < 1, message: 'Retry delay parameters' });
+            Number.isFinite(randomUnit) && randomUnit >= 0 && randomUnit < 1,
+    message: 'Retry delay parameters',
+  });
   const ceiling = Math.min(baseMs * 2 ** Math.min(failures - 1, 31), maximumMs);
   const floor = Math.ceil(ceiling / 2);
   return floor + Math.floor(randomUnit * (ceiling - floor + 1));
@@ -33,9 +36,11 @@ export function validatePacing({ pacing }: {
 }): void {
   const { minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs, ...rest } = pacing;
     rest satisfies Record<PropertyKey, never>;
-    requireValue({ condition: [minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs].every(value => Number.isInteger(value) && value > 0 && value <= 2147483647) &&
+    requireValue({
+      condition: [minimumMs, idleResendIntervalMs, retryBaseMs, retryMaximumMs].every(value => Number.isInteger(value) && value > 0 && value <= 2147483647) &&
             idleResendIntervalMs >= minimumMs && retryBaseMs >= Math.max(2, minimumMs) && retryMaximumMs >= retryBaseMs,
-    message: 'Pacing parameters' });
+    message: 'Pacing parameters',
+    });
 }
 export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: {
     session: StreamSession;
@@ -56,7 +61,8 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
   const backoff = async ({ failures }: {
         failures: number;
     }) => sleep({
-    milliseconds: retryDelay({ failures, baseMs: settings.retryBaseMs, maximumMs: settings.retryMaximumMs, randomUnit: jitter() }), signal: local.signal
+    milliseconds: retryDelay({ failures, baseMs: settings.retryBaseMs, maximumMs: settings.retryMaximumMs, randomUnit: jitter() }),
+      signal: local.signal,
   });
   const send = async () => {
     let failures = 0;

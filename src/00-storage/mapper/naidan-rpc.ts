@@ -11,15 +11,31 @@ export function rpcConnectionToDto({ connection }: { connection: NaidanRpcConnec
   transportRest satisfies Record<PropertyKey, never>;
   // Explicit projection also accepts Vue's nested reactive forms. Never pass
   // their proxies to persistence or structuredClone.
-  return ExperimentalNaidanRpcConnectionSchemaDto.parse({ version: 1, id: idToRaw({ id }), peerId: idToRaw({ id: peerId }), localPublicKey,
-    label: normalizeNaidanRpcLabel({ label }), transport: { type, serverUrl, headers: headers.map(({ name, value }) => ({ name, value })) },
-    allowedMethods: [...allowedMethods], autoConnect, revision });
+  return ExperimentalNaidanRpcConnectionSchemaDto.parse({
+    version: 1,
+    id: idToRaw({ id }),
+    peerId: idToRaw({ id: peerId }),
+    localPublicKey,
+    label: normalizeNaidanRpcLabel({ label }),
+    transport: { type, serverUrl, headers: headers.map(({ name, value }) => ({ name, value })) },
+    allowedMethods: [...allowedMethods],
+    autoConnect,
+    revision,
+  });
 }
 export function rpcConnectionFromDto({ value }: { value: unknown }): NaidanRpcConnection {
   const { version: _version, id, peerId, localPublicKey, label, transport, allowedMethods, autoConnect, revision, ...rest } = ExperimentalNaidanRpcConnectionSchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
-  return { id: toNaidanRpcConnectionId({ raw: id }), peerId: toNaidanRpcPeerId({ raw: peerId }), localPublicKey,
-    label: normalizeNaidanRpcLabel({ label }), transport: normalizeNaidanRpcTransport({ transport }), allowedMethods, autoConnect, revision };
+  return {
+    id: toNaidanRpcConnectionId({ raw: id }),
+    peerId: toNaidanRpcPeerId({ raw: peerId }),
+    localPublicKey,
+    label: normalizeNaidanRpcLabel({ label }),
+    transport: normalizeNaidanRpcTransport({ transport }),
+    allowedMethods,
+    autoConnect,
+    revision,
+  };
 }
 export const TEST_ONLY = {
 };

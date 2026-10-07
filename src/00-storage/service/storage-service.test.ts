@@ -206,7 +206,9 @@ describe('StorageService Migration', () => {
           lmParameters: undefined,
           parts: [
             { type: 'text', text: 'hello', completeness: 'complete' },
-            { type: 'attachment', attachment: {
+            {
+              type: 'attachment',
+              attachment: {
               id: 'att-1',
               binaryObjectId: 'bin-1',
               status: 'memory',
@@ -215,7 +217,8 @@ describe('StorageService Migration', () => {
               mimeType: 'image/png',
               size: 4,
               uploadedAt: Date.now(),
-            } }],
+            },
+            }],
           replies: { items: [] },
         }],
       },
@@ -262,8 +265,23 @@ describe('StorageService Migration', () => {
     const chat: any = {
       id: 'chat-recursive',
       root: {
-        items: [{ id: 'msg-1', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'msg 1', completeness: 'complete' }], replies: {
-          items: [{ id: 'msg-2', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'msg 2', completeness: 'complete' }, { type: 'attachment', attachment: {
+        items: [{
+          id: 'msg-1',
+          role: 'user',
+          createdAt: Date.now(),
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'msg 1', completeness: 'complete' }],
+          replies: {
+          items: [{
+            id: 'msg-2',
+            role: 'user',
+            createdAt: Date.now(),
+            modelId: undefined,
+            lmParameters: undefined,
+            parts: [{ type: 'text', text: 'msg 2', completeness: 'complete' }, {
+            type: 'attachment',
+            attachment: {
             id: 'att-nested',
             binaryObjectId: 'bin-nested',
             status: 'memory',
@@ -272,8 +290,12 @@ describe('StorageService Migration', () => {
             mimeType: 'image/png',
             size: 6,
             uploadedAt: Date.now(),
-          } }], replies: { items: [] } }],
-        } }],
+          },
+          }],
+            replies: { items: [] },
+          }],
+        },
+        }],
       },
     };
 

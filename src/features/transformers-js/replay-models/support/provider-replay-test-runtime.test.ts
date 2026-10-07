@@ -15,16 +15,22 @@ import { toMessageId } from '@/01-models/ids';
 import type { ChatMessage } from '@/01-models/types';
 
 const capturedSmolLoadIdentity = {
-  status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+  status: 'ready',
+  workerLoadOrdinal: 1,
+  requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
   requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
-  cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
+  cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+  autoClass: 'AutoModelForCausalLM',
+  processor: 'tokenizer',
   selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
-  resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+  resolvedRevision: { status: 'not-observed' },
+  sessionExecutionProvider: { status: 'not-observed' },
 };
 
 function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant'; text: string }): ChatMessage {
   return {
-    id: toMessageId({ raw: id }), role,
+    id: toMessageId({ raw: id }),
+    role,
     parts: [{ type: 'text', text, completeness: 'complete' }],
   };
 }
@@ -34,10 +40,18 @@ async function captureMechanicsChat({ provider, messages, parameters }: {
   messages: readonly ChatMessage[];
   parameters: CapturedChatRequest['parameters'];
 }) {
-  const capture = captureProviderChat({ provider, request: {
-    model: 'HuggingFaceTB/SmolLM2-135M-Instruct', messages, parameters, tools: [],
-    readBinaryObject: undefined, debug: undefined, signal: undefined,
-  } });
+  const capture = captureProviderChat({
+    provider,
+    request: {
+    model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+    messages,
+    parameters,
+    tools: [],
+    readBinaryObject: undefined,
+    debug: undefined,
+    signal: undefined,
+  },
+  });
   await capture.completion;
   return capture.snapshot();
 }
@@ -45,7 +59,9 @@ async function captureMechanicsChat({ provider, messages, parameters }: {
 function mechanicsArguments({ generate }: { generate: ProviderReplayGenerate }): Parameters<typeof createProviderReplayTestRuntime>[0] {
   return {
     modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-    expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+    expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+    cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+    metadataCache: "all-fixture",
     artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1, 2, 3) }],
     generate,
     imagePlatform: undefined,
@@ -62,9 +78,11 @@ describe('Production replay explicit image platform ownership', () => {
     vi.stubGlobal('fetch', delegated);
     const allowedDataUrls = [dataUrl];
     const harness = await createProviderReplayTestRuntime({
-      ...mechanicsArguments({ generate: async () => {
+      ...mechanicsArguments({
+        generate: async () => {
         throw new Error('No inference in capability test');
-      } }),
+      },
+      }),
       imagePlatform: { platform, allowedDataUrls },
     });
     try {
@@ -104,9 +122,11 @@ describe('Production replay explicit image platform ownership', () => {
     });
     vi.stubGlobal('fetch', delegated);
     const harness = await createProviderReplayTestRuntime({
-      ...mechanicsArguments({ generate: async () => {
+      ...mechanicsArguments({
+        generate: async () => {
         throw new Error('No inference in request test');
-      } }),
+      },
+      }),
       imagePlatform: { platform, allowedDataUrls: [dataUrl] },
     });
     try {
@@ -141,9 +161,11 @@ describe('Production replay explicit image platform ownership', () => {
       throw new Error('Parent fetch must remain unused');
     });
     vi.stubGlobal('fetch', parentFetch);
-    const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+    const harness = await createProviderReplayTestRuntime(mechanicsArguments({
+      generate: async () => {
       throw new Error('No inference in absent image test');
-    } }));
+    },
+    }));
     try {
       expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
       const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
@@ -167,9 +189,11 @@ describe('Production replay explicit image platform ownership', () => {
     const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact');
     try {
       await expect(createProviderReplayTestRuntime({
-        ...mechanicsArguments({ generate: async () => {
+        ...mechanicsArguments({
+          generate: async () => {
           throw new Error('No inference in invalid capability test');
-        } }),
+        },
+        }),
         imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: ['http://localhost/synthetic.png'] },
       })).rejects.toThrow('exact bounded PNG data URL');
       expect(importer).not.toHaveBeenCalled();
@@ -183,9 +207,11 @@ describe('Production replay explicit image platform ownership', () => {
     const platform = createProviderReplayTestImagePlatform();
     const before = ['self', 'WorkerGlobalScope', 'DedicatedWorkerGlobalScope', 'ImageData', 'OffscreenCanvas', 'createImageBitmap', 'fetch'].map(key => Object.getOwnPropertyDescriptor(globalThis, key));
     const harness = await createProviderReplayTestRuntime({
-      ...mechanicsArguments({ generate: async () => {
+      ...mechanicsArguments({
+        generate: async () => {
         throw new Error('No inference in native image boundary test');
-      } }),
+      },
+      }),
       imagePlatform: { platform, allowedDataUrls: [dataUrl] },
     });
     try {
@@ -242,9 +268,11 @@ describe('Production replay explicit image platform ownership', () => {
     });
     try {
       const harness = await createProviderReplayTestRuntime({
-        ...mechanicsArguments({ generate: async () => {
+        ...mechanicsArguments({
+          generate: async () => {
           throw new Error('No inference in unload failure test');
-        } }),
+        },
+        }),
         imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [dataUrl] },
       });
       const failure = new Error('Synthetic unload failure with image platform');
@@ -279,9 +307,11 @@ describe('Production replay explicit image platform ownership', () => {
     });
     try {
       await expect(createProviderReplayTestRuntime({
-        ...mechanicsArguments({ generate: async () => {
+        ...mechanicsArguments({
+          generate: async () => {
           throw new Error('No inference after setup failure');
-        } }),
+        },
+        }),
         imagePlatform: { platform, allowedDataUrls: [dataUrl] },
       })).rejects.toBe(failure);
       expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
@@ -295,9 +325,11 @@ describe('Production replay explicit image platform ownership', () => {
 describe('Production replay explicit local cache metadata', () => {
   it('rejects duplicate, unrecorded, escaped and foreign cache identities before native startup', async () => {
     const startup = vi.spyOn(artifactFixture, 'getProductionTransformersArtifact');
-    const args = mechanicsArguments({ generate: async () => {
+    const args = mechanicsArguments({
+      generate: async () => {
       throw new Error('No inference for invalid setup');
-    } });
+    },
+    });
     try {
       for (const metadataCache of [['config.json', 'config.json'], ['not-recorded.json'], ['../config.json'], ['/config.json']]) {
         await expect(createProviderReplayTestRuntime({ ...args, metadataCache })).rejects.toThrow('Unprovided or duplicate replay cache metadata');
@@ -324,9 +356,11 @@ describe('Production replay construction ownership', () => {
       return runtime;
     });
     try {
-      const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+      const harness = await createProviderReplayTestRuntime(mechanicsArguments({
+        generate: async () => {
         throw new Error('No inference in wrapper ownership control');
-      } }));
+      },
+      }));
       try {
         expect(methods).toHaveLength(4);
         expect(methods[0]!.descriptor).toBeDefined();
@@ -374,9 +408,11 @@ describe('Production replay construction ownership', () => {
       throw primary;
     });
     try {
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+      await expect(createProviderReplayTestRuntime(mechanicsArguments({
+        generate: async () => {
         throw new Error('Not reached');
-      } }))).rejects.toBe(primary);
+      },
+      }))).rejects.toBe(primary);
       expect(throwingRestore).toHaveBeenCalledOnce();
       expect(globalThis.fetch).toBe(parentFetch);
       expect(parentFetch).not.toHaveBeenCalled();
@@ -392,16 +428,22 @@ describe('Production replay construction ownership', () => {
     const ort = await import(/* @vite-ignore */ artifact.ortWebGpuUrl);
     const factory = ort.InferenceSession.create;
     const before = {
-      fetch: globalThis.fetch, navigator: globalThis.navigator, Blob: globalThis.Blob,
-      crypto: globalThis.crypto, createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL,
+      fetch: globalThis.fetch,
+      navigator: globalThis.navigator,
+      Blob: globalThis.Blob,
+      crypto: globalThis.crypto,
+      createObjectURL: URL.createObjectURL,
+      revokeObjectURL: URL.revokeObjectURL,
       self: Object.getOwnPropertyDescriptor(globalThis, 'self'),
     };
     const failure = new Error('Synthetic native artifact import failure');
     const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockRejectedValueOnce(failure);
     try {
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+      await expect(createProviderReplayTestRuntime(mechanicsArguments({
+        generate: async () => {
         throw new Error('Not reached');
-      } }))).rejects.toBe(failure);
+      },
+      }))).rejects.toBe(failure);
       expect(ort.InferenceSession.create).toBe(factory);
       expect(globalThis.fetch).toBe(before.fetch);
       expect(globalThis.navigator).toBe(before.navigator);
@@ -436,9 +478,11 @@ describe('Production replay construction ownership', () => {
     try {
       // Vitest wraps a rejected module factory, preserving its cause. That
       // upstream wrapper must not be replaced by a cleanup error either.
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({ generate: async () => {
+      await expect(createProviderReplayTestRuntime(mechanicsArguments({
+        generate: async () => {
         throw new Error('Not reached');
-      } }))).rejects.toMatchObject({ cause: failure });
+      },
+      }))).rejects.toMatchObject({ cause: failure });
       const actual = await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport');
       const imported = await import('@/utils/worker-transport');
       expect(imported.exposeWorkerRemote).toBe(actual.exposeWorkerRemote);
@@ -469,17 +513,26 @@ describe('Production replay native inference boundary', () => {
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
     try {
-      const observed = await captureMechanicsChat({ provider: harness.provider,
-        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })], parameters: undefined });
+      const observed = await captureMechanicsChat({
+        provider: harness.provider,
+        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
+        parameters: undefined,
+      });
       expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
       if (!invocation) throw new Error('Actual inference was not reached');
       const captured = invocation;
       const tensor = captured.options.attention_mask;
       if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer attention mask');
       generate.mockClear();
-      await expect(async () => captured.model.generate({ ...captured.options, attention_mask: {
-        type: tensor.type, dims: [...tensor.dims], data: tensor.data, location: tensor.location,
-      } })).rejects.toThrow('Replay requires actual Tensor: attention_mask');
+      await expect(async () => captured.model.generate({
+        ...captured.options,
+        attention_mask: {
+        type: tensor.type,
+        dims: [...tensor.dims],
+        data: tensor.data,
+        location: tensor.location,
+      },
+      })).rejects.toThrow('Replay requires actual Tensor: attention_mask');
       expect(generate).not.toHaveBeenCalled();
     } finally {
       await harness.close();
@@ -494,17 +547,26 @@ describe('Production replay native inference boundary', () => {
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
     try {
-      const observed = await captureMechanicsChat({ provider: harness.provider,
-        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })], parameters: undefined });
+      const observed = await captureMechanicsChat({
+        provider: harness.provider,
+        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
+        parameters: undefined,
+      });
       expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
       if (!invocation) throw new Error('Actual inference was not reached');
       const captured = invocation;
       const tensor = captured.options.input_ids;
       if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer tensor');
       generate.mockClear();
-      await expect(async () => captured.model.generate({ ...captured.options, input_ids: {
-        type: tensor.type, dims: [...tensor.dims], data: tensor.data, location: tensor.location,
-      } })).rejects.toThrow('Replay requires actual Tensor: input_ids');
+      await expect(async () => captured.model.generate({
+        ...captured.options,
+        input_ids: {
+        type: tensor.type,
+        dims: [...tensor.dims],
+        data: tensor.data,
+        location: tensor.location,
+      },
+      })).rejects.toThrow('Replay requires actual Tensor: input_ids');
       expect(generate).not.toHaveBeenCalled();
     } finally {
       await harness.close();
@@ -515,18 +577,22 @@ describe('Production replay native inference boundary', () => {
 describe('Production replay Worker construction boundary', () => {
   it('reads capture once and preserves inherited once and signal options at the native endpoint', async () => {
     const started = Promise.withResolvers<void>();
-    const worker = new ProviderReplayTestWorker({ start: async () => {
+    const worker = new ProviderReplayTestWorker({
+      start: async () => {
       started.resolve();
-    } });
+    },
+    });
     await started.promise;
     const controller = new AbortController();
     const calls: string[] = [];
     let captureReads = 0;
     const options = Object.create({ once: true, signal: controller.signal }) as AddEventListenerOptions;
-    Object.defineProperty(options, 'capture', { get: () => {
+    Object.defineProperty(options, 'capture', {
+      get: () => {
       captureReads++;
       return true;
-    } });
+    },
+    });
     const once = () => calls.push('once');
     const aborted = () => calls.push('aborted');
     try {
@@ -548,9 +614,11 @@ describe('Production replay Worker construction boundary', () => {
 
   it('releases owned endpoint listeners by capture identity and prevents late registration after termination', async () => {
     const started = Promise.withResolvers<void>();
-    const worker = new ProviderReplayTestWorker({ start: async () => {
+    const worker = new ProviderReplayTestWorker({
+      start: async () => {
       started.resolve();
-    } });
+    },
+    });
     await started.promise;
     const listener = () => {};
     const mutableOptions = { capture: false };
@@ -575,9 +643,11 @@ describe('Production replay Worker construction boundary', () => {
 
   it('preserves native clone errors but discards valid sends after physical termination', async () => {
     const started = Promise.withResolvers<void>();
-    const worker = new ProviderReplayTestWorker({ start: async () => {
+    const worker = new ProviderReplayTestWorker({
+      start: async () => {
       started.resolve();
-    } });
+    },
+    });
     await started.promise;
     worker.terminate();
     expect(() => worker.postMessage({ type: 'RELEASE', id: 'synthetic-closed-port' }, [])).not.toThrow();
@@ -591,12 +661,14 @@ describe('Production replay Worker construction boundary', () => {
     const continueStartup = Promise.withResolvers<void>();
     const completed = Promise.withResolvers<void>();
     const listener = () => {};
-    const worker = new ProviderReplayTestWorker({ start: async ({ worker }) => {
+    const worker = new ProviderReplayTestWorker({
+      start: async ({ worker }) => {
       entered.resolve();
       await continueStartup.promise;
       worker.endpoint.addEventListener('message', listener);
       completed.resolve();
-    } });
+    },
+    });
     try {
       await entered.promise;
       worker.terminate();
@@ -615,9 +687,11 @@ describe('Production replay Worker construction boundary', () => {
   it('delivers the original asynchronous startup error before cleanup', async () => {
     const failure = new Error('Synthetic replay entry startup failure');
     const delivered = Promise.withResolvers<unknown>();
-    const worker = new ProviderReplayTestWorker({ start: async () => {
+    const worker = new ProviderReplayTestWorker({
+      start: async () => {
       throw failure;
-    } });
+    },
+    });
     worker.addEventListener('error', event => delivered.resolve((event as MessageEvent).data));
     try {
       expect(await delivered.promise).toBe(failure);
@@ -701,24 +775,33 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
 
     const traced = await createProviderReplayTestRuntime(mechanicsArguments({ generate: createNativeBoundary() }));
     const trace = createProductionProviderPartsTrace({
-      requestId: 'synthetic-production-settlement', limits: { maximumEvents: 64, maximumCharacters: 4096 },
+      requestId: 'synthetic-production-settlement',
+      limits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
     try {
       const result = await generateProductionProviderCapture({
-        provider: traced.provider, modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+        provider: traced.provider,
+        modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
         input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
-        abortController: new AbortController(), trace,
+        abortController: new AbortController(),
+        trace,
       });
       trace.settle({ outcome: 'fulfilled', error: undefined });
       expect(result).toEqual(baselineSnapshot.result);
       expect(trace.snapshot().settled?.outcome).toEqual({ status: 'fulfilled' });
       expect(trace.snapshot().settled?.events.at(-1)).toMatchObject({
-        kind: 'generation_interrupted', reason: 'unknown', phase: 'before-settlement',
+        kind: 'generation_interrupted',
+        reason: 'unknown',
+        phase: 'before-settlement',
       });
       const applied = trace.snapshot().settled?.events.filter(event => event.kind === 'part_text').at(-1);
       expect(applied).toMatchObject({ kind: 'part_text', partType: 'text', text: 'Synthetic output.', completeness: 'partial' });
       expect(baselineSnapshot.parts).toEqual([{
-        type: 'text', partId: 'part_0', index: 0, chunks: ['', 'S', 'ynthetic ', 'output.'], completeness: 'partial',
+        type: 'text',
+        partId: 'part_0',
+        index: 0,
+        chunks: ['', 'S', 'ynthetic ', 'output.'],
+        completeness: 'partial',
       }]);
       expect(trace.snapshot().lateEvents).toEqual([]);
     } finally {
@@ -765,15 +848,21 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
         const input = captureScenarioInput({ scenario, firstSettled });
         const trace = createProductionProviderPartsTrace({ requestId: scenario, limits: { maximumEvents: 64, maximumCharacters: 4096 } });
         await generateProductionProviderCapture({
-          provider: baseline.provider, modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', input,
-          abortController: new AbortController(), trace,
+          provider: baseline.provider,
+          modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          input,
+          abortController: new AbortController(),
+          trace,
         });
         const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
         if (scenario === 'first-turn') firstSettled = settled;
         // Keep live trace access, not a post-hoc repaired settlement or history.
-        requests.push({ input, get trace() {
+        requests.push({
+          input,
+          get trace() {
           return trace.snapshot();
-        } });
+        },
+        });
       }
       expectedRequests = comparableRequests({ requests });
       expect(baseline.observations.workers).toHaveLength(1);
@@ -791,11 +880,13 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
     const captures: Array<ReturnType<typeof createTransformersJsGenerationCaptureClient>> = [];
     const owner: ReturnType<typeof createProductionProviderCaptureOwner> = createProductionProviderCaptureOwner({
-      runId: 'synthetic-owner-comlink', modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      runId: 'synthetic-owner-comlink',
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
       plan: 'first-continuity-independent',
       createWorkerClient: () => {
         const capture = createTransformersJsGenerationCaptureClient({
-          runId: 'synthetic-owner-comlink', workerEpoch: captures.length + 1,
+          runId: 'synthetic-owner-comlink',
+          workerEpoch: captures.length + 1,
           getActiveRequest: () => owner.getActiveRequest(),
           limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192, maxTensorBytes: 8192, maxTotalTensorBytes: 65536, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
         });
@@ -815,7 +906,10 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       const recorded = await captures[0]!.takeGenerationCapture();
       if (recorded.status !== 'captured') throw new Error(`Expected captured generation, received ${recorded.status}`);
       const identities = snapshot.requests.map((request, index) => ({
-        runId: 'synthetic-owner-comlink', workerEpoch: 1, requestId: request.requestId, generationCallId: index + 1,
+        runId: 'synthetic-owner-comlink',
+        workerEpoch: 1,
+        requestId: request.requestId,
+        generationCallId: index + 1,
       }));
       expect(recorded.capture.calls).toEqual(identities.map(context => ({ context, loadIdentity: capturedSmolLoadIdentity, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } }] })));
       expect(captures[0]!.getCaptureLifetime().issuedCalls).toEqual(identities);
@@ -836,7 +930,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       expect(recorded.capture.events.filter(event => event.kind === 'sequence')).toEqual(identities.map((identity, index) => {
         const bytes = baselineNative.outputs[index]!;
         return {
-          kind: 'sequence', identity: { ...identity, nativeInvocationOrdinal: 1 }, resultShape: 'tensor',
+          kind: 'sequence',
+          identity: { ...identity, nativeInvocationOrdinal: 1 },
+          resultShape: 'tensor',
           snapshot: { status: 'captured', dtype: 'int64', dims: [1, bytes.byteLength / 8], byteLength: bytes.byteLength, bytes },
         };
       }));
@@ -867,11 +963,13 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
     const captures: Array<ReturnType<typeof createTransformersJsGenerationCaptureClient>> = [];
     const owner: ReturnType<typeof createProductionProviderCaptureOwner> = createProductionProviderCaptureOwner({
-      runId: 'synthetic-owner-rejected', modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      runId: 'synthetic-owner-rejected',
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
       plan: 'first-continuity-independent',
       createWorkerClient: () => {
         const capture = createTransformersJsGenerationCaptureClient({
-          runId: 'synthetic-owner-rejected', workerEpoch: captures.length + 1,
+          runId: 'synthetic-owner-rejected',
+          workerEpoch: captures.length + 1,
           getActiveRequest: () => owner.getActiveRequest(),
           limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192, maxTensorBytes: 8192, maxTotalTensorBytes: 65536, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
         });
@@ -896,12 +994,19 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       const recorded = await captures[0]!.takeGenerationCapture();
       if (recorded.status !== 'captured') throw new Error(`Expected partial native capture, received ${recorded.status}`);
       const identity = {
-        runId: 'synthetic-owner-rejected', workerEpoch: 1,
-        requestId: snapshot.requests[0]!.requestId, generationCallId: 1,
+        runId: 'synthetic-owner-rejected',
+        workerEpoch: 1,
+        requestId: snapshot.requests[0]!.requestId,
+        generationCallId: 1,
       };
-      expect(recorded.capture.calls).toEqual([{ context: identity, loadIdentity: capturedSmolLoadIdentity, outcome: 'rejected', invocations: [
+      expect(recorded.capture.calls).toEqual([{
+        context: identity,
+        loadIdentity: capturedSmolLoadIdentity,
+        outcome: 'rejected',
+        invocations: [
         { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
-      ] }]);
+      ],
+      }]);
       expect(recorded.capture.events.filter(event => event.kind === 'native-call')).toEqual([
         { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'entering' },
         { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'rejected' },
@@ -926,7 +1031,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: new Uint8Array([1, 2, 3]) }],
       generate: async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
@@ -947,7 +1054,11 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
         parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
       });
       expect(snapshot.parts).toEqual([{
-        type: 'text', partId: 'part_0', index: 0, chunks: ['', 'S', 'ynthetic ', 'output.'], completeness: 'partial',
+        type: 'text',
+        partId: 'part_0',
+        index: 0,
+        chunks: ['', 'S', 'ynthetic ', 'output.'],
+        completeness: 'partial',
       }]);
       expect(snapshot.result).toEqual({ type: 'interrupted', reason: 'unknown' });
       expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
@@ -966,7 +1077,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: new Uint8Array([1, 2, 3]) }],
       generate,
     });

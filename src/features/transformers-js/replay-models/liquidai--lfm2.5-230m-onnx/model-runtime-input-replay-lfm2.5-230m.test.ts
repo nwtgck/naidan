@@ -8,7 +8,8 @@ import { originalBundledJinjaTemplate } from '../../../../../build/transformers-
 
 const modelId = 'LiquidAI/LFM2.5-230M-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: 'c6f46e4e3f885ebcad164d14059a49f90e27eb4d',
   files: {
@@ -19,7 +20,8 @@ installRawReplay({ evidence: {
     'generation_config.json': { sha256: '85fa3172f3838eefa602843e3d97fbf532aeb585e0d7fb869dcd17c268e77f45', byteLength: 131 },
     'tokenizer.json': { sha256: 'df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd', byteLength: 4733389 },
   },
-} });
+},
+});
 
 describe('LFM2.5 230M raw metadata replay', () => {
   it('constructs and encodes with the tokenizer without implying template compatibility', async () => {
@@ -69,7 +71,10 @@ Original assistant body.<|im_end|>
 
   it('COUNTERFACTUAL: records absent q4f16 requests using spy-only bytes, not an available candidate', async () => {
     await assertRawModelSelection({
-      modelId, dtype: 'q4f16', sessions: { model: 1 }, probeOnly: [],
+      modelId,
+      dtype: 'q4f16',
+      sessions: { model: 1 },
+      probeOnly: [],
       expectedMissing: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
     });
   });
@@ -82,7 +87,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'LiquidAI/LFM2.5-230M-ONNX', chunks: { q4f16: { model: 1 }, q4: { model: 1 } }, registryExtra: [], missing: ['q4f16'] },
-      dtype, expectedAutoClass: 'AutoModelForCausalLM',
+      dtype,
+      expectedAutoClass: 'AutoModelForCausalLM',
     });
   });
 });

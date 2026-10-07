@@ -32,16 +32,20 @@ describe('model artifact request barrier', () => {
     vi.useFakeTimers();
     try {
       const barrier = createModelArtifactRequestBarrier({ quiescenceMs: 50 });
-      const first = barrier.observe({ request: {
+      const first = barrier.observe({
+        request: {
         path: 'onnx/decoder_q4.onnx',
         url: 'https://huggingface.co/org/model/resolve/revision/onnx/decoder_q4.onnx',
-      } });
+      },
+      });
       const quiescence = barrier.waitForQuiescence();
       await vi.advanceTimersByTimeAsync(30);
-      const second = barrier.observe({ request: {
+      const second = barrier.observe({
+        request: {
         path: 'onnx/decoder_q4.onnx_data',
         url: 'https://huggingface.co/org/model/resolve/revision/onnx/decoder_q4.onnx_data',
-      } });
+      },
+      });
       await vi.advanceTimersByTimeAsync(49);
       let settled = false;
       void quiescence.then(() => {

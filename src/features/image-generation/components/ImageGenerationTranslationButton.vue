@@ -42,8 +42,11 @@ const progressFraction = computed(() => {
 });
 let controller: AbortController | undefined, epoch = 0, disposed = false;
 let previousFocus: HTMLElement | undefined, previousArea: FocusArea | undefined, focusVersion: number | undefined;
-const target = computed(() => resolveImagePromptTranslation({ session: props.workspace.currentSession.value?.translation,
-  workspace: props.workspace.catalog.value?.preferences.translation, global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters } }));
+const target = computed(() => resolveImagePromptTranslation({
+  session: props.workspace.currentSession.value?.translation,
+  workspace: props.workspace.catalog.value?.preferences.translation,
+  global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters },
+}));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: target.value.endpoint }));
 const fieldLabel = computed(() => {
   switch (props.field) {
@@ -97,15 +100,21 @@ async function translate(): Promise<void> {
   const destination = target.value, sourceText = props.text, key = { ...translationKey.value };
   translating.value = true; result.value = ''; resultComplete.value = false; failure.value = '';
   try {
-    const translated = await translateImagePrompt({ prompt: sourceText, language: key.language, endpoint: destination.endpoint, modelId: destination.modelId,
-      parameters: cloneLmParameters({ lmParameters: destination.lmParameters }), signal: abort.signal,
+    const translated = await translateImagePrompt({
+      prompt: sourceText,
+      language: key.language,
+      endpoint: destination.endpoint,
+      modelId: destination.modelId,
+      parameters: cloneLmParameters({ lmParameters: destination.lmParameters }),
+      signal: abort.signal,
       onText: ({ text }) => {
         if (!disposed && open.value && token === epoch) result.value = text;
       },
       onProgress: ({ progress: value }) => {
         if (!disposed && open.value && token === epoch) progress.value = value;
       },
-      fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled' });
+      fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+    });
     if (!disposed && open.value && token === epoch) {
       const retained = props.workspace.translationMemory.save({ key, entry: { sourceText, text: translated, createdAt: Date.now() } });
       // A cache admission limit must not discard the successful response. Keep

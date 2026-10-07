@@ -200,12 +200,14 @@ watch(
     }
 
     let cancelled = false;
-    unsubscribe = transformersJsService.subscribe({ listener: () => {
+    unsubscribe = transformersJsService.subscribe({
+      listener: () => {
       const state = transformersJsService.getState();
       if (state.activeModelId) {
         selectedModel.value = state.activeModelId;
       }
-    } });
+    },
+    });
     onCleanup(() => {
       cancelled = true;
       unsubscribe?.();
@@ -265,9 +267,11 @@ watch(effectiveType, (type, _previous, onCleanup) => {
   if (type !== 'llama_cpp_browser' || getEndpointBuildAvailability({ type }) !== 'available') return;
   const controller = new AbortController();
   const refresh = (): Promise<void> => refreshLocalModels({ signal: controller.signal });
-  const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => {
+  const unsubscribeModels = llamaCppBrowserService.subscribeModelList({
+    listener: () => {
     void refresh();
-  } });
+  },
+  });
   onCleanup(() => {
     controller.abort(); unsubscribeModels();
   });
@@ -492,13 +496,15 @@ async function handleConnect() {
 }
 
 async function handleClose() {
-  setOnboardingDraft({ draft: {
+  setOnboardingDraft({
+    draft: {
     url: customUrl.value,
     type: effectiveType.value,
     headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
-  } });
+  },
+  });
   setIsOnboardingDismissed({ dismissed: true });
 }
 

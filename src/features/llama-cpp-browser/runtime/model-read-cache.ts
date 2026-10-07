@@ -15,9 +15,20 @@ export function createModelReadCache({ mode, now }: {
   let next: { owner: symbol, offset: number } | undefined;
   let disposed = false;
   let allocationFailed = false;
-  const counters = { mode, requests: 0, sourceCalls: 0, sourceBytes: 0, deliveredBytes: 0,
-    directReads: 0, fills: 0, hits: 0, hitBytes: 0, peakBufferBytes: 0, allocationFallbacks: 0,
-    sourceReadMs: now ? 0 : undefined as number | undefined };
+  const counters = {
+    mode,
+    requests: 0,
+    sourceCalls: 0,
+    sourceBytes: 0,
+    deliveredBytes: 0,
+    directReads: 0,
+    fills: 0,
+    hits: 0,
+    hitBytes: 0,
+    peakBufferBytes: 0,
+    allocationFallbacks: 0,
+    sourceReadMs: now ? 0 : undefined as number | undefined,
+  };
   const readTime = (): number | undefined => {
     try {
       return now?.();

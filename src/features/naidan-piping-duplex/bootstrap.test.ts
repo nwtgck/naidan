@@ -107,8 +107,15 @@ async function tasks({ relay, signal, timeoutMs, roles }: {
   relay: PausedPostRelay; signal: AbortSignal; timeoutMs: number; roles: 'automatic' | 'pinned';
 }) {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
-  const common = { signal, code: 'ABCD-EFGH', confirmationTimeoutMs: timeoutMs, completionLeaseMs: 40,
-    intervalMs: 2, purpose: new Uint8Array([7, 4]), verifyPeer: undefined };
+  const common = {
+    signal,
+    code: 'ABCD-EFGH',
+    confirmationTimeoutMs: timeoutMs,
+    completionLeaseMs: 40,
+    intervalMs: 2,
+    purpose: new Uint8Array([7, 4]),
+    verifyPeer: undefined,
+  };
   const selectedRoles = (() => {
     switch (roles) {
     case 'automatic': return { a: undefined, b: undefined };
@@ -201,9 +208,19 @@ it('candidate selection joins a cancelled OFFER before starting SELECT', async (
 it('waiting for an absent peer outlives the automatic candidate confirmation budget', async () => {
   const relay = new PausedPostRelay(), stop = new AbortController();
   const identity = await createNaidanPipingIdentity(), peer = await createNaidanPipingIdentity();
-  const task = await startPinnedConnection({ endpoint: relay.endpoint({ owner: 'alone' }), role: undefined, code: 'ABCD-EFGH',
-    identity, expectedPeer: peer.publicKey, verifyPeer: undefined, purpose: new Uint8Array([1]), signal: stop.signal,
-    confirmationTimeoutMs: 10, completionLeaseMs: 40, intervalMs: 2 });
+  const task = await startPinnedConnection({
+    endpoint: relay.endpoint({ owner: 'alone' }),
+    role: undefined,
+    code: 'ABCD-EFGH',
+    identity,
+    expectedPeer: peer.publicKey,
+    verifyPeer: undefined,
+    purpose: new Uint8Array([1]),
+    signal: stop.signal,
+    confirmationTimeoutMs: 10,
+    completionLeaseMs: 40,
+    intervalMs: 2,
+  });
   onTestFinished(async () => {
     stop.abort(); await task.completion.catch(() => {});
   });
@@ -229,7 +246,9 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
   };
   const endpoint = ({ owner }: { owner: 'a' | 'b' }): FiniteTransport => {
     const base = relay.endpoint({ owner }); let gets = 0;
-    return { ...base, async send(args) {
+    return {
+      ...base,
+      async send(args) {
       if (args.bytes.length === 34) {
         if (owner === 'a') {
           aOffers++;
@@ -247,7 +266,8 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
         }
       }
       return base.send(args);
-    }, async receive(args) {
+    },
+      async receive(args) {
       if (++gets === 1) {
         try {
           return await abortWait({ signal: args.signal });
@@ -261,11 +281,20 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
         return bytes;
       }
       return base.receive(args);
-    } };
+    },
+    };
   };
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
-  const common = { signal: stop.signal, role: undefined, code: 'ABCD-EFGH', confirmationTimeoutMs: 500,
-    completionLeaseMs: 40, intervalMs: 2, purpose: new Uint8Array([1]), verifyPeer: undefined };
+  const common = {
+    signal: stop.signal,
+    role: undefined,
+    code: 'ABCD-EFGH',
+    confirmationTimeoutMs: 500,
+    completionLeaseMs: 40,
+    intervalMs: 2,
+    purpose: new Uint8Array([1]),
+    verifyPeer: undefined,
+  };
   const a = await startPinnedConnection({ ...common, endpoint: endpoint({ owner: 'a' }), identity: identities.a, expectedPeer: identities.b.publicKey });
   onTestFinished(async () => {
     stop.abort(); bDuplicate.resolve(); selfConsumed.resolve(); await a.completion.catch(() => {});

@@ -5,10 +5,18 @@ import type { ModelSupportInvestigationRun } from '@/features/transformers-js/mo
 import { readProductionProviderLoadObservations } from './production-provider-native-evidence';
 
 export const ordinaryProviderRuntimeCompletionSchema = z.object({
-  schemaVersion: z.literal(1), source: z.literal('ordinary-provider-load'), status: z.enum(['accepted', 'failed', 'exhausted']),
-  repositoryResolvedRevision: z.string().regex(/^[a-f0-9]{40}$/u), cacheRevision: z.string().max(128).nullable(), loaderRevisionOption: z.string().max(128).nullable(),
-  selectedCandidate: productionLoadReceiptSchema.shape.candidate.optional(), receipt: productionLoadReceiptSchema.optional(),
-  cacheReuse: z.undefined().optional(), preparation: z.undefined().optional(), cacheAfter: z.undefined().optional(), cacheInspectionError: z.undefined().optional(),
+  schemaVersion: z.literal(1),
+  source: z.literal('ordinary-provider-load'),
+  status: z.enum(['accepted', 'failed', 'exhausted']),
+  repositoryResolvedRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+  cacheRevision: z.string().max(128).nullable(),
+  loaderRevisionOption: z.string().max(128).nullable(),
+  selectedCandidate: productionLoadReceiptSchema.shape.candidate.optional(),
+  receipt: productionLoadReceiptSchema.optional(),
+  cacheReuse: z.undefined().optional(),
+  preparation: z.undefined().optional(),
+  cacheAfter: z.undefined().optional(),
+  cacheInspectionError: z.undefined().optional(),
   error: z.object({ name: z.string().max(128), message: z.string().max(2048) }).strict().optional(),
 }).strict().superRefine((completion, context) => {
   switch (completion.status) {
@@ -37,9 +45,13 @@ export function providerLoadRuntimeCompletion({ repositoryResolvedRevision, prov
 }): DownloadVerificationRuntimeCompletionEvidence | undefined {
   if (summary === undefined) return undefined;
   const base = {
-    schemaVersion: 1 as const, source: 'ordinary-provider-load' as const,
+    schemaVersion: 1 as const,
+    source: 'ordinary-provider-load' as const,
     repositoryResolvedRevision,
-    cacheReuse: undefined, preparation: undefined, cacheAfter: undefined, cacheInspectionError: undefined,
+    cacheReuse: undefined,
+    preparation: undefined,
+    cacheAfter: undefined,
+    cacheInspectionError: undefined,
   };
   const observations = provider === undefined || nativeJson === undefined ? [] : readProductionProviderLoadObservations({ json: nativeJson, provider });
   const lastEpoch = summary.cutoff.epochs.at(-1)?.workerEpoch;
@@ -57,17 +69,29 @@ export function providerLoadRuntimeCompletion({ repositoryResolvedRevision, prov
   case 'accepted': {
     if (!loadState.ready) break;
     const receipt = productionLoadReceiptSchema.parse(observation.outcome.receipt);
-    return { ...base, status: 'accepted', cacheRevision: receipt.cacheLookup.revision,
+    return {
+      ...base,
+      status: 'accepted',
+      cacheRevision: receipt.cacheLookup.revision,
       loaderRevisionOption: productionLoadReceiptRevisionOption({ option: receipt.loaderRevisionOption }) ?? null,
-      selectedCandidate: receipt.candidate, receipt, error: undefined };
+      selectedCandidate: receipt.candidate,
+      receipt,
+      error: undefined,
+    };
   }
   case 'loading': case 'failed': case 'cleared': case 'not-recorded': case undefined: break;
   default: { const exhaustive: never = observation!.outcome; throw new Error('Unknown Load receipt outcome: ' + exhaustive); }
   }
-  return { ...base, status: loadState.failed ? 'failed' : 'exhausted',
-    cacheRevision: null, loaderRevisionOption: null, selectedCandidate: undefined,
-    error: { name: loadState.failed ? 'ProductionProviderLoadFailed' : 'ProductionLoadReceiptUnavailable',
-      message: `Ordinary Provider Load status=${summary.providerProgress.loadStatus}; receipt=${observation?.outcome.status ?? 'not-observed'}.${currentWorkerWasRecorded ? '' : ' Current Worker ownership was not fully recorded.'} No independent acceptance Load was run.` },
+  return {
+    ...base,
+    status: loadState.failed ? 'failed' : 'exhausted',
+    cacheRevision: null,
+    loaderRevisionOption: null,
+    selectedCandidate: undefined,
+    error: {
+      name: loadState.failed ? 'ProductionProviderLoadFailed' : 'ProductionLoadReceiptUnavailable',
+      message: `Ordinary Provider Load status=${summary.providerProgress.loadStatus}; receipt=${observation?.outcome.status ?? 'not-observed'}.${currentWorkerWasRecorded ? '' : ' Current Worker ownership was not fully recorded.'} No independent acceptance Load was run.`,
+    },
   };
 }
 

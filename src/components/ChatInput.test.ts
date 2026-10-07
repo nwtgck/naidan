@@ -536,10 +536,13 @@ describe('ChatInput Integration', () => {
     const finished = Promise.withResolvers<void>();
     let titleSignal: AbortSignal | undefined;
     try {
-      autoTitleScheduler.schedule({ chatId: toChatId({ raw: 'title-chat' }), run: ({ signal }) => {
+      autoTitleScheduler.schedule({
+        chatId: toChatId({ raw: 'title-chat' }),
+        run: ({ signal }) => {
         titleSignal = signal;
         return finished.promise;
-      } });
+      },
+      });
       await vi.advanceTimersByTimeAsync(2500);
       expect(titleSignal?.aborted).toBe(false);
       expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(true);
@@ -729,12 +732,14 @@ describe('ChatInput Integration', () => {
     await flushPromises();
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({
+      options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       initialPath: ['home', 'user', 'work'],
       title: 'Files',
-    }) });
+    }),
+    });
   });
 
   it('mount explorer omits tmp for local storage', async () => {
@@ -788,11 +793,13 @@ describe('ChatInput Integration', () => {
     // Called once for chat mount and once for global mount
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({
+      options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       title: 'Files',
-    }) });
+    }),
+    });
   });
 
   it('mount explorer reuses shared naidan sysfs access scope', async () => {

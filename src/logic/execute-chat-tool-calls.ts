@@ -54,7 +54,8 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         outcome = await execute();
       } catch (error) {
         outcome = {
-          status: 'error', code: 'other',
+          status: 'error',
+          code: 'other',
           message: signal?.aborted ? 'Tool execution was interrupted before completion.' : error instanceof Error ? error.message : String(error),
         };
       } finally {
@@ -174,7 +175,8 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         switch (unfinished.result.status) {
         case 'executing':
           unfinished.result = {
-            toolCallId: call.id, status: 'error',
+            toolCallId: call.id,
+            status: 'error',
             error: { code: 'other', message: { type: 'text', text: 'Tool execution stopped before producing a result.' } },
           };
           break;

@@ -16,9 +16,23 @@ afterEach(() => {
 });
 function connection({ id, phase }: { id: string, phase: RpcConnectionView['phase'] }): RpcConnectionView {
   return {
-    connection: { id: toNaidanRpcConnectionId({ raw: id }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }), autoConnect: 'disabled', localPublicKey: 'A'.repeat(43),
-      label: id, transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] }, allowedMethods: [], revision: 0 },
-    phase, persistence: 'saved', registryPersistence: 'durable', access: { effective: [], desired: [], saved: [], revision: 0, persistence: 'saved' }, failure: undefined, health: undefined, session: phase === 'connected' ? {} : undefined,
+    connection: {
+      id: toNaidanRpcConnectionId({ raw: id }),
+      peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }),
+      autoConnect: 'disabled',
+      localPublicKey: 'A'.repeat(43),
+      label: id,
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://piping.example', headers: [] },
+      allowedMethods: [],
+      revision: 0,
+    },
+    phase,
+    persistence: 'saved',
+    registryPersistence: 'durable',
+    access: { effective: [], desired: [], saved: [], revision: 0, persistence: 'saved' },
+    failure: undefined,
+    health: undefined,
+    session: phase === 'connected' ? {} : undefined,
   };
 }
 function panel({ view }: { view: RpcConnectionView }) {

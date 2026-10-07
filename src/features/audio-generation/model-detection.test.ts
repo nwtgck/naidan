@@ -8,10 +8,14 @@ beforeEach(() => {
   storage.resolve.mockReset();
 });
 function directory({ architecture = 'qwen3tts', projector = 'qwen3tts_gen', generates = true }: { architecture?: string, projector?: string, generates?: boolean } = {}) {
-  return { modelPath: 'renamed-00001-of-00002.gguf', projectorPath: 'unusual-companion.gguf' as string | undefined, files: [
+  return {
+    modelPath: 'renamed-00001-of-00002.gguf',
+    projectorPath: 'unusual-companion.gguf' as string | undefined,
+    files: [
     { path: 'renamed-00001-of-00002.gguf', file: ggufFixture({ entries: [textMetadata({ key: 'general.architecture', value: architecture })] }) },
     { path: 'unusual-companion.gguf', file: ggufFixture({ entries: [boolMetadata({ key: 'clip.has_gen_audio_encoder', value: generates }), textMetadata({ key: 'clip.gen.audio.projector_type', value: projector })] }) },
-  ] };
+  ],
+  };
 }
 describe('audio candidate metadata', () => {
   it.each([

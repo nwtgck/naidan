@@ -12,8 +12,13 @@ import { openModelDownloadAccess, type ModelDownloadAccess } from './model-downl
 import type { ImageDownloadDestination } from './catalog-download';
 
 const chunkBytes = 256 * 1024;
-const pendingSchema = z.object({ version: z.literal(1), kind: z.literal('naidan-image-download'), source: imageFileIdentitySchema,
-  bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), state: z.enum(['partial', 'invalid']) }).strict().refine(value => value.bytes <= value.source.size);
+const pendingSchema = z.object({
+  version: z.literal(1),
+  kind: z.literal('naidan-image-download'),
+  source: imageFileIdentitySchema,
+  bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  state: z.enum(['partial', 'invalid']),
+}).strict().refine(value => value.bytes <= value.source.size);
 type Pending = z.infer<typeof pendingSchema>;
 export type FileTransferProgress = { phase: 'transferring' | 'verifying', bytes: number, processed: number };
 

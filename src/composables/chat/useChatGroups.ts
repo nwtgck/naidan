@@ -325,7 +325,8 @@ export function useChatGroups(): ChatGroupsAdapter {
       currentChatRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       let detachedChatId: ChatId | undefined;
 
       current.items = current.items.filter((item) => {
@@ -366,7 +367,8 @@ export function useChatGroups(): ChatGroupsAdapter {
       }
       groupNode.chat_ids.unshift(detachedChatId);
       return current;
-    } });
+    },
+    });
     await loadData();
   }
 

@@ -40,10 +40,12 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
   function publishDrafts(): void {
     if (onToolCallDraftsChange === undefined) return;
     const materialized = [...positions.values()].filter(position => position.type !== 'tool_call_draft');
-    onToolCallDraftsChange({ drafts: [...drafts.values()].sort((left, right) => left.index - right.index).map(draft => ({
+    onToolCallDraftsChange({
+      drafts: [...drafts.values()].sort((left, right) => left.index - right.index).map(draft => ({
       ...draft,
       beforePartIndex: materialized.filter(position => position.index < draft.index).length,
-    })) });
+    })),
+    });
   }
 
   function clearDrafts(): void {
@@ -117,11 +119,14 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
     const iterator = chunks[Symbol.asyncIterator]();
     let exhausted = false;
     try {
-      await apply({ persistence: 'history', change: () => {
+      await apply({
+        persistence: 'history',
+        change: () => {
         register({ partId, index, type });
         state.beginPart({ partId, index, type });
         if (drafts.size !== 0) publishDrafts();
-      } });
+      },
+      });
       while (true) {
         const next = await waitFor({ pending: iterator.next() });
         if (next.done) {
@@ -200,19 +205,24 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
         unhandled satisfies Record<PropertyKey, never>;
         // Capture before awaiting other mutations: upstream may reuse its objects.
         const copy = { ...toolCall, function: { ...toolCall.function } };
-        await apply({ persistence: 'history', change: () => {
+        await apply({
+          persistence: 'history',
+          change: () => {
           register({ partId, index, type: 'tool_call' });
           state.addToolCall({ partId, index, toolCall: copy });
           const removed = drafts.delete(partId);
           if (removed || drafts.size !== 0) publishDrafts();
-        } });
+        },
+        });
         break;
       }
       case 'tool_call_draft': {
         const { type, partId, index, name, arguments: update, ...unhandled } = item;
         unhandled satisfies Record<PropertyKey, never>;
         const patch = update === undefined ? undefined : { ...update };
-        await apply({ persistence: 'transient', change: () => {
+        await apply({
+          persistence: 'transient',
+          change: () => {
           register({ partId, index, type });
           // An ordinary stop still drains accepted completed content, but a
           // retired draft must never reappear while that drain is in progress.
@@ -227,7 +237,8 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
           }
           drafts.set(partId, { partId, index, name: name ?? previous?.name ?? '', arguments: argumentsText, beforePartIndex: 0 });
           publishDrafts();
-        } });
+        },
+        });
         break;
       }
       case 'result': {

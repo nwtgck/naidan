@@ -122,13 +122,15 @@ async function run<T>({ signal, operation, kind, owner }: {
       }
       if (!client) {
         const created = createLlamaCppWorkerClient(); client = created;
-        created.subscribeDisposed({ listener: () => {
+        created.subscribeDisposed({
+          listener: () => {
           if (client === created) {
             const checking = profileState.status === 'checking';
             client = undefined; invalidateProfiles();
             if (checking) publishProfiles({ next: { status: 'error', code: 'worker-failed' } });
           }
-        } });
+        },
+        });
       }
       switch (kind) {
       case 'operation': cacheOwner = undefined; break;
@@ -195,7 +197,11 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     // EngineState still says idle. Do not evict or wait behind another chat.
     if (laneReservations > 0) return 'skipped-busy';
     const acceptedOptions = { ...options };
-    return run({ kind: 'operation', owner: undefined, signal, operation: async ({ worker, signal }) => {
+    return run({
+      kind: 'operation',
+      owner: undefined,
+      signal,
+      operation: async ({ worker, signal }) => {
       let acceptingProgress = true;
       const report: typeof progress = ({ progress: value }) => {
         if (signal.aborted || !acceptingProgress) return;
@@ -211,7 +217,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       } finally {
         acceptingProgress = false;
       }
-    } });
+    },
+    });
   },
   getProfileState: () => profileState,
   subscribeProfiles({ listener }) {
@@ -252,7 +259,11 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     signal?.throwIfAborted(); const models = await listStoredModels(); signal?.throwIfAborted(); return models;
   },
   importModel({ file, signal }) {
-    return run({ kind: 'operation', owner: undefined, signal, operation: async ({ worker, signal }) => {
+    return run({
+      kind: 'operation',
+      owner: undefined,
+      signal,
+      operation: async ({ worker, signal }) => {
       progress({ progress: { phase: 'importing', completed: 0, total: file.size } });
       await worker.importModel({ file, onProgress: progress, signal });
       for (const listener of modelListeners) {
@@ -262,10 +273,15 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           logDiagnostic({ diagnostic: { event: 'failed' } });
         }
       }
-    } });
+    },
+    });
   },
   importDirectory({ directory, signal }) {
-    return run({ kind: 'operation', owner: undefined, signal, operation: async ({ worker, signal }) => {
+    return run({
+      kind: 'operation',
+      owner: undefined,
+      signal,
+      operation: async ({ worker, signal }) => {
       progress({ progress: { phase: 'importing', completed: 0, total: directory.files.reduce((total, entry) => total + entry.file.size, 0) } });
       await worker.importDirectory({ directory, onProgress: progress, signal });
       for (const listener of modelListeners) {
@@ -275,16 +291,19 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           logDiagnostic({ diagnostic: { event: 'failed' } });
         }
       }
-    } });
+    },
+    });
   },
   async removeModel({ plan, signal }) {
     // Deletion is deliberately optimistic: it does not wait for chats or keep a
     // usage registry. Active readers may fail normally; the next request checks
     // the actual file identities before reusing resident native state.
     signal?.throwIfAborted();
-    const result = await withModelMutationLock({ operation: () => {
+    const result = await withModelMutationLock({
+      operation: () => {
       signal?.throwIfAborted(); return removeStoredModel({ plan });
-    } });
+    },
+    });
     for (const listener of modelListeners) {
       try {
         listener();
@@ -297,22 +316,32 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   generate({ input, onEvent, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
     const initialRequest = generateInputSchema.parse({ ...input, options: { ...options } });
-    return run({ kind: 'operation', owner: undefined, signal, operation: async ({ worker, signal }) => {
+    return run({
+      kind: 'operation',
+      owner: undefined,
+      signal,
+      operation: async ({ worker, signal }) => {
       // Only the Worker knows whether weights/context actually need preparation.
       progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
       const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
       if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
       return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
-    } });
+    },
+    });
   },
   generateAudio({ input, cancellationSignal, completionSignal, preview }) {
     const initialRequest = audioGenerationInputSchema.parse({ ...input, options: { ...options } });
-    return run({ kind: 'operation', owner: undefined, signal: cancellationSignal, operation: async ({ worker, signal }) => {
+    return run({
+      kind: 'operation',
+      owner: undefined,
+      signal: cancellationSignal,
+      operation: async ({ worker, signal }) => {
       progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
       const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options });
       if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
       return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
-    } });
+    },
+    });
   },
   async runGenerationOperation({ signal, operation, onProgress }) {
     const reportOperation = ({ progress: value }: { progress: Progress }): void => {
@@ -325,7 +354,11 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     let callbackCompleted = false;
     let observedFailure: { error: unknown } | undefined;
     try {
-      await run({ kind: 'operation', owner: undefined, signal, operation: async ({ worker, signal }) => {
+      await run({
+        kind: 'operation',
+        owner: undefined,
+        signal,
+        operation: async ({ worker, signal }) => {
         const controller = new AbortController();
         const abort = () => controller.abort(signal.reason);
         signal.addEventListener('abort', abort, { once: true });
@@ -397,7 +430,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         // The common consumer may have recorded a model failure as a result.
         // Let run retire the failed runtime, without replacing that recorded result.
         if (observedFailure) throw observedFailure.error;
-      } });
+      },
+      });
     } catch (error) {
       if (!callbackCompleted || observedFailure === undefined) throw error;
     }
@@ -430,15 +464,25 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
 }): Promise<GenerationResult> {
   if (laneReservations !== 0) throw new LlamaCppBrowserError({ code: 'busy' });
   const accepted = generateInputSchema.parse({ ...input, debug: 'off', options: { ...options } });
-  return run({ kind: 'read-only', owner, signal, operation: async ({ worker, signal }) => {
+  return run({
+    kind: 'read-only',
+    owner,
+    signal,
+    operation: async ({ worker, signal }) => {
     progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
     const profile = await resolveRuntimeProfile({ profile: accepted.options.profile });
     signal.throwIfAborted();
-    return worker.generate({ request: { ...accepted, options: { ...accepted.options, profile } }, onEvent, onProgress: ({ progress: value }) => {
+    return worker.generate({
+      request: { ...accepted, options: { ...accepted.options, profile } },
+      onEvent,
+      onProgress: ({ progress: value }) => {
       if (signal.aborted) return;
       progress({ progress: value }); onProgress({ progress: value });
-    }, signal });
-  } });
+    },
+      signal,
+    });
+  },
+  });
 }
 
 

@@ -95,21 +95,28 @@ async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, ope
 }
 export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan | undefined, affectedVariants: number };
 export async function prepareModelRemoval({ id }: { id: string }): Promise<ModelRemovalRequest> {
-  return withModelMutationLock({ operation: () => withRemovalRepositoryLock({ id, operation: async () => {
+  return withModelMutationLock({
+    operation: () => withRemovalRepositoryLock({
+    id,
+    operation: async () => {
     const { folder, selectedPaths, projectors, affectedVariants } = await removalTarget({ id, sharedProjector: 'include' });
     const { files } = await scanDeletionTree({ folder });
     const selected = selectedPaths ? files.filter(file => selectedPaths.includes(file.path)) : files;
     const plan = deletionPlanSchema.parse({ id, sharedProjector: projectors.length ? 'keep' : undefined, files: selected.filter(file => !projectors.includes(file.path)) });
     const sharedPlan = projectors.length ? deletionPlanSchema.parse({ id, sharedProjector: 'include', files: selected }) : undefined;
     return { plan, sharedPlan, affectedVariants };
-  } }) });
+  },
+  }),
+  });
 }
 export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
   const request = await prepareModelRemoval({ id }); return request.sharedPlan ?? request.plan;
 }
 export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
-  return withRemovalRepositoryLock({ id: plan.id, operation: async () => {
+  return withRemovalRepositoryLock({
+    id: plan.id,
+    operation: async () => {
     const { parent, name, folder, selectedPaths } = await removalTarget({ id: plan.id, sharedProjector: plan.sharedProjector });
     const result = await executeDeletionPlan({ folder, plan, selectedPaths });
     switch (result) {
@@ -123,7 +130,8 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
       if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
     }
     return result;
-  } });
+  },
+  });
 }
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
   if (name.startsWith('hf.co/')) return resolveRepositoryModel({ name });

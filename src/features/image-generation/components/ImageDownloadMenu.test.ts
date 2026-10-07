@@ -14,9 +14,18 @@ afterEach(() => {
 });
 function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloadMenu>['$props']['onDownload'] }): VueWrapper {
   const preferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
-  wrapper = mount(ImageDownloadMenu, { props: { active: true, disabled: false, preferences, onPreferencesChange: ({ preferences: next }) => {
+  wrapper = mount(ImageDownloadMenu, {
+    props: {
+    active: true,
+    disabled: false,
+    preferences,
+    onPreferencesChange: ({ preferences: next }) => {
     preferences.value = { ...next };
-  }, onDownload }, global: { stubs: { Teleport: true } } });
+  },
+    onDownload,
+  },
+    global: { stubs: { Teleport: true } },
+  });
   return wrapper;
 }
 it('defaults to plain PNG and explicitly selects a format and metadata per image', async () => {
@@ -89,9 +98,11 @@ it('closes on Escape, pane changes, and outside pointer events without downloadi
   expect(onDownload).not.toHaveBeenCalled();
 });
 it('handles rejected and cancelled operations without a false success or unhandled rejection', async () => {
-  const ui = openMenu({ onDownload: async () => {
+  const ui = openMenu({
+    onDownload: async () => {
     throw new Error('Encode failed');
-  } });
+  },
+  });
   await ui.get('[data-testid="image-download-default"]').trigger('click'); await flushPromises();
   expect(ui.get('[data-testid="image-download-error"]').text()).toBe('Encode failed');
   await ui.setProps({ onDownload: async () => ({ status: 'cancelled' }) });
@@ -105,7 +116,8 @@ it('handles rejected and cancelled operations without a false success or unhandl
 it('keeps Escape and Tab inside download options opened from the image viewer', async () => {
   const onClose = vi.fn();
   wrapper = mount(ImageGenerationViewer, {
-    props: { downloadEnabled: true, index: 0, count: 2, onClose }, attachTo: document.body,
+    props: { downloadEnabled: true, index: 0, count: 2, onClose },
+    attachTo: document.body,
     slots: { download: () => h(ImageDownloadMenu, { active: true, disabled: false, preferences: ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' }), onPreferencesChange: () => {}, onDownload: async () => ({ status: 'downloaded' as const }) }) },
   });
   const options = document.querySelector<HTMLButtonElement>('[data-testid="image-download-options"]')!;

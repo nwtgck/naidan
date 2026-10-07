@@ -76,9 +76,19 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
   try {
     checkCancelled();
     if (access.getSize() !== file.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-    mounted = mountReadOnlyFile({ core, path: `/models/${file.path}`, source: readCache.wrap({ source: { size: access.getSize(), read({ destination, offset }) {
+    mounted = mountReadOnlyFile({
+      core,
+      path: `/models/${file.path}`,
+      source: readCache.wrap({
+      source: {
+      size: access.getSize(),
+      read({ destination, offset }) {
       return access.read(destination, { at: offset });
-    } } }), maxChunkBytes: 8 * 1024 * 1024 });
+    },
+    },
+    }),
+      maxChunkBytes: 8 * 1024 * 1024,
+    });
     const params = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(params);
     await core.api.mtmd_context_params_default(params);
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'use_gpu', value: backend === 'profile' && usesWebGpu({ profile }) ? 1 : 0 });
@@ -107,8 +117,13 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     } finally {
       readCache.dispose();
       try {
-        if (reportFileReads) logDiagnostic({ diagnostic: { event: 'file-read-performance', profile,
-          fileReads: { target: 'projector', ...readCache.counters } } });
+        if (reportFileReads) logDiagnostic({
+          diagnostic: {
+          event: 'file-read-performance',
+          profile,
+          fileReads: { target: 'projector', ...readCache.counters },
+        },
+        });
       } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
     }
   }

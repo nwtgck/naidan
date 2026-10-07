@@ -26,9 +26,11 @@ it('sends one-way notifications over real ports, validates both boundaries and s
   }
 });
 it('does not propagate validation or delivery exceptions through a native log callback', () => {
-  const endpoint = { postMessage: vi.fn(() => {
+  const endpoint = {
+    postMessage: vi.fn(() => {
     throw new Error('detached receiver');
-  }) };
+  }),
+  };
   expect(() => postWorkerNotification({ endpoint, schema, value: { type: 'notification-test', count: 1 } })).not.toThrow();
   expect(endpoint.postMessage).toHaveBeenCalledOnce();
 });

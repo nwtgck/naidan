@@ -15,9 +15,11 @@ it('reads above 2, 4, 8 and 18 GiB without narrowing the file offset or copying 
     } else bytes.fill(from % 251);
     const blob = new Blob(); parts.set(blob, bytes.buffer); return blob;
   });
-  const reader = { readAsArrayBuffer: vi.fn((blob: Blob) => {
+  const reader = {
+    readAsArrayBuffer: vi.fn((blob: Blob) => {
     const bytes = parts.get(blob); if (!bytes) throw new Error('unrequested bytes'); return bytes;
-  }) };
+  }),
+  };
   const source = createGgufFileSource({ file, reader });
   for (const gib of [2, 4, 8, 18]) {
     const offset = gib * 1024 ** 3 + 123;

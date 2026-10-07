@@ -5,7 +5,10 @@ import { idToRaw } from '@/01-models/ids';
 
 function legacy() {
   return {
-    id: 'u', role: 'user', timestamp: 0, content: '  <think>literal</think>\r\n',
+    id: 'u',
+    role: 'user',
+    timestamp: 0,
+    content: '  <think>literal</think>\r\n',
     attachments: [{ id: 'a', originalName: 'a.png', mimeType: 'image/png', size: 4, uploadedAt: 0, status: 'persisted' }],
     replies: { items: [] },
   };

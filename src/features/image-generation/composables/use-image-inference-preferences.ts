@@ -34,15 +34,22 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
     const changedLocation = pendingLocation, changedEditors = pendingEditors;
     pendingLocation = undefined; pendingEditors = new Map(); writing = true;
     try {
-      const outcome = await updateForStorage({ isCurrent: owner, updater: ({ experimental }) => {
+      const outcome = await updateForStorage({
+        isCurrent: owner,
+        updater: ({ experimental }) => {
         const base = experimental?.browserImageGeneration;
         const editors = new Map((base?.remoteModelEditors ?? []).map(preference => [key({ preference }), preference]));
         for (const [id, preference] of changedEditors) editors.set(id, preference);
-        return { ...experimental, browserImageGeneration: { ...base,
+        return {
+          ...experimental,
+          browserImageGeneration: {
+          ...base,
           ...(changedLocation ? { inferenceLocation: changedLocation } : {}),
           ...(changedEditors.size ? { remoteModelEditors: [...editors.values()] } : {}),
-        } };
-      } });
+        },
+        };
+      },
+      });
       switch (outcome) {
       case 'saved': if (!owner()) invalidate({ owner }); break;
       case 'changed': invalidate({ owner }); break;

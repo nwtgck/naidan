@@ -53,10 +53,15 @@ export async function runProviderConversationForTest({ provider, messages, model
       history.push({ ...common, role: 'user', parts: converted }); break;
     }
     case 'system': history.push({ ...common, role: 'system', parts: [{ type: 'text', text: String(content), completeness: 'complete' }] }); break;
-    case 'assistant': history.push({ ...common, role: 'assistant', interruption: undefined, parts: [
+    case 'assistant': history.push({
+      ...common,
+      role: 'assistant',
+      interruption: undefined,
+      parts: [
       { type: 'text', text: String(content), completeness: 'complete' },
       ...(message.tool_calls ?? []).map(toolCall => ({ type: 'tool_call' as const, toolCall })),
-    ] }); break;
+    ],
+    }); break;
     case 'tool': {
       if (!message.tool_call_id) throw new Error('Fixture tool call ID is required.');
       history.push({ ...common, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: message.tool_call_id, status: 'success', content: { type: 'text', text: String(content) } } }] }); break;
@@ -76,8 +81,13 @@ export async function runProviderConversationForTest({ provider, messages, model
     const result = await generateChatTurn({
       onToolCallDraftsChange: undefined,
       debug: undefined,
-      provider, model, parameters: parameters ? { ...EMPTY_LM_PARAMETERS, ...parameters } : undefined,
-      tools: tools ?? [], readBinaryObject: undefined, abortController: controller, approvalContext: toolApprovalContext,
+      provider,
+      model,
+      parameters: parameters ? { ...EMPTY_LM_PARAMETERS, ...parameters } : undefined,
+      tools: tools ?? [],
+      readBinaryObject: undefined,
+      abortController: controller,
+      approvalContext: toolApprovalContext,
       createAssistantMessage: () => {
         const node: AssistantMessageNode = { id: toMessageId({ raw: `generated_${history.length}` }), role: 'assistant', parts: [], createdAt: 1, interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
         history.push(node); onAssistantMessageStart?.(); return node;
@@ -168,9 +178,14 @@ export async function consumeProviderGenerationForTest({ provider, request }: {
   request: Parameters<LmProvider['chat']>[0],
 }) {
   const node: AssistantMessageNode = {
-    id: toMessageId({ raw: 'generated' }), role: 'assistant', parts: [],
-    createdAt: 1, modelId: undefined, lmParameters: undefined,
-    interruption: undefined, replies: { items: [] },
+    id: toMessageId({ raw: 'generated' }),
+    role: 'assistant',
+    parts: [],
+    createdAt: 1,
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: undefined,
+    replies: { items: [] },
   };
   const abortController = new AbortController();
   const relay = () => abortController.abort(request.signal?.reason);
@@ -179,8 +194,10 @@ export async function consumeProviderGenerationForTest({ provider, request }: {
   try {
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
-      node, items: provider.chat({ ...request, signal: abortController.signal }),
-      abortController, onChange: () => {},
+      node,
+      items: provider.chat({ ...request, signal: abortController.signal }),
+      abortController,
+      onChange: () => {},
     });
     return { node, result };
   } finally {

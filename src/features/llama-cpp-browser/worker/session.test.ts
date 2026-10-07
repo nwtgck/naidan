@@ -20,24 +20,51 @@ const releases: ReturnType<typeof vi.fn>[] = [];
 beforeEach(() => {
   releases.length = 0; host.load.mockReset(); host.loadAudio.mockReset(); let pointer = 100n;
   host.core = {
-    api: { llama_model_default_params: vi.fn(async () => {}), llama_model_load_from_file: vi.fn(async () => 10n),
-      llama_context_default_params: vi.fn(async () => {}), llama_model_n_ctx_train: vi.fn(async () => 64),
-      llama_init_from_model: vi.fn(async () => 20n), llama_n_batch: vi.fn(async () => 512), llama_n_ctx: vi.fn(async () => 64), llama_model_get_vocab: vi.fn(async () => 11n),
-      llama_get_memory: vi.fn(async () => 21n), llama_memory_clear: vi.fn(async () => {}),
-      llama_batch_get_one: vi.fn(async () => {}), llama_decode: vi.fn(async () => 0), llama_n_rs_seq: vi.fn(async () => 0),
-      llama_memory_seq_rm: vi.fn(async () => 1), llama_synchronize: vi.fn(async () => {}),
+    api: {
+      llama_model_default_params: vi.fn(async () => {}),
+      llama_model_load_from_file: vi.fn(async () => 10n),
+      llama_context_default_params: vi.fn(async () => {}),
+      llama_model_n_ctx_train: vi.fn(async () => 64),
+      llama_init_from_model: vi.fn(async () => 20n),
+      llama_n_batch: vi.fn(async () => 512),
+      llama_n_ctx: vi.fn(async () => 64),
+      llama_model_get_vocab: vi.fn(async () => 11n),
+      llama_get_memory: vi.fn(async () => 21n),
+      llama_memory_clear: vi.fn(async () => {}),
+      llama_batch_get_one: vi.fn(async () => {}),
+      llama_decode: vi.fn(async () => 0),
+      llama_n_rs_seq: vi.fn(async () => 0),
+      llama_memory_seq_rm: vi.fn(async () => 1),
+      llama_synchronize: vi.fn(async () => {}),
       llama_model_n_swa: vi.fn(async () => 0),
-      llama_free: vi.fn(async () => {}), llama_model_free: vi.fn(async () => {}), llama_backend_free: vi.fn(async () => {}),
+      llama_free: vi.fn(async () => {}),
+      llama_model_free: vi.fn(async () => {}),
+      llama_backend_free: vi.fn(async () => {}),
     },
-    pointerBytes: 4, module: { addFunction: vi.fn(() => 1), removeFunction: vi.fn() },
-    assertIdle: vi.fn(), chat: { releaseModel: vi.fn() },
-    alloc: () => ++pointer, bytes: () => new Uint8Array(8).fill(1),
+    pointerBytes: 4,
+    module: { addFunction: vi.fn(() => 1), removeFunction: vi.fn() },
+    assertIdle: vi.fn(),
+    chat: { releaseModel: vi.fn() },
+    alloc: () => ++pointer,
+    bytes: () => new Uint8Array(8).fill(1),
     fieldLayout: () => ({ offset: 0n, size: 1, kind: 'boolean' }),
-    allocRecord: () => ++pointer, utf8: () => ++pointer, setField: vi.fn(() => {}), free: () => {}, constant: () => 0,
+    allocRecord: () => ++pointer,
+    utf8: () => ++pointer,
+    setField: vi.fn(() => {}),
+    free: () => {},
+    constant: () => 0,
   } as unknown as Core;
-  host.directory = { id: 'Model', name: 'Model', modelPath: 'model.gguf', projectorPath: 'mmproj.gguf', files: ['model.gguf', 'mmproj.gguf'].map(path => ({ path, file: new File(['x'], path, { lastModified: 1 }),
+  host.directory = {
+    id: 'Model',
+    name: 'Model',
+    modelPath: 'model.gguf',
+    projectorPath: 'mmproj.gguf',
+    files: ['model.gguf', 'mmproj.gguf'].map(path => ({
+    path,
+    file: new File(['x'], path, { lastModified: 1 }),
     handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
-  })) };
+  })),
+  };
   host.load.mockImplementation(async ({ debug }) => {
     const release = vi.fn(async () => {}); releases.push(release);
     return { pointer: BigInt(30 + releases.length), debug, release };
@@ -99,8 +126,13 @@ describe('resident projector debug changes', () => {
   });
   it('preserves the conservative logical batch for audio contexts', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
-    await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 64,
-      audioBackend: 'profile', signal: undefined, onProgress: () => {} });
+    await prepareAudioSession({
+      request: request({ debug: 'off' }),
+      contextTokens: 64,
+      audioBackend: 'profile',
+      signal: undefined,
+      onProgress: () => {},
+    });
     expect(vi.mocked(core.setField).mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([128]);
   });
   it('frees model weights even when releasing the cached native template throws', async () => {
@@ -416,9 +448,13 @@ describe('on-demand generation companions', () => {
   it('keeps the text context when the initialization progress callback cancels before promotion', async () => {
     const first = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     const controller = new AbortController();
-    await expect(prepareSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: ({ progress }) => {
+    await expect(prepareSession({
+      request: request({ debug: 'off' }),
+      signal: controller.signal,
+      onProgress: ({ progress }) => {
       if (progress.phase === 'initializing') controller.abort();
-    } })).rejects.toThrow('aborted');
+    },
+    })).rejects.toThrow('aborted');
     expect(first.core.api.llama_free).not.toHaveBeenCalled(); expect(host.load).not.toHaveBeenCalled();
   });
 
@@ -508,9 +544,13 @@ describe('model read-window ownership', () => {
     });
     const close = vi.fn();
     host.directory!.projectorPath = undefined;
-    host.directory!.files = [{ ...host.directory!.files[0]!, file: new File([new Uint8Array(1024)], 'model.gguf'), handle: {
+    host.directory!.files = [{
+      ...host.directory!.files[0]!,
+      file: new File([new Uint8Array(1024)], 'model.gguf'),
+      handle: {
       createSyncAccessHandle: async () => ({ getSize: () => 1024, read: ({ length }: Uint8Array) => length, close }),
-    } as unknown as FileSystemFileHandle }];
+    } as unknown as FileSystemFileHandle,
+    }];
     let complete: (value: bigint) => void = () => {};
     vi.mocked(core.api.llama_model_load_from_file).mockImplementationOnce(() => new Promise<bigint>(resolve => {
       complete = resolve;
@@ -547,8 +587,11 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
       return { access, close, remove, open, path };
     });
     host.directory!.projectorPath = undefined;
-    host.directory!.files = resources.map(item => ({ path: item.path, file: new File(['x'], item.path),
-      handle: { isSameEntry: async () => true, createSyncAccessHandle: item.open } as unknown as FileSystemFileHandle }));
+    host.directory!.files = resources.map(item => ({
+      path: item.path,
+      file: new File(['x'], item.path),
+      handle: { isSameEntry: async () => true, createSyncAccessHandle: item.open } as unknown as FileSystemFileHandle,
+    }));
     const mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(({ path }) => {
       const item = resources.find(item => path === `/models/${item.path}`)!;
       return { path, remove: item.remove };
@@ -578,7 +621,9 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
   });
   it('does not start model loading when the initial loading progress callback cancels', async () => {
     const { core, resources } = shards(); const controller = new AbortController();
-    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal,
+    await expect(prepareGenerationSession({
+      request: request({ debug: 'off' }),
+      signal: controller.signal,
       onProgress: ({ progress }) => {
         if (progress.phase === 'loading' && progress.completed === 0) controller.abort();
       },
@@ -590,7 +635,9 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
   });
   it.each(['cancel', 'throw'] as const)('does not allocate context parameters after progress %s', async failure => {
     const { core } = shards(); const allocRecord = vi.spyOn(core, 'allocRecord'); const controller = new AbortController();
-    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal,
+    await expect(prepareGenerationSession({
+      request: request({ debug: 'off' }),
+      signal: controller.signal,
       onProgress: ({ progress }) => {
         if (progress.phase !== 'initializing' || !vi.mocked(core.api.llama_model_load_from_splits).mock.calls.length) return;
         if (failure === 'throw') throw new Error('progress failure');

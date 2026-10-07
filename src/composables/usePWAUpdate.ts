@@ -29,7 +29,11 @@ export function usePWAUpdate() {
       applying.value = false;
     }
   }
-  return { status, canUpdate, update, setUpdateState,
+  return {
+    status,
+    canUpdate,
+    update,
+    setUpdateState,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }

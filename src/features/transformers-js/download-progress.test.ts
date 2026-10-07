@@ -43,10 +43,13 @@ it('publishes the complete current plan while totals are unknown and uses real f
   expect(tracker.snapshot().overallProgress).toBe(1);
   tracker.observe({ event: { kind: 'candidate', candidate: { device: 'webgpu', dtype: 'q4f16' }, index: 0, count: 3 } });
   tracker.observe({ event: { kind: 'plan', index: 0, paths: ['decoder/model.onnx', 'encoder/model.onnx'] } });
-  expect(tracker.snapshot()).toMatchObject({ unknownTotalCount: 2, files: [
+  expect(tracker.snapshot()).toMatchObject({
+    unknownTotalCount: 2,
+    files: [
     { path: 'decoder/model.onnx', status: 'queued', progress: undefined },
     { path: 'encoder/model.onnx', status: 'queued', progress: undefined },
-  ] });
+  ],
+  });
   tracker.observe({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'decoder/model.onnx', bytes: 100 }] } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'decoder/model.onnx', loaded: 25, total: 100 } } });
   const snapshot = tracker.snapshot();
@@ -113,10 +116,14 @@ it('distinguishes cached bytes, unknown size, zero length and contradictory size
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'zero', loaded: 0, total: 0 } } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'mismatch', loaded: 12, total: 10 } } });
   tracker.observe({ event: { kind: 'file', index: 0, info: { status: 'error', file: 'mismatch' } } });
-  expect(tracker.snapshot()).toMatchObject({ cachedBytes: 20, receivedBytes: 19, files: [
+  expect(tracker.snapshot()).toMatchObject({
+    cachedBytes: 20,
+    receivedBytes: 19,
+    files: [
     { status: 'cached', progress: 100 }, { progress: undefined, loaded: 7 },
     { status: 'queued', progress: undefined }, { status: 'failed', loaded: 12, total: undefined, progress: undefined },
-  ] });
+  ],
+  });
 });
 
 it('uses the structural resolve segment and retains directories for duplicate basenames', () => {

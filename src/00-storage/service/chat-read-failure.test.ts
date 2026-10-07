@@ -9,11 +9,25 @@ const id = toChatId({ raw: rawId });
 const contentKey = `${STORAGE_KEY_PREFIX}lsp:chat_content:${rawId}`;
 const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:${rawId}`;
 const meta = JSON.stringify({ id: rawId, title: 'Saved chat', createdAt: 0, updatedAt: 1, debugEnabled: false });
-const content = JSON.stringify({ root: { items: [{ id: 'answer', role: 'assistant', createdAt: 0,
-  parts: [{ type: 'text', text: `\
+const content = JSON.stringify({
+  root: {
+  items: [{
+  id: 'answer',
+  role: 'assistant',
+  createdAt: 0,
+  parts: [{
+    type: 'text',
+    text: `\
   <think>原文</think>\\r
-🙂`, completeness: 'partial' }],
-  interruption: { type: 'cancelled' }, replies: { items: [] } }] }, currentLeafId: 'answer' });
+🙂`,
+    completeness: 'partial',
+  }],
+  interruption: { type: 'cancelled' },
+  replies: { items: [] },
+}],
+},
+  currentLeafId: 'answer',
+});
 const invalidContents = [
   '',
   '{',
@@ -29,7 +43,9 @@ function createFile({ name, text }: { name: string; text: string }) {
 function createDirectory({ name }: { name: string }) {
   const files = new Map<string, ReturnType<typeof createFile>>();
   return {
-    kind: 'directory' as const, name, files,
+    kind: 'directory' as const,
+    name,
+    files,
     getFileHandle: vi.fn(async (fileName: string) => {
       const file = files.get(fileName);
       if (!file) throw new DOMException('Missing file', 'NotFoundError');
@@ -109,9 +125,15 @@ for (const backend of ['local', 'opfs'] as const) {
         // Repairing the original bytes makes the same provider usable again.
         write({ kind: 'content', value: content });
         const loaded = await provider.loadChat({ id });
-        expect(loaded?.root.items[0]).toMatchObject({ parts: [{ text: `\
+        expect(loaded?.root.items[0]).toMatchObject({
+          parts: [{
+          text: `\
   <think>原文</think>\\r
-🙂`, completeness: 'partial' }], interruption: { type: 'cancelled' } });
+🙂`,
+          completeness: 'partial',
+        }],
+          interruption: { type: 'cancelled' },
+        });
       });
     }
 
@@ -144,14 +166,27 @@ for (const backend of ['local', 'opfs'] as const) {
 
     it('reads legacy content without writing or completing its migration', async () => {
       const { provider, write, read } = await setup();
-      const legacy = JSON.stringify({ root: { items: [{ id: 'old', role: 'assistant', timestamp: 7,
-        thinking: '  Thought ', content: '<think>literal</think> [Generation Aborted]', replies: { items: [] } }] } });
+      const legacy = JSON.stringify({
+        root: {
+        items: [{
+        id: 'old',
+        role: 'assistant',
+        timestamp: 7,
+        thinking: '  Thought ',
+        content: '<think>literal</think> [Generation Aborted]',
+        replies: { items: [] },
+      }],
+      },
+      });
       write({ kind: 'meta', value: meta }); write({ kind: 'content', value: legacy });
       const loaded = await provider.loadChatContentWithoutAttachments({ id });
-      expect(loaded?.root.items[0]).toMatchObject({ createdAt: 7, parts: [
+      expect(loaded?.root.items[0]).toMatchObject({
+        createdAt: 7,
+        parts: [
         { type: 'reasoning', text: '  Thought ', completeness: 'complete' },
         { type: 'text', text: '<think>literal</think> [Generation Aborted]', completeness: 'complete' },
-      ] });
+      ],
+      });
       expect(await read({ kind: 'content' })).toBe(legacy);
     });
 

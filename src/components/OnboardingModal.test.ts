@@ -65,7 +65,7 @@ describe('OnboardingModal.vue', () => {
   const mockSettings: { value: Pick<Settings, 'endpoint' | 'titleGeneration' | 'defaultModelId'> } = {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       defaultModelId: 'existing-default-model',
     },
   };
@@ -339,7 +339,7 @@ describe('OnboardingModal.vue', () => {
     // 4. Verify draft has normalized URL and selected model
     expect(mockOnboardingDraft.value).toEqual(expect.objectContaining({
       url: 'http://api.openai.com', // Normalized URL
-      selectedModel: 'model-y',      // Selected model
+      selectedModel: 'model-y', // Selected model
     }));
   });
 
@@ -347,15 +347,20 @@ describe('OnboardingModal.vue', () => {
     mockSettings.value.titleGeneration = DEFAULT_SETTINGS.titleGeneration;
     mockOnboardingDraft.value = { url: 'https://example.test', type, headers: [], models: ['model-1'], selectedModel: 'model-1' };
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
-      availability: vi.fn().mockResolvedValue('available'), create: vi.fn(),
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
     }));
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([
       { id: 'model-1', name: 'model-1', size: 128, importedAt: 1 },
     ]);
-    const wrapper = mount(OnboardingModal, { global: { stubs: {
+    const wrapper = mount(OnboardingModal, {
+      global: {
+      stubs: {
       LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
       TransformersJsManager: true,
-    } } });
+    },
+    },
+    });
     try {
       await flushPromises();
       if (type === 'llama_cpp_browser') {
@@ -411,7 +416,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'openai', url: 'http://api.openai.com' },
         defaultModelId: 'model-1',
-        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }),
       modelRefresh: 'await',
     });

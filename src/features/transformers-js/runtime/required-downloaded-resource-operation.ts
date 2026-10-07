@@ -158,7 +158,8 @@ export function createRequiredDownloadedResourceOperation({
       }
     }
     const cancel = () => {
-      cancellation ??= track({ operation: (async () => {
+      cancellation ??= track({
+        operation: (async () => {
         try {
           if (reader) await reader.cancel();
           else await source.cancel();
@@ -171,7 +172,8 @@ export function createRequiredDownloadedResourceOperation({
             bodies.delete(cancel);
           }
         }
-      })() });
+      })(),
+      });
       return cancellation;
     };
     bodies.add(cancel);
@@ -189,13 +191,15 @@ export function createRequiredDownloadedResourceOperation({
           } catch (cause) {
             throw bodyFailure({ cause });
           }
-          const result = await track({ operation: (async () => {
+          const result = await track({
+            operation: (async () => {
             try {
               return await reader!.read();
             } catch (cause) {
               throw bodyFailure({ cause });
             }
-          })() });
+          })(),
+          });
           assertActive();
           // A concurrent failure also forbids delivering a read that was already
           // in flight. This check does not physically interrupt that native I/O.
@@ -286,7 +290,9 @@ export function createRequiredDownloadedResourceOperation({
     return cacheOnlyFetch(input, init);
   };
   return {
-    cache, fetch: guardedFetch, assertHealthy,
+    cache,
+    fetch: guardedFetch,
+    assertHealthy,
     close() {
       closing ??= (async () => {
         lifecycle = 'closed';

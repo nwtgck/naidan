@@ -66,7 +66,15 @@ describe('LocalStorageProvider', () => {
     const chatId = toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' });
     const content: ChatContent = {
       root: {
-        items: [{ id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, { type: 'attachment', attachment: {
+        items: [{
+          id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }),
+          role: 'user',
+          createdAt: 1,
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, {
+          type: 'attachment',
+          attachment: {
           id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
           binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
           originalName: 'attachment.txt',
@@ -75,7 +83,10 @@ describe('LocalStorageProvider', () => {
           uploadedAt: 1,
           status: 'memory',
           blob,
-        } }], replies: { items: [] } }],
+        },
+        }],
+          replies: { items: [] },
+        }],
       },
     };
 
@@ -130,12 +141,14 @@ describe('LocalStorageProvider', () => {
       isCollapsed: false,
       endpoint: unsupportedEndpoint,
     }));
-    await provider.saveHierarchy({ hierarchy: {
+    await provider.saveHierarchy({
+      hierarchy: {
       items: [
         { type: 'chat', id: chatId },
         { type: 'chat_group', id: groupId, chat_ids: [] },
       ],
-    } });
+    },
+    });
 
     const snapshot = await provider.dump();
 
@@ -235,11 +248,13 @@ describe('LocalStorageProvider', () => {
       expect(groups).toHaveLength(0);
 
       // 3. Update hierarchy to include them
-      await provider.saveHierarchy({ hierarchy: {
+      await provider.saveHierarchy({
+        hierarchy: {
         items: [
           { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
         ],
-      } });
+      },
+      });
 
       // 4. Verify they ARE now visible
       const visibleChats = await provider.listChats();

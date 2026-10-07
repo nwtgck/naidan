@@ -56,8 +56,12 @@ export class Records {
         number: bigint;
         header: Uint8Array;
     }): AesGcmParams {
-    return { name: 'AES-GCM', iv: joinBytes({ parts: [new Uint8Array(4), u64({ value: number % 16384n })] }), tagLength: 128,
-      additionalData: fields({ parts: [ascii({ text: 'piping-duplex-record/v3' }), this.internalContext, new Uint8Array([this.internalDirection]), header] }) };
+    return {
+      name: 'AES-GCM',
+      iv: joinBytes({ parts: [new Uint8Array(4), u64({ value: number % 16384n })] }),
+      tagLength: 128,
+      additionalData: fields({ parts: [ascii({ text: 'piping-duplex-record/v3' }), this.internalContext, new Uint8Array([this.internalDirection]), header] }),
+    };
   }
   async seal({ plaintext }: {
         plaintext: Uint8Array;
@@ -91,8 +95,10 @@ export class Records {
     if (number > MAX_OFFSET)
       return 'unauthenticated';
     // Reserve before any await so concurrent verification cannot overspend the failure budget.
-    requireValue({ condition: this.internalFailedAuthentications + this.internalVerifications < FAILED_AUTHENTICATION_LIMIT,
-      message: 'Authentication verification budget exhausted' });
+    requireValue({
+      condition: this.internalFailedAuthentications + this.internalVerifications < FAILED_AUTHENTICATION_LIMIT,
+      message: 'Authentication verification budget exhausted',
+    });
     this.internalVerifications++;
     let plaintext: Uint8Array, key: CryptoKey;
     try {
@@ -101,8 +107,10 @@ export class Records {
         plaintext = new Uint8Array(await crypto.subtle.decrypt(this.internalParams({ number, header: bytes.subarray(0, 9) }), key, bytes.subarray(9)));
       } catch {
         this.internalFailedAuthentications++;
-        requireValue({ condition: this.internalFailedAuthentications < FAILED_AUTHENTICATION_LIMIT,
-          message: 'Authentication verification budget exhausted' });
+        requireValue({
+          condition: this.internalFailedAuthentications < FAILED_AUTHENTICATION_LIMIT,
+          message: 'Authentication verification budget exhausted',
+        });
         return 'unauthenticated';
       }
     } finally {

@@ -23,18 +23,22 @@ const communityProjector = 'mmproj-community-gemma-4-E2B-it-F16.gguf';
 const revision = 'a'.repeat(40);
 const otherRevision = 'b'.repeat(40);
 const officialCatalog: RepositoryCatalog = {
-  repository: official.repository, revision,
+  repository: official.repository,
+  revision,
   ...groupModelFiles({ files: [{ path: qatPath, size: 128 }, { path: qatProjector, size: 96 }] }),
 };
 const communityCatalog: RepositoryCatalog = {
-  repository: community.repository, revision: otherRevision,
-  ...groupModelFiles({ files: [
+  repository: community.repository,
+  revision: otherRevision,
+  ...groupModelFiles({
+    files: [
     { path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 144 },
     { path: 'gemma-4-E2B-it-Q6_K.gguf', size: 160 },
     { path: 'gemma-4-E2B-it-Q8_0.gguf', size: 192 },
     { path: 'dflash-gemma-4-E2B-it-Q8_0.gguf', size: 64 },
     { path: communityProjector, size: 112 },
-  ] }),
+  ],
+  }),
 };
 const localQat: LocalModel = { id: `hf.co/${official.repository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.repository}:${qatPath}`, size: 128, importedAt: 1 };
 const localCommunity: LocalModel = { id: `hf.co/${community.repository}:gemma-4-E2B-it-Q4_K_M.gguf`, name: `hf.co/${community.repository}:Q4_K_M`, size: 144, importedAt: 1 };

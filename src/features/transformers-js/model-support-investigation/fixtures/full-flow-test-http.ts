@@ -24,8 +24,12 @@ export function createInvestigationFullFlowTestHttp({ models, assets, externalNe
     for (const artifact of fixture.repository.files) files.set(artifact.path, createSyntheticModelBody({ modelId: model.modelId, revision: model.revision, path: artifact.path }));
     // A revision-advance control changes only the remote commit identity. The
     // repository-owned metadata bytes and independently seeded OPFS stay intact.
-    return { ...model, revision: repositoryRevisions.get(model.modelId) ?? model.revision, files,
-      absent: new Set(fixture.summary.files.filter(file => file.status === 'repository-absent').map(file => file.path)) };
+    return {
+      ...model,
+      revision: repositoryRevisions.get(model.modelId) ?? model.revision,
+      files,
+      absent: new Set(fixture.summary.files.filter(file => file.status === 'repository-absent').map(file => file.path)),
+    };
   });
   const requests: Array<{ url: string; method: string; range: string | undefined }> = [];
   const unknown: string[] = [];
@@ -42,8 +46,14 @@ export function createInvestigationFullFlowTestHttp({ models, assets, externalNe
     case 'allow': {
       for (const repository of repositories) {
         if (url === `https://huggingface.co/api/models/${repository.modelId}/revision/main?blobs=true` && method === 'GET') {
-          return new Response(JSON.stringify({ sha: repository.revision, private: false, gated: false, pipeline_tag: 'image-text-to-text', library_name: 'transformers',
-            siblings: [...repository.files].map(([path, bytes]) => ({ rfilename: path, size: bytes.byteLength })) }), { headers: { 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({
+            sha: repository.revision,
+            private: false,
+            gated: false,
+            pipeline_tag: 'image-text-to-text',
+            library_name: 'transformers',
+            siblings: [...repository.files].map(([path, bytes]) => ({ rfilename: path, size: bytes.byteLength })),
+          }), { headers: { 'Content-Type': 'application/json' } });
         }
         const prefix = `https://huggingface.co/${repository.modelId}/resolve/${repository.revision}/`;
         if (!url.startsWith(prefix)) continue;

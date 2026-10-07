@@ -60,18 +60,22 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     if (!eventsDone) eventsController?.error(reason);
     imageDone = true; eventsDone = true;
     const reader = imageReader;
-    if (reader) void track({ run: async () => {
+    if (reader) void track({
+      run: async () => {
       try {
         await reader.cancel(reason);
       } finally {
         reader.releaseLock(); if (imageReader === reader) imageReader = undefined;
       }
-    } });
+    },
+    });
     // Closing an errored ReadableStream does not close its async generator.
     // return() also waits for a pending preview arrayBuffer()/next() to finish.
-    void track({ run: async () => {
+    void track({
+      run: async () => {
       await iterator.return(undefined);
-    } });
+    },
+    });
     changed(); cleanup();
   };
   const aborted = () => abort({ reason: signal.reason });
@@ -84,11 +88,14 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
     let validating = false;
     job = Promise.resolve().then(async () => {
       stop.signal.throwIfAborted();
-      const result = await run({ signal: stop.signal, onPreview({ frame }) {
+      const result = await run({
+        signal: stop.signal,
+        onPreview({ frame }) {
         if (stop.signal.aborted || nativeDone || frame.png.type !== 'image/png' || frame.png.size < 1 || frame.png.size > MAX_PREVIEW_BYTES ||
           frame.width < 1 || frame.height < 1 || frame.width > 1024 || frame.height > 1024) return;
         pendingPreview = frame; changed();
-      } });
+      },
+      });
       stop.signal.throwIfAborted();
       validating = true;
       if (result.png.type !== 'image/png' || result.png.size < 33 || result.png.size > MAX_IMAGE_BYTES || result.width !== width || result.height !== height) throw new Error('Unexpected generated image');
@@ -96,8 +103,14 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
       stop.signal.throwIfAborted();
       output = result; return result;
     }).catch(error => {
-      const failure = stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: validating ? 'output-validation' : 'generation',
-        reason: validating ? 'invalid-output' : 'generation-failed', profile: undefined, gpu: false, nativeContext: undefined });
+      const failure = stop.signal.aborted ? error : createImageGenerationFailure({
+        error,
+        stage: validating ? 'output-validation' : 'generation',
+        reason: validating ? 'invalid-output' : 'generation-failed',
+        profile: undefined,
+        gpu: false,
+        nativeContext: undefined,
+      });
       abort({ reason: failure }); throw failure;
     }).finally(() => {
       nativeDone = true; changed(); cleanup();
@@ -120,8 +133,16 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
       if (preview) {
         const bytes = new Uint8Array(await preview.png.arrayBuffer());
         stop.signal.throwIfAborted();
-        yield { type: 'preview-start', revision: ++revision, step: preview.step, steps: preview.steps, width: preview.width, height: preview.height,
-          mode: preview.mode, byteLength: bytes.length };
+        yield {
+          type: 'preview-start',
+          revision: ++revision,
+          step: preview.step,
+          steps: preview.steps,
+          width: preview.width,
+          height: preview.height,
+          mode: preview.mode,
+          byteLength: bytes.length,
+        };
         // Base64 and the event's CBOR fields both count toward the RPC item
         // budget. Raw 16 KiB chunks exceed that budget after encoding.
         for (let at = 0; at < bytes.length; at += PEER_IMAGE_PREVIEW_CHUNK_BYTES) {
@@ -147,7 +168,8 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
       imageController = controller;
     },
     pull(controller) {
-      return track({ run: async () => {
+      return track({
+        run: async () => {
         try {
           const result = await start();
           stop.signal.throwIfAborted();
@@ -160,7 +182,8 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
         } catch (error) {
           abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'image-delivery', reason: 'image-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
         }
-      } });
+      },
+      });
     },
     cancel: reason => cancel({ reason }),
   }, { highWaterMark: 0 });
@@ -169,7 +192,8 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
       eventsController = controller;
     },
     pull(controller) {
-      return track({ run: async () => {
+      return track({
+        run: async () => {
         try {
           const item = await iterator.next();
           if (eventsDone) return;
@@ -179,7 +203,8 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
         } catch (error) {
           abort({ reason: stop.signal.aborted ? error : createImageGenerationFailure({ error, stage: 'preview-delivery', reason: 'preview-delivery-failed', profile: undefined, gpu: false, nativeContext: undefined }) });
         }
-      } });
+      },
+      });
     },
     cancel: reason => cancel({ reason }),
   }, { highWaterMark: 0 });

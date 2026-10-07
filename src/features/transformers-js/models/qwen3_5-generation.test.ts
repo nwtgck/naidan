@@ -4,9 +4,17 @@ import { parseQwen3_5NativeToolCall } from './qwen3_5-tool-call-parser';
 import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 
-const tools: WorkerToolDefinition[] = [{ type: 'function', function: { name: 'f', description: '', parameters: {
-  type: 'object', properties: { s: { type: 'string' }, n: { type: 'number' }, o: { type: 'object' } },
-} } }];
+const tools: WorkerToolDefinition[] = [{
+  type: 'function',
+  function: {
+  name: 'f',
+  description: '',
+  parameters: {
+  type: 'object',
+  properties: { s: { type: 'string' }, n: { type: 'number' }, o: { type: 'object' } },
+},
+},
+}];
 const enabled = `\
 <|im_start|>assistant
 <think>
@@ -26,9 +34,13 @@ const body = `\
 </function>`;
 function setup({ prompt, declarations }: { prompt: string, declarations: WorkerToolDefinition[] | undefined }) {
   const events: InferenceGenerationEvent[] = [];
-  const codec = createQwen3_5Generation({ prompt, tools: declarations, emit: ({ event }) => {
+  const codec = createQwen3_5Generation({
+    prompt,
+    tools: declarations,
+    emit: ({ event }) => {
     events.push(event);
-  } });
+  },
+  });
   return { codec, events };
 }
 function content({ events, index }: { events: InferenceGenerationEvent[], index: number }): string {
@@ -131,14 +143,18 @@ R`);
   });
   it('keeps a tool-shaped native delimiter within a string parameter as argument data', () => {
     const { codec, events } = setup({ prompt: disabled, declarations: tools });
-    codec.control({ token: '<tool_call>' }); codec.text({ text: `\
+    codec.control({ token: '<tool_call>' }); codec.text({
+      text: `\
 <function=f>
 <parameter=s>
-` });
-    codec.control({ token: '</tool_call>' }); codec.text({ text: `\
+`,
+    });
+    codec.control({ token: '</tool_call>' }); codec.text({
+      text: `\
 
 </parameter>
-</function>` }); codec.control({ token: '</tool_call>' });
+</function>`,
+    }); codec.control({ token: '</tool_call>' });
     codec.control({ token: '<|im_end|>' }); codec.finish({ reason: 'unknown' });
     expect(events.find(e => e.type === 'tool_call')).toMatchObject({ toolCall: { function: { arguments: '{"s":"</tool_call>"}' } } });
   });
@@ -212,7 +228,8 @@ R`);
 
 describe('Qwen completed native parameter grammar', () => {
   it('preserves string edge whitespace while decoding schema-backed numeric arguments', () => {
-    const value = parseQwen3_5NativeToolCall({ content: `\
+    const value = parseQwen3_5NativeToolCall({
+      content: `\
 <function=f>
 <parameter=s>
   x
@@ -221,7 +238,9 @@ describe('Qwen completed native parameter grammar', () => {
 <parameter=n>
 1.25
 </parameter>
-</function>`, tools });
+</function>`,
+      tools,
+    });
     expect(value.function.arguments).toBe('{"s":"  x\\n","n":1.25}');
   });
   it.each([

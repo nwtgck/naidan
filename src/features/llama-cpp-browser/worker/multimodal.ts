@@ -94,7 +94,12 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
     }
     if (!Number.isSafeInteger(positions) || positions < 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
     await logOperation({ diagnostic: { event: 'operation-complete', stage, imageCount: images.length, chunkCount: Number(count), positions, tokens: tokenCount, statusCode } });
-    return { positions, tokenCount, textTokens, dispose, async evaluate({ context, capacity }) {
+    return {
+      positions,
+      tokenCount,
+      textTokens,
+      dispose,
+      async evaluate({ context, capacity }) {
       const nextPosition = core.alloc({ bytes: 4 });
       try {
         core.bytes({ pointer: nextPosition, length: 4 }).fill(0);
@@ -113,7 +118,8 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
       } finally {
         core.free({ pointer: nextPosition });
       }
-    } };
+    },
+    };
   } catch (error) {
     logFailure({ stage, error });
     await dispose(); throw error;

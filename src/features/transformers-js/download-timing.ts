@@ -46,37 +46,51 @@ export const downloadFileTimingSchema = z.object({
 });
 export type DownloadFileTiming = z.infer<typeof downloadFileTimingSchema>;
 export const downloadSourceTimingSchema = z.object({
-  version: z.literal(1), clockId: clockIdentity.optional(),
+  version: z.literal(1),
+  clockId: clockIdentity.optional(),
   status: z.enum(['measured', 'unavailable']),
-  callMs: duration.optional(), finalizationMs: duration.optional(),
+  callMs: duration.optional(),
+  finalizationMs: duration.optional(),
   droppedFiles: counter.optional(),
 });
 export type DownloadSourceTiming = z.infer<typeof downloadSourceTimingSchema>;
 
 export const downloadAcceptanceTimingSchema = z.object({
-  kind: z.literal('acceptance'), version: z.literal(1),
+  kind: z.literal('acceptance'),
+  version: z.literal(1),
   // The actual cache/loader revision (including legacy main), not the remote
   // repository's resolved SHA. Association does not prove byte equivalence.
-  route: z.enum(['candidate', 'revision']), revision,
-  candidate: candidate.optional(), clockId: clockIdentity.optional(),
-  timingStatus: z.enum(['measured', 'unavailable']), hostDurationMs: duration.optional(),
+  route: z.enum(['candidate', 'revision']),
+  revision,
+  candidate: candidate.optional(),
+  clockId: clockIdentity.optional(),
+  timingStatus: z.enum(['measured', 'unavailable']),
+  hostDurationMs: duration.optional(),
   loadOutcome: z.enum(['accepted', 'rejected', 'failed', 'unknown']),
-  cleanupOutcome: cleanup, hostSettlement: z.enum(['fulfilled', 'rejected']),
+  cleanupOutcome: cleanup,
+  hostSettlement: z.enum(['fulfilled', 'rejected']),
   attemptCount: z.union([counter.max(128), z.literal('unknown')]),
 });
 export type DownloadAcceptanceTiming = z.infer<typeof downloadAcceptanceTimingSchema>;
 export const downloadPrefetchTimingSchema = z.object({
-  kind: z.literal('prefetch'), version: z.literal(1), revision, candidate,
-  clockId: clockIdentity.optional(), timingStatus: z.enum(['measured', 'unavailable']),
-  hostRoundtripMs: duration.optional(), hostFinalizationMs: duration.optional(),
-  cleanupOutcome: cleanup, hostSettlement: z.enum(['fulfilled', 'rejected']),
+  kind: z.literal('prefetch'),
+  version: z.literal(1),
+  revision,
+  candidate,
+  clockId: clockIdentity.optional(),
+  timingStatus: z.enum(['measured', 'unavailable']),
+  hostRoundtripMs: duration.optional(),
+  hostFinalizationMs: duration.optional(),
+  cleanupOutcome: cleanup,
+  hostSettlement: z.enum(['fulfilled', 'rejected']),
   source: downloadSourceTimingSchema.optional(),
   droppedFiles: counter,
   files: z.array(z.object({
     // Relative selected artifact identity only; never URLs, errors or bodies.
     path: z.string().max(256).regex(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/u),
     outcome: z.enum(['cached', 'downloaded', 'failed']),
-    bytes: counter.optional(), timing: downloadFileTimingSchema.optional(),
+    bytes: counter.optional(),
+    timing: downloadFileTimingSchema.optional(),
   })).max(128),
 });
 export type DownloadPrefetchTiming = z.infer<typeof downloadPrefetchTimingSchema>;
@@ -100,18 +114,26 @@ function observationScalarCount({ observation }: { observation: DownloadTimingOb
 // means only that this collector observed no budget loss: missing stage
 // observations remain unknown and must never be imputed as zero-duration work.
 const operationSchema = z.object({
-  operationId: z.string().max(160).regex(/^[0-9a-f-]{36}\/[0-9]+$/u).optional(), modelId: modelIdentity.optional(), runtimeEpoch: counter,
+  operationId: z.string().max(160).regex(/^[0-9a-f-]{36}\/[0-9]+$/u).optional(),
+  modelId: modelIdentity.optional(),
+  runtimeEpoch: counter,
   outcome: z.enum(['running', 'completed', 'failed', 'aborted', 'retired']),
-  wallMs: duration.optional(), timingStatus: z.enum(['measured', 'unavailable']),
-  truncated: z.boolean(), droppedObservations: counter,
+  wallMs: duration.optional(),
+  timingStatus: z.enum(['measured', 'unavailable']),
+  truncated: z.boolean(),
+  droppedObservations: counter,
   observations: z.array(downloadTimingObservationSchema).max(128),
 });
 export const downloadTimingSnapshotSchema = z.preprocess(value => withinRawTimingBudget({ value }) ? value : undefined, z.object({
-  format: z.literal('transformers-js-download-timing-v1'), measurementVersion: z.literal(1),
-  source: z.literal('ordinary-download'), serviceEpoch: clockIdentity.optional(), sequence: counter,
+  format: z.literal('transformers-js-download-timing-v1'),
+  measurementVersion: z.literal(1),
+  source: z.literal('ordinary-download'),
+  serviceEpoch: clockIdentity.optional(),
+  sequence: counter,
   identityStatus: z.enum(['available', 'unavailable']),
   availability: z.enum(['recorded', 'unavailable-in-this-service-session']),
-  droppedOperations: counter, records: z.array(operationSchema).max(8),
+  droppedOperations: counter,
+  records: z.array(operationSchema).max(8),
 }).superRefine((value, context) => {
   const scalars = value.records.reduce((sum, record) => sum + record.observations.reduce((count, observation) => count + observationScalarCount({ observation }), 0), 0);
   if (scalars > 1_024 || JSON.stringify(value).length > 524_288) context.addIssue({ code: 'custom', message: 'Download timing retention budget exceeded' });
@@ -224,11 +246,23 @@ export async function measureDownloadAcceptance<T extends { status: 'accepted' |
     return result;
   } finally {
     const hostDurationMs = clock.elapsed({ start: started, end: clock.read() });
-    publishDownloadTiming({ callback, observation: {
-      kind: 'acceptance', version: 1, route, revision: selectedRevision, candidate: selectedCandidate,
-      clockId: clock.clockId, timingStatus: hostDurationMs === undefined ? 'unavailable' : 'measured', hostDurationMs,
-      loadOutcome, cleanupOutcome, hostSettlement, attemptCount,
-    } });
+    publishDownloadTiming({
+      callback,
+      observation: {
+      kind: 'acceptance',
+      version: 1,
+      route,
+      revision: selectedRevision,
+      candidate: selectedCandidate,
+      clockId: clock.clockId,
+      timingStatus: hostDurationMs === undefined ? 'unavailable' : 'measured',
+      hostDurationMs,
+      loadOutcome,
+      cleanupOutcome,
+      hostSettlement,
+      attemptCount,
+    },
+    });
   }
 }
 
@@ -245,8 +279,14 @@ export function createDownloadTimingCollector() {
       const clock = createDownloadMeasurementClock();
       const started = clock.read();
       const record: DownloadTimingSnapshot['records'][number] = {
-        operationId: serviceEpoch === undefined ? undefined : `${serviceEpoch}/${sequence + 1}`, modelId: modelIdentity.safeParse(modelId).success ? modelId : undefined, runtimeEpoch,
-        outcome: 'running', timingStatus: 'unavailable', truncated: false, droppedObservations: 0, observations: [],
+        operationId: serviceEpoch === undefined ? undefined : `${serviceEpoch}/${sequence + 1}`,
+        modelId: modelIdentity.safeParse(modelId).success ? modelId : undefined,
+        runtimeEpoch,
+        outcome: 'running',
+        timingStatus: 'unavailable',
+        truncated: false,
+        droppedObservations: 0,
+        observations: [],
       };
       sequence++;
       if (records.length === 8) {

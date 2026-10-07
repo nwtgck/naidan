@@ -112,9 +112,11 @@ describe('tab-memory investigation sessions', () => {
 
   it('returns an explicit terminal failure when disposal rejects and carries it into reopened views', async () => {
     const first = createInvestigationSessionView({ initialSnapshot: undefined });
-    const result = await first.retire({ dispose: async () => {
+    const result = await first.retire({
+      dispose: async () => {
       throw new Error('Worker termination unavailable');
-    } });
+    },
+    });
     expect(result).toEqual({ status: 'failed', error: 'Worker termination unavailable' });
     const reopened = createInvestigationSessionView({ initialSnapshot: undefined });
     expect(await reopened.ready).toEqual(result);
@@ -125,10 +127,13 @@ describe('tab-memory investigation sessions', () => {
 
   it('handles a synchronous teardown exception without rejecting its retirement promise', async () => {
     const view = createInvestigationSessionView({ initialSnapshot: undefined });
-    expect(await view.retire({ dispose: () => {
+    expect(await view.retire({
+      dispose: () => {
       throw new Error('Synchronous teardown failure');
-    } })).toEqual({
-      status: 'failed', error: 'Synchronous teardown failure',
+    },
+    })).toEqual({
+      status: 'failed',
+      error: 'Synchronous teardown failure',
     });
   });
 });

@@ -15,7 +15,11 @@ function request({ parameters }: { parameters: LmParameters | undefined }): Para
   return {
     debug: undefined,
     messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }] }],
-    model: 'test-model', parameters, tools: undefined, readBinaryObject: undefined, signal: undefined,
+    model: 'test-model',
+    parameters,
+    tools: undefined,
+    readBinaryObject: undefined,
+    signal: undefined,
   };
 }
 function body({ index }: { index: number }): Record<string, unknown> {

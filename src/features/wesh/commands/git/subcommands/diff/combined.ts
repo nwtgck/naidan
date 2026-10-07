@@ -23,7 +23,10 @@ function createAlignment({ parent, result }: { parent: DiffInput, result: DiffIn
   const operations = createDiffOperations({
     leftLength: parent.lines.starts.length,
     rightLength: result.lines.starts.length,
-    areEqual: createLineComparator({ left: parent, right: result, options: {
+    areEqual: createLineComparator({
+      left: parent,
+      right: result,
+      options: {
       stripTrailingCarriageReturn: false,
       ignoreCase: false,
       ignoreTabExpansion: false,
@@ -31,7 +34,8 @@ function createAlignment({ parent, result }: { parent: DiffInput, result: DiffIn
       ignoreSpaceChange: false,
       ignoreAllSpace: false,
       tabSize: 8,
-    } }),
+    },
+    }),
   });
   const presentResultLines = Array.from({ length: result.lines.starts.length }, () => false);
   const deletedBeforeResultLine: number[][] = Array.from({ length: result.lines.starts.length + 1 }, () => []);
@@ -66,7 +70,10 @@ function linesEqual({ left, leftIndex, right, rightIndex }: {
   right: DiffInput,
   rightIndex: number,
 }): boolean {
-  return createLineComparator({ left, right, options: {
+  return createLineComparator({
+    left,
+    right,
+    options: {
     stripTrailingCarriageReturn: false,
     ignoreCase: false,
     ignoreTabExpansion: false,
@@ -74,7 +81,8 @@ function linesEqual({ left, leftIndex, right, rightIndex }: {
     ignoreSpaceChange: false,
     ignoreAllSpace: false,
     tabSize: 8,
-  } })({ leftIndex, rightIndex });
+  },
+  })({ leftIndex, rightIndex });
 }
 
 interface CombinedHunk {
@@ -239,33 +247,39 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
           case "equal":
             for (let offset = 0; offset < operation.length; offset += 1) {
               await writer.writeText({ text: "--" });
-              await writer.writeBytes({ bytes: getLineBytes({
+              await writer.writeBytes({
+                bytes: getLineBytes({
                 input: first,
                 lineIndex: firstDeleted[operation.leftStart + offset]!,
                 stripTrailingCarriageReturn: false,
-              }) });
+              }),
+              });
               await writer.writeText({ text: "\n" });
             }
             break;
           case "delete":
             for (let offset = 0; offset < operation.length; offset += 1) {
               await writer.writeText({ text: "- " });
-              await writer.writeBytes({ bytes: getLineBytes({
+              await writer.writeBytes({
+                bytes: getLineBytes({
                 input: first,
                 lineIndex: firstDeleted[operation.leftStart + offset]!,
                 stripTrailingCarriageReturn: false,
-              }) });
+              }),
+              });
               await writer.writeText({ text: "\n" });
             }
             break;
           case "insert":
             for (let offset = 0; offset < operation.length; offset += 1) {
               await writer.writeText({ text: " -" });
-              await writer.writeBytes({ bytes: getLineBytes({
+              await writer.writeBytes({
+                bytes: getLineBytes({
                 input: second,
                 lineIndex: secondDeleted[operation.rightStart + offset]!,
                 stripTrailingCarriageReturn: false,
-              }) });
+              }),
+              });
               await writer.writeText({ text: "\n" });
             }
             break;

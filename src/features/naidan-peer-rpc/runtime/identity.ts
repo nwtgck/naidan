@@ -32,7 +32,8 @@ export async function restoreRpcIdentity({ identity }: { identity: NaidanRpcIden
 }
 export function createRpcIdentityLoader({ read }: { read(): Promise<NaidanRpcIdentity | undefined> }) {
   let loading: Promise<NaidanPipingIdentity> | undefined;
-  return { load(): Promise<NaidanPipingIdentity> {
+  return {
+    load(): Promise<NaidanPipingIdentity> {
     // Invoked by an explicit connection command only, never by component mount.
     if (!loading) {
       const attempt = Promise.resolve().then(async () => {
@@ -48,7 +49,8 @@ export function createRpcIdentityLoader({ read }: { read(): Promise<NaidanRpcIde
       });
     }
     return loading;
-  } };
+  },
+  };
 }
 export const TEST_ONLY = {
 };

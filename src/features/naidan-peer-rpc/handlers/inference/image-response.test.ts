@@ -40,9 +40,11 @@ it('does not start when either required output is cancelled before reading', asy
 });
 it('holds physical-work reservations while cancellation waits for an uncooperative producer', async () => {
   const gate = Promise.withResolvers<ImageExecutionOutput>(), started = Promise.withResolvers<void>();
-  const { response, budget } = setup({ run: async () => {
+  const { response, budget } = setup({
+    run: async () => {
     started.resolve(); return gate.promise;
-  } });
+  },
+  });
   const reader = response.image.getReader(); const reading = reader.read(); const failed = expect(reading).rejects.toThrow();
   await started.promise;
   let cancelled = false; const cancelling = response.events.cancel().then(() => {
@@ -52,19 +54,23 @@ it('holds physical-work reservations while cancellation waits for an uncooperati
   gate.resolve(output()); await cancelling; expect(budget.reserved).toBe(0); reader.releaseLock();
 });
 it('fails both readers on native failure and releases the delivery reservation', async () => {
-  const { response, budget } = setup({ run: async () => {
+  const { response, budget } = setup({
+    run: async () => {
     throw new Error('Native failure');
-  } });
+  },
+  });
   await Promise.all([expect(response.image.getReader().read()).rejects.toMatchObject({ details: { stage: 'generation', reason: 'generation-failed' } }),
     expect(response.events.getReader().read()).rejects.toMatchObject({ details: { stage: 'generation', reason: 'generation-failed' } })]);
   expect(budget.reserved).toBe(0);
 });
 it('bounds pending previews without blocking native computation behind a slow events reader', async () => {
   const completed = Promise.withResolvers<void>();
-  const { response, lifetime, budget } = setup({ run: async ({ onPreview }) => {
+  const { response, lifetime, budget } = setup({
+    run: async ({ onPreview }) => {
     for (let step = 1; step <= 100; step++) onPreview({ frame: { ...output(), type: 'naidan-image-preview-v1', runId: 1, revision: 0, step, steps: 100, mode: 'projection' } });
     completed.resolve(); return output();
-  } });
+  },
+  });
   const image = collectBytes({ readable: response.image, limit: 100, signal: lifetime.signal });
   await completed.promise; await image; expect(budget.reserved).toBeGreaterThan(0);
   const events = await collect({ stream: response.events });
@@ -84,9 +90,11 @@ it('does not invoke native code when retained deliveries exhausted the shared bu
 });
 it('propagates external revocation to both outputs before native work settles', async () => {
   const gate = Promise.withResolvers<ImageExecutionOutput>(), started = Promise.withResolvers<void>();
-  const { response, lifetime, budget } = setup({ run: async () => {
+  const { response, lifetime, budget } = setup({
+    run: async () => {
     started.resolve(); return gate.promise;
-  } });
+  },
+  });
   const image = response.image.getReader().read(), events = response.events.getReader().read();
   const failures = Promise.all([expect(image).rejects.toThrow('Revoked'), expect(events).rejects.toThrow('Revoked')]);
   await started.promise; lifetime.abort(new Error('Revoked')); await failures;
@@ -107,11 +115,23 @@ it('retains delivery ownership while a cancelled preview is still materializing 
     }
   }
   const sample = output();
-  const { response, budget, lifetime } = setup({ run: async ({ onPreview }) => {
-    onPreview({ frame: { ...sample, png: new SlowPreview([sample.png], { type: 'image/png' }),
-      type: 'naidan-image-preview-v1', runId: 1, revision: 1, step: 1, steps: 1, mode: 'projection' } });
+  const { response, budget, lifetime } = setup({
+    run: async ({ onPreview }) => {
+    onPreview({
+      frame: {
+      ...sample,
+      png: new SlowPreview([sample.png], { type: 'image/png' }),
+      type: 'naidan-image-preview-v1',
+      runId: 1,
+      revision: 1,
+      step: 1,
+      steps: 1,
+      mode: 'projection',
+    },
+    });
     return sample;
-  } });
+  },
+  });
   const events = response.events.getReader();
   const reading = events.read().catch(() => undefined);
   await materializing.promise;
@@ -136,11 +156,23 @@ it('external revocation retains the preview reservation until its byte read ends
     }
   }
   const sample = output();
-  const { response, budget, lifetime } = setup({ run: async ({ onPreview }) => {
-    onPreview({ frame: { ...sample, png: new SlowPreview([sample.png], { type: 'image/png' }),
-      type: 'naidan-image-preview-v1', runId: 1, revision: 1, step: 1, steps: 1, mode: 'projection' } });
+  const { response, budget, lifetime } = setup({
+    run: async ({ onPreview }) => {
+    onPreview({
+      frame: {
+      ...sample,
+      png: new SlowPreview([sample.png], { type: 'image/png' }),
+      type: 'naidan-image-preview-v1',
+      runId: 1,
+      revision: 1,
+      step: 1,
+      steps: 1,
+      mode: 'projection',
+    },
+    });
     return sample;
-  } });
+  },
+  });
   const events = response.events.getReader(); const reading = events.read().catch(() => undefined);
   await materializing.promise;
   await collectBytes({ readable: response.image, limit: 100, signal: lifetime.signal });
@@ -156,11 +188,14 @@ it('waits for output-reader cancellation cleanup instead of just native completi
   const reading = Promise.withResolvers<void>(), cleanup = Promise.withResolvers<void>();
   class SlowCleanup extends Blob {
     override stream(): ReadableStream<Uint8Array<ArrayBuffer>> {
-      return new ReadableStream({ pull() {
+      return new ReadableStream({
+        pull() {
         reading.resolve();
-      }, cancel() {
+      },
+        cancel() {
         return cleanup.promise;
-      } }, { highWaterMark: 0 });
+      },
+      }, { highWaterMark: 0 });
     }
   }
   const sample = output(); const png = new SlowCleanup([sample.png], { type: 'image/png' });

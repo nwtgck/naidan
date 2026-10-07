@@ -33,10 +33,15 @@ function summarizeRequests({ provider }: { provider: ProductionProviderCaptureSn
     const { format: _format, requestId: _requestId, completeness, limits, retainedCharacters, events, lateEvents, settled, failure: _failure, ...restTrace } = trace;
     restTrace satisfies Record<PropertyKey, never>;
     return Object.freeze({
-      requestId, scenario, status, notStartedReason,
+      requestId,
+      scenario,
+      status,
+      notStartedReason,
       outcome: settled?.outcome.status,
       settledCompleteness: settled?.completeness,
-      completeness, limits, retainedCharacters,
+      completeness,
+      limits,
+      retainedCharacters,
       eventCount: events.length + lateEvents.length,
     });
   }));
@@ -84,8 +89,13 @@ export function createProductionProviderInvestigation({
   const deadlines = deadlinesSchema.parse(rawDeadlines);
   const maximumNativeBinaryBytes = z.number().int().min(0).max(PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES).parse(rawMaximumNativeBinaryBytes);
   const owner = createProductionProviderGenerationCaptureOwner({
-    runId, modelId, plan, createCaptureClient, createUnrecordedWorkerClient,
-    maximumWorkerEpochs, traceLimits: policy.traceLimits,
+    runId,
+    modelId,
+    plan,
+    createCaptureClient,
+    createUnrecordedWorkerClient,
+    maximumWorkerEpochs,
+    traceLimits: policy.traceLimits,
   });
   let phase: Phase = 'not-started';
   let invocation: 'not-started' | 'started' = 'not-started';
@@ -123,7 +133,11 @@ export function createProductionProviderInvestigation({
 
   function getProgress(): ProductionProviderInvestigationProgress {
     return Object.freeze(exactObject<ProductionProviderInvestigationProgress>()({
-      phase, provider: owner.getProgress(), stopReason, cleanup, sealOwnership,
+      phase,
+      provider: owner.getProgress(),
+      stopReason,
+      cleanup,
+      sealOwnership,
     }));
   }
 
@@ -337,11 +351,15 @@ export function createProductionProviderInvestigation({
       case 'refused': break;
       case 'available': {
         phase = 'sealing';
-        const outcome = await waitPhase({ startOperation: () => {
+        const outcome = await waitPhase({
+          startOperation: () => {
           startSealing({ provider });
           if (sealWork === undefined) throw new Error('Investigation seal operation is missing');
           return sealWork;
-        }, milliseconds: deadlines.sealingMs, deadlineReason: 'sealing-deadline' });
+        },
+          milliseconds: deadlines.sealingMs,
+          deadlineReason: 'sealing-deadline',
+        });
         switch (outcome) {
         case 'settled': case 'interrupted': break;
         case 'rejected':
@@ -361,10 +379,18 @@ export function createProductionProviderInvestigation({
         provider: providerOutput,
         nativeEvidence,
         summary: Object.freeze({
-          format: 'production-provider-investigation-v1', policy,
-          completion: stopReason === undefined ? 'completed' : 'interrupted', stopReason,
-          providerEvidence, providerProgress: anchorProgress, requests: summarizeRequests({ provider }), cutoff,
-          nativeEvidenceStatus, cleanup, sealOwnership, progressCallbackFailures,
+          format: 'production-provider-investigation-v1',
+          policy,
+          completion: stopReason === undefined ? 'completed' : 'interrupted',
+          stopReason,
+          providerEvidence,
+          providerProgress: anchorProgress,
+          requests: summarizeRequests({ provider }),
+          cutoff,
+          nativeEvidenceStatus,
+          cleanup,
+          sealOwnership,
+          progressCallbackFailures,
         }),
       }));
     } finally {
@@ -379,7 +405,8 @@ export function createProductionProviderInvestigation({
   }
 
   return {
-    run, getProgress,
+    run,
+    getProgress,
     interrupt({ reason }: { reason: 'user-requested' }): void {
       requestStop({ reason });
     },

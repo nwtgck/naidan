@@ -30,7 +30,9 @@ function hasConfiguredLmParameters({ parameters }: {
 export class PromptApiProvider implements LmProvider {
   chat({ messages, model, parameters, tools, readBinaryObject, signal }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
-    return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+    return createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
       if (model !== BROWSER_PROVIDED_LM_MODEL_ID) {
         throw new PromptApiError({ code: 'unsupported_input', message: `Unsupported Prompt API model ID: ${model}` });
       }
@@ -74,7 +76,8 @@ export class PromptApiProvider implements LmProvider {
       } finally {
         lease.release();
       }
-    } });
+    },
+    });
   }
 
   async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {

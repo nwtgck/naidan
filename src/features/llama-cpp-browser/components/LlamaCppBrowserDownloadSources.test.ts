@@ -7,7 +7,12 @@ import { modelDownloadUrl } from '@/features/llama-cpp-browser/hugging-face/down
 import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue';
 const copy = vi.fn();
 const source: DownloadJob = {
-  id: 1, key: 'fixture', repository: 'owner/repo', source: 'repository', status: 'downloading', error: undefined,
+  id: 1,
+  key: 'fixture',
+  repository: 'owner/repo',
+  source: 'repository',
+  status: 'downloading',
+  error: undefined,
   selection: { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'dir/model-00001-of-00002.gguf', size: 128 }, { path: 'dir/model-00002-of-00002.gguf', size: 128 }] },
   progress: { phase: 'transferring', completed: 128, total: 256, processed: 0, currentFileIndex: 1 },
 };

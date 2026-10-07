@@ -59,8 +59,12 @@ class MemoryRelay {
     };
     const body = init?.body;
     if (body !== undefined && !(body instanceof Uint8Array)) throw new Error('Finite bytes required');
-    const entry: Pending = { bytes: body instanceof Uint8Array ? new Uint8Array(body) : undefined, resolve: pending.resolve, reject: pending.reject,
-      cleanup: () => signal.removeEventListener('abort', abort) };
+    const entry: Pending = {
+      bytes: body instanceof Uint8Array ? new Uint8Array(body) : undefined,
+      resolve: pending.resolve,
+      reject: pending.reject,
+      cleanup: () => signal.removeEventListener('abort', abort),
+    };
     slot[side] = entry;
     signal.addEventListener('abort', abort, { once: true });
     if (slot.sender && slot.receiver) {
@@ -75,8 +79,12 @@ class MemoryRelay {
 }
 
 const options: NaidanPipingDuplexOptions = {
-  baseUrl: 'https://relay.invalid', policy: 'https-only',
-  requestTimeoutMs: 500, repairTimeoutMs: 30, candidateConfirmationTimeoutMs: 3000, handshakeRetentionMs: 150,
+  baseUrl: 'https://relay.invalid',
+  policy: 'https-only',
+  requestTimeoutMs: 500,
+  repairTimeoutMs: 30,
+  candidateConfirmationTimeoutMs: 3000,
+  handshakeRetentionMs: 150,
   pacing: { minimumMs: 2, idleResendIntervalMs: 30, retryBaseMs: 10, retryMaximumMs: 50 },
 };
 const controllers = new Set<AbortController>();
@@ -98,10 +106,22 @@ async function sessions({ signal }: { signal: AbortSignal }) {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const code = createNaidanPipingCode();
   return promiseAllKeyed({
-    a: NaidanPipingDuplexSession.connect({ piping: options, code, role: 'initiator', identity: identities.a,
-      expectedPeer: identities.b.publicKey, signal }),
-    b: NaidanPipingDuplexSession.connect({ piping: options, code, role: 'responder', identity: identities.b,
-      expectedPeer: identities.a.publicKey, signal }),
+    a: NaidanPipingDuplexSession.connect({
+      piping: options,
+      code,
+      role: 'initiator',
+      identity: identities.a,
+      expectedPeer: identities.b.publicKey,
+      signal,
+    }),
+    b: NaidanPipingDuplexSession.connect({
+      piping: options,
+      code,
+      role: 'responder',
+      identity: identities.b,
+      expectedPeer: identities.a.publicKey,
+      signal,
+    }),
   });
 }
 async function readAll({ readable }: { readable: ReadableStream<Uint8Array> }): Promise<Uint8Array> {
@@ -151,16 +171,28 @@ it('idle lifetime cancellation settles incoming and outstanding streams without 
 it('cancellation during discovery rejects connection and leaves no relay requests', async () => {
   const { relay, stop } = setup(), identity = await createNaidanPipingIdentity();
   const peer = await createNaidanPipingIdentity();
-  const pending = NaidanPipingDuplexSession.connect({ piping: options, code: 'ABCD-EFGH', role: 'initiator', identity,
-    expectedPeer: peer.publicKey, signal: stop.signal });
+  const pending = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCD-EFGH',
+    role: 'initiator',
+    identity,
+    expectedPeer: peer.publicKey,
+    signal: stop.signal,
+  });
   const rejected = expect(pending).rejects.toBeDefined();
   stop.abort(); await rejected; expect(relay.occupied).toBe(0);
 });
 
 it('unknown pins cannot be replaced with code-only authentication', async () => {
   const { relay, stop } = setup(), identity = await createNaidanPipingIdentity();
-  await expect(NaidanPipingDuplexSession.connect({ piping: options, code: 'ABCD-EFGH', role: 'initiator', identity,
-    expectedPeer: new Uint8Array(), signal: stop.signal })).rejects.toThrow();
+  await expect(NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCD-EFGH',
+    role: 'initiator',
+    identity,
+    expectedPeer: new Uint8Array(),
+    signal: stop.signal,
+  })).rejects.toThrow();
   expect(relay.occupied).toBe(0);
 });
 
@@ -168,8 +200,14 @@ it('configuration is validated before opening network requests', async () => {
   const { relay, stop } = setup();
   const identity = await createNaidanPipingIdentity();
   for (const baseUrl of ['http://evil.invalid', 'https://user:pass@relay.invalid/', 'https://relay.invalid/?secret=1']) {
-    await expect(NaidanPipingDuplexSession.connect({ piping: { ...options, baseUrl }, code: 'ABCD-EFGH', role: 'initiator',
-      identity, expectedPeer: identity.publicKey, signal: stop.signal })).rejects.toThrow();
+    await expect(NaidanPipingDuplexSession.connect({
+      piping: { ...options, baseUrl },
+      code: 'ABCD-EFGH',
+      role: 'initiator',
+      identity,
+      expectedPeer: identity.publicKey,
+      signal: stop.signal,
+    })).rejects.toThrow();
   }
   expect(vi.mocked(fetch)).not.toHaveBeenCalled(); expect(relay.occupied).toBe(0);
 });
@@ -179,10 +217,22 @@ it('different upper transport profiles are bound into authentication and cannot 
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const endpoint = () => new FiniteEndpoint({ baseUrl: options.baseUrl, policy: 'https-only', timeoutMs: 100, repairTimeoutMs: 20 });
   const common = { code: 'ABCD-EFGH', signal: stop.signal, verifyPeer: undefined, confirmationTimeoutMs: 500, completionLeaseMs: 50, intervalMs: 2 };
-  const a = await startPinnedConnection({ ...common, role: 'initiator', identity: identities.a, expectedPeer: identities.b.publicKey,
-    endpoint: endpoint(), purpose: new Uint8Array([1]) });
-  const b = await startPinnedConnection({ ...common, role: 'responder', identity: identities.b, expectedPeer: identities.a.publicKey,
-    endpoint: endpoint(), purpose: new Uint8Array([2]) });
+  const a = await startPinnedConnection({
+    ...common,
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: identities.b.publicKey,
+    endpoint: endpoint(),
+    purpose: new Uint8Array([1]),
+  });
+  const b = await startPinnedConnection({
+    ...common,
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    endpoint: endpoint(),
+    purpose: new Uint8Array([2]),
+  });
   await Promise.race([a.ready.catch(() => {}), b.ready.catch(() => {})]);
   stop.abort();
   const results = await Promise.allSettled([a.ready, b.ready]);
@@ -200,11 +250,13 @@ it('a successful POST without peer acceptance leaves the write pending', async (
   const accepted = await incoming.next();
   if (accepted.done) throw new Error('Missing incoming stream');
   let dropped = 0;
-  relay.transformReplies({ transform: ({ bytes }) => {
+  relay.transformReplies({
+    transform: ({ bytes }) => {
     if (bytes[0] !== 2) return bytes;
     dropped++;
     return new Uint8Array();
-  } });
+  },
+  });
   const writer = stream.writable.getWriter();
   let completed = false;
   const writing = writer.write(new Uint8Array([4, 3, 2, 1])).then(() => {
@@ -232,7 +284,8 @@ it('concurrent streams recover from relay state loss, corrupt bytes, and replaye
     pairs.push({ left, right: accepted.value });
   }
   let target: string | undefined, recorded: Uint8Array | undefined, altered = 0, replayed = 0;
-  relay.transformReplies({ transform: ({ route, bytes }) => {
+  relay.transformReplies({
+    transform: ({ route, bytes }) => {
     if (bytes[0] !== 2) return bytes;
     if (!target) {
       target = route; recorded = bytes.slice(); return bytes;
@@ -246,7 +299,8 @@ it('concurrent streams recover from relay state loss, corrupt bytes, and replaye
       replayed++; return recorded.slice();
     }
     return bytes;
-  } });
+  },
+  });
   const allowReading = Promise.withResolvers<void>();
   const transfers = pairs.map(async ({ left, right }, index) => {
     const body = Uint8Array.from({ length: 65537 + index }, (_, offset) => (offset * 13 + index * 17) % 251);
@@ -320,10 +374,12 @@ it('key readiness and finite handshake cleanup are distinct and cleanup does not
 
 it('a lost final key-confirmation flight is repeated without restarting the handshake', async () => {
   const { relay, stop } = setup(); let lost = 0;
-  relay.transformReplies({ transform: ({ bytes }) => {
+  relay.transformReplies({
+    transform: ({ bytes }) => {
     if (lost || bytes.length < 99 || bytes[32] !== 1 || bytes[33] !== 2 || bytes[98] !== 4) return bytes;
     lost++; return withholdFinalResponderFlight({ bytes });
-  } });
+  },
+  });
   const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000, completionLeaseMs: 100 });
   const keys = await promiseAllKeyed({ a: tasks.a.ready, b: tasks.b.ready });
   try {
@@ -336,11 +392,13 @@ it('a lost final key-confirmation flight is repeated without restarting the hand
 
 it('permanent final-flight loss cannot be reported as mutual connection success', async () => {
   const { relay, stop } = setup(); let lost = 0;
-  relay.transformReplies({ transform: ({ bytes }) => {
+  relay.transformReplies({
+    transform: ({ bytes }) => {
     const prefix = withholdFinalResponderFlight({ bytes });
     if (prefix !== bytes) lost++;
     return prefix;
-  } });
+  },
+  });
   const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 600, completionLeaseMs: 100 });
   try {
     const remote = await tasks.b.ready;
@@ -382,11 +440,23 @@ it('cancelling handshake retention cleans all HTTP requests but leaves key owner
 it('managed configuration and pins are owned before asynchronous connection work', async () => {
   const { relay, stop } = setup(), identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const copiedOptions = { ...options, pacing: { ...options.pacing } }, pin = identities.b.publicKey.slice();
-  const left = NaidanPipingDuplexSession.connect({ piping: copiedOptions, code: 'ABCD-EFGH', role: 'initiator', identity: identities.a,
-    expectedPeer: pin, signal: stop.signal });
+  const left = NaidanPipingDuplexSession.connect({
+    piping: copiedOptions,
+    code: 'ABCD-EFGH',
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: pin,
+    signal: stop.signal,
+  });
   copiedOptions.baseUrl = 'https://other.invalid'; copiedOptions.pacing.minimumMs = 0; pin.fill(0);
-  const right = NaidanPipingDuplexSession.connect({ piping: options, code: 'ABCD-EFGH', role: 'responder', identity: identities.b,
-    expectedPeer: identities.a.publicKey, signal: stop.signal });
+  const right = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCD-EFGH',
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    signal: stop.signal,
+  });
   const { a, b } = await promiseAllKeyed({ a: left, b: right });
   try {
     const identity = a.peerIdentity; expect(identity).toEqual(identities.b.publicKey); identity.fill(0);
@@ -404,14 +474,24 @@ it('the public pairing API uses a short number, waits for both approvals, and ke
   const shownA = Promise.withResolvers<Uint8Array>(), shownB = Promise.withResolvers<Uint8Array>();
   const approveA = Promise.withResolvers<boolean>(), approveB = Promise.withResolvers<boolean>();
   const settings = { ...options, candidateConfirmationTimeoutMs: 100, handshakeRetentionMs: undefined };
-  const first = NaidanPipingDuplexSession.pair({ piping: settings, code: '0017', identity: identities.a, signal: stop.signal,
+  const first = NaidanPipingDuplexSession.pair({
+    piping: settings,
+    code: '0017',
+    identity: identities.a,
+    signal: stop.signal,
     verifyPeer: ({ comparison }) => {
       shownA.resolve(comparison); return approveA.promise;
-    } });
-  const second = NaidanPipingDuplexSession.pair({ piping: settings, code: '0017', identity: identities.b, signal: stop.signal,
+    },
+  });
+  const second = NaidanPipingDuplexSession.pair({
+    piping: settings,
+    code: '0017',
+    identity: identities.b,
+    signal: stop.signal,
     verifyPeer: ({ comparison }) => {
       shownB.resolve(comparison); return approveB.promise;
-    } });
+    },
+  });
   const comparisons = await promiseAllKeyed({ a: shownA.promise, b: shownB.promise }); expect(comparisons.a).toEqual(comparisons.b);
   await new Promise(resolve => setTimeout(resolve, 150));
   let ready = 0; void first.then(() => {
@@ -436,12 +516,22 @@ it('a pairing cancelled while waiting for user comparison never returns a usable
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const shown = Promise.withResolvers<void>(), gate = Promise.withResolvers<boolean>();
   const settings = { ...options, handshakeRetentionMs: undefined };
-  const a = NaidanPipingDuplexSession.pair({ piping: settings, code: '0023', identity: identities.a,
-    signal: stop.signal, verifyPeer: () => {
+  const a = NaidanPipingDuplexSession.pair({
+    piping: settings,
+    code: '0023',
+    identity: identities.a,
+    signal: stop.signal,
+    verifyPeer: () => {
       shown.resolve(); return gate.promise;
-    } });
-  const b = NaidanPipingDuplexSession.pair({ piping: settings, code: '0023', identity: identities.b,
-    signal: stop.signal, verifyPeer: async () => true });
+    },
+  });
+  const b = NaidanPipingDuplexSession.pair({
+    piping: settings,
+    code: '0023',
+    identity: identities.b,
+    signal: stop.signal,
+    verifyPeer: async () => true,
+  });
   const failures = [expect(a).rejects.toBeDefined(), expect(b).rejects.toBeDefined()];
   await shown.promise; stop.abort(); gate.resolve(true); await Promise.all(failures); expect(relay.occupied).toBe(0);
 });

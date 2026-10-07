@@ -91,7 +91,10 @@ export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   };
   const module = { addFunction: vi.fn(() => 9), removeFunction: vi.fn() };
   const core = {
-    api, module, pointerBytes, bytes,
+    api,
+    module,
+    pointerBytes,
+    bytes,
     alloc: allocate,
     allocRecord: ({ name: _name }: { name: string }) => allocate({ bytes: 128 }),
     free: ({ pointer }: { pointer: bigint }) => {

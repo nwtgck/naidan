@@ -15,11 +15,13 @@ const { entries, selected, sources, totalBytes, add, select, deselectAll, remove
 const issues = ref<{ name: string, code: ReferenceAudioErrorCode }[]>([]);
 const preparationFailure = ref<ReferenceAudioErrorCode>();
 const recordingTrimmed = ref(false);
-const recording = useReferenceRecording({ accept: async ({ blob, signal }) => {
+const recording = useReferenceRecording({
+  accept: async ({ blob, signal }) => {
   const { wav, trimmed } = await normalizeReferenceAudio({ source: blob, signal, durationPolicy: 'limit-recording' }); signal.throwIfAborted();
   add({ file: new File([wav], `recording-${Date.now()}.wav`, { type: 'audio/wav' }) });
   preparationFailure.value = undefined; recordingTrimmed.value = trimmed; emit('changed');
-} });
+},
+});
 const { status: recordingStatus, elapsed, supported: recordingSupported, error: recordingError } = recording;
 const locked = computed(() => props.disabled || recordingStatus.value !== 'idle');
 watch(recordingStatus, status => emit('busy', status !== 'idle'), { immediate: true, flush: 'sync' });

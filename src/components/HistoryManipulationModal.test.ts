@@ -392,7 +392,8 @@ describe('HistoryManipulationModal', () => {
   it('keeps every selected part, tool result, timestamp and interruption on a no-op edit', async () => {
     const assistant: MessageNode = {
       ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }),
-      role: 'assistant', createdAt: 0,
+      role: 'assistant',
+      createdAt: 0,
       interruption: { type: 'error', message: '保存された日本語' },
       parts: [
         { type: 'reasoning', text: '  R\n', completeness: 'complete' },
@@ -419,7 +420,8 @@ describe('HistoryManipulationModal', () => {
   });
   it('edits each text part without folding reasoning, trimming text, or promoting partial', async () => {
     mockActiveMessages.value = [{
-      ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }), role: 'assistant',
+      ...messageFixture({ id: '2', role: 'assistant', content: '', attachments: undefined }),
+      role: 'assistant',
       interruption: { type: 'cancelled' },
       parts: [
         { type: 'reasoning', text: 'R', completeness: 'complete' },

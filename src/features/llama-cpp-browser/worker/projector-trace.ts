@@ -57,9 +57,20 @@ export function createProjectorTrace({ core }: { core: Core }) {
       if (ask) {
         node++; started = performance.now();
       }
-      logNativeCheckpoint({ diagnostic: { event: ask ? 'native-node-start' : 'native-node-complete', stage: 'media-encode', nativeNode: node,
-        nativeOp, nativeOpName: names.get(nativeOp), nativeTensorType: output.type, nativeTensorTypeName: output.typeName, nativeTensorShape: output.shape, nativeTensorInputs,
-        ...(ask ? {} : { elapsedMs: performance.now() - started }) } });
+      logNativeCheckpoint({
+        diagnostic: {
+        event: ask ? 'native-node-start' : 'native-node-complete',
+        stage: 'media-encode',
+        nativeNode: node,
+        nativeOp,
+        nativeOpName: names.get(nativeOp),
+        nativeTensorType: output.type,
+        nativeTensorTypeName: output.typeName,
+        nativeTensorShape: output.shape,
+        nativeTensorInputs,
+        ...(ask ? {} : { elapsedMs: performance.now() - started }),
+      },
+      });
     } catch (error) {
       if (!reportedFailure) {
         reportedFailure = true;
@@ -74,10 +85,13 @@ export function createProjectorTrace({ core }: { core: Core }) {
     // the two pointer parameters widen, not ask or the boolean return value.
     return 1;
   }, core.pointerBytes === 8 ? 'ijij' : 'iiii');
-  return { pointer, release(): void {
+  return {
+    pointer,
+    release(): void {
     if (released) return;
     core.module.removeFunction(pointer); released = true;
-  } };
+  },
+  };
 }
 export const TEST_ONLY = {
 };

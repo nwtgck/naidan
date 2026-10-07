@@ -6,13 +6,20 @@ import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 useOfflineScope();
 async function pair() {
   const inputs = {
-    attemptI: crypto.getRandomValues(new Uint8Array(32)), attemptR: crypto.getRandomValues(new Uint8Array(32)),
+    attemptI: crypto.getRandomValues(new Uint8Array(32)),
+    attemptR: crypto.getRandomValues(new Uint8Array(32)),
     challenge: crypto.getRandomValues(new Uint8Array(32)),
   };
-  const a = await RendezvousChannel.create({ ...inputs, role: 'initiator',
-    room: await rendezvousRoom({ code: 'abcd-efgh', origin: 'https://RELAY.invalid:443/' }) });
-  const b = await RendezvousChannel.create({ ...inputs, role: 'responder',
-    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://relay.invalid' }) });
+  const a = await RendezvousChannel.create({
+    ...inputs,
+    role: 'initiator',
+    room: await rendezvousRoom({ code: 'abcd-efgh', origin: 'https://RELAY.invalid:443/' }),
+  });
+  const b = await RendezvousChannel.create({
+    ...inputs,
+    role: 'responder',
+    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://relay.invalid' }),
+  });
   onTestFinished(() => {
     a.dispose(); b.dispose();
   });
@@ -67,15 +74,21 @@ it('an acknowledgement from a previous attempt cannot bind a new candidate', asy
 
 it('room and canonical origin separate routing and cryptographic bindings', async () => {
   const { a, inputs } = await pair();
-  const other = await RendezvousChannel.create({ ...inputs, role: 'responder',
-    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://other.invalid' }) });
+  const other = await RendezvousChannel.create({
+    ...inputs,
+    role: 'responder',
+    room: await rendezvousRoom({ code: 'ABCDEFGH', origin: 'https://other.invalid' }),
+  });
   onTestFinished(() => other.dispose());
   other.accept({ bytes: snapshot({ channel: a }) }); a.accept({ bytes: snapshot({ channel: other }) });
   const signal = new AbortController().signal;
   expect(await a.binding({ signal })).not.toEqual(await other.binding({ signal }));
   expect(a.routes.send).not.toBe(other.routes.receive);
-  const different = await RendezvousChannel.create({ ...inputs, role: 'initiator',
-    room: await rendezvousRoom({ code: '12345678', origin: 'https://relay.invalid' }) });
+  const different = await RendezvousChannel.create({
+    ...inputs,
+    role: 'initiator',
+    room: await rendezvousRoom({ code: '12345678', origin: 'https://relay.invalid' }),
+  });
   onTestFinished(() => different.dispose()); expect(a.routes.send).not.toBe(different.routes.send);
 });
 

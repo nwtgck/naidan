@@ -98,9 +98,11 @@ hint: Use -f if you really want to add them.
 hint: Disable this message with "git config advice.addIgnoredFile false"
 `);
 
-    const forced = await execute({ script: `\
+    const forced = await execute({
+      script: `\
 git add -f a.log
-git status --short` });
+git status --short`,
+    });
     expect(forced.result.exitCode).toBe(0);
     expect(forced.stderr.text).toBe('');
     expect(forced.stdout.text).toContain('A  a.log\n');

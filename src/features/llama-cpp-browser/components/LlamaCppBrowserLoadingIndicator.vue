@@ -10,9 +10,11 @@ const props = defineProps<{ scope: 'import' | 'inference', waiting?: boolean, is
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 let unsubscribe: (() => void) | undefined;
 onMounted(() => {
-  unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state: next }) => {
+  unsubscribe = llamaCppBrowserService.subscribe({
+    listener: ({ state: next }) => {
     state.value = next;
-  } });
+  },
+  });
 });
 onUnmounted(() => unsubscribe?.());
 const importScope = computed(() => {

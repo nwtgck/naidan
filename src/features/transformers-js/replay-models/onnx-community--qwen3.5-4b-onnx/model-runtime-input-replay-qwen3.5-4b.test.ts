@@ -7,7 +7,8 @@ import { archiveFor, start, assertRawModelSelection, assertRawTokenizer, install
 
 const modelId = 'onnx-community/Qwen3.5-4B-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: '74d8caba2117fd5f41d655e9cc27eda1338662b3',
   files: {
@@ -20,7 +21,8 @@ installRawReplay({ evidence: {
     'preprocessor_config.json': { sha256: '6a970fd06f30e6943b3e2c14d5d3b42d49b06cf99b99103d56689bef462d90f8', byteLength: 336 },
     'tokenizer.json': { sha256: '89da80cc6689bef4d90cc1028249436975ffb0814618f1d93c65310e05801a9b', byteLength: 19226111 },
   },
-} });
+},
+});
 
 describe('qwen3.5-4b raw metadata replay', () => {
   it('constructs the Production tokenizer/processor and renders its original template', async () => {
@@ -29,8 +31,11 @@ describe('qwen3.5-4b raw metadata replay', () => {
 
   it.each(['q4f16', 'q4'] as const)('observes repository-listed %s paths without real ONNX execution', async dtype => {
     await assertRawModelSelection({
-      modelId, dtype, sessions: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 },
-      probeOnly: [], expectedMissing: [],
+      modelId,
+      dtype,
+      sessions: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 },
+      probeOnly: [],
+      expectedMissing: [],
     });
   });
 });
@@ -42,7 +47,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'onnx-community/Qwen3.5-4B-ONNX', chunks: { q4f16: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 }, q4: { decoder_model_merged: 2, embed_tokens: 1, vision_encoder: 1 } }, registryExtra: [], missing: [] },
-      dtype, expectedAutoClass: 'AutoModelForImageTextToText',
+      dtype,
+      expectedAutoClass: 'AutoModelForImageTextToText',
     });
   });
 });
@@ -53,7 +59,9 @@ describe('Qwen structured reasoning in native model inputs', () => {
     const archive = await archiveFor({ modelId });
     const { harness } = await start({ archive, bodyPaths: [] });
     const processor = await harness.runtime.AutoProcessor.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     const renderer = {
       // Mirrors the external template method, whose message type is wider than this replay fixture.

@@ -14,7 +14,9 @@ export type ImageGenerationExportSnapshot = { metadata: ImageGenerationExportFil
  * Unknown/corrupt records fail explicitly; use raw OPFS export to preserve them. */
 export async function collectImageGenerationSessionMetadata({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<{ metadata: ImageGenerationExportFile[], binaryObjectIds: BinaryObjectId[] }> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
-  return withImageGenerationStore({ store, operation: async ({ directory, catalog }) => {
+  return withImageGenerationStore({
+    store,
+    operation: async ({ directory, catalog }) => {
     const session = await (await imageGenerationSessionTable({ directory, create: false })).load({ id });
     const location = await imageGenerationSessionDirectory({ directory, sessionId: id });
     if (!session || !location) throw new Error('The session to export no longer exists.');
@@ -87,7 +89,8 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
       else binaryObjectIds.push(toBinaryObjectId({ raw }));
     }
     return { metadata, binaryObjectIds };
-  } });
+  },
+  });
 }
 export const TEST_ONLY = {
 };

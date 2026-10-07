@@ -22,17 +22,24 @@ describe('renderMessageJson', () => {
               type: 'text',
               text: longText,
             },
-          }
+          },
         }
       ],
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     expect(renderMessageJson({ node })).toBe(JSON.stringify({
-      id: 'tool-1', role: 'tool', createdAt: 2,
-      parts: [{ type: 'tool_result', result: {
-        toolCallId: 'call-1', status: 'success', content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
-      } }],
+      id: 'tool-1',
+      role: 'tool',
+      createdAt: 2,
+      parts: [{
+        type: 'tool_result',
+        result: {
+        toolCallId: 'call-1',
+        status: 'success',
+        content: { type: 'text', text: `${'y'.repeat(4000)}\n[truncated]` },
+      },
+      }],
     }, null, 2));
   });
 });

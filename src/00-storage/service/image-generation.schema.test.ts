@@ -49,17 +49,30 @@ describe('Image Generation persistence contracts', () => {
   });
   it.each(['候補', 'CANDIDATE', 'ガ'])('rejects duplicate or unnormalized catalog labels: %s', name => {
     const sameKeyName = name === 'CANDIDATE' ? 'candidate' : name;
-    const catalog = { version: 1, id: 'store-aa', revision: 0, createdAt: 1, preferences: { assistantLayout: 'floating' }, tags: [
+    const catalog = {
+      version: 1,
+      id: 'store-aa',
+      revision: 0,
+      createdAt: 1,
+      preferences: { assistantLayout: 'floating' },
+      tags: [
       { id: 'tag-aa', name, createdAt: 1, updatedAt: 1, state: 'active' },
       { id: 'tag-bb', name: sameKeyName, createdAt: 1, updatedAt: 1, state: 'archived' },
-    ] };
+    ],
+    };
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse(catalog).success).toBe(false);
   });
   it('keeps reserved system tags structurally distinct from user identifiers', () => {
-    const annotations = { assetId: 'asset-aa', sessionId: 'session-aa', revision: 1, state: 'active' as const, tags: [
+    const annotations = {
+      assetId: 'asset-aa',
+      sessionId: 'session-aa',
+      revision: 1,
+      state: 'active' as const,
+      tags: [
       { tag: { type: 'system', key: 'favorite' }, assignedAt: 1 },
       { tag: { type: 'user', tagId: 'favorite' }, assignedAt: 2 },
-    ] };
+    ],
+    };
     expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse(annotations).tags).toHaveLength(2);
     expect(ExperimentalImageGenerationAssetAnnotationsSchemaDto.safeParse({ ...annotations, tags: [{ tag: { type: 'system', key: 'custom' }, assignedAt: 1 }] }).success).toBe(false);
   });

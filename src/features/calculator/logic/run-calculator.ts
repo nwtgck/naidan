@@ -62,7 +62,10 @@ export function runCalculator({ input, output = CALCULATOR_DEFAULT_OUTPUT_POLICY
   } catch (error) {
     if (error instanceof NumericLimitError) {
       const diagnostic: CalculatorDiagnostic = {
-        code: 'limit_exceeded', message: error.message, span: undefined, hint: 'Use smaller values or a simpler expression.',
+        code: 'limit_exceeded',
+        message: error.message,
+        span: undefined,
+        hint: 'Use smaller values or a simpler expression.',
       };
       return { status: 'error', diagnostic, text: formatCalculatorDiagnostic({ source: input, diagnostic }) };
     }

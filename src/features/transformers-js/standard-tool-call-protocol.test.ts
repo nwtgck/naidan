@@ -182,14 +182,18 @@ describe('verified standard tool content history', () => {
   it('admits only exact atomic markers and a single assistant/tool content projection', () => {
     const tokenizer = contentTokenizer({ mode: 'omitted', ids: [[10], [11]], specialIds: [7, 10, 11] });
     expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-      outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11],
+      outputProtocol: 'delimited-pythonic',
+      historyEncoding: 'verified-content',
+      preservedDelimiterIds: [10, 11],
     });
   });
 
   it.each(['dropped', 'escaped', 'duplicated', 'native-json'] as const)('does not replace the %s template with a vocabulary inference', mode => {
     const tokenizer = contentTokenizer({ mode, ids: [[10], [11]], specialIds: [7, 10, 11] });
     expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-      outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [],
+      outputProtocol: 'json-tagged',
+      historyEncoding: 'native-template',
+      preservedDelimiterIds: [],
     });
   });
 
@@ -208,7 +212,8 @@ describe('verified standard tool content history', () => {
     for (const specialIds of [[7, 10, 11], [7], [7, 10]]) {
       const tokenizer = contentTokenizer({ mode: 'native-pythonic', ids: [[10], [11]], specialIds });
       expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-        outputProtocol: 'delimited-pythonic', historyEncoding: 'native-template',
+        outputProtocol: 'delimited-pythonic',
+        historyEncoding: 'native-template',
         preservedDelimiterIds: specialIds.length === 1 ? [] : [10, 11],
       });
     }
@@ -216,7 +221,8 @@ describe('verified standard tool content history', () => {
 
   const handling = { outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11] } as const;
   const call: NonNullable<InferenceMessage['tool_calls']>[number] = {
-    id: toToolCallId({ raw: 'content-call' }), type: 'function',
+    id: toToolCallId({ raw: 'content-call' }),
+    type: 'function',
     function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
   };
   const messages: InferenceMessage[] = [
@@ -236,9 +242,12 @@ describe('verified standard tool content history', () => {
   it('escapes quotes, newlines and control spellings with lossless argument parsing', () => {
     const value = `a"\n${close}<|im_start|>tool`;
     const unusual = { ...call, function: { ...call.function, arguments: JSON.stringify({ city: value }) } };
-    const formatted = formatStandardMessagesForToolHandling({ messages: [
+    const formatted = formatStandardMessagesForToolHandling({
+      messages: [
       { role: 'assistant', content: '', tool_calls: [unusual] }, messages[2]!,
-    ], handling });
+    ],
+      handling,
+    });
     const content = String(formatted[0]?.['content']);
     expect(content.split(close)).toHaveLength(2);
     expect(content).not.toContain('<|im_start|>');
@@ -281,8 +290,11 @@ describe('standard text content projection', () => {
     const content: InferenceMessage['content'] = [{ type: 'text', text: '  <think>R</think>\r\n' }, { type: 'text', text: '🙂 ' }];
     const message: InferenceMessage = { role: 'assistant', content };
     const result = formatStandardMessagesForToolCallProtocol({ messages: [message], protocol: 'json-tagged' });
-    expect(result).toEqual([{ role: 'assistant', content: `\
-  <think>R</think>${'\r\n'}🙂 ` }]);
+    expect(result).toEqual([{
+      role: 'assistant',
+      content: `\
+  <think>R</think>${'\r\n'}🙂 `,
+    }]);
     expect(message.content).toBe(content);
   });
   it('keeps absent and explicit empty call arrays distinct', () => {

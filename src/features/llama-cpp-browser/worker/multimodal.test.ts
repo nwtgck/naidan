@@ -31,9 +31,11 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
       }
       return 0;
     }),
-    mtmd_input_chunks_size: vi.fn(async () => 1n), mtmd_input_chunks_get: vi.fn(async () => 5000n),
+    mtmd_input_chunks_size: vi.fn(async () => 1n),
+    mtmd_input_chunks_get: vi.fn(async () => 5000n),
     mtmd_input_chunk_get_type: vi.fn(async () => 0),
-    mtmd_helper_get_n_pos: vi.fn(async () => 11), mtmd_helper_get_n_tokens: vi.fn(async () => 40n),
+    mtmd_helper_get_n_pos: vi.fn(async () => 11),
+    mtmd_helper_get_n_tokens: vi.fn(async () => 40n),
     mtmd_input_chunk_get_tokens_text: vi.fn(async (_chunk: bigint, size: bigint) => {
       const view = new DataView(memory.buffer); if (pointerBytes === 8) view.setBigUint64(Number(size), 2n, true); else view.setUint32(Number(size), 2, true); return tokenPointer;
     }),
@@ -42,7 +44,9 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     }),
   };
   const core = {
-    pointerBytes, api, alloc: allocate,
+    pointerBytes,
+    api,
+    alloc: allocate,
     allocRecord: ({ name: _name }: { name: string }) => {
       const pointer = allocate({ bytes: 64 }); records.set(pointer, {}); return pointer;
     },

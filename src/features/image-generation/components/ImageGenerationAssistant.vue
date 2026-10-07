@@ -80,24 +80,41 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
     const view = props.workspace;
     if (lifetime.signal.aborted || !props.active || loaded.value !== chatId || view.store.value?.storeId !== storeId
       || view.selectedSessionId.value !== sessionId || !view.editorReady.value || view.editor.draftDisabled.value) return undefined;
-    return { ...bound, bindingId, revision: view.draftRevision.value,
-      prompt: view.editor.parameters.value.prompt, negativePrompt: view.editor.parameters.value.negativePrompt };
+    return {
+      ...bound,
+      bindingId,
+      revision: view.draftRevision.value,
+      prompt: view.editor.parameters.value.prompt,
+      negativePrompt: view.editor.parameters.value.negativePrompt,
+    };
   }
   try {
-    const unregister = registerImageGenerationAssistant({ chatId, create: () => createImageGenerationAssistantTools({ chatId,
-      bindingSignal: lifetime.signal, readTarget,
+    const unregister = registerImageGenerationAssistant({
+      chatId,
+      create: () => createImageGenerationAssistantTools({
+      chatId,
+      bindingSignal: lifetime.signal,
+      readTarget,
       readContext() {
         const view = props.workspace, parameters = view.editor.parameters.value;
         const model = view.editor.library.models.value.find(choice => choice.id === view.editor.library.main.value);
-        return { sessionTitle: view.currentSession.value?.title ?? '', model: model?.label ?? '', width: parameters.width, height: parameters.height,
-          steps: parameters.steps, guidance: parameters.guidance, count: view.count.value };
+        return {
+          sessionTitle: view.currentSession.value?.title ?? '',
+          model: model?.label ?? '',
+          width: parameters.width,
+          height: parameters.height,
+          steps: parameters.steps,
+          guidance: parameters.guidance,
+          count: view.count.value,
+        };
       },
       commit({ expected, edit }) {
         const current = readTarget();
         if (!current || current.bindingId !== expected.bindingId || current.revision !== expected.revision || current.prompt !== expected.prompt || current.negativePrompt !== expected.negativePrompt) return 'conflict';
         return props.workspace.setPromptDraft(edit) ? 'applied' : 'conflict';
       },
-    }) });
+    }),
+    });
     onCleanup(() => {
       lifetime.abort(); unregister();
     });
@@ -105,13 +122,15 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
     failure.value = error instanceof Error ? error.message : String(error); lifetime.abort();
   }
 }, { immediate: true, flush: 'sync' });
-const unsubscribe = storageService.subscribeToChanges({ listener: ({ event }) => {
+const unsubscribe = storageService.subscribeToChanges({
+  listener: ({ event }) => {
   switch (event.type) {
   case 'migration': loadingEpoch++; loaded.value = undefined; break;
   case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
   default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
   }
-} });
+},
+});
 onScopeDispose(() => {
   disposed = true; loadingEpoch++; unsubscribe();
   if (props.active && panel.value?.contains(document.activeElement) && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });

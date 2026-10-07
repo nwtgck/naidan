@@ -4,16 +4,25 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { imagePromptTranslationMessages, translateImagePrompt } from './request';
 const mocks = vi.hoisted(() => ({ provider: vi.fn() }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: mocks.provider }));
-const args = () => ({ prompt: `\
+const args = () => ({
+  prompt: `\
   a cat 🐈
-(weight:1.2)  `, language: 'ja' as const,
-endpoint: { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: undefined }, modelId: 'translator',
-parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled' as const });
+(weight:1.2)  `,
+  language: 'ja' as const,
+endpoint: { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: undefined },
+  modelId: 'translator',
+parameters: undefined,
+  signal: new AbortController().signal,
+  fakeLmDebugModeStatus: 'disabled' as const,
+});
 function providerWith({ result, output }: { result: ChatGenerationResult, output: string }) {
-  const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
+  const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
+    signal,
+    run: async ({ writer }) => {
     await writer.text({ type: 'reasoning', text: 'not part of the translation' });
     await writer.text({ type: 'text', text: output }); return result;
-  } }));
+  },
+  }));
   const provider: LmProvider = { chat, listModels: vi.fn(async () => []) };
   mocks.provider.mockResolvedValue(provider);
   return { provider, chat };
@@ -23,9 +32,12 @@ beforeEach(() => {
 });
 describe('transient read-only prompt translation', () => {
   it('uses an English system instruction and the original text verbatim in a user message', async () => {
-    const value = args(), { chat } = providerWith({ output: `\
+    const value = args(), { chat } = providerWith({
+      output: `\
   猫 🐈
-(weight:1.2)  `, result: { type: 'finished', next: 'user' } });
+(weight:1.2)  `,
+      result: { type: 'finished', next: 'user' },
+    });
     expect(await translateImagePrompt(value)).toBe(`\
   猫 🐈
 (weight:1.2)  `);
@@ -110,9 +122,12 @@ it('keeps empty successful native output separate from a runtime failure', async
 it('streams escaped text without reasoning and isolates a failing display observer', async () => {
   providerWith({ output: '<cat>', result: { type: 'finished', next: 'user' } });
   const text: string[] = [];
-  expect(await translateImagePrompt({ ...args(), onText({ text: value }) {
+  expect(await translateImagePrompt({
+    ...args(),
+    onText({ text: value }) {
     text.push(value); throw new Error('renderer failed');
-  } })).toBe('<cat>');
+  },
+  })).toBe('<cat>');
   expect(text).toContain('<cat>'); expect(text.join('')).not.toContain('not part of the translation');
 });
 it('still propagates native errors inside the owned runtime operation', async () => {

@@ -66,9 +66,14 @@ export function createGptOssGeneration({ emit }: {
       if (token !== '<|call|>') throw new Error('Harmony tool draft ended without a call boundary.');
       // Validation does not reserialize arguments or apply tool defaults.
       z.record(z.string(), z.json()).parse(JSON.parse(message.content));
-      const toolCall: ToolCall = { id: generateId<ToolCallId>(), type: 'function', function: {
-        name: message.recipient!.slice('functions.'.length), arguments: message.content,
-      } };
+      const toolCall: ToolCall = {
+        id: generateId<ToolCallId>(),
+        type: 'function',
+        function: {
+        name: message.recipient!.slice('functions.'.length),
+        arguments: message.content,
+      },
+      };
       parts.push({ type: 'tool_call', toolCall });
       emit({ event: { type: 'tool_call', index: active.index, toolCall } });
       terminal = 'tool_results';
@@ -127,9 +132,14 @@ export function createGptOssGeneration({ emit }: {
       if (active && active.kind !== 'tool_call') {
         emit({ event: { type: 'part_end', index: active.index, completeness: 'partial' } });
       }
-      emit({ event: { type: 'result', result: terminal === undefined
+      emit({
+        event: {
+        type: 'result',
+        result: terminal === undefined
         ? { type: 'interrupted', reason }
-        : { type: 'finished', next: terminal } } });
+        : { type: 'finished', next: terminal },
+      },
+      });
       active = undefined; activePart = undefined;
     },
     assistant(): InferenceMessage | undefined {
@@ -170,7 +180,9 @@ export function createGptOssGeneration({ emit }: {
       if (reasoning !== undefined && hasText && calls.length > 0) return undefined;
       // Match the delivered-parts projection, including absent vs. empty text.
       // Cache history currently uses JSON identity, so property order also agrees.
-      return exactObject<Omit<InferenceMessage, 'tool_call_id'>>()({ role: 'assistant', content: hasText ? content : [],
+      return exactObject<Omit<InferenceMessage, 'tool_call_id'>>()({
+        role: 'assistant',
+        content: hasText ? content : [],
         ...(calls.length ? { tool_calls: calls } : {}),
         ...(reasoning === undefined ? {} : { reasoning }),
       });

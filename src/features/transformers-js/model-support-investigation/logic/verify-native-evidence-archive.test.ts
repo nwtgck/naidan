@@ -31,41 +31,78 @@ afterEach(() => {
 function records() {
   const context = { runId: 'native-archive', workerEpoch: 1, requestId: 'native-archive-first-turn', generationCallId: 1 };
   const provider: ProductionProviderCaptureSnapshot = {
-    format: 'production-provider-capture-v2', runId: context.runId, modelId: 'fixture/model', plan: 'first-only',
-    run: { status: 'completed' }, lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open',
+    format: 'production-provider-capture-v2',
+    runId: context.runId,
+    modelId: 'fixture/model',
+    plan: 'first-only',
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
     events: [{ sequence: 0, kind: 'run-started', activeRequestId: undefined }],
     requests: [{
-      runId: context.runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
+      runId: context.runId,
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
       input: {
         messages: [{ role: 'user', content: 'Template probe user message.' }],
         parameters: { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         tools: [],
       },
       trace: {
-        format: 'production-provider-trace-v2', requestId: context.requestId, completeness: 'complete', failure: undefined,
+        format: 'production-provider-trace-v2',
+        requestId: context.requestId,
+        completeness: 'complete',
+        failure: undefined,
         limits: { maximumEvents: 20, maximumCharacters: 1024, maximumFieldCharacters: 16384 },
-        events: [], lateEvents: [], retainedCharacters: 0,
+        events: [],
+        lateEvents: [],
+        retainedCharacters: 0,
         settled: { sequence: 0, outcome: { status: 'fulfilled' }, events: [], completeness: 'complete', failure: undefined },
       },
     }],
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
   const native: ProductionProviderNativeCollectionSnapshot = {
-    format: 'production-provider-native-collection-v1', runId: context.runId, maximumWorkerEpochs: 8,
-    phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [],
+    format: 'production-provider-native-collection-v1',
+    runId: context.runId,
+    maximumWorkerEpochs: 8,
+    phase: 'finished',
+    unrecordedWorkerCreations: 0,
+    incompleteReasons: [],
     epochs: [{
       workerEpoch: 1,
-      lifetime: { status: 'observed', value: {
-        runId: context.runId, workerEpoch: 1, session: 'active', issuedCalls: [context],
-        loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }], incompleteReasons: [],
-      } },
-      collection: { status: 'returned', result: { status: 'captured', capture: {
-        schemaVersion: 1, runId: context.runId, workerEpoch: 1, byteOrder: 'little-endian',
+      lifetime: {
+        status: 'observed',
+        value: {
+        runId: context.runId,
+        workerEpoch: 1,
+        session: 'active',
+        issuedCalls: [context],
+        loadRequests: [{ requestedModelId: 'fixture/model', requestedRevision: undefined }],
+        incompleteReasons: [],
+      },
+      },
+      collection: {
+        status: 'returned',
+        result: {
+        status: 'captured',
+        capture: {
+        schemaVersion: 1,
+        runId: context.runId,
+        workerEpoch: 1,
+        byteOrder: 'little-endian',
         limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
         calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
         events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      } } },
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
+      },
+      },
     }],
   };
   return { provider, native };
@@ -108,36 +145,52 @@ async function finalizeArchive({ zip }: { zip: JSZip }): Promise<Blob> {
 
 describe('Native evidence references beyond the outer archive manifest', () => {
   it.each([1, 0])('validates image metadata after a consistent outer manifest is rebuilt: height %s', async height => {
-    const blob = await archive({ extraBinary: 'none', changeIndex: ({ json }) => {
+    const blob = await archive({
+      extraBinary: 'none',
+      changeIndex: ({ json }) => {
       const envelope = JSON.parse(json);
       const capture = envelope.epochs[0].collection.result.capture;
-      capture.events.push({ kind: 'inputs', identity: capture.events[0].identity, phase: 'native-kwargs', values: [
+      capture.events.push({
+        kind: 'inputs',
+        identity: capture.events[0].identity,
+        phase: 'native-kwargs',
+        values: [
         { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[height, 2]] } },
-      ] });
+      ],
+      });
       return JSON.stringify(envelope);
-    } });
+    },
+    });
     if (height === 0) await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
     else await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: 'native-archive' });
   });
   it('accepts an exporter-produced native index with exactly its referenced tensor bytes', async () => {
     await expect(verifyGeneratedEvidenceArchive({ blob: await archive({ changeIndex: undefined, extraBinary: 'none' }) })).resolves.toEqual({
-      runId: 'native-archive', fileCount: 5, packageStatus: 'valid-partial',
+      runId: 'native-archive',
+      fileCount: 5,
+      packageStatus: 'valid-partial',
     });
   });
 
   it('rejects a wrong native tensor digest even when every outer manifest digest matches', async () => {
-    const blob = await archive({ extraBinary: 'none', changeIndex: ({ json, sha256 }) => {
+    const blob = await archive({
+      extraBinary: 'none',
+      changeIndex: ({ json, sha256 }) => {
       expect(json.split(sha256)).toHaveLength(2);
       return json.replace(sha256, '0'.repeat(64));
-    } });
+    },
+    });
     await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
   });
 
   it('rejects a dangling native tensor reference even when every archived file is accounted for', async () => {
-    const blob = await archive({ extraBinary: 'none', changeIndex: ({ json, path }) => {
+    const blob = await archive({
+      extraBinary: 'none',
+      changeIndex: ({ json, path }) => {
       expect(json.split(path)).toHaveLength(2);
       return json.replace(path, 'generation-native/tensors/000002.bin');
-    } });
+    },
+    });
     await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
   });
 

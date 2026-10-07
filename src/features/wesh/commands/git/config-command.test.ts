@@ -103,10 +103,12 @@ describe('git command config transport', () => {
   });
 
   it('preserves sectionless persisted entries for listing without widening CLI key grammar', () => {
-    expect(parseConfig({ text: `\
+    expect(parseConfig({
+      text: `\
 foo = bar
 flag
-` })).toEqual(new Map([
+`,
+    })).toEqual(new Map([
       ['foo', { kind: 'explicit', value: 'bar' }],
       ['flag', { kind: 'implicit-boolean' }],
     ]));
@@ -153,10 +155,12 @@ line2`,
     ];
     for (const value of values) {
       const persisted = TEST_ONLY.formatConfigValueForWrite({ value });
-      const config = parseConfig({ text: `\
+      const config = parseConfig({
+        text: `\
 [demo]
 value = ${persisted}
-` });
+`,
+      });
       expect(getConfigValue({ config, key: 'demo.value' })).toBe(value);
     }
   });

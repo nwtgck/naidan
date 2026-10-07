@@ -96,9 +96,13 @@ describe('durable, wall-clock-independent image session activity', () => {
     const { store, a } = await setup();
     const before = await journal();
     const run = generationRunFixture({ id: 'run-aa', sessionId: a.id, count: 1, seed: '42' });
-    await expect(service.createImageGenerationRun({ store, run, writeInputs: async () => {
+    await expect(service.createImageGenerationRun({
+      store,
+      run,
+      writeInputs: async () => {
       throw new Error('input failure');
-    } })).rejects.toThrow('input failure');
+    },
+    })).rejects.toThrow('input failure');
     expect(await journal()).toEqual(before);
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
   });
@@ -207,8 +211,11 @@ describe('durable, wall-clock-independent image session activity', () => {
     const { store, a } = await setup();
     const before = await journal();
     const file = await fs.file({ path: `${root}/session-activity.json` });
-    file.text = JSON.stringify({ ...before, sequence: before.sequence + 1,
-      pending: [{ sessionId: idToRaw({ id: a.id }), runId: 'run-orphan', order: before.sequence + 1 }] });
+    file.text = JSON.stringify({
+      ...before,
+      sequence: before.sequence + 1,
+      pending: [{ sessionId: idToRaw({ id: a.id }), runId: 'run-orphan', order: before.sequence + 1 }],
+    });
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
     expect((await journal()).pending).toEqual([]);
     expect((await journal()).sequence).toBe(before.sequence + 1);
@@ -223,8 +230,11 @@ describe('durable, wall-clock-independent image session activity', () => {
     const failed = await service.listImageGenerationSessions({ store });
     expect(failed.warningCount).toBe(1);
     expect(file.text).toBe(raw);
-    file.text = JSON.stringify({ ...value, sequence: value.sequence + 1,
-      pending: value.pending.map(entry => ({ ...entry, order: value.sequence + 1 })) });
+    file.text = JSON.stringify({
+      ...value,
+      sequence: value.sequence + 1,
+      pending: value.pending.map(entry => ({ ...entry, order: value.sequence + 1 })),
+    });
     const mismatching = file.text;
     expect((await service.listImageGenerationSessions({ store })).warningCount).toBe(1);
     expect(file.text).toBe(mismatching);

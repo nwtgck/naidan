@@ -73,9 +73,15 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     dtypes.set(type, (dtypes.get(type) ?? 0) + 1); tensorCount++;
     largestElements = Math.max(largestElements, tensor.shape.reduce((n, value) => n * value, 1));
   }
-  return { path, files: files.filter(entry => required.has(entry.path)), summary: {
-    tensorCount, dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512), largestElements,
-  } };
+  return {
+    path,
+    files: files.filter(entry => required.has(entry.path)),
+    summary: {
+    tensorCount,
+    dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),
+    largestElements,
+  },
+  };
 }
 export const TEST_ONLY = {
 };

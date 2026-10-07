@@ -31,9 +31,12 @@ it('reference tags do not collide with ordinary objects or arrays', () => {
 
 it('non-finite values, accessors, prototypes, sparse arrays, aliases and unsupported values fail closed', () => {
   let calls = 0;
-  const getter = Object.defineProperty({}, 'value', { enumerable: true, get() {
+  const getter = Object.defineProperty({}, 'value', {
+    enumerable: true,
+    get() {
     calls++; return 2;
-  } });
+  },
+  });
   const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
   const shared = new Uint8Array(new SharedArrayBuffer(3));
   const detached = new Uint8Array([3]); structuredClone(detached.buffer, { transfer: [detached.buffer] });
@@ -72,9 +75,11 @@ it('lengths and recursion are bounded before allocating a declared container', (
 
 it('reports the violated byte or string bound without including payload content', () => {
   expect(() => encode({ value: { data: 'x'.repeat(21848) }, limit: 16384 })).toThrow(expect.objectContaining({
-    code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'string-code-units', limit: 16384, observed: 21848 },
+    code: 'RESOURCE_EXHAUSTED',
+    details: { scope: 'rpc-codec', constraint: 'string-code-units', limit: 16384, observed: 21848 },
   }));
   expect(() => encode({ value: new Uint8Array(16384), limit: 16384 })).toThrow(expect.objectContaining({
-    code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint: 'encoded-bytes', limit: 16384, observed: 16387 },
+    code: 'RESOURCE_EXHAUSTED',
+    details: { scope: 'rpc-codec', constraint: 'encoded-bytes', limit: 16384, observed: 16387 },
   }));
 });

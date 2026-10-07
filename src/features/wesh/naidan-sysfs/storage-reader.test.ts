@@ -11,29 +11,50 @@ import { NaidanSysfsProvider } from './provider';
 import { createNaidanSysfsRemoteReader, createRemoteNaidanSysfsStorageReader } from './storage-reader';
 
 const legacyMetadata = {
-  id: 'chat-legacy', title: 'Legacy chat', createdAt: 1, updatedAt: 3,
-  currentLeafId: 'tool', autoTitleEnabled: true, titleModelId: 'title-model',
+  id: 'chat-legacy',
+  title: 'Legacy chat',
+  createdAt: 1,
+  updatedAt: 3,
+  currentLeafId: 'tool',
+  autoTitleEnabled: true,
+  titleModelId: 'title-model',
 };
 const legacyGroup = {
-  id: 'group-legacy', name: 'Legacy group', updatedAt: 3,
-  isCollapsed: false, autoTitleEnabled: true, titleModelId: 'title-model',
+  id: 'group-legacy',
+  name: 'Legacy group',
+  updatedAt: 3,
+  isCollapsed: false,
+  autoTitleEnabled: true,
+  titleModelId: 'title-model',
 };
 const legacyTool = {
-  id: 'tool', role: 'tool', timestamp: 3,
+  id: 'tool',
+  role: 'tool',
+  timestamp: 3,
   results: [{ toolCallId: 'call', status: 'success', content: { type: 'text', text: '\uFEFFresult' } }],
   replies: { items: [] },
 };
 const legacyContent = {
   currentLeafId: 'tool',
-  root: { items: [{
-    id: 'user', role: 'user', timestamp: 1, content: '  question  ',
-    replies: { items: [{
-      id: 'assistant', role: 'assistant', timestamp: 2,
-      thinking: '  reasoning  ', content: 'answer [Aborted]',
+  root: {
+    items: [{
+    id: 'user',
+    role: 'user',
+    timestamp: 1,
+    content: '  question  ',
+    replies: {
+      items: [{
+      id: 'assistant',
+      role: 'assistant',
+      timestamp: 2,
+      thinking: '  reasoning  ',
+      content: 'answer [Aborted]',
       toolCalls: [{ id: 'call', type: 'function', function: { name: 'weather', arguments: '{ "city": "Tokyo" }' } }],
       replies: { items: [legacyTool] },
-    }] },
-  }] },
+    }],
+    },
+  }],
+  },
 };
 
 describe('Naidan sysfs current-format transfer boundary', () => {
@@ -68,7 +89,9 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     const tool = assistant?.replies.items[0];
     expect(user).toMatchObject({ role: 'user', createdAt: 1, parts: [{ type: 'text', text: '  question  ' }] });
     expect(assistant).toMatchObject({
-      role: 'assistant', createdAt: 2, interruption: undefined,
+      role: 'assistant',
+      createdAt: 2,
+      interruption: undefined,
       parts: [
         { type: 'reasoning', text: '  reasoning  ', completeness: undefined },
         { type: 'text', text: 'answer [Aborted]', completeness: undefined },
@@ -102,8 +125,11 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     expect((await reader.loadChatGroup({ chatGroupId: toChatGroupId({ raw: 'group-legacy' }) }))?.titleGeneration).toEqual(restored?.titleGeneration);
 
     const provider = new NaidanSysfsProvider({
-      reader, visibility: 'current_chat_only', binaryObjectAccess: 'data',
-      currentChatId: 'chat-legacy', currentChatGroupId: 'group-legacy',
+      reader,
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
+      currentChatId: 'chat-legacy',
+      currentChatGroupId: 'group-legacy',
     });
     const handle = await provider.open({
       path: '/sys/fs/naidan/chats/chat-legacy/content-json/2-assistant-assistant.json',
@@ -115,7 +141,8 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     await handle.close();
     const rendered: unknown = JSON.parse(new TextDecoder().decode(buffer.subarray(0, bytesRead)));
     expect(rendered).toMatchObject({
-      role: 'assistant', createdAt: 2,
+      role: 'assistant',
+      createdAt: 2,
       parts: [
         { type: 'reasoning', text: '  reasoning  ' },
         { type: 'text', text: 'answer [Aborted]' },
@@ -137,11 +164,15 @@ describe('Naidan sysfs current-format transfer boundary', () => {
 
   it('requires V2 in nested replies as well as the root message', () => {
     const content = {
-      root: { items: [{
-        id: 'parent', role: 'user', createdAt: 1,
+      root: {
+        items: [{
+        id: 'parent',
+        role: 'user',
+        createdAt: 1,
         parts: [{ type: 'text', text: 'question' }],
         replies: { items: [legacyTool] },
-      }] },
+      }],
+      },
     };
     expect(naidanSysfsRemoteChatContentPayloadSchema.safeParse(content).success).toBe(false);
   });

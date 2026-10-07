@@ -31,9 +31,12 @@ describe('explicit single-text replay observations', () => {
   });
 
   it('requires a real native end token for complete parts and a finished result', () => {
-    const invocation = { ...sourceInvocation, stream: [
+    const invocation = {
+      ...sourceInvocation,
+      stream: [
       ...sourceInvocation.stream.slice(0, -1), { operation: 'put' as const, groups: [['2']] }, { operation: 'end' as const },
-    ] };
+    ],
+    };
     const completed: ProductionProviderTraceEvent[] = [
       ...observedEvents.slice(0, -1),
       { sequence: 5, phase: 'before-settlement', kind: 'part_text', messageId: 'assistant', partId: 'part', index: 0, partType: 'text', text: 'Hi there', completeness: 'complete' },
@@ -80,9 +83,18 @@ describe('explicit single-text replay observations', () => {
     for (const endTokenIds of [[], ['2', '2'], ['not-a-token']]) {
       expect(() => validateSingleTextPartsContract({ contract: { endTokenIds } })).toThrow();
     }
-    expect(() => verifySingleTextPartsObservation({ recordedEvents, invocation: { ...sourceInvocation, stream: [
+    expect(() => verifySingleTextPartsObservation({
+      recordedEvents,
+      invocation: {
+      ...sourceInvocation,
+      stream: [
       { operation: 'put', groups: [['10']] }, { operation: 'put', groups: [['2', '31']] }, { operation: 'end' },
-    ] }, contract, observedEvents, finalized })).toThrow('final native end token');
+    ],
+    },
+      contract,
+      observedEvents,
+      finalized,
+    })).toThrow('final native end token');
   });
 });
 
@@ -93,7 +105,9 @@ describe('continuation input observation', () => {
   it('compares old text only after retaining the exact applied part identity and completeness', () => {
     const before = structuredClone(input);
     expect(projectSingleTextReplayInput({ input, precedingEvents: observedEvents })).toEqual({
-      messages: [{ role: 'user', content: 'Prompt' }, { role: 'assistant', content: 'Hi there' }], tools: [], parameters: { temperature: 0 },
+      messages: [{ role: 'user', content: 'Prompt' }, { role: 'assistant', content: 'Hi there' }],
+      tools: [],
+      parameters: { temperature: 0 },
     });
     expect(input).toEqual(before);
   });

@@ -212,9 +212,11 @@ e`);
     });
     const afterNewline = await collect({
       values: iterateXargsStandardItems({
-        textChunks: iterateValues({ values: [`\
+        textChunks: iterateValues({
+          values: [`\
 alpha
-STOP`] }),
+STOP`],
+        }),
         eofString: 'STOP',
       }),
     });
@@ -241,9 +243,11 @@ STOP`] }),
   it('rejects quotes that cross a physical newline in standard input', async () => {
     await expect(collect({
       values: iterateXargsStandardItems({
-        textChunks: iterateValues({ values: [`\
+        textChunks: iterateValues({
+          values: [`\
 'alpha
-beta'`] }),
+beta'`],
+        }),
         eofString: undefined,
       }),
     })).rejects.toThrow('unmatched quote');

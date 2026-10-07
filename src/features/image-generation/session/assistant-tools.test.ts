@@ -7,8 +7,15 @@ import { getImageGenerationToolsForChat, registerImageGenerationAssistant } from
 import type { ImageGenerationPromptEdit, ImageGenerationPromptTarget } from './prompt-access';
 
 function harness() {
-  const initial: ImageGenerationPromptTarget = { storeId: toImageGenerationStoreId({ raw: 'store-aa' }), sessionId: toImageGenerationSessionId({ raw: 'session-aa' }),
-    bindingId: toImageGenerationBindingId({ raw: 'binding-aa' }), revision: toImageGenerationDraftRevisionId({ raw: 'revision-aa' }), chatId: toChatId({ raw: 'chat-aa' }), prompt: '日本語で入力', negativePrompt: '' };
+  const initial: ImageGenerationPromptTarget = {
+    storeId: toImageGenerationStoreId({ raw: 'store-aa' }),
+    sessionId: toImageGenerationSessionId({ raw: 'session-aa' }),
+    bindingId: toImageGenerationBindingId({ raw: 'binding-aa' }),
+    revision: toImageGenerationDraftRevisionId({ raw: 'revision-aa' }),
+    chatId: toChatId({ raw: 'chat-aa' }),
+    prompt: '日本語で入力',
+    negativePrompt: '',
+  };
   let target: ImageGenerationPromptTarget | undefined = { ...initial };
   const binding = new AbortController(), signal = new AbortController();
   const ensureApproval = vi.fn<EnsureApproval>().mockResolvedValue({ status: 'approved' });
@@ -16,17 +23,34 @@ function harness() {
     if (!target) return 'conflict';
     target = { ...target, [edit.field]: edit.value, revision: toImageGenerationDraftRevisionId({ raw: 'revision-new' }) }; return 'applied';
   });
-  const create = () => createImageGenerationAssistantTools({ chatId: initial.chatId, bindingSignal: binding.signal, readTarget: () => target,
-    readContext: () => ({ sessionTitle: '日本語セッション', model: 'Custom model', width: 512, height: 768, steps: 8, guidance: 1, count: 4 }), commit });
+  const create = () => createImageGenerationAssistantTools({
+    chatId: initial.chatId,
+    bindingSignal: binding.signal,
+    readTarget: () => target,
+    readContext: () => ({ sessionTitle: '日本語セッション', model: 'Custom model', width: 512, height: 768, steps: 8, guidance: 1, count: 4 }),
+    commit,
+  });
   const tools = create();
   const read = tools.find(tool => tool.name === 'image_generation_get_context'), write = tools.find(tool => tool.name === 'image_generation_set_prompt');
   if (!read || !write) throw new Error('Expected prompt tools');
   const context = { signal: signal.signal, approvalContext: { chatId: initial.chatId, ensureApproval } };
   const args = { expectedRevision: idToRaw({ id: initial.revision }), field: 'prompt', value: 'An English prompt' };
-  return { initial, create, tools, read, write, context, args, commit, ensureApproval, binding, signal,
+  return {
+    initial,
+    create,
+    tools,
+    read,
+    write,
+    context,
+    args,
+    commit,
+    ensureApproval,
+    binding,
+    signal,
     replace({ value }: { value: ImageGenerationPromptTarget | undefined }) {
       target = value;
-    } };
+    },
+  };
 }
 
 describe('ephemeral Workspace tool protocol', () => {
@@ -39,8 +63,11 @@ describe('ephemeral Workspace tool protocol', () => {
     expect(JSON.parse(outcome.content)).toMatchObject({ prompt: '日本語で入力', model: 'Custom model', revision: 'revision-aa', count: 4 });
     expect(h.ensureApproval).not.toHaveBeenCalled();
     expect(await h.write.execute({ ...h.context, args: h.args })).toMatchObject({ status: 'success' });
-    expect(h.ensureApproval).toHaveBeenCalledWith(expect.objectContaining({ chatId: h.initial.chatId, action: expect.objectContaining({ id: 'tool.image_generation.set_prompt' }),
-      preview: { type: 'image_generation_prompt', field: 'prompt', before: '日本語で入力', after: 'An English prompt' } }));
+    expect(h.ensureApproval).toHaveBeenCalledWith(expect.objectContaining({
+      chatId: h.initial.chatId,
+      action: expect.objectContaining({ id: 'tool.image_generation.set_prompt' }),
+      preview: { type: 'image_generation_prompt', field: 'prompt', before: '日本語で入力', after: 'An English prompt' },
+    }));
     expect(h.commit).toHaveBeenCalledOnce();
   });
   it.each(['wrong revision', 'wrong chat', 'missing chat', 'unknown field', 'legacy protocol', 'detached', 'turn aborted'])('rejects %s without permission or mutation', async cause => {

@@ -41,7 +41,10 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
     const notExecuted = observation === undefined || observation.status === 'not-run' || observation.status === 'unavailable';
     const outcome = notExecuted && selected === false ? 'not-selected' : observation?.status ?? 'not-recorded';
     results.push({
-      id, kind, context, outcome,
+      id,
+      kind,
+      context,
+      outcome,
       detail: observation?.error === undefined ? observation?.reason : `${observation.error.name}: ${observation.error.message}`,
       comparisonMismatch,
       needsAttention: outcome === 'failed' || outcome === 'blocked' || outcome === 'not-run'
@@ -55,8 +58,11 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
     // Provider envelope was refused. Neither fulfillment nor collection is a
     // correctness oracle for the generated response or its native replay.
     const requests = summary?.requests ?? provider!.requests.map(request => ({
-      requestId: request.requestId, scenario: request.scenario, status: request.status,
-      notStartedReason: request.notStartedReason, outcome: request.trace.settled?.outcome.status,
+      requestId: request.requestId,
+      scenario: request.scenario,
+      status: request.status,
+      notStartedReason: request.notStartedReason,
+      outcome: request.trace.settled?.outcome.status,
       completeness: request.trace.completeness,
     }));
     for (const request of requests) {
@@ -85,28 +91,59 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
         break;
       default: { const exhaustive: never = request.status; throw new Error('Unhandled Provider request status: ' + exhaustive); }
       }
-      results.push({ id: `provider-${request.requestId}`, kind: providerFeatureKind({ scenario: request.scenario }),
-        context: `Provider / ${request.scenario}`, outcome, detail, comparisonMismatch: false,
+      results.push({
+        id: `provider-${request.requestId}`,
+        kind: providerFeatureKind({ scenario: request.scenario }),
+        context: `Provider / ${request.scenario}`,
+        outcome,
+        detail,
+        comparisonMismatch: false,
         needsAttention: outcome === 'failed' || outcome === 'blocked' || outcome === 'not-run',
       });
       switch (request.completeness) {
       case 'complete': break;
       case 'incomplete':
-        results.push({ id: `provider-recording-${request.requestId}`, kind: 'stage', context: `Provider / ${request.scenario}`,
-          outcome: 'not-recorded', detail: 'The bounded callback projection is incomplete; the request outcome above is unchanged.', comparisonMismatch: false, needsAttention: true });
+        results.push({
+          id: `provider-recording-${request.requestId}`,
+          kind: 'stage',
+          context: `Provider / ${request.scenario}`,
+          outcome: 'not-recorded',
+          detail: 'The bounded callback projection is incomplete; the request outcome above is unchanged.',
+          comparisonMismatch: false,
+          needsAttention: true,
+        });
         break;
       default: { const exhaustive: never = request.completeness; throw new Error('Unhandled Provider completeness: ' + exhaustive); }
       }
     }
-    if (run.loadAttempts.length === 0) results.push({ id: 'reference-not-selected', kind: 'reference-load', context: 'Reference', outcome: 'not-selected',
-      detail: 'This investigation used the ordinary Provider route; the separate Reference comparison was not executed.', comparisonMismatch: false, needsAttention: false });
+    if (run.loadAttempts.length === 0) results.push({
+      id: 'reference-not-selected',
+      kind: 'reference-load',
+      context: 'Reference',
+      outcome: 'not-selected',
+      detail: 'This investigation used the ordinary Provider route; the separate Reference comparison was not executed.',
+      comparisonMismatch: false,
+      needsAttention: false,
+    });
   } else {
     const production = run.productionLane.observation ?? run.productionLane.partialObservation;
     add({ id: 'production-first-turn', kind: 'first-turn', context: 'Production', observation: production?.firstTurn, selected: plan?.generation, comparisonMismatch: false });
-    add({ id: 'production-continuity', kind: 'continuity', context: 'Production', observation: production?.continuity, selected: plan?.continuity,
-      comparisonMismatch: production?.continuity?.status === 'passed' && production.continuity.prefixComparison.exactPrefixMatch === false });
-    add({ id: 'production-tool-result', kind: 'tool-result', context: 'Production', observation: production?.toolResultContinuation, selected: plan?.capabilityProbes,
-      comparisonMismatch: production?.toolResultContinuation?.status === 'passed' && !production.toolResultContinuation.inputTokenExactMatch });
+    add({
+      id: 'production-continuity',
+      kind: 'continuity',
+      context: 'Production',
+      observation: production?.continuity,
+      selected: plan?.continuity,
+      comparisonMismatch: production?.continuity?.status === 'passed' && production.continuity.prefixComparison.exactPrefixMatch === false,
+    });
+    add({
+      id: 'production-tool-result',
+      kind: 'tool-result',
+      context: 'Production',
+      observation: production?.toolResultContinuation,
+      selected: plan?.capabilityProbes,
+      comparisonMismatch: production?.toolResultContinuation?.status === 'passed' && !production.toolResultContinuation.inputTokenExactMatch,
+    });
     add({ id: 'production-reasoning', kind: 'reasoning', context: 'Production', observation: production?.reasoning, selected: plan?.capabilityProbes, comparisonMismatch: false });
     add({ id: 'production-multimodal', kind: 'multimodal', context: 'Production', observation: production?.multimodal, selected: plan?.capabilityProbes, comparisonMismatch: false });
   }
@@ -115,8 +152,14 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
   // actual stage failures/blockers are repeated here, with their own reasons.
   for (const step of run.steps) {
     if (step.status !== 'failed' && step.status !== 'blocked') continue;
-    add({ id: `stage-${step.id}`, kind: 'stage', context: step.id,
-      observation: { status: step.status, reason: step.detail }, selected: undefined, comparisonMismatch: false });
+    add({
+      id: `stage-${step.id}`,
+      kind: 'stage',
+      context: step.id,
+      observation: { status: step.status, reason: step.detail },
+      selected: undefined,
+      comparisonMismatch: false,
+    });
   }
   for (const item of run.templateBehavior?.cases ?? []) {
     add({ id: `template-${item.caseId}`, kind: 'template', context: item.caseId, observation: item, selected: undefined, comparisonMismatch: false });
@@ -129,8 +172,14 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
     }
     add({ id: `${attempt.attemptId}-natural`, kind: 'natural-generation', context, observation: attempt.naturalGeneration, selected: plan?.generation, comparisonMismatch: false });
     const probe = attempt.toolProtocolProbe;
-    add({ id: `${attempt.attemptId}-tools`, kind: 'tool-probe', context, observation: probe, selected: plan?.capabilityProbes,
-      comparisonMismatch: probe?.status === 'observed' && !probe.exactMatch });
+    add({
+      id: `${attempt.attemptId}-tools`,
+      kind: 'tool-probe',
+      context,
+      observation: probe,
+      selected: plan?.capabilityProbes,
+      comparisonMismatch: probe?.status === 'observed' && !probe.exactMatch,
+    });
     if (probe === undefined) continue;
     switch (probe.status) {
     case 'observed':

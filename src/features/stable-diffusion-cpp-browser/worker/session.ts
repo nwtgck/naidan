@@ -199,10 +199,21 @@ export function createImageGenerationSession({ core, helpers, reader }: {
           case 'on': break;
           default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
           }
-          emit({ event: 'file-read', stage: 'generation', message: 'Cumulative per-file reads; readMs includes blobReadMs. cacheHits counts fully cached nonempty reads.', fields: {
-            slot, path: entry.path.slice(0, 512), report, ...source.metrics(), fileBytes: source.size,
-            cachePageBytes: MODEL_FILE_PAGE_BYTES, cacheCapacityBytes: MODEL_FILE_CACHE_BYTES, cacheRetainedBytes: fileReadCache.retainedBytes(),
-          } });
+          emit({
+            event: 'file-read',
+            stage: 'generation',
+            message: 'Cumulative per-file reads; readMs includes blobReadMs. cacheHits counts fully cached nonempty reads.',
+            fields: {
+            slot,
+            path: entry.path.slice(0, 512),
+            report,
+            ...source.metrics(),
+            fileBytes: source.size,
+            cachePageBytes: MODEL_FILE_PAGE_BYTES,
+            cacheCapacityBytes: MODEL_FILE_CACHE_BYTES,
+            cacheRetainedBytes: fileReadCache.retainedBytes(),
+          },
+          });
         };
         let previousRun = source.metrics();
         reportFinalReads.push(() => {
@@ -210,13 +221,25 @@ export function createImageGenerationSession({ core, helpers, reader }: {
           const current = source.metrics();
           const debug = active?.request.debug;
           switch (debug) {
-          case 'on': emit({ event: 'file-read', stage: 'generation', message: 'Per-run file reads (not lifetime totals)', fields: {
-            metric: 'file-read-run', perfVersion: 1, slot, path: entry.path.slice(0, 512),
-            reads: current.reads - previousRun.reads, bytes: current.bytes - previousRun.bytes,
-            readMs: current.readMs - previousRun.readMs, blobReads: current.blobReads - previousRun.blobReads,
-            blobBytes: current.blobBytes - previousRun.blobBytes, blobReadMs: current.blobReadMs - previousRun.blobReadMs,
-            cacheHits: current.cacheHits - previousRun.cacheHits, cacheHitBytes: current.cacheHitBytes - previousRun.cacheHitBytes,
-          } }); break;
+          case 'on': emit({
+            event: 'file-read',
+            stage: 'generation',
+            message: 'Per-run file reads (not lifetime totals)',
+            fields: {
+            metric: 'file-read-run',
+            perfVersion: 1,
+            slot,
+            path: entry.path.slice(0, 512),
+            reads: current.reads - previousRun.reads,
+            bytes: current.bytes - previousRun.bytes,
+            readMs: current.readMs - previousRun.readMs,
+            blobReads: current.blobReads - previousRun.blobReads,
+            blobBytes: current.blobBytes - previousRun.blobBytes,
+            blobReadMs: current.blobReadMs - previousRun.blobReadMs,
+            cacheHits: current.cacheHits - previousRun.cacheHits,
+            cacheHitBytes: current.cacheHitBytes - previousRun.cacheHitBytes,
+          },
+          }); break;
           case 'off': case undefined: break;
           default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
           }
@@ -263,10 +286,22 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     // enforce device limits; maxBufferSize is not a total GPU memory budget.
     core.setField('sd_ctx_params_t', ctxParams, 'max_vram', request.gpuBudgetMiB === undefined ? 0n : text({ value: String(request.gpuBudgetMiB / 1024) }));
     log({ message: `Requested WebGPU compute and ${residency.paramsBackend || '(runtime backend)'} weight residency, eager_load=${residency.eagerLoad}, gpuBudgetMiB=${request.gpuBudgetMiB ?? 'unset'}, modelBytes=${modelBytes}` });
-    emit({ event: 'native', stage: 'model-load', message: 'Requested weight placement, not proof of every tensor or operation running on GPU', fields: {
-      requested: request.weightResidency, resolved: residency.resolved, requestedComputeBackend: 'WebGPU', requestedParamsBackend: residency.paramsBackend || '(runtime backend)',
-      eagerLoad: residency.eagerLoad, autoFit: false, gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset', modelBytes, bf16WeightType: request.parameters.bf16WeightType,
-    } });
+    emit({
+      event: 'native',
+      stage: 'model-load',
+      message: 'Requested weight placement, not proof of every tensor or operation running on GPU',
+      fields: {
+      requested: request.weightResidency,
+      resolved: residency.resolved,
+      requestedComputeBackend: 'WebGPU',
+      requestedParamsBackend: residency.paramsBackend || '(runtime backend)',
+      eagerLoad: residency.eagerLoad,
+      autoFit: false,
+      gpuBudgetMiB: request.gpuBudgetMiB ?? 'unset',
+      modelBytes,
+      bf16WeightType: request.parameters.bf16WeightType,
+    },
+    });
     const { flashAttention, bf16WeightType, conditioningCacheSize, modelArguments } = request.parameters;
     switch (bf16WeightType) {
     case 'f32': core.setField('sd_ctx_params_t', ctxParams, 'webgpu_bf16_type', core.constant('SD_TYPE_F32')); break;
@@ -295,8 +330,14 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     artifact ??= request.artifact;
     const hasInputImages = !!request.imageInputs.initImage || request.imageInputs.referenceImages.length > 0;
     previewDecoding = false;
-    active = { ...run, latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } }, capturedStep: 0,
-      samplingSteps: hasInputImages ? undefined : request.parameters.steps, samplingState: hasInputImages ? 'input-images' : 'denoising', cancelRequested: false };
+    active = {
+      ...run,
+      latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } },
+      capturedStep: 0,
+      samplingSteps: hasInputImages ? undefined : request.parameters.steps,
+      samplingState: hasInputImages ? 'input-images' : 'denoising',
+      cancelRequested: false,
+    };
     // A requested observation may have started while idle. Reserve this run
     // first, then let that read finish before entering native code.
     if (inspection) await inspection;
@@ -329,7 +370,11 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         distilledGuidance, vaeTiling, vaeTileSize, qwenVaePolicy, flashAttention } = request.parameters;
       const params = keep({ pointer: core.allocRecord('sd_img_gen_params_t') });
       await core.api.sd_img_gen_params_init(params);
-      await writeImageInputs({ core, params, inputs: request.imageInputs, keep,
+      await writeImageInputs({
+        core,
+        params,
+        inputs: request.imageInputs,
+        keep,
         checkCancelled() {
           if (active?.cancelRequested) throw cancelledRun;
         },
@@ -361,7 +406,9 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         core.setField('sd_img_gen_params_t', params, 'loras', 0n);
       }
       core.setField('sd_img_gen_params_t', params, 'lora_count', selectedLoras.length);
-      request.loras.forEach(({ file, path, strength }, index) => emit({ event: 'native', stage: 'generation',
+      request.loras.forEach(({ file, path, strength }, index) => emit({
+        event: 'native',
+        stage: 'generation',
         message: 'Requested LoRA configuration; image generation success does not verify adapter compatibility or effect',
         fields: { metric: 'lora-request', index, path: (path ?? file.name).slice(0, 512), bytes: file.size, strength, enabled: strength !== 0 },
       }));
@@ -495,8 +542,14 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (active || nativeCall || core.busy) return { status: 'unavailable', reason: 'busy' };
     if (!context || !artifact) return { status: 'unavailable', reason: 'not-loaded' };
     if (inspection) return inspection;
-    const pending = inspectImageEngine({ core, context, profile: artifact.profile, source: artifact.modulePath.split('/')[1]!,
-      modelVersion, fileReadCacheBytes: fileReadCache.retainedBytes() });
+    const pending = inspectImageEngine({
+      core,
+      context,
+      profile: artifact.profile,
+      source: artifact.modulePath.split('/')[1]!,
+      modelVersion,
+      fileReadCacheBytes: fileReadCache.retainedBytes(),
+    });
     inspection = pending;
     try {
       const result = await pending;

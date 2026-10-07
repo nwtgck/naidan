@@ -17,8 +17,12 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
   const name = file.path.split('/').at(-1)!;
   const blob = file.role === 'vae'
     ? safetensorsFixture({ name, tensors: fluxVaeTensors }).file
-    : ggufFixture({ name, tensors: file.role === 'diffusion' ? zImageTensors : qwenTextTensors({ width: 2560, layers: 36 }),
-      metadata: file.role === 'lm' ? { 'general.architecture': 'qwen3' } : {}, extraBytes: 0 }).file;
+    : ggufFixture({
+      name,
+      tensors: file.role === 'diffusion' ? zImageTensors : qwenTextTensors({ width: 2560, layers: 36 }),
+      metadata: file.role === 'lm' ? { 'general.architecture': 'qwen3' } : {},
+      extraBytes: 0,
+    }).file;
   const id = user ? `user/${file.repository.split('/')[1]}` : `huggingface.co/${file.repository}/resolve/main`;
   return { id, name: id, files: [{ path: file.path, file: blob }] };
 }
@@ -27,9 +31,18 @@ function harness({ download, initial }: { download: ImageRecipeDownloader | unde
   const downloader = vi.fn(download ?? (async () => undefined));
   const list = vi.fn(async (_options: { signal?: AbortSignal }) => entries), onSelection = vi.fn();
   const scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection,
-    dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download: downloader } }))!;
-  return { library, downloader, list, onSelection, scope,
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => blocked.value,
+    onSelection,
+    dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download: downloader },
+  }))!;
+  return {
+    library,
+    downloader,
+    list,
+    onSelection,
+    scope,
     update({ repositories }: { repositories: LocalImageRepository[] }) {
       entries = repositories;
     },
@@ -139,8 +152,11 @@ it('keeps identical repository files in OPFS and two linked roots distinct and c
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const opfs = files.map(file => repository({ file, user: false }));
   function host({ rootId }: { rootId: string }): LocalImageRepository[] {
-    return files.map(file => ({ ...repository({ file, user: false }), id: `host/${rootId}/${file.repository}`,
-      hostSource: { directoryId: rootId, directoryName: 'same-folder-name', repository: file.repository } }));
+    return files.map(file => ({
+      ...repository({ file, user: false }),
+      id: `host/${rootId}/${file.repository}`,
+      hostSource: { directoryId: rootId, directoryName: 'same-folder-name', repository: file.repository },
+    }));
   }
   const h = harness({ initial: [...opfs, ...host({ rootId: 'first' }), ...host({ rootId: 'second' })], download: undefined });
   await h.library.refresh();
@@ -196,9 +212,12 @@ it('preserves a failure and still refreshes completed files instead of selecting
   expect(h.library.models.value).toHaveLength(1); expect(h.library.ready.value).toBe(false);
 });
 it('deduplicates active downloads and pauses without publishing a completion', async () => {
-  const h = harness({ initial: [], download: async ({ signal }) => new Promise((_resolve, reject) => {
+  const h = harness({
+    initial: [],
+    download: async ({ signal }) => new Promise((_resolve, reject) => {
     signal?.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')), { once: true });
-  }) });
+  }),
+  });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.downloading.value).toBe(true); expect(h.library.ready.value).toBe(false);
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} }); expect(h.downloader).toHaveBeenCalledTimes(1);
@@ -207,10 +226,13 @@ it('deduplicates active downloads and pauses without publishing a completion', a
 });
 it('aborts a pending download on scope disposal and ignores late completion', async () => {
   let signal: AbortSignal | undefined;
-  const h = harness({ initial: [], download: async args => {
+  const h = harness({
+    initial: [],
+    download: async args => {
     signal = args.signal;
     await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
-  } });
+  },
+  });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(signal).toBeDefined());
   h.scope.stop(); await running;
@@ -222,9 +244,17 @@ it('keeps uninspected files unavailable until post-download inventory resolves',
   const pending = Promise.withResolvers<LocalImageRepository[]>();
   const list = vi.fn(() => pending.promise);
   const scope = effectScope(); scopes.push(scope);
-  const view = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list, scan: scanImageRepositories, import: vi.fn(), download: vi.fn(async () => undefined),
-  } }))!;
+  const view = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+    list,
+    scan: scanImageRepositories,
+    import: vi.fn(),
+    download: vi.fn(async () => undefined),
+  },
+  }))!;
   const operation = view.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
   expect(view.downloading.value).toBe(true);

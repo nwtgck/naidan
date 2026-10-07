@@ -194,7 +194,9 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
           if (remoteFetch === undefined) throw new CollectionFailure({ status: 'local-missing', httpStatus: undefined });
           source = 'remote-exact';
           const response = await remoteFetch(`https://huggingface.co/${modelId}/resolve/${exactRevision}/${path}`, {
-            credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal,
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            signal: controller.signal,
             headers: { Accept: path.endsWith('.json') ? 'application/json' : 'text/plain' },
           });
           if (stopped) {

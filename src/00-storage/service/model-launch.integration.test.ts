@@ -14,7 +14,8 @@ const originalLocks = navigator.locks;
 const lockCalls: string[] = [];
 function simulatedWebLocks() {
   const lanes = new Map<string, Promise<void>>();
-  return { request: async (name: string, callback: () => Promise<unknown>) => {
+  return {
+    request: async (name: string, callback: () => Promise<unknown>) => {
     lockCalls.push(name);
     const previous = lanes.get(name) ?? Promise.resolve();
     const release = Promise.withResolvers<void>();
@@ -25,15 +26,21 @@ function simulatedWebLocks() {
     } finally {
       release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
     }
-  } };
+  },
+  };
 }
 function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
   const repository = 'owner/Model-GGUF'; const mainFilePath = 'Model-Q4_K_M.gguf';
   return {
-    chatId: toChatId({ raw: `chat-${suffix}` }), newChatGroupId: toChatGroupId({ raw: `cg-${suffix}` }), chatGroupName: 'Model · Q4_K_M',
-    input: `hf.co/${repository}:Q4_K_M`, requestedVariant: 'Q4_K_M',
+    chatId: toChatId({ raw: `chat-${suffix}` }),
+    newChatGroupId: toChatGroupId({ raw: `cg-${suffix}` }),
+    chatGroupName: 'Model · Q4_K_M',
+    input: `hf.co/${repository}:Q4_K_M`,
+    requestedVariant: 'Q4_K_M',
     target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: huggingFaceModelId({ repository, modelPath: mainFilePath }) },
-    titleGeneration: 'disabled', mode: 'create-or-resume', expectedTarget: undefined,
+    titleGeneration: 'disabled',
+    mode: 'create-or-resume',
+    expectedTarget: undefined,
   };
 }
 beforeEach(() => {
@@ -99,4 +106,5 @@ describe('model launch storage service integration', () => {
     expect(isCurrent()).toBe(true); await service.init({ type: 'local' }); expect(isCurrent()).toBe(false);
   });
 });
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

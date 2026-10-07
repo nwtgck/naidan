@@ -75,7 +75,9 @@ export function observeNativeStreamer({ streamer, streamerPrototype, capture }: 
       const original: unknown = originals.get(operation)!.value;
       if (typeof original !== 'function') throw new Error('Unsupported native method');
       const descriptor: PropertyDescriptor = {
-        configurable: true, enumerable: false, writable: true,
+        configurable: true,
+        enumerable: false,
+        writable: true,
         value: function(this: unknown, ...args: unknown[]) {
           const streamCallOrdinal = ++ordinal;
           safely({ record: () => capture.recordNativeStream({ operation, phase: 'entering', streamCallOrdinal, args }) });

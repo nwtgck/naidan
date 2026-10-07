@@ -137,11 +137,14 @@ file line
   });
 
   it('numbers all output lines with -n', async () => {
-    await writeFile({ name: 'number.txt', data: `\
+    await writeFile({
+      name: 'number.txt',
+      data: `\
 alpha
 
 beta
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -n number.txt',
@@ -159,11 +162,14 @@ beta
   });
 
   it('numbers only nonblank lines with -b even when -n is also present', async () => {
-    await writeFile({ name: 'nonblank.txt', data: `\
+    await writeFile({
+      name: 'nonblank.txt',
+      data: `\
 alpha
 
 beta
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -bn nonblank.txt',
@@ -180,10 +186,13 @@ beta
   });
 
   it('shows line endings with -E', async () => {
-    await writeFile({ name: 'ends.txt', data: `\
+    await writeFile({
+      name: 'ends.txt',
+      data: `\
 alpha
 beta
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -E ends.txt',
@@ -273,12 +282,15 @@ beta
   });
 
   it('squeezes repeated blank lines with -s', async () => {
-    await writeFile({ name: 'squeeze.txt', data: `\
+    await writeFile({
+      name: 'squeeze.txt',
+      data: `\
 alpha
 
 
 beta
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -s squeeze.txt',

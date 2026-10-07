@@ -20,7 +20,10 @@ export function investigationExecutionSummary({ run, recovery }: {
   case 'running':
   case 'interrupted': return executionSummarySchema.parse({ schemaVersion: 1, state: recovery.status });
   case 'completed': return executionSummarySchema.parse({
-    schemaVersion: 1, state: 'completed', result: run.status, completedAt: recovery.checkpointedAt,
+    schemaVersion: 1,
+    state: 'completed',
+    result: run.status,
+    completedAt: recovery.checkpointedAt,
   });
   default: {
     const exhaustive: never = recovery.status;

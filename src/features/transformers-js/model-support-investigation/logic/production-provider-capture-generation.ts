@@ -48,19 +48,39 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
   try {
     const result = await generateChatTurn({
       onToolCallDraftsChange: undefined,
-      provider, model: modelId, debug: undefined, parameters: input.parameters,
+      provider,
+      model: modelId,
+      debug: undefined,
+      parameters: input.parameters,
       tools: input.tools.length === 0 ? [] : [createModelSupportWeatherTool()],
-      readBinaryObject: undefined, abortController, approvalContext: undefined,
+      readBinaryObject: undefined,
+      abortController,
+      approvalContext: undefined,
       createAssistantMessage: () => {
-        assistant = { id: toMessageId({ raw: `capture_assistant_${generated.length}` }), role: 'assistant', createdAt: 0,
-          parts: [], replies: { items: [] }, modelId, lmParameters: undefined, interruption: undefined };
+        assistant = {
+          id: toMessageId({ raw: `capture_assistant_${generated.length}` }),
+          role: 'assistant',
+          createdAt: 0,
+          parts: [],
+          replies: { items: [] },
+          modelId,
+          lmParameters: undefined,
+          interruption: undefined,
+        };
         generated.push(assistant);
         trace.observeAssistant({ message: assistant });
         return assistant;
       },
       createToolMessage: () => {
-        tool = { id: toMessageId({ raw: `capture_tool_${generated.length}` }), role: 'tool', createdAt: 0,
-          parts: [], replies: { items: [] }, modelId: undefined, lmParameters: undefined };
+        tool = {
+          id: toMessageId({ raw: `capture_tool_${generated.length}` }),
+          role: 'tool',
+          createdAt: 0,
+          parts: [],
+          replies: { items: [] },
+          modelId: undefined,
+          lmParameters: undefined,
+        };
         generated.push(tool); settledTools.clear();
         return tool;
       },

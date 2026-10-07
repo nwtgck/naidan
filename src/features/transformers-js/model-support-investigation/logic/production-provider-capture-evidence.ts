@@ -63,39 +63,70 @@ const eventSchema = z.union([
   strictRecord({ shape: { ...eventBase, kind: z.literal('tool-error'), toolCallId: text, code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']), messageCapture: z.literal('omitted-for-privacy') } }),
 ]);
 const eventArray = boundedArray({ element: eventSchema, maximum: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents });
-const failureSchema = strictRecord({ shape: {
-  reason: z.enum(['event-limit', 'character-limit', 'unreadable-callback', 'duplicate-settlement']), phase, sequence,
-} });
+const failureSchema = strictRecord({
+  shape: {
+  reason: z.enum(['event-limit', 'character-limit', 'unreadable-callback', 'duplicate-settlement']),
+  phase,
+  sequence,
+},
+});
 const maybeFailure = z.union([failureSchema, z.undefined()]);
 const outcomeSchema = z.union([
   strictRecord({ shape: { status: z.literal('fulfilled') } }),
   strictRecord({ shape: { status: z.literal('rejected'), errorName: z.enum(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'ProductionWorkerLifecycleError', 'unknown']) } }),
 ]);
-const settledSchema = strictRecord({ shape: {
-  sequence, outcome: outcomeSchema, events: eventArray, completeness: z.enum(['complete', 'incomplete']), failure: maybeFailure,
-} });
-const traceSchema = strictRecord({ shape: {
-  format: z.enum(['production-provider-trace-v2', 'production-provider-trace-v3']), requestId: id,
-  limits: strictRecord({ shape: {
+const settledSchema = strictRecord({
+  shape: {
+  sequence,
+  outcome: outcomeSchema,
+  events: eventArray,
+  completeness: z.enum(['complete', 'incomplete']),
+  failure: maybeFailure,
+},
+});
+const traceSchema = strictRecord({
+  shape: {
+  format: z.enum(['production-provider-trace-v2', 'production-provider-trace-v3']),
+  requestId: id,
+  limits: strictRecord({
+    shape: {
     maximumEvents: z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents),
     maximumCharacters: z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumCharacters),
     maximumFieldCharacters: z.literal(16384),
-  } }),
-  completeness: z.enum(['complete', 'incomplete']), failure: maybeFailure,
-  events: eventArray, settled: z.union([settledSchema, z.undefined()]), lateEvents: eventArray,
+  },
+  }),
+  completeness: z.enum(['complete', 'incomplete']),
+  failure: maybeFailure,
+  events: eventArray,
+  settled: z.union([settledSchema, z.undefined()]),
+  lateEvents: eventArray,
   retainedCharacters: z.number().int().min(0).max(PRODUCTION_PROVIDER_TRACE_LIMITS.maximumCharacters),
-} });
+},
+});
 const imageTextPartSchema = strictRecord({ shape: { type: z.literal('text'), text } });
 const imageUrlPartSchema = strictRecord({ shape: { type: z.literal('image_url'), image_url: strictRecord({ shape: { url: text } }) } });
-const toolCallSchema = strictRecord({ shape: {
-  id: z.literal('call_model_support_probe_1'), type: z.literal('function'),
+const toolCallSchema = strictRecord({
+  shape: {
+  id: z.literal('call_model_support_probe_1'),
+  type: z.literal('function'),
   function: strictRecord({ shape: { name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') } }),
-} });
+},
+});
 const capturedAssistantPartSchema = z.union([
   strictRecord({ shape: { id: text, type: z.enum(['text', 'reasoning']), text, completeness: z.enum(['complete', 'partial']) } }),
-  strictRecord({ shape: { id: text, type: z.literal('tool_call'), toolCall: strictRecord({ shape: {
-    id: text, type: z.literal('function'), function: strictRecord({ shape: { name: text, arguments: text } }),
-  } }) } }),
+  strictRecord({
+    shape: {
+    id: text,
+    type: z.literal('tool_call'),
+    toolCall: strictRecord({
+    shape: {
+    id: text,
+    type: z.literal('function'),
+    function: strictRecord({ shape: { name: text, arguments: text } }),
+  },
+  }),
+  },
+  }),
 ]);
 const messageSchema = z.union([
   strictRecord({ shape: { role: z.literal('assistant'), parts: boundedArray({ maximum: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumEvents, element: capturedAssistantPartSchema }) } }),
@@ -104,24 +135,42 @@ const messageSchema = z.union([
   strictRecord({ shape: { role: z.literal('assistant'), content: z.literal(''), tool_calls: boundedArray({ maximum: 1, element: z.unknown() }).pipe(z.tuple([toolCallSchema])) } }),
   strictRecord({ shape: { role: z.literal('tool'), content: text, tool_call_id: z.literal('call_model_support_probe_1') } }),
 ]);
-const toolSchema = strictRecord({ shape: {
-  fixtureId: z.literal('model-support-weather-v1'), name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
-  parameters: strictRecord({ shape: {
-    type: z.literal('object'), properties: strictRecord({ shape: { city: strictRecord({ shape: { type: z.literal('string') } }) } }),
-    required: boundedArray({ maximum: 1, element: z.literal('city') }).pipe(z.tuple([z.literal('city')])), additionalProperties: z.literal(false),
-  } }),
-} });
-const inputSchema = strictRecord({ shape: {
+const toolSchema = strictRecord({
+  shape: {
+  fixtureId: z.literal('model-support-weather-v1'),
+  name: z.literal('lookup_weather'),
+  description: z.literal('Return deterministic weather fixture data.'),
+  parameters: strictRecord({
+    shape: {
+    type: z.literal('object'),
+    properties: strictRecord({ shape: { city: strictRecord({ shape: { type: z.literal('string') } }) } }),
+    required: boundedArray({ maximum: 1, element: z.literal('city') }).pipe(z.tuple([z.literal('city')])),
+    additionalProperties: z.literal(false),
+  },
+  }),
+},
+});
+const inputSchema = strictRecord({
+  shape: {
   messages: boundedArray({ maximum: 3, element: messageSchema }),
-  parameters: strictRecord({ shape: {
-    temperature: z.literal(0), topP: z.literal(1), maxCompletionTokens: z.union([z.literal(16), z.literal(1), z.literal(128)]),
-    presencePenalty: z.undefined(), frequencyPenalty: z.undefined(), stop: z.undefined(),
+  parameters: strictRecord({
+    shape: {
+    temperature: z.literal(0),
+    topP: z.literal(1),
+    maxCompletionTokens: z.union([z.literal(16), z.literal(1), z.literal(128)]),
+    presencePenalty: z.undefined(),
+    frequencyPenalty: z.undefined(),
+    stop: z.undefined(),
     reasoning: strictRecord({ shape: { effort: z.union([z.enum(['none', 'low', 'medium', 'high']), z.undefined()]) } }),
-  } }),
+  },
+  }),
   tools: z.union([boundedArray({ element: z.never(), maximum: 0 }).pipe(z.tuple([])), boundedArray({ element: z.unknown(), maximum: 1 }).pipe(z.tuple([toolSchema]))]),
-} });
-const captureSchema = strictRecord({ shape: {
-  format: z.enum(['production-provider-capture-v2', 'production-provider-capture-v3']), runId: id.max(64),
+},
+});
+const captureSchema = strictRecord({
+  shape: {
+  format: z.enum(['production-provider-capture-v2', 'production-provider-capture-v3']),
+  runId: id.max(64),
   modelId: z.string().max(256).regex(/^(?:hf\.co\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u)
     .refine(value => value.split('/').every(part => part !== '.' && part !== '..')),
   plan: capturePlanSchema,
@@ -129,21 +178,44 @@ const captureSchema = strictRecord({ shape: {
     strictRecord({ shape: { status: z.enum(['not-started', 'running', 'completed']) } }),
     strictRecord({ shape: { status: z.literal('stopped'), reason: z.enum(['provider-rejected', 'capture-incomplete', 'aborted', 'disposed', 'runtime-unavailable']) } }),
   ]),
-  lifetime: z.enum(['open', 'closing', 'closed']), abortReason: z.union([z.enum(['user-requested', 'deadline']), z.undefined()]),
-  disposal: z.enum(['not-requested', 'pending', 'completed', 'failed']), observation: z.enum(['open', 'end-requested-by-dispose']),
-  events: boundedArray({ maximum: 4, element: strictRecord({ shape: {
-    sequence: z.number().int().min(0).max(3), kind: z.enum(['run-started', 'abort-requested', 'dispose-requested', 'dispose-completed', 'dispose-failed']),
+  lifetime: z.enum(['open', 'closing', 'closed']),
+  abortReason: z.union([z.enum(['user-requested', 'deadline']), z.undefined()]),
+  disposal: z.enum(['not-requested', 'pending', 'completed', 'failed']),
+  observation: z.enum(['open', 'end-requested-by-dispose']),
+  events: boundedArray({
+    maximum: 4,
+    element: strictRecord({
+    shape: {
+    sequence: z.number().int().min(0).max(3),
+    kind: z.enum(['run-started', 'abort-requested', 'dispose-requested', 'dispose-completed', 'dispose-failed']),
     activeRequestId: z.union([id, z.undefined()]),
-  } }) }),
-  requests: boundedArray({ maximum: 13, element: strictRecord({ shape: {
-    runId: id.max(64), requestId: id, scenario: captureScenarioSchema,
-    status: z.enum(['not-started', 'awaiting-settlement', 'settled']), input: z.union([inputSchema, z.undefined()]), trace: traceSchema,
+  },
+  }),
+  }),
+  requests: boundedArray({
+    maximum: 13,
+    element: strictRecord({
+    shape: {
+    runId: id.max(64),
+    requestId: id,
+    scenario: captureScenarioSchema,
+    status: z.enum(['not-started', 'awaiting-settlement', 'settled']),
+    input: z.union([inputSchema, z.undefined()]),
+    trace: traceSchema,
     notStartedReason: z.union([z.enum(['not-yet-started', 'scope-not-selected', 'first-settlement-unavailable', 'legacy-script-stopped', 'runtime-unavailable', 'aborted', 'deadline', 'disposed']), z.undefined()]),
-  } }) }),
-  capabilities: strictRecord({ shape: {
-    providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']), nativeInvocations: z.literal('not-collected-by-this-owner'), tools: z.enum(['not-selected', 'fixed-public-weather-tool']), images: z.enum(['not-selected', 'fixed-public-image']),
-  } }),
-} });
+  },
+  }),
+  }),
+  capabilities: strictRecord({
+    shape: {
+    providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']),
+    nativeInvocations: z.literal('not-collected-by-this-owner'),
+    tools: z.enum(['not-selected', 'fixed-public-weather-tool']),
+    images: z.enum(['not-selected', 'fixed-public-image']),
+  },
+  }),
+},
+});
 
 // Compare recursive key sets as well as values: adding even an optional owner
 // field must force a schema review. Required own undefined is checked at runtime.
@@ -401,9 +473,12 @@ const evidenceEnvelopeSchema = z.object({
   }).strict(),
   snapshot: z.unknown(),
   limitations: z.object({
-    input: z.literal('fixed-synthetic-script'), providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']),
-    nativeInvocations: z.literal('not-collected-by-this-owner'), replayEligibility: z.literal('not-established'),
-    realModelSuccess: z.literal('not-certified'), completeness: z.literal('projection-only-not-native-generation-correctness'),
+    input: z.literal('fixed-synthetic-script'),
+    providerCallbacks: z.enum(['bounded-projection', 'parts_and_tools_projection']),
+    nativeInvocations: z.literal('not-collected-by-this-owner'),
+    replayEligibility: z.literal('not-established'),
+    realModelSuccess: z.literal('not-certified'),
+    completeness: z.literal('projection-only-not-native-generation-correctness'),
   }).strict(),
 }).strict();
 
@@ -416,14 +491,32 @@ function encodeTrace({ trace }: { trace: ProductionProviderTraceSnapshot }) {
     rest satisfies Record<PropertyKey, never>;
     return { sequence, outcome, events, completeness, failure: failure ?? undefinedValue };
   })();
-  return { format, requestId, limits, completeness, failure: failure ?? undefinedValue, events,
-    settled: encodedSettlement, lateEvents, retainedCharacters };
+  return {
+    format,
+    requestId,
+    limits,
+    completeness,
+    failure: failure ?? undefinedValue,
+    events,
+    settled: encodedSettlement,
+    lateEvents,
+    retainedCharacters,
+  };
 }
 
 function encodeCapture({ capture }: { capture: ProductionProviderCaptureSnapshot }) {
   const { format, runId, modelId, plan, run, lifetime, abortReason, disposal, observation, events, requests, capabilities, ...rest } = capture;
   rest satisfies Record<PropertyKey, never>;
-  return { format, runId, modelId, plan, run, lifetime, abortReason: abortReason ?? undefinedValue, disposal, observation,
+  return {
+    format,
+    runId,
+    modelId,
+    plan,
+    run,
+    lifetime,
+    abortReason: abortReason ?? undefinedValue,
+    disposal,
+    observation,
     events: events.map(({ sequence, kind, activeRequestId, ...rest }) => {
       rest satisfies Record<PropertyKey, never>;
       return { sequence, kind, activeRequestId: activeRequestId ?? undefinedValue };
@@ -438,12 +531,24 @@ function encodeCapture({ capture }: { capture: ProductionProviderCaptureSnapshot
         restParameters satisfies Record<PropertyKey, never>;
         const { effort, ...restReasoning } = reasoning;
         restReasoning satisfies Record<PropertyKey, never>;
-        return { messages, tools, parameters: { temperature, topP, maxCompletionTokens,
-          presencePenalty: presencePenalty ?? undefinedValue, frequencyPenalty: frequencyPenalty ?? undefinedValue,
-          stop: stop ?? undefinedValue, reasoning: { effort: effort ?? undefinedValue } } };
+        return {
+          messages,
+          tools,
+          parameters: {
+          temperature,
+          topP,
+          maxCompletionTokens,
+          presencePenalty: presencePenalty ?? undefinedValue,
+          frequencyPenalty: frequencyPenalty ?? undefinedValue,
+          stop: stop ?? undefinedValue,
+          reasoning: { effort: effort ?? undefinedValue },
+        },
+        };
       })();
       return { runId, requestId, scenario, status, notStartedReason: notStartedReason ?? undefinedValue, input: encodedInput, trace: encodeTrace({ trace }) };
-    }), capabilities };
+    }),
+    capabilities,
+  };
 }
 
 /** Strict synthetic-only serialization. No recording, Provider calls, or OPFS mutation. */
@@ -457,11 +562,16 @@ export function createProductionProviderCaptureEvidence({ capture, runId, modelI
     // Encoding reads only validated, newly allocated data, never an arbitrary replacer.
     const encoded = encodeCapture({ capture: parsed as ProductionProviderCaptureSnapshot });
     const document = evidenceEnvelopeSchema.parse({
-      format: 'production-provider-capture-evidence-v1', undefinedEncoding: 'capture-value-undefined-v1',
-      limits: { scope: 'per-request', ...PRODUCTION_PROVIDER_TRACE_LIMITS }, snapshot: encoded,
+      format: 'production-provider-capture-evidence-v1',
+      undefinedEncoding: 'capture-value-undefined-v1',
+      limits: { scope: 'per-request', ...PRODUCTION_PROVIDER_TRACE_LIMITS },
+      snapshot: encoded,
       limitations: {
-        input: 'fixed-synthetic-script', providerCallbacks: capture.capabilities.providerCallbacks, nativeInvocations: 'not-collected-by-this-owner',
-        replayEligibility: 'not-established', realModelSuccess: 'not-certified',
+        input: 'fixed-synthetic-script',
+        providerCallbacks: capture.capabilities.providerCallbacks,
+        nativeInvocations: 'not-collected-by-this-owner',
+        replayEligibility: 'not-established',
+        realModelSuccess: 'not-certified',
         completeness: 'projection-only-not-native-generation-correctness',
       },
     });
@@ -499,22 +609,33 @@ function decodeRequiredUndefined({ value }: { value: unknown }): undefined {
   return undefined;
 }
 function decodeTrace({ value }: { value: unknown }): unknown {
-  return decodeFields({ value, fields: {
+  return decodeFields({
+    value,
+    fields: {
     failure: decodeMaybeUndefined,
     settled: ({ value }) => {
       const settled = decodeMaybeUndefined({ value });
       return settled === undefined ? undefined : decodeFields({ value: settled, fields: { failure: decodeMaybeUndefined } });
     },
-  } });
+  },
+  });
 }
 function decodeInput({ value }: { value: unknown }): unknown {
   const input = decodeMaybeUndefined({ value });
-  return input === undefined ? undefined : decodeFields({ value: input, fields: {
-    parameters: ({ value }) => decodeFields({ value, fields: {
-      presencePenalty: decodeRequiredUndefined, frequencyPenalty: decodeRequiredUndefined, stop: decodeRequiredUndefined,
+  return input === undefined ? undefined : decodeFields({
+    value: input,
+    fields: {
+    parameters: ({ value }) => decodeFields({
+      value,
+      fields: {
+      presencePenalty: decodeRequiredUndefined,
+      frequencyPenalty: decodeRequiredUndefined,
+      stop: decodeRequiredUndefined,
       reasoning: ({ value }) => decodeFields({ value, fields: { effort: decodeMaybeUndefined } }),
-    } }),
-  } });
+    },
+    }),
+  },
+  });
 }
 
 /** Decode only this versioned synthetic format; no I/O or generation authority. */
@@ -524,11 +645,14 @@ export function readProductionProviderCaptureEvidence({ json, runId, modelId }: 
   try {
     const text = z.string().max(PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS).parse(json);
     const envelope = evidenceEnvelopeSchema.parse(JSON.parse(text) as unknown);
-    const decoded = decodeFields({ value: envelope.snapshot, fields: {
+    const decoded = decodeFields({
+      value: envelope.snapshot,
+      fields: {
       abortReason: decodeMaybeUndefined,
       events: ({ value }) => z.array(z.unknown()).max(4).parse(value).map(value => decodeFields({ value, fields: { activeRequestId: decodeMaybeUndefined } })),
       requests: ({ value }) => z.array(z.unknown()).max(13).parse(value).map(value => decodeFields({ value, fields: { input: decodeInput, trace: decodeTrace, notStartedReason: decodeMaybeUndefined } })),
-    } });
+    },
+    });
     const parsed = captureSchema.parse(decoded);
     if (envelope.limitations.providerCallbacks !== parsed.capabilities.providerCallbacks) invalidCapture();
     validateIdentityAndScript({ capture: parsed as ProductionProviderCaptureSnapshot, runId, modelId });

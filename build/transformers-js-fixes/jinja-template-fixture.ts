@@ -23,4 +23,5 @@ export function originalBundledJinjaTemplate() {
   return bundledJinjaTemplate({ code });
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

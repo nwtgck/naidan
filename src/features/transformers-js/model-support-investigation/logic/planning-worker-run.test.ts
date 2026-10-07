@@ -18,7 +18,10 @@ describe('Planning Worker Provider capture ownership', () => {
 
   it('rejects a defined host capture instead of transferring it to the Planning Worker', async () => {
     const run = initialRun();
-    const owner = createProductionProviderCaptureOwner({ runId: run.runId, modelId: run.modelId, plan: 'first-only',
+    const owner = createProductionProviderCaptureOwner({
+      runId: run.runId,
+      modelId: run.modelId,
+      plan: 'first-only',
       createWorkerClient: () => {
         throw new Error('This serialization test must not create a Worker');
       },

@@ -21,8 +21,14 @@ const profileLabels = {
   'cpu-wasm32': 'CPU / wasm32',
 } satisfies Record<Exclude<typeof options.value.profile, 'auto'>, string>;
 const profileFeatures = {
-  wasm: 'WebAssembly', memory64: 'WebAssembly memory64', jspi: 'WebAssembly JSPI',
-  webgpu: 'WebGPU', 'shader-f16': 'WebGPU shader-f16', brotli: 'Brotli', storage: 'OPFS', worker: 'Worker',
+  wasm: 'WebAssembly',
+  memory64: 'WebAssembly memory64',
+  jspi: 'WebAssembly JSPI',
+  webgpu: 'WebGPU',
+  'shader-f16': 'WebGPU shader-f16',
+  brotli: 'Brotli',
+  storage: 'OPFS',
+  worker: 'Worker',
 } satisfies Record<ProfileUnavailableReason, string>;
 const capabilities = computed(() => {
   const current = profileState.value;
@@ -49,12 +55,16 @@ function profileDisabled({ profile }: { profile: typeof options.value.profile })
   return !capabilities.value?.profiles.some(entry => entry.profile === resolved && entry.status === 'available');
 }
 const profileChoices = computed(() => {
-  const labels = { ...profileLabels,
+  const labels = {
+    ...profileLabels,
     auto: lazyStrings.llamaCppBrowser__automatic_profile({ profile: capabilities.value?.recommended === undefined ? undefined : profileLabels[capabilities.value.recommended] }),
   };
   return selectableProfiles.map(profile => {
     const reason = failureReason({ entry: capabilities.value?.profiles.find(entry => entry.profile === profile) });
-    return { profile, label: labels[profile], disabled: profileDisabled({ profile }),
+    return {
+      profile,
+      label: labels[profile],
+      disabled: profileDisabled({ profile }),
       reason: reason === undefined ? undefined : lazyStrings.llamaCppBrowser__unavailable_feature({ feature: profileFeatures[reason] }),
     };
   });
@@ -79,9 +89,11 @@ function releaseRuntime(): void {
   if (!props.releaseDisabled) llamaCppBrowserService.release();
 }
 onMounted(() => {
-  unsubscribeProfiles = llamaCppBrowserService.subscribeProfiles({ listener: ({ state: next }) => {
+  unsubscribeProfiles = llamaCppBrowserService.subscribeProfiles({
+    listener: ({ state: next }) => {
     profileState.value = next;
-  } });
+  },
+  });
   void probeProfiles();
 });
 onUnmounted(() => {

@@ -116,9 +116,11 @@ describe('standalone Worker session', () => {
 
   it('attempts release even when logical cleanup fails', async () => {
     const worker = createWorkerMock();
-    const remote = createRemoteMock({ release: async () => {
+    const remote = createRemoteMock({
+      release: async () => {
       throw new Error('release failed');
-    } });
+    },
+    });
     vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,

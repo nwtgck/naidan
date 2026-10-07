@@ -35,16 +35,20 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
 
   it('keeps a prepared stream alive past the metadata timeout and starts its source only on pull', async () => {
     vi.useFakeTimers();
-    const openStream = vi.fn(async () => new ReadableStream<Uint8Array>({ start(controller) {
+    const openStream = vi.fn(async () => new ReadableStream<Uint8Array>({
+      start(controller) {
       controller.enqueue(new TextEncoder().encode('streamed bytes')); controller.close();
-    } }));
+    },
+    }));
     const remote: IModelSupportInvestigationEvidenceWorker = {
       streamEvidence: vi.fn(async ({ port }) => {
         serveByteStream({ port, openStream, signal: undefined });
         return { fileName: 'stream.zip' };
       }),
-      createRetainedDownloadTimingEvidence: vi.fn(), createPartialEvidence: vi.fn(),
-      createBatchEvidence: vi.fn(), createDownloadVerificationEvidence: vi.fn(),
+      createRetainedDownloadTimingEvidence: vi.fn(),
+      createPartialEvidence: vi.fn(),
+      createBatchEvidence: vi.fn(),
+      createDownloadVerificationEvidence: vi.fn(),
     };
     mocks.wrap.mockReturnValue(remote);
     const { createModelSupportInvestigationEvidenceWorkerClient } = await import('./client-hosted');
@@ -67,16 +71,22 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const cancelled = vi.fn();
     const remote: IModelSupportInvestigationEvidenceWorker = {
       streamEvidence: vi.fn(async ({ port }) => {
-        serveByteStream({ port, signal: undefined, openStream: async () => new ReadableStream<Uint8Array>({
+        serveByteStream({
+          port,
+          signal: undefined,
+          openStream: async () => new ReadableStream<Uint8Array>({
           pull() {
             entered.resolve(); return new Promise<void>(() => undefined);
           },
           cancel: cancelled,
-        }, { highWaterMark: 0 }) });
+        }, { highWaterMark: 0 }),
+        });
         return { fileName: 'stream.zip' };
       }),
-      createRetainedDownloadTimingEvidence: vi.fn(), createPartialEvidence: vi.fn(),
-      createBatchEvidence: vi.fn(), createDownloadVerificationEvidence: vi.fn(),
+      createRetainedDownloadTimingEvidence: vi.fn(),
+      createPartialEvidence: vi.fn(),
+      createBatchEvidence: vi.fn(),
+      createDownloadVerificationEvidence: vi.fn(),
     };
     mocks.wrap.mockReturnValue(remote);
     const { createModelSupportInvestigationEvidenceWorkerClient } = await import('./client-hosted');
@@ -99,16 +109,32 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const remote: IModelSupportInvestigationEvidenceWorker = {
       streamEvidence: vi.fn(),
       createRetainedDownloadTimingEvidence: vi.fn(async () => archive),
-      createPartialEvidence: vi.fn(), createBatchEvidence: vi.fn(), createDownloadVerificationEvidence: vi.fn(),
+      createPartialEvidence: vi.fn(),
+      createBatchEvidence: vi.fn(),
+      createDownloadVerificationEvidence: vi.fn(),
     };
     mocks.wrap.mockReturnValue(remote);
     mocks.release.mockResolvedValue(undefined);
     const snapshot: DownloadTimingSnapshot = {
-      format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
-      serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1,
-      availability: 'recorded', droppedOperations: 0,
-      records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 1,
-        outcome: 'failed', timingStatus: 'measured', wallMs: 100, truncated: false, droppedObservations: 0, observations: [] }],
+      format: 'transformers-js-download-timing-v1',
+      measurementVersion: 1,
+      source: 'ordinary-download',
+      serviceEpoch: '11111111-1111-4111-8111-111111111111',
+      identityStatus: 'available',
+      sequence: 1,
+      availability: 'recorded',
+      droppedOperations: 0,
+      records: [{
+        operationId: '11111111-1111-4111-8111-111111111111/1',
+        modelId: 'org/previous',
+        runtimeEpoch: 1,
+        outcome: 'failed',
+        timingStatus: 'measured',
+        wallMs: 100,
+        truncated: false,
+        droppedObservations: 0,
+        observations: [],
+      }],
     };
     const { createModelSupportInvestigationEvidenceWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationEvidenceWorkerClient();

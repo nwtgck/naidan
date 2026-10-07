@@ -5,8 +5,11 @@ import { loadCoreModule as loadStandaloneModule, preloadCoreModule as preloadSta
 
 const host = vi.hoisted(() => ({
   factories: {
-    'cpu-wasm32': vi.fn(), 'cpu-wasm64': vi.fn(), 'webgpu-wasm32-asyncify': vi.fn(),
-    'webgpu-wasm32-jspi': vi.fn(), 'webgpu-wasm64-jspi': vi.fn(),
+    'cpu-wasm32': vi.fn(),
+    'cpu-wasm64': vi.fn(),
+    'webgpu-wasm32-asyncify': vi.fn(),
+    'webgpu-wasm32-jspi': vi.fn(),
+    'webgpu-wasm64-jspi': vi.fn(),
   },
   bind: vi.fn(),
 }));

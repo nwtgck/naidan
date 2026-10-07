@@ -19,13 +19,20 @@ async function run({ records, messages }: { records: readonly unknown[], message
 describe('Ollama structured generation contract', () => {
   beforeEach(() => useGlobalEvents().clearEvents());
   it('separates structured thinking but leaves literal text tags unchanged', async () => {
-    const { node, result } = await run({ messages: [], records: [
+    const { node, result } = await run({
+      messages: [],
+      records: [
       { message: { thinking: '  理由\n', content: '<think>literal</think>' } },
       { done: true, done_reason: 'stop', message: { content: '\n回答' } },
-    ] });
-    expect(node.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: `\
+    ],
+    });
+    expect(node.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, {
+      type: 'text',
+      text: `\
 <think>literal</think>
-回答`, completeness: 'complete' }]);
+回答`,
+      completeness: 'complete',
+    }]);
     expect(result).toEqual({ type: 'finished', next: 'user' });
   });
   it('does not deduplicate identical consecutive thinking or text deltas', async () => {
@@ -60,9 +67,12 @@ describe('Ollama structured generation contract', () => {
     ];
     const before = structuredClone(messages);
     let request: unknown;
-    const provider: LmProvider = new OllamaProvider({ endpoint: 'https://example.invalid', fetcher: async (_url, init) => {
+    const provider: LmProvider = new OllamaProvider({
+      endpoint: 'https://example.invalid',
+      fetcher: async (_url, init) => {
       request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
-    } });
+    },
+    });
     const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
     await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items: provider.chat({ debug: undefined, messages, model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined }), abortController: new AbortController(), onChange: () => {} });
     expect(request).toMatchObject({ messages: [{ thinking: '  R\n', tool_calls: [{ function: { arguments: { n: 1 } } }] }, { role: 'tool', content: 'result', tool_name: 'f', tool_call_id: 'c' }] });

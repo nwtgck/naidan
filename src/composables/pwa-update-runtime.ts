@@ -35,9 +35,11 @@ export function startPWAUpdateRuntime(): void {
       addErrorEvent({ source: 'PWA', message, details: error instanceof Error ? error : String(error) });
     },
   });
-  runtime = { dispose() {
+  runtime = {
+    dispose() {
     disposed = true; controller.dispose();
-  } };
+  },
+  };
 }
 
 export const TEST_ONLY = {

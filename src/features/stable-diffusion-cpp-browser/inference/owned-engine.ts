@@ -78,14 +78,21 @@ export function createOwnedImageEngine({ createClient }: {
         try {
           if (!client) {
             const generation = ++nativeGeneration;
-            client = createClient({ onReleased: () => {
+            client = createClient({
+              onReleased: () => {
               // A disposed native client may deliver a late event. It cannot
               // clear a replacement client's residency or notify its owner.
               if (generation === nativeGeneration && client) released();
-            } });
+            },
+            });
           }
-          const result = await client.generate({ request,
-            signal: AbortSignal.any([signal, owner.stop.signal]), onProgress, onPreview, onDiagnostic });
+          const result = await client.generate({
+            request,
+            signal: AbortSignal.any([signal, owner.stop.signal]),
+            onProgress,
+            onPreview,
+            onDiagnostic,
+          });
           if (!owner.stop.signal.aborted && (!('cancelled' in result) || result.modelResident)) resident = owner;
           return result;
         } finally {

@@ -19,9 +19,13 @@ it('does not replace a saved resource with a partial HTTP response', async () =>
   const memory = createMemoryMetadataStorage({ maximumByteLength: 8 });
   await memory.storage.write({ url: 'fixture', response: new Response('{}') });
   const cancel = vi.fn();
-  await expect(memory.storage.write({ url: 'fixture', response: new Response(new ReadableStream({ cancel }), {
-    status: 206, headers: { 'Content-Range': 'bytes 0-0/100' },
-  }) })).rejects.toThrow('206');
+  await expect(memory.storage.write({
+    url: 'fixture',
+    response: new Response(new ReadableStream({ cancel }), {
+    status: 206,
+    headers: { 'Content-Range': 'bytes 0-0/100' },
+  }),
+  })).rejects.toThrow('206');
   expect(cancel).toHaveBeenCalledOnce();
   expect(await memory.snapshot().get('fixture')?.text()).toBe('{}');
   await memory.dispose();
@@ -39,9 +43,12 @@ it('bounds combined saved metadata rather than granting the entire budget to eac
 
 it('does not publish a short full-status response as complete metadata', async () => {
   const memory = createMemoryMetadataStorage({ maximumByteLength: 8 });
-  await expect(memory.storage.write({ url: 'short', response: new Response('{}', {
+  await expect(memory.storage.write({
+    url: 'short',
+    response: new Response('{}', {
     headers: { 'Content-Length': '3' },
-  }) })).rejects.toThrow('byte length mismatch');
+  }),
+  })).rejects.toThrow('byte length mismatch');
   expect(memory.snapshot().size).toBe(0);
   await memory.dispose();
 });
@@ -53,7 +60,8 @@ it('does not publish a write that finishes after storage disposal', async () => 
   const response = new Response(new ReadableStream<Uint8Array>({
     pull() {
       entered.resolve();
-    }, cancel,
+    },
+    cancel,
   }, { highWaterMark: 0 }));
   const result = memory.storage.write({ url: 'late', response }).then(() => 'saved', (error: unknown) => error);
   await entered.promise;
@@ -67,7 +75,9 @@ it('reserves memory for a pending writer before admitting a concurrent writer', 
   const memory = createMemoryMetadataStorage({ maximumByteLength: 3 });
   const waiting = Promise.withResolvers<void>();
   let source: ReadableStreamDefaultController<Uint8Array> | undefined;
-  const first = memory.storage.write({ url: 'first', response: new Response(new ReadableStream<Uint8Array>({
+  const first = memory.storage.write({
+    url: 'first',
+    response: new Response(new ReadableStream<Uint8Array>({
     start(controller) {
       source = controller;
       controller.enqueue(Uint8Array.of(1, 2));
@@ -75,7 +85,8 @@ it('reserves memory for a pending writer before admitting a concurrent writer', 
     pull() {
       waiting.resolve();
     },
-  }, { highWaterMark: 0 })) });
+  }, { highWaterMark: 0 })),
+  });
   await waiting.promise;
   try {
     expect(await memory.storage.stat({ url: 'first' })).toBeUndefined();

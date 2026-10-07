@@ -92,9 +92,16 @@ export async function generateGptOss({
 }): Promise<unknown> {
   const isContinuation = isGptOssToolContinuationRequest({ messages });
   const fullInputs = buildGptOssFullConversationInputs({ messages, tools, tokenizer });
-  const continuation = prepareGptOssContinuation({ cache: pastKeyValues, owner: continuationOwner, model, config: model.config, messages,
+  const continuation = prepareGptOssContinuation({
+    cache: pastKeyValues,
+    owner: continuationOwner,
+    model,
+    config: model.config,
+    messages,
     buildBaseInputs: ({ messages: baseMessages }) => buildGptOssFullConversationInputs({ messages: baseMessages, tools, tokenizer }),
-    buildSuffixInputs: ({ messages: suffixMessages }) => buildGptOssToolResultTokens({ messages: suffixMessages, tokenizer }), tensorClass: Tensor });
+    buildSuffixInputs: ({ messages: suffixMessages }) => buildGptOssToolResultTokens({ messages: suffixMessages, tokenizer }),
+    tensorClass: Tensor,
+  });
 
   let inputs: Record<string, unknown>;
   let effectivePastKeyValues: unknown = null;
@@ -239,7 +246,9 @@ export async function generateGptOss({
       }
       }
     },
-  }) : new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer,
+  }) : new NativeProtocolStreamer({
+    protocolTokens: undefined,
+    tokenizer,
     onText: ({ text }) => structured.text({ text }),
     onControl: ({ token }) => structured.control({ token }),
   });
@@ -257,14 +266,32 @@ export async function generateGptOss({
     structured.finish({ reason: 'unknown' });
     const assistant = structured.assistant();
     if (assistant === undefined) return undefined;
-    return retainGptOssContinuation({ owner: continuationOwner, model, config: model.config, messages,
-      assistant, baseInputs: fullInputs, inputs, sequences: result.sequences,
-      pastKeyValues: result.past_key_values, tensorClass: Tensor });
+    return retainGptOssContinuation({
+      owner: continuationOwner,
+      model,
+      config: model.config,
+      messages,
+      assistant,
+      baseInputs: fullInputs,
+      inputs,
+      sequences: result.sequences,
+      pastKeyValues: result.past_key_values,
+      tensorClass: Tensor,
+    });
   }
   if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
-  return retainGptOssContinuation({ owner: continuationOwner, model, config: model.config, messages,
+  return retainGptOssContinuation({
+    owner: continuationOwner,
+    model,
+    config: model.config,
+    messages,
     assistant: { role: 'assistant', content: emittedContent, tool_calls: pendingToolCalls },
-    baseInputs: fullInputs, inputs, sequences: result.sequences, pastKeyValues: result.past_key_values, tensorClass: Tensor });
+    baseInputs: fullInputs,
+    inputs,
+    sequences: result.sequences,
+    pastKeyValues: result.past_key_values,
+    tensorClass: Tensor,
+  });
 }
 
 function buildGptOssFullConversationInputs({

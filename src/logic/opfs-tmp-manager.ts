@@ -68,7 +68,8 @@ class OPFSTmpManager {
       return this.activeFlush;
     }
 
-    this.activeFlush = this.synchronizer.withLock({ fn: async () => {
+    this.activeFlush = this.synchronizer.withLock({
+      fn: async () => {
       const pending = this.readPendingOwnerCleanups();
       if (pending.ownerScopeIds.length === 0) {
         return;
@@ -85,7 +86,9 @@ class OPFSTmpManager {
       this.writePendingOwnerCleanups({
         ownerScopeIds: remainingOwnerScopeIds,
       });
-    }, lockKey: OPFS_TMP_CLEANUP_LOCK_KEY }).finally(() => {
+    },
+      lockKey: OPFS_TMP_CLEANUP_LOCK_KEY,
+    }).finally(() => {
       this.activeFlush = null;
     });
 

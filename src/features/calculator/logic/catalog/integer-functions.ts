@@ -57,10 +57,14 @@ function requireIterationLimit({ count, span }: {
 
 export const INTEGER_CALCULATOR_FUNCTIONS = [
   {
-    name: 'gcd', category: 'integers',
+    name: 'gcd',
+    category: 'integers',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'exact', summary: 'Calculate the greatest common divisor of exact integers.', requirements: ['all values must be exact integers'],
-    examples: [{ expression: 'gcd(48, 18)', result: '6', exactness: 'rational' }], related: ['lcm'],
+    precision: 'exact',
+    summary: 'Calculate the greatest common divisor of exact integers.',
+    requirements: ['all values must be exact integers'],
+    examples: [{ expression: 'gcd(48, 18)', result: '6', exactness: 'rational' }],
+    related: ['lcm'],
     evaluate: ({ values, argumentSpans, callSpan, runtime }) => {
       let result = 0n;
       for (const [index, value] of values.entries()) {
@@ -75,10 +79,14 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'lcm', category: 'integers',
+    name: 'lcm',
+    category: 'integers',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'exact', summary: 'Calculate the least common multiple of exact integers.', requirements: ['all values must be exact integers'],
-    examples: [{ expression: 'lcm(12, 18)', result: '36', exactness: 'rational' }], related: ['gcd'],
+    precision: 'exact',
+    summary: 'Calculate the least common multiple of exact integers.',
+    requirements: ['all values must be exact integers'],
+    examples: [{ expression: 'lcm(12, 18)', result: '36', exactness: 'rational' }],
+    related: ['gcd'],
     evaluate: ({ values, argumentSpans, callSpan, runtime }) => {
       let result = 1n;
       for (const [index, value] of values.entries()) {
@@ -100,9 +108,14 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'factorial', category: 'integers', arguments: { type: 'exact', names: ['value'] }, precision: 'exact',
-    summary: 'Calculate the factorial of a non-negative exact integer.', requirements: ['value must be a non-negative exact integer'],
-    examples: [{ expression: 'factorial(10)', result: '3628800', exactness: 'rational' }], related: ['combinations', 'permutations'],
+    name: 'factorial',
+    category: 'integers',
+    arguments: { type: 'exact', names: ['value'] },
+    precision: 'exact',
+    summary: 'Calculate the factorial of a non-negative exact integer.',
+    requirements: ['value must be a non-negative exact integer'],
+    examples: [{ expression: 'factorial(10)', result: '3628800', exactness: 'rational' }],
+    related: ['combinations', 'permutations'],
     evaluate: ({ values, argumentSpans, callSpan, runtime }) => {
       const value = integerFromNumericValue({ value: values[0]!, name: 'factorial value', span: argumentSpans[0]! });
       requireNonNegative({ value, name: 'factorial value', span: argumentSpans[0]! });
@@ -117,9 +130,14 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'combinations', category: 'integers', arguments: { type: 'exact', names: ['n', 'r'] }, precision: 'exact',
-    summary: 'Calculate the number of combinations n choose r.', requirements: ['n and r must be exact integers', '0 <= r <= n'],
-    examples: [{ expression: 'combinations(10, 3)', result: '120', exactness: 'rational' }], related: ['permutations', 'factorial'],
+    name: 'combinations',
+    category: 'integers',
+    arguments: { type: 'exact', names: ['n', 'r'] },
+    precision: 'exact',
+    summary: 'Calculate the number of combinations n choose r.',
+    requirements: ['n and r must be exact integers', '0 <= r <= n'],
+    examples: [{ expression: 'combinations(10, 3)', result: '120', exactness: 'rational' }],
+    related: ['permutations', 'factorial'],
     evaluate: ({ values, argumentSpans, callSpan, runtime }) => {
       const n = integerFromNumericValue({ value: values[0]!, name: 'n', span: argumentSpans[0]! });
       let r = integerFromNumericValue({ value: values[1]!, name: 'r', span: argumentSpans[1]! });
@@ -140,9 +158,14 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'permutations', category: 'integers', arguments: { type: 'exact', names: ['n', 'r'] }, precision: 'exact',
-    summary: 'Calculate the number of ordered selections of r values from n.', requirements: ['n and r must be exact integers', '0 <= r <= n'],
-    examples: [{ expression: 'permutations(10, 3)', result: '720', exactness: 'rational' }], related: ['combinations', 'factorial'],
+    name: 'permutations',
+    category: 'integers',
+    arguments: { type: 'exact', names: ['n', 'r'] },
+    precision: 'exact',
+    summary: 'Calculate the number of ordered selections of r values from n.',
+    requirements: ['n and r must be exact integers', '0 <= r <= n'],
+    examples: [{ expression: 'permutations(10, 3)', result: '720', exactness: 'rational' }],
+    related: ['combinations', 'factorial'],
     evaluate: ({ values, argumentSpans, callSpan, runtime }) => {
       const n = integerFromNumericValue({ value: values[0]!, name: 'n', span: argumentSpans[0]! });
       const r = integerFromNumericValue({ value: values[1]!, name: 'r', span: argumentSpans[1]! });

@@ -97,15 +97,28 @@ describe('runPartialModelSupportInvestigation', () => {
 
   it.each([false, true])('collects the same replay evidence in short and Full scopes and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
     const repository = {
-      requestedModelId: 'org/model', normalizedModelId: 'org/model', requestedRevision: 'main' as const,
-      resolvedRevision: 'a'.repeat(40), apiUrl: 'https://huggingface.co/api/models/org/model', responseUrl: 'https://huggingface.co/api/models/org/model',
-      fileCount: 1, files: [{ path: 'config.json', size: 2, blobId: undefined, lfsOid: undefined }],
-      pipelineTag: undefined, libraryName: undefined, metadata: {},
+      requestedModelId: 'org/model',
+      normalizedModelId: 'org/model',
+      requestedRevision: 'main' as const,
+      resolvedRevision: 'a'.repeat(40),
+      apiUrl: 'https://huggingface.co/api/models/org/model',
+      responseUrl: 'https://huggingface.co/api/models/org/model',
+      fileCount: 1,
+      files: [{ path: 'config.json', size: 2, blobId: undefined, lfsOid: undefined }],
+      pipelineTag: undefined,
+      libraryName: undefined,
+      metadata: {},
     };
     const replay = vi.fn<NonNullable<Parameters<typeof runPartialModelSupportInvestigation>[0]['collectReplayMetadata']>>(async ({ run, onSummary }) => {
       await collectReplayMetadata({
-        modelId: repository.normalizedModelId, revision: run.repository!.resolvedRevision, files: repository.files,
-        budgetBytes: 100, fileTimeoutMs: 1000, modelAccess: 'public-request', localRead: async () => undefined, remoteFetch: async () => new Response('{}'),
+        modelId: repository.normalizedModelId,
+        revision: run.repository!.resolvedRevision,
+        files: repository.files,
+        budgetBytes: 100,
+        fileTimeoutMs: 1000,
+        modelAccess: 'public-request',
+        localRead: async () => undefined,
+        remoteFetch: async () => new Response('{}'),
         onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
       });
     });
@@ -114,11 +127,21 @@ describe('runPartialModelSupportInvestigation', () => {
       throw new Error('Deliberate later planning failure');
     });
     const result = await runPartialModelSupportInvestigation({
-      externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad, generation: false, continuity: false, capabilityProbes: false },
-      runRuntimePreflight: async () => runtimeRun(), inspectRepository: async () => repository,
-      inspectPersistenceRoundTrip: failure, collectDownloadEvidence: failure, inspectCache: failure, verifyCacheProvenance: failure,
-      inspectDeclarations: failure, inspectTemplateBehavior: failure, inspectModelFilePlan: failure,
-      collectReplayMetadata: replay, onEvent: vi.fn(), onRunUpdate: ({ run }) => checkpoints.push(run), now: () => '2026-09-08T00:00:00.000Z',
+      externalNetworkPolicy: 'allow',
+      executionPlan: { repositoryDownload: true, modelLoad, generation: false, continuity: false, capabilityProbes: false },
+      runRuntimePreflight: async () => runtimeRun(),
+      inspectRepository: async () => repository,
+      inspectPersistenceRoundTrip: failure,
+      collectDownloadEvidence: failure,
+      inspectCache: failure,
+      verifyCacheProvenance: failure,
+      inspectDeclarations: failure,
+      inspectTemplateBehavior: failure,
+      inspectModelFilePlan: failure,
+      collectReplayMetadata: replay,
+      onEvent: vi.fn(),
+      onRunUpdate: ({ run }) => checkpoints.push(run),
+      now: () => '2026-09-08T00:00:00.000Z',
     });
     expect(result.status).toBe('failed');
     expect(replay).toHaveBeenCalledTimes(1);
@@ -343,17 +366,32 @@ describe('runPartialModelSupportInvestigation', () => {
       inspectCache: async () => cache,
       verifyCacheProvenance,
       inspectDeclarations: async () => ({
-        normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, files: [], fileFailures: [], config: { model_type: 'model' },
-        modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+        normalizedModelId: 'org/model',
+        resolvedRevision: repository.resolvedRevision,
+        files: [],
+        fileFailures: [],
+        config: { model_type: 'model' },
+        modelType: 'model',
+        architectures: [],
+        autoMap: undefined,
+        transformersJsConfig: undefined,
         classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
       }),
       inspectTemplateBehavior: async () => ({
-        normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, tokenizerClass: 'FixtureTokenizer',
-        declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+        normalizedModelId: 'org/model',
+        resolvedRevision: repository.resolvedRevision,
+        tokenizerClass: 'FixtureTokenizer',
+        declaredChatTemplate: undefined,
+        cases: [],
+        toolTemplateProvenance: undefined,
       }),
       inspectModelFilePlan: async () => ({
-        normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, modelType: 'model',
-        registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'not-observed', cacheRevisionProvenanceReason: 'not observed',
+        normalizedModelId: 'org/model',
+        resolvedRevision: repository.resolvedRevision,
+        modelType: 'model',
+        registrySource: 'ModelRegistry.get_model_files',
+        cacheRevisionProvenance: 'not-observed',
+        cacheRevisionProvenanceReason: 'not observed',
         candidates: [],
       }),
       onEvent: vi.fn(),
@@ -518,27 +556,58 @@ describe('runPartialModelSupportInvestigation', () => {
     });
     const collectDownloadEvidence = vi.fn();
     const inspectDeclarations = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, files: [], fileFailures: [], config: { model_type: 'local_model' },
-      modelType: 'local_model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      files: [],
+      fileFailures: [],
+      config: { model_type: 'local_model' },
+      modelType: 'local_model',
+      architectures: [],
+      autoMap: undefined,
+      transformersJsConfig: undefined,
       classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
     });
     const inspectTemplateBehavior = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, loaderRevisionOption: revision, tokenizerClass: 'LocalTokenizer',
-      declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      loaderRevisionOption: revision,
+      tokenizerClass: 'LocalTokenizer',
+      declaredChatTemplate: undefined,
+      cases: [],
+      toolTemplateProvenance: undefined,
     });
     const inspectModelFilePlan = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, modelType: 'local_model',
-      registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'unknown', cacheRevisionProvenanceReason: 'local cache only',
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      modelType: 'local_model',
+      registrySource: 'ModelRegistry.get_model_files',
+      cacheRevisionProvenance: 'unknown',
+      cacheRevisionProvenanceReason: 'local cache only',
       candidates: [],
     });
     const cache = {
-      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: true,
-      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'Local cache evidence only', totalBytes: 128, fileCount: 1,
-      completionMarkerCount: 1, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
-      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: true,
+      normalizedModelId: 'org/model',
+      rootPath: 'models/huggingface.co/org/model',
+      exists: true,
+      revisionProvenance: 'unknown' as const,
+      revisionProvenanceReason: 'Local cache evidence only',
+      totalBytes: 128,
+      fileCount: 1,
+      completionMarkerCount: 1,
+      incompleteFileCount: 0,
+      orphanCompletionMarkerCount: 0,
+      orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0,
+      weightFileCount: 0,
+      allFilesHaveCompletionMarkers: true,
       files: [{
-        path: `resolve/${revision}/config.json`, repositoryPath: 'config.json', cacheRevision: revision, size: 128, lastModified: 1,
-        hasCompletionMarker: true, isWeightFile: false,
+        path: `resolve/${revision}/config.json`,
+        repositoryPath: 'config.json',
+        cacheRevision: revision,
+        size: 128,
+        lastModified: 1,
+        hasCompletionMarker: true,
+        isWeightFile: false,
       }],
     };
 
@@ -546,9 +615,15 @@ describe('runPartialModelSupportInvestigation', () => {
       externalNetworkPolicy: 'allow',
       executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
-        status: 'observed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
-        serializedByteLength: 1, serializedSha256: 'f'.repeat(64), originalMessages: [], restoredMessages: [],
-        exactModelVisibleMatch: true, firstMismatchIndex: undefined,
+        status: 'observed',
+        fixtureId: 'tool-call-history-v1',
+        method: 'chat-content-dto-json-roundtrip-v1',
+        serializedByteLength: 1,
+        serializedSha256: 'f'.repeat(64),
+        originalMessages: [],
+        restoredMessages: [],
+        exactModelVisibleMatch: true,
+        firstMismatchIndex: undefined,
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository,
@@ -566,7 +641,10 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(result.status).toBe('failed');
     expect(result.repository).toBeUndefined();
     expect(result.runtimeTarget).toMatchObject({
-      normalizedModelId: 'org/model', evidenceRevision: revision, loaderRevisionOption: revision, source: 'local-cache',
+      normalizedModelId: 'org/model',
+      evidenceRevision: revision,
+      loaderRevisionOption: revision,
+      source: 'local-cache',
       revisionIdentity: 'local-immutable-revision',
     });
     expect(result.steps.find(step => step.id === 'repository-information')?.status).toBe('failed');
@@ -578,7 +656,10 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
     expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).toHaveBeenCalledWith({
-      runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
+      runtimeTarget: result.runtimeTarget,
+      repository: undefined,
+      declarations: result.declarations,
+      cache,
     });
   });
 
@@ -587,27 +668,58 @@ describe('runPartialModelSupportInvestigation', () => {
     const inspectRepository = vi.fn();
     const collectDownloadEvidence = vi.fn();
     const inspectDeclarations = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, files: [], fileFailures: [], config: { model_type: 'local_model' },
-      modelType: 'local_model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      files: [],
+      fileFailures: [],
+      config: { model_type: 'local_model' },
+      modelType: 'local_model',
+      architectures: [],
+      autoMap: undefined,
+      transformersJsConfig: undefined,
       classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
     });
     const inspectTemplateBehavior = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, loaderRevisionOption: revision, tokenizerClass: 'LocalTokenizer',
-      declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      loaderRevisionOption: revision,
+      tokenizerClass: 'LocalTokenizer',
+      declaredChatTemplate: undefined,
+      cases: [],
+      toolTemplateProvenance: undefined,
     });
     const inspectModelFilePlan = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: revision, modelType: 'local_model',
-      registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'unknown', cacheRevisionProvenanceReason: 'local cache only',
+      normalizedModelId: 'org/model',
+      resolvedRevision: revision,
+      modelType: 'local_model',
+      registrySource: 'ModelRegistry.get_model_files',
+      cacheRevisionProvenance: 'unknown',
+      cacheRevisionProvenanceReason: 'local cache only',
       candidates: [],
     });
     const cache = {
-      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: true,
-      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'Local cache evidence only', totalBytes: 128, fileCount: 1,
-      completionMarkerCount: 1, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
-      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: true,
+      normalizedModelId: 'org/model',
+      rootPath: 'models/huggingface.co/org/model',
+      exists: true,
+      revisionProvenance: 'unknown' as const,
+      revisionProvenanceReason: 'Local cache evidence only',
+      totalBytes: 128,
+      fileCount: 1,
+      completionMarkerCount: 1,
+      incompleteFileCount: 0,
+      orphanCompletionMarkerCount: 0,
+      orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0,
+      weightFileCount: 0,
+      allFilesHaveCompletionMarkers: true,
       files: [{
-        path: `resolve/${revision}/config.json`, repositoryPath: 'config.json', cacheRevision: revision, size: 128, lastModified: 1,
-        hasCompletionMarker: true, isWeightFile: false,
+        path: `resolve/${revision}/config.json`,
+        repositoryPath: 'config.json',
+        cacheRevision: revision,
+        size: 128,
+        lastModified: 1,
+        hasCompletionMarker: true,
+        isWeightFile: false,
       }],
     };
 
@@ -615,9 +727,15 @@ describe('runPartialModelSupportInvestigation', () => {
       externalNetworkPolicy: 'deny',
       executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true },
       inspectPersistenceRoundTrip: async () => ({
-        status: 'observed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
-        serializedByteLength: 1, serializedSha256: 'd'.repeat(64), originalMessages: [], restoredMessages: [],
-        exactModelVisibleMatch: true, firstMismatchIndex: undefined,
+        status: 'observed',
+        fixtureId: 'tool-call-history-v1',
+        method: 'chat-content-dto-json-roundtrip-v1',
+        serializedByteLength: 1,
+        serializedSha256: 'd'.repeat(64),
+        originalMessages: [],
+        restoredMessages: [],
+        exactModelVisibleMatch: true,
+        firstMismatchIndex: undefined,
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository,
@@ -635,8 +753,12 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(result.status).toBe('passed');
     expect(result.repository).toBeUndefined();
     expect(result.runtimeTarget).toEqual({
-      normalizedModelId: 'org/model', evidenceRevision: revision, loaderRevisionOption: revision, source: 'local-cache',
-      revisionIdentity: 'local-immutable-revision', pipelineTag: undefined,
+      normalizedModelId: 'org/model',
+      evidenceRevision: revision,
+      loaderRevisionOption: revision,
+      source: 'local-cache',
+      revisionIdentity: 'local-immutable-revision',
+      pipelineTag: undefined,
     });
     expect(result.steps.find(step => step.id === 'repository-information')?.status).toBe('skipped');
     expect(result.steps.find(step => step.id === 'download-evidence')?.status).toBe('skipped');
@@ -648,7 +770,10 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(inspectDeclarations).toHaveBeenCalledWith({ runtimeTarget: result.runtimeTarget, repository: undefined, cache });
     expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).toHaveBeenCalledWith({
-      runtimeTarget: result.runtimeTarget, repository: undefined, declarations: result.declarations, cache,
+      runtimeTarget: result.runtimeTarget,
+      repository: undefined,
+      declarations: result.declarations,
+      cache,
     });
   });
 
@@ -667,19 +792,41 @@ describe('runPartialModelSupportInvestigation', () => {
       metadata: {},
     } as never;
     const inspectCache = vi.fn(async () => ({
-      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: false,
-      revisionProvenance: 'unknown' as const, revisionProvenanceReason: 'not observed', totalBytes: 0, fileCount: 0,
-      completionMarkerCount: 0, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
-      zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: false, files: [],
+      normalizedModelId: 'org/model',
+      rootPath: 'models/huggingface.co/org/model',
+      exists: false,
+      revisionProvenance: 'unknown' as const,
+      revisionProvenanceReason: 'not observed',
+      totalBytes: 0,
+      fileCount: 0,
+      completionMarkerCount: 0,
+      incompleteFileCount: 0,
+      orphanCompletionMarkerCount: 0,
+      orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0,
+      weightFileCount: 0,
+      allFilesHaveCompletionMarkers: false,
+      files: [],
     }));
     const inspectDeclarations = vi.fn(async () => ({
-      normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), files: [], fileFailures: [], config: { model_type: 'model' },
-      modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: 'a'.repeat(40),
+      files: [],
+      fileFailures: [],
+      config: { model_type: 'model' },
+      modelType: 'model',
+      architectures: [],
+      autoMap: undefined,
+      transformersJsConfig: undefined,
       classCapabilities: [{ autoClass: 'AutoModelForCausalLM' as const, supports: true, notEvaluatedReason: undefined }],
     }));
     const inspectModelFilePlan = vi.fn(async () => ({
-      normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), modelType: 'model',
-      registrySource: 'ModelRegistry.get_model_files' as const, cacheRevisionProvenance: 'not-observed' as const, cacheRevisionProvenanceReason: 'not observed',
+      normalizedModelId: 'org/model',
+      resolvedRevision: 'a'.repeat(40),
+      modelType: 'model',
+      registrySource: 'ModelRegistry.get_model_files' as const,
+      cacheRevisionProvenance: 'not-observed' as const,
+      cacheRevisionProvenanceReason: 'not observed',
       candidates: [],
     }));
     const inspectTemplateBehavior = vi.fn();
@@ -735,21 +882,43 @@ describe('runPartialModelSupportInvestigation', () => {
       inspectRepository: async () => repository,
       collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache: async () => ({
-        normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: false,
-        revisionProvenance: 'unknown', revisionProvenanceReason: 'not observed', totalBytes: 0, fileCount: 0,
-        completionMarkerCount: 0, incompleteFileCount: 0, orphanCompletionMarkerCount: 0, orphanCompletionMarkerPaths: [],
-        zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: false, files: [],
+        normalizedModelId: 'org/model',
+        rootPath: 'models/huggingface.co/org/model',
+        exists: false,
+        revisionProvenance: 'unknown',
+        revisionProvenanceReason: 'not observed',
+        totalBytes: 0,
+        fileCount: 0,
+        completionMarkerCount: 0,
+        incompleteFileCount: 0,
+        orphanCompletionMarkerCount: 0,
+        orphanCompletionMarkerPaths: [],
+        zeroByteFileCount: 0,
+        weightFileCount: 0,
+        allFilesHaveCompletionMarkers: false,
+        files: [],
       }),
       verifyCacheProvenance: vi.fn(),
       inspectDeclarations: async () => ({
-        normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), files: [], fileFailures: [], config: { model_type: 'model' },
-        modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+        normalizedModelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        files: [],
+        fileFailures: [],
+        config: { model_type: 'model' },
+        modelType: 'model',
+        architectures: [],
+        autoMap: undefined,
+        transformersJsConfig: undefined,
         classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
       }),
       inspectTemplateBehavior,
       inspectModelFilePlan: async () => ({
-        normalizedModelId: 'org/model', resolvedRevision: 'a'.repeat(40), modelType: 'model',
-        registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'not-observed', cacheRevisionProvenanceReason: 'not observed',
+        normalizedModelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        modelType: 'model',
+        registrySource: 'ModelRegistry.get_model_files',
+        cacheRevisionProvenance: 'not-observed',
+        cacheRevisionProvenanceReason: 'not observed',
         candidates: [],
       }),
       onEvent: vi.fn(),
@@ -782,27 +951,57 @@ describe('runPartialModelSupportInvestigation', () => {
       resolvedRevision: 'a'.repeat(40),
       apiUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
       responseUrl: 'https://huggingface.co/api/models/org/model/revision/main?blobs=true',
-      fileCount: 0, files: [], pipelineTag: 'text-generation', libraryName: 'transformers', metadata: {},
+      fileCount: 0,
+      files: [],
+      pipelineTag: 'text-generation',
+      libraryName: 'transformers',
+      metadata: {},
     };
     const inspectRepository = vi.fn().mockResolvedValue(repository);
     const inspectCache = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', rootPath: 'models/huggingface.co/org/model', exists: false,
-      revisionProvenance: 'unknown', revisionProvenanceReason: 'unknown', totalBytes: 0, fileCount: 0,
-      completionMarkerCount: 0, incompleteFileCount: 0, orphanCompletionMarkerCount: 0,
-      orphanCompletionMarkerPaths: [], zeroByteFileCount: 0, weightFileCount: 0, allFilesHaveCompletionMarkers: false, files: [],
+      normalizedModelId: 'org/model',
+      rootPath: 'models/huggingface.co/org/model',
+      exists: false,
+      revisionProvenance: 'unknown',
+      revisionProvenanceReason: 'unknown',
+      totalBytes: 0,
+      fileCount: 0,
+      completionMarkerCount: 0,
+      incompleteFileCount: 0,
+      orphanCompletionMarkerCount: 0,
+      orphanCompletionMarkerPaths: [],
+      zeroByteFileCount: 0,
+      weightFileCount: 0,
+      allFilesHaveCompletionMarkers: false,
+      files: [],
     });
     const inspectDeclarations = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, files: [], fileFailures: [], config: { model_type: 'model' },
-      modelType: 'model', architectures: [], autoMap: undefined, transformersJsConfig: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: repository.resolvedRevision,
+      files: [],
+      fileFailures: [],
+      config: { model_type: 'model' },
+      modelType: 'model',
+      architectures: [],
+      autoMap: undefined,
+      transformersJsConfig: undefined,
       classCapabilities: [{ autoClass: 'AutoModelForCausalLM', supports: true, notEvaluatedReason: undefined }],
     });
     const inspectTemplateBehavior = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, tokenizerClass: 'FixtureTokenizer',
-      declaredChatTemplate: undefined, cases: [], toolTemplateProvenance: undefined,
+      normalizedModelId: 'org/model',
+      resolvedRevision: repository.resolvedRevision,
+      tokenizerClass: 'FixtureTokenizer',
+      declaredChatTemplate: undefined,
+      cases: [],
+      toolTemplateProvenance: undefined,
     });
     const inspectModelFilePlan = vi.fn().mockResolvedValue({
-      normalizedModelId: 'org/model', resolvedRevision: repository.resolvedRevision, modelType: 'model',
-      registrySource: 'ModelRegistry.get_model_files', cacheRevisionProvenance: 'not-observed', cacheRevisionProvenanceReason: 'not observed',
+      normalizedModelId: 'org/model',
+      resolvedRevision: repository.resolvedRevision,
+      modelType: 'model',
+      registrySource: 'ModelRegistry.get_model_files',
+      cacheRevisionProvenance: 'not-observed',
+      cacheRevisionProvenanceReason: 'not observed',
       candidates: [],
     });
 
@@ -820,11 +1019,16 @@ describe('runPartialModelSupportInvestigation', () => {
         exactModelVisibleMatch: true,
         firstMismatchIndex: undefined,
       }),
-      runRuntimePreflight: async () => failed, inspectRepository,
+      runRuntimePreflight: async () => failed,
+      inspectRepository,
       collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache,
-      verifyCacheProvenance: async () => cacheProvenance(), inspectDeclarations, inspectTemplateBehavior, inspectModelFilePlan,
-      onEvent: vi.fn(), now: () => '2026-08-06T00:00:02.000Z',
+      verifyCacheProvenance: async () => cacheProvenance(),
+      inspectDeclarations,
+      inspectTemplateBehavior,
+      inspectModelFilePlan,
+      onEvent: vi.fn(),
+      now: () => '2026-08-06T00:00:02.000Z',
     });
 
     expect(result.status).toBe('failed');

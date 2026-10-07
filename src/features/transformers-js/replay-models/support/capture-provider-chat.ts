@@ -136,7 +136,11 @@ export function captureProviderChat({ provider, request }: {
     const { type, partId, index, chunks, completeness, ...unhandled } = item;
     unhandled satisfies Record<PropertyKey, never>;
     const part: Extract<CapturedProviderPart, { type: 'text' | 'reasoning' }> = {
-      type, partId, index, chunks: [], completeness: 'pending',
+      type,
+      partId,
+      index,
+      chunks: [],
+      completeness: 'pending',
     };
     parts.push(part);
     events.push({ kind: 'part', type, partId, index });
@@ -157,8 +161,13 @@ export function captureProviderChat({ provider, request }: {
     });
     void afterDrain.catch(() => {});
     return {
-      type, partId, index, completeness: afterDrain,
-      chunks: observeIterator({ source: 'chunks', values: chunks,
+      type,
+      partId,
+      index,
+      completeness: afterDrain,
+      chunks: observeIterator({
+        source: 'chunks',
+        values: chunks,
         onValue: ({ value }) => {
           part.chunks.push(value);
           events.push({ kind: 'chunk', partId, chunk: value });
@@ -208,11 +217,20 @@ export function captureProviderChat({ provider, request }: {
         throw error;
       }
       const node: AssistantMessageNode = {
-        id: toMessageId({ raw: 'captured-assistant' }), role: 'assistant', createdAt: 0,
-        parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined,
+        id: toMessageId({ raw: 'captured-assistant' }),
+        role: 'assistant',
+        createdAt: 0,
+        parts: [],
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
         replies: { items: [] },
       };
-      await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {},
+      await consumeChatGeneration({
+        onToolCallDraftsChange: undefined,
+        node,
+        abortController: new AbortController(),
+        onChange: () => {},
         items: observeIterator({ source: 'outer', values: items, onValue: observeItem, onDone: () => {} }),
       });
       settlement = { status: 'fulfilled' };

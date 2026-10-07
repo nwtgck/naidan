@@ -57,18 +57,26 @@ export function createEmbeddedBinaryPlugin({ binaries, diagnostics }: {
       // Intentionally Brotli-only: standalone distribution size takes priority over
       // decoder window memory. Hosted runtime assets remain gzip. Do not include a
       // second gzip payload or a decoder polyfill; the actual Worker probes Brotli.
-      const compressed = brotliCompressSync(bytes, { params: {
+      const compressed = brotliCompressSync(bytes, {
+        params: {
         [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC,
         [constants.BROTLI_PARAM_QUALITY]: 11,
-        // The reviewed 8.2 MB Wasm benefits from window 23; 24 adds no size saving.
-        // Keep standard Brotli, not the incompatible large-window extension.
+          // The reviewed 8.2 MB Wasm benefits from window 23; 24 adds no size saving.
+          // Keep standard Brotli, not the incompatible large-window extension.
         [constants.BROTLI_PARAM_LGWIN]: 23,
         [constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
-      } });
+      },
+      });
       const base64 = compressed.toString('base64');
       records.set(id, {
-        virtualId: input.virtualId, sourcePath: input.filePath, bytes: input.bytes,
-        sha256: input.sha256, compression: 'brotli', compressedBytes: compressed.length, base64Bytes: base64.length, owners: [],
+        virtualId: input.virtualId,
+        sourcePath: input.filePath,
+        bytes: input.bytes,
+        sha256: input.sha256,
+        compression: 'brotli',
+        compressedBytes: compressed.length,
+        base64Bytes: base64.length,
+        owners: [],
       });
       diagnostics.embeddedBinaries = [...records.values()];
       return `export const base64 = ${JSON.stringify(base64)}; export const byteLength = ${input.bytes}; export const sha256 = ${JSON.stringify(input.sha256)};`;

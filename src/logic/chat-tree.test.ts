@@ -35,7 +35,8 @@ describe('chat-tree utils', () => {
         id: toMessageId({ raw: 'message-0' }),
         role: 'user',
         parts: [{ type: 'text', text: '0', completeness: 'complete' }],
-        modelId: undefined, lmParameters: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
         createdAt: 0,
         replies: { items: [] },
       };
@@ -44,8 +45,10 @@ describe('chat-tree utils', () => {
         const common = {
           id: toMessageId({ raw: `message-${index}` }),
           parts: [{ type: 'text' as const, text: String(index), completeness: 'complete' as const }],
-          modelId: undefined, lmParameters: undefined,
-          createdAt: index, replies: { items: [] },
+          modelId: undefined,
+          lmParameters: undefined,
+          createdAt: index,
+          replies: { items: [] },
         };
         const next: MessageNode = index % 2 === 0 ? { ...common, role: 'user' } : { ...common, role: 'assistant', interruption: undefined };
         current.replies.items.push(next);
@@ -106,10 +109,12 @@ describe('chat-tree utils', () => {
     });
     it('copies attachment metadata and parameter containers instead of retaining editor mutations', () => {
       const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'before', mimeType: 'image/png', size: 1, uploadedAt: 0, status: 'persisted' as const };
-      const [user, assistant] = createBranchFromMessages({ messages: [
+      const [user, assistant] = createBranchFromMessages({
+        messages: [
         historyMessage({ role: 'user', content: '', thinking: undefined, attachments: [attachment], modelId: undefined }),
         historyMessage({ role: 'assistant', content: '', thinking: undefined, attachments: undefined, modelId: undefined }),
-      ] });
+      ],
+      });
       attachment.originalName = 'after';
       expect(user?.parts[1]).toMatchObject({ attachment: { originalName: 'before' } });
       expect(user?.lmParameters).not.toBe(assistant?.lmParameters);
@@ -127,11 +132,16 @@ describe('chat-tree utils', () => {
 
 describe('full-part history preservation', () => {
   it('preserves tool call/result identity, state and metadata while assigning fresh message IDs', () => {
-    const assistant: MessageNode = { ...historyMessage({ role: 'assistant', content: '', thinking: undefined, modelId: 'm', attachments: undefined }), role: 'assistant', interruption: { type: 'error', message: '日本語' }, parts: [
+    const assistant: MessageNode = {
+      ...historyMessage({ role: 'assistant', content: '', thinking: undefined, modelId: 'm', attachments: undefined }),
+      role: 'assistant',
+      interruption: { type: 'error', message: '日本語' },
+      parts: [
       { type: 'text', text: '', completeness: 'complete' },
       { type: 'reasoning', text: '  R\n', completeness: 'partial' },
       { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
-    ] };
+    ],
+    };
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 99, modelId: undefined, lmParameters: undefined, parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } }], replies: { items: [] } };
     assistant.replies.items.push(tool, { ...tool, id: toMessageId({ raw: 'sibling' }) });
     const before = JSON.stringify(assistant);

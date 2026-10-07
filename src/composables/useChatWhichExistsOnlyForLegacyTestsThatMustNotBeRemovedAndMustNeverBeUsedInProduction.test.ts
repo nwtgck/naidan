@@ -44,7 +44,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn(),
     updateHierarchy: vi.fn(),
     loadHierarchy: vi.fn(),
@@ -168,10 +169,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   };
 
   it('should update activeMessages in real-time during streaming', async () => {
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-1', title: 'Test', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'chat-1',
+      title: 'Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
     const sendPromise = sendMessage({ content: 'Ping' });
     await new Promise(r => setTimeout(r, 20));
     triggerRef(currentChat);
@@ -184,10 +191,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should return true from sendMessage immediately while generation continues in background (Regression Test)', async () => {
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'bg-gen-test', title: 'BG Test', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'bg-gen-test',
+      title: 'BG Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
 
     // Mock a slow LM response
     let resolveGen: () => void;
@@ -319,10 +332,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ];
 
     const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 };
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: toChatId({ raw: 'c1' }),
+      title: 'C1',
+      root: { items: [m1] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      groupId: null,
+    }) as any,
+    });
 
     await forkChat({ messageId: 'm1' });
 
@@ -401,14 +421,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       lmParameters: EMPTY_LM_PARAMETERS,
     };
 
-    __testOnlySetCurrentChat({ chat: reactive({
+    __testOnlySetCurrentChat({
+      chat: reactive({
       id: 'c1',
       title: 'T',
       root: { items: [m1] },
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
-    }) as any });
+    }) as any,
+    });
 
     // Edit assistant message
     await editMessage({ messageId: 'm1', newContent: 'New Content' });
@@ -495,10 +517,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should branch into a new version when regenerateMessage is called', async () => {
     const { sendMessage, regenerateMessage, switchVersion } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'regen-test', title: 'Regen', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'regen-test',
+      title: 'Regen',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
 
     // 1. Send first message and get first response
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
@@ -554,10 +582,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
     const { sendMessage, currentChat } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'store-params-test', title: 'Store Params', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'store-params-test',
+      title: 'Store Params',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
 
     const customParams = {
       ...EMPTY_LM_PARAMETERS,
@@ -645,7 +679,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const chat2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const mockChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'G1',
+      isCollapsed: false,
+      updatedAt: 0,
       items: [
         { id: 'chat:c1', type: 'chat' as const, chat: chat1 },
         { id: 'chat:c2', type: 'chat' as const, chat: chat2 },
@@ -655,7 +692,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const initial: SidebarItem[] = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup }];
     rootItems.value = initial;
     mockRootItems.push(...initial);
-    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
+    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
 
     const newItems: SidebarItem[] = [
       {
@@ -682,7 +719,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const mockChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'G1',
+      isCollapsed: false,
+      updatedAt: 0,
       items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
 
@@ -705,11 +745,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const groupA = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'GA', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'GA',
+      isCollapsed: false,
+      updatedAt: 0,
       items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
     const groupB = {
-      id: toChatGroupId({ raw: 'g2' }), name: 'GB', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g2' }),
+      name: 'GB',
+      isCollapsed: false,
+      updatedAt: 0,
       items: [],
     };
 
@@ -746,7 +792,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
-      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+      id: toChatId({ raw: 'c1' }),
+      title: 'Test',
+      root: { items: [] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: mockChat });
 
@@ -787,7 +838,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
-      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+      id: toChatId({ raw: 'c1' }),
+      title: 'Test',
+      root: { items: [] },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: mockChat });
 
@@ -807,7 +863,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
       // but we can still test the logic by manually inserting a node
       const manualId = 'manual-u1';
-      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], lmParameters: undefined, createdAt: Date.now(), replies: { items: [] },  modelId: undefined });
+      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], lmParameters: undefined, createdAt: Date.now(), replies: { items: [] }, modelId: undefined });
       await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
       mockLmChat.mockClear();
@@ -826,10 +882,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should keep the assistant error on the failed message after generation fails', async () => {
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-error', title: 'Test', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'chat-error',
+      title: 'Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
@@ -852,10 +914,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should preserve persisted assistant errors after chat content reloads from storage', async () => {
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-error-reload', title: 'Test', root: { items: [] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+      id: 'chat-error-reload',
+      title: 'Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any,
+    });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
@@ -1089,7 +1157,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
     mockHierarchy.items = [
-      { type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' }), toChatId({ raw: 'c3' })] },
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' }), toChatId({ raw: 'c3' })] },
       { type: 'chat', id: toChatId({ raw: 'top' }) },
     ];
 
@@ -1147,13 +1215,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: 'chat-A',
       title: null,
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Msg A', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
     }) as any;
     const chatB = reactive({
       id: 'chat-B',
       title: null,
       root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', parts: [{ type: 'text', text: 'Msg B', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
     }) as any;
 
     // Start generating title for Chat A
@@ -1308,28 +1380,38 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           {
             id: toMessageId({ raw: 'user-1' }),
             role: 'user',
-            parts: [{ type: 'text', text: 'Question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+            parts: [{ type: 'text', text: 'Question', completeness: 'complete' }],
+            modelId: undefined,
+            lmParameters: undefined,
             createdAt: 1,
             replies: {
               items: [
                 {
                   id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
-                  parts: [{ type: 'text', text: 'Target answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  parts: [{ type: 'text', text: 'Target answer', completeness: 'complete' }],
+                  modelId: undefined,
+                  lmParameters: undefined,
+                  interruption: undefined,
                   createdAt: 2,
                   replies: {
                     items: [
                       {
                         id: toMessageId({ raw: 'user-followup' }),
                         role: 'user',
-                        parts: [{ type: 'text', text: 'Follow up', completeness: 'complete' }], modelId: undefined, lmParameters: undefined,
+                        parts: [{ type: 'text', text: 'Follow up', completeness: 'complete' }],
+                        modelId: undefined,
+                        lmParameters: undefined,
                         createdAt: 3,
                         replies: {
                           items: [
                             {
                               id: toMessageId({ raw: 'target-leaf' }),
                               role: 'assistant',
-                              parts: [{ type: 'text', text: 'Target leaf', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                              parts: [{ type: 'text', text: 'Target leaf', completeness: 'complete' }],
+                              modelId: undefined,
+                              lmParameters: undefined,
+                              interruption: undefined,
                               createdAt: 4,
                               replies: { items: [] },
                             },
@@ -1342,7 +1424,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
                 {
                   id: toMessageId({ raw: 'assistant-2' }),
                   role: 'assistant',
-                  parts: [{ type: 'text', text: 'Saved answer', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined,
+                  parts: [{ type: 'text', text: 'Saved answer', completeness: 'complete' }],
+                  modelId: undefined,
+                  lmParameters: undefined,
+                  interruption: undefined,
                   createdAt: 5,
                   replies: { items: [] },
                 },
@@ -1418,14 +1503,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const chat2Id = toChatId({ raw: 'c2' });
       const c1 = { id: toChatId({ raw: 'c1' }), title: '1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
       const c2 = { id: chat2Id, title: '2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
-      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [
+      const g1 = {
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'G1',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [
         { id: 'chat:c1', type: 'chat', chat: c1 },
         { id: 'chat:c2', type: 'chat', chat: c2 },
-      ] as ChatSidebarItem[] };
+      ] as ChatSidebarItem[],
+      };
 
       mockRootItems.length = 0;
       mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 });
-      mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
+      mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
 
       // Ensure mock loadChat returns the chat we are about to delete
       vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
@@ -1451,11 +1542,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       await chatStore.deleteChat({ id: idToRaw({ id: chat2Id }), injectAddToast: mockAdd });
 
       // 4. Simulate Tab B removing it from hierarchy
-      await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+      await storageService.updateHierarchy({
+        updater: ({ current: curr }) => {
         const g = curr.items[0] as HierarchyChatGroupNode;
         g.chat_ids = [toChatId({ raw: 'c1' })];
         return curr;
-      } });
+      },
+      });
       await chatStore.loadChats();
 
       // 5. Act: Undo

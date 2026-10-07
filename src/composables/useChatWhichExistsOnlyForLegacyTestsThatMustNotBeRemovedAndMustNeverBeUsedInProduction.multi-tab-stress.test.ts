@@ -114,9 +114,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatStoreB = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
     const chat1: Chat = {
-      id: toChatId({ raw: 'c1' }), title: 'C1',
+      id: toChatId({ raw: 'c1' }),
+      title: 'C1',
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', parts: [{ type: 'text', text: '', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } }] }, createdAt: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'a1' }),
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      currentLeafId: toMessageId({ raw: 'a1' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -182,11 +186,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
           try {
-            await storageService.updateChatContent({ id: chat.id, updater: ({ current }) => ({
+            await storageService.updateChatContent({
+              id: chat.id,
+              updater: ({ current }) => ({
               ...current,
               root: chat.root,
               currentLeafId: chat.currentLeafId,
-            }) });
+            }),
+            });
             lastSave = Date.now();
           } finally {
             isSaving = false;

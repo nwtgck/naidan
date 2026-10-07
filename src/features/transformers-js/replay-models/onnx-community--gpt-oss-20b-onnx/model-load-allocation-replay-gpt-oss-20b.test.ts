@@ -39,13 +39,19 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     // One real-size target per run permits correct early-stop/serial readers.
     // No large allocation succeeds, and this is not a full-capacity Load test.
     let targetPulls = 0;
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
       if (path !== target.path) return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
-      return new Response(new ReadableStream<Uint8Array>({ pull() {
+      return new Response(new ReadableStream<Uint8Array>({
+        pull() {
         targetPulls++; throw new Error('Refused allocation must precede source reads');
-      } }, { highWaterMark: 0 }),
+      },
+      }, { highWaterMark: 0 }),
       { headers: { 'Content-Length': String(target.bytes) } });
-    } });
+    },
+    });
     expect(h.archive.summary.revision).toBe('6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7');
     h.raw.sessions.mockImplementation(async () => {
       throw new Error('Actual-size refusal must never reach ORT');
@@ -74,7 +80,13 @@ describe('GPT-OSS model Load allocation boundaries', () => {
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.missingCache).toMatchObject({ fileCount: 0, load: 'rejected-before-candidate', weightReads: 0, ortEntries: 0, modelDownloads: 0 });
-    const h = await createProviderReplayTestRuntime({ modelId, expectedRevision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7', cacheRevision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7', metadataCache: [], artifacts: [], imagePlatform: undefined,
+    const h = await createProviderReplayTestRuntime({
+      modelId,
+      expectedRevision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
+      cacheRevision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
+      metadataCache: [],
+      artifacts: [],
+      imagePlatform: undefined,
       generate: async () => {
         throw new Error('An unsaved model must not generate');
       },
@@ -99,12 +111,16 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const chunks: Uint8Array[][] = [];
     const expected = new Map<string, number[]>();
     const pulls: string[] = [];
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
       const index = resources.findIndex(item => item.path === path);
       const parts = [new Uint8Array([index, 11, 22]), new Uint8Array([33, 44, index])];
       chunks.push(parts); expected.set(path, parts.flatMap(part => [...part]));
       let ordinal = 0;
-      return new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
+      return new Response(new ReadableStream<Uint8Array>({
+        async pull(controller) {
         if (ordinal === 0 && path === resources[0]?.path) {
           entered.resolve(); await release.promise;
         }
@@ -113,8 +129,10 @@ describe('GPT-OSS model Load allocation boundaries', () => {
         if (part === undefined) throw new Error('Unexpected extra source pull');
         controller.enqueue(part);
         if (ordinal === parts.length) controller.close();
-      } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
-    } });
+      },
+      }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
+    },
+    });
     const loading = (async () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();
@@ -162,11 +180,15 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const cause = new Error('Controlled partial source failure');
     let cancelled = 0;
     let corePulls = 0;
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
       if (path !== 'onnx/model_q4f16.onnx') return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
       let responsePulls = 0;
       let responseCancelled = false;
-      return new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
+      return new Response(new ReadableStream<Uint8Array>({
+        async pull(controller) {
         corePulls++;
         if (++responsePulls === 1) {
           controller.enqueue(new Uint8Array([1, 2, 3])); return;
@@ -178,10 +200,13 @@ describe('GPT-OSS model Load allocation boundaries', () => {
         } finally {
           lateFinished.resolve();
         }
-      }, cancel() {
+      },
+        cancel() {
         responseCancelled = true; if (responsePulls > 0) cancelled++;
-      } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
-    } });
+      },
+      }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
+    },
+    });
     h.raw.sessions.mockImplementation(async () => {
       throw new Error('A partial read cannot enter ORT');
     });
@@ -227,11 +252,15 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const cause = new Error('Controlled partial source failure');
     let cancelled = 0;
     let corePulls = 0;
-    const h = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: ({ path }) => {
+    const h = await createModelLoadAllocationRuntime({
+      modelId,
+      paths: resources.map(item => item.path),
+      response: ({ path }) => {
       if (path !== 'onnx/model_q4f16.onnx') return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
       let responsePulls = 0;
       let responseCancelled = false;
-      return new Response(new ReadableStream<Uint8Array>({ async pull(controller) {
+      return new Response(new ReadableStream<Uint8Array>({
+        async pull(controller) {
         corePulls++;
         if (++responsePulls === 1) {
           controller.enqueue(new Uint8Array([1, 2, 3])); return;
@@ -243,10 +272,13 @@ describe('GPT-OSS model Load allocation boundaries', () => {
         } finally {
           lateFinished.resolve();
         }
-      }, cancel() {
+      },
+        cancel() {
         responseCancelled = true; if (responsePulls > 0) cancelled++;
-      } }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
-    } });
+      },
+      }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
+    },
+    });
     h.raw.sessions.mockImplementation(async () => {
       throw new Error('A partial read cannot enter ORT');
     });

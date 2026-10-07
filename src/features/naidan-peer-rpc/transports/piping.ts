@@ -18,8 +18,10 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
     baseUrl: transport.serverUrl,
     policy: transport.serverUrl.startsWith('https:') ? 'https-only' as const : 'allow-loopback-http' as const,
     headers: transport.headers.map(({ name, value }) => ({ name, value })),
-    requestTimeoutMs: 120000, repairTimeoutMs: 15000,
-    candidateConfirmationTimeoutMs: 15000, handshakeRetentionMs: undefined,
+    requestTimeoutMs: 120000,
+    repairTimeoutMs: 15000,
+    candidateConfirmationTimeoutMs: 15000,
+    handshakeRetentionMs: undefined,
     pacing: { minimumMs: 20, idleResendIntervalMs: 15000, retryBaseMs: 250, retryMaximumMs: 5000 },
   };
   if (peerKey !== undefined) {
@@ -28,8 +30,14 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
     const ordered = [local, peerKey].sort();
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(['naidan-peer-rpc/v1', transport.serverUrl, ...ordered]))));
     signal.throwIfAborted();
-    return NaidanPipingDuplexSession.connect({ piping, identity, expectedPeer: decodePeerKey({ value: peerKey }),
-      code: 'peer-' + Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''), role: local === ordered[0] ? 'initiator' : 'responder', signal });
+    return NaidanPipingDuplexSession.connect({
+      piping,
+      identity,
+      expectedPeer: decodePeerKey({ value: peerKey }),
+      code: 'peer-' + Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''),
+      role: local === ordered[0] ? 'initiator' : 'responder',
+      signal,
+    });
   }
   if (code === undefined || !verifyPeer) throw new Error('Pairing requires a shared code and explicit verifier');
   const normalized = normalizeRpcPairingCode({ code });

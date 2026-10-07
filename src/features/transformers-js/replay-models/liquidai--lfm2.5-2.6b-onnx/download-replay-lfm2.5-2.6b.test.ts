@@ -11,7 +11,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'LiquidAI/LFM2.5-2.6B-ONNX', revision: '66826372fd4fa166f53be0371c9315745c07cace',
+    phase: 'load',
+    modelId: 'LiquidAI/LFM2.5-2.6B-ONNX',
+    revision: '66826372fd4fa166f53be0371c9315745c07cace',
     corePath: 'onnx/model_q4f16.onnx',
     externalData: [
       { path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' },

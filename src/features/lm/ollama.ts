@@ -196,12 +196,15 @@ export class OllamaProvider implements LmProvider {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
     const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
-    return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+    return createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
       const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
       const projected = await buildApiChatMessages({ messages: snapshot.messages, readBinaryObject, signal });
       const callNames = new Map<string, string>();
       const body: OllamaChatRequest = {
-        model, stream: true,
+        model,
+        stream: true,
         messages: projected.map(message => {
           const { role, content, reasoning_content, tool_calls, tool_call_id, ...unhandled } = message;
           unhandled satisfies Record<PropertyKey, never>;
@@ -230,8 +233,12 @@ export class OllamaProvider implements LmProvider {
             return { id: call.id, type: call.type, function: { name: call.function.name, arguments: args } };
           });
           return {
-            role, content: text, images: images.length ? images : undefined,
-            thinking: reasoning_content, tool_calls: calls, tool_call_id,
+            role,
+            content: text,
+            images: images.length ? images : undefined,
+            thinking: reasoning_content,
+            tool_calls: calls,
+            tool_call_id,
             tool_name: tool_call_id === undefined ? undefined : callNames.get(tool_call_id),
           };
         }),
@@ -301,10 +308,17 @@ export class OllamaProvider implements LmProvider {
             if (ids.has(id)) throw new Error('Duplicate completed tool call ID.');
             ids.add(id);
             // An Ollama tool_calls item carries the complete call, not token deltas.
-            await writer.call({ key: calls++, toolCall: { id: toToolCallId({ raw: id }), type: 'function', function: {
+            await writer.call({
+              key: calls++,
+              toolCall: {
+              id: toToolCallId({ raw: id }),
+              type: 'function',
+              function: {
               name: call.function.name,
               arguments: typeof call.function.arguments === 'string' ? call.function.arguments : JSON.stringify(call.function.arguments),
-            } } });
+            },
+            },
+            });
           }
           if (chunk.done) {
             switch (chunk.done_reason) {
@@ -320,7 +334,8 @@ export class OllamaProvider implements LmProvider {
         if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
         throw error;
       }
-    } });
+    },
+    });
   }
 
   async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {

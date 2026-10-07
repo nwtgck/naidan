@@ -18,7 +18,9 @@ export function createLlamaCppGeneration({ request, generate }: {
   const { messages, parameters, tools, model, readBinaryObject, debug, signal, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   const snapshot = snapshotChatRequest({ messages, parameters, tools });
-  return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+  return createChatGenerationStream({
+    signal,
+    run: async ({ writer, signal }) => {
     const input = await prepareLlamaCppRequest({ ...snapshot, model, readBinaryObject, debug, signal });
     const usedIds = new Set(input.messages.flatMap(message => message.tool_calls?.map(call => call.id) ?? []));
     let content = ''; let reasoning = '';
@@ -27,7 +29,10 @@ export function createLlamaCppGeneration({ request, generate }: {
     let phase: 'reasoning' | 'text' | 'tool_call' = 'reasoning';
     let replayable = true;
     try {
-      const result = generationResultSchema.parse(await generate({ input, signal, onEvent: async ({ event }) => {
+      const result = generationResultSchema.parse(await generate({
+        input,
+        signal,
+        onEvent: async ({ event }) => {
         const value = generationEventSchema.parse(event);
         switch (value.type) {
         case 'reasoning':
@@ -75,7 +80,8 @@ export function createLlamaCppGeneration({ request, generate }: {
         }
         default: { const exhaustive: never = value; throw new Error(`Unknown native event: ${exhaustive}`); }
         }
-      } }));
+      },
+      }));
       if (result.content !== content || result.reasoningContent !== reasoning) throw new Error('Native result does not match delivered content.');
       if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
       switch (result.finishReason) {
@@ -102,7 +108,8 @@ export function createLlamaCppGeneration({ request, generate }: {
       default: { const exhaustive: never = code; throw new Error(`Unhandled generation error: ${exhaustive}`); }
       }
     }
-  } });
+  },
+  });
 }
 
 /** The outer operation owns every local child, not only the native RPC promise. */

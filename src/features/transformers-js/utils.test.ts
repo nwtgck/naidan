@@ -127,8 +127,14 @@ describe('OPFS writes', () => {
         },
       });
     });
-    const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
-      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2, 3), { headers: { 'Content-Length': '3' } }) }) });
+    const operation = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async ({ lease }) =>
+      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2, 3), { headers: { 'Content-Length': '3' } }) }),
+    });
     await closeEntered.promise;
     expect(directory.files.has('.model.onnx.complete')).toBe(false);
     expect([...file.bytes]).toEqual([9]);
@@ -141,8 +147,14 @@ describe('OPFS writes', () => {
 
   it('does not publish a direct completion marker for a short response', async () => {
     const path = 'models/huggingface.co/org/repo/model.onnx';
-    await expect(withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
-      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '3' } }) }) })).rejects.toThrow('expected 3, received 2');
+    await expect(withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async ({ lease }) =>
+      await writeIncompleteOpfsFile({ path, lease, response: new Response(Uint8Array.of(1, 2), { headers: { 'Content-Length': '3' } }) }),
+    })).rejects.toThrow('expected 3, received 2');
     expect([...modelDirectory({ root }).files.keys()]).toEqual([]);
   });
 
@@ -163,8 +175,14 @@ describe('OPFS writes', () => {
     }));
     vi.useFakeTimers();
     try {
-      const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) =>
-        await writeIncompleteOpfsFile({ path, response, lease }) });
+      const operation = withOpfsFileLease({
+        path,
+        mode: 'exclusive',
+        availability: 'wait',
+        signal: undefined,
+        run: async ({ lease }) =>
+        await writeIncompleteOpfsFile({ path, response, lease }),
+      });
       const outcome = operation.catch(error => error);
       await canceled.promise;
       expect(file.createWritableCalls).toBe(0);
@@ -186,22 +204,30 @@ describe('OPFS writes', () => {
     const file = await directory.getFileHandle('model.onnx', { create: true });
     const abortEntered = Promise.withResolvers<void>();
     const releaseAbort = Promise.withResolvers<void>();
-    vi.spyOn(file, 'createWritable').mockResolvedValue(new WritableStream<Uint8Array>({ abort: async () => {
+    vi.spyOn(file, 'createWritable').mockResolvedValue(new WritableStream<Uint8Array>({
+      abort: async () => {
       abortEntered.resolve();
       await releaseAbort.promise;
-    } }));
+    },
+    }));
     const response = new Response(Uint8Array.of(1));
     const reader = response.body!.getReader();
     let settled = false;
     let leaseActive = false;
-    const operation = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) => {
+    const operation = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async ({ lease }) => {
       leaseActive = true;
       try {
         return await writeIncompleteOpfsFile({ path, response, lease });
       } finally {
         leaseActive = false;
       }
-    } });
+    },
+    });
     const outcome = operation.catch(error => error).finally(() => {
       settled = true;
     });
@@ -246,7 +272,8 @@ describe('OPFS writes', () => {
     });
     const cancel = vi.fn();
     const response = new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-      status: 206, headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
+      status: 206,
+      headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
     });
     await expect(writeToOpfs({ path, response })).rejects.toThrow('206');
     const directory = modelDirectory({ root });
@@ -266,7 +293,8 @@ describe('OPFS writes', () => {
     });
     const cancel = vi.fn();
     const response = new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 }), {
-      status: 200, headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
+      status: 200,
+      headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
     });
     await expect(writeToOpfsWithStaging({ path, response })).rejects.toThrow('Content-Range');
     const directory = modelDirectory({ root });

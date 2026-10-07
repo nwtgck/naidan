@@ -46,9 +46,22 @@ it('keeps preview images while typing a larger retention limit, including when a
   view.maxPreviews.value = 20;
   const gallery = createImageGallery<Omit<typeof view.previewSnapshots.value[number], 'id' | 'url'>>({ initialLimit: 20, maxBytes: 10000 });
   const add = () => {
-    gallery.add({ blob: new Blob(['image']), width: 1, height: 1,
-      metadata: { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
-        mode: 'vae', width: 1, height: 1, elapsedMs: 2500 } });
+    gallery.add({
+      blob: new Blob(['image']),
+      width: 1,
+      height: 1,
+      metadata: {
+        type: 'naidan-image-preview-v1',
+        runId: 1,
+        revision: 0,
+        step: 2,
+        steps: 8,
+        mode: 'vae',
+        width: 1,
+        height: 1,
+        elapsedMs: 2500,
+      },
+    });
     view.previewSnapshots.value = gallery.entries();
   };
   // Connect the real gallery to the view using the hosted owner's limit contract.
@@ -88,8 +101,19 @@ it.each(['card', 'viewer'])('keeps a retained preview downloadable from its %s a
   const supported = ref(true);
   const view = useImageGeneration();
   view.supported = computed(() => supported.value);
-  view.previewSnapshots.value = [{ type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
-    mode: 'vae', width: 32, height: 32, url: 'blob:saved-preview', id: 2, elapsedMs: 2500 }];
+  view.previewSnapshots.value = [{
+    type: 'naidan-image-preview-v1',
+    runId: 1,
+    revision: 0,
+    step: 2,
+    steps: 8,
+    mode: 'vae',
+    width: 32,
+    height: 32,
+    url: 'blob:saved-preview',
+    id: 2,
+    elapsedMs: 2500,
+  }];
   view.downloadPreview = vi.fn(async () => ({ status: 'downloaded' as const }));
   wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' }, global: { stubs: { Teleport: true } } });
   if (location === 'viewer') await wrapper.get('[data-testid="image-preview-snapshot"] button').trigger('click');
@@ -117,8 +141,19 @@ function openPreview({ width = 32, height = 32, mode = 'projection', maxEdge = 2
   const view = { ...useImageGeneration(), supported: computed(() => true), busy: computed(() => true) };
   view.parameters.value.width = 512; view.parameters.value.height = 512;
   view.preview.value = { ...view.preview.value, enabled: true, maxEdge };
-  view.livePreview.value = { type: 'naidan-image-preview-v1', runId: 1, revision: 0, step: 2, steps: 8,
-    mode, width, height, url: 'blob:original-small-preview', id: 1, elapsedMs: 2500 };
+  view.livePreview.value = {
+    type: 'naidan-image-preview-v1',
+    runId: 1,
+    revision: 0,
+    step: 2,
+    steps: 8,
+    mode,
+    width,
+    height,
+    url: 'blob:original-small-preview',
+    id: 1,
+    elapsedMs: 2500,
+  };
   wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
   return { view, wrapper };
 }

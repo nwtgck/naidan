@@ -80,9 +80,12 @@ Line 2 modified
 Line 3`;
     const result = computeWordDiff({ oldText, newText });
     expect(result).toEqual([
-      { type: 'unchanged', value: `\
+      {
+        type: 'unchanged',
+        value: `\
 Line 1
-Line 2` },
+Line 2`,
+      },
       { type: 'added', value: ' modified' },
       { type: 'unchanged', value: '\nLine 3' },
     ]);

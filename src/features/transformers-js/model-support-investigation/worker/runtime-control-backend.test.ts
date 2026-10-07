@@ -108,7 +108,8 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
     if (api === undefined) throw new Error('Planning entry did not expose its API');
     const configuration = configurationForPreset({ preset: 'offline' });
     await expect(api.runPartialInvestigation({
-      runId: 'runtime-control-test', modelId: 'fixture/runtime-control',
+      runId: 'runtime-control-test',
+      modelId: 'fixture/runtime-control',
       externalNetworkPolicy: configuration.externalNetworkPolicy,
       executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
     }, vi.fn(), ({ run }) => {

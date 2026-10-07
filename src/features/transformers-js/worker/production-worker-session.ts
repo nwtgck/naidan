@@ -111,9 +111,13 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
           status: 'runtime-module-ready', requestId: lease.requestId, objectUrl: lease.objectUrl,
         });
       }).catch(error => {
-        if (!terminalError) terminate({ error: new ProductionWorkerLifecycleError({
-          reason: 'initialization-failed', message: error instanceof Error ? error.message : String(error),
-        }), releaseIdleRemote: false });
+        if (!terminalError) terminate({
+          error: new ProductionWorkerLifecycleError({
+          reason: 'initialization-failed',
+          message: error instanceof Error ? error.message : String(error),
+        }),
+          releaseIdleRemote: false,
+        });
       });
       return;
     }

@@ -27,11 +27,14 @@ vi.mock('../logic/reuse-downloaded-production-revision', () => ({ reuseDownloade
 // lane can reject before its retired Download continuation finishes.
 vi.mock('../logic/run-production-download-preparation', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/transformers-js/download-verification/logic/run-production-download-preparation')>();
-  return { ...original, runProductionDownloadPreparation: (args: Parameters<typeof original.runProductionDownloadPreparation>[0]) => {
+  return {
+    ...original,
+    runProductionDownloadPreparation: (args: Parameters<typeof original.runProductionDownloadPreparation>[0]) => {
     const running = original.runProductionDownloadPreparation(args);
     preparations.push(running.then(value => ({ status: 'fulfilled' as const, value }), (error: unknown) => ({ status: 'rejected' as const, error })));
     return running;
-  } };
+  },
+  };
 });
 
 const modelId = 'synthetic/model';
@@ -101,7 +104,12 @@ beforeEach(() => {
   vi.mocked(resolvePublicHuggingFaceRevision).mockResolvedValue({ normalizedModelId: modelId, requestedRevision: 'main', resolvedRevision: revision });
   vi.mocked(reuseDownloadedProductionRevision).mockResolvedValue({ reused: false, acceptance: undefined });
   vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
-    modelId, revision, status: 'prepared', processor: 'tokenizer', modelType: 'llama', error: undefined,
+    modelId,
+    revision,
+    status: 'prepared',
+    processor: 'tokenizer',
+    modelType: 'llama',
+    error: undefined,
     observationMethod: 'transformers-runtime-artifact-preparation',
     resourcePlansByCandidate: {
       'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
@@ -109,9 +117,17 @@ beforeEach(() => {
       'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
     },
   });
-  vi.mocked(prepareProductionModelCandidate).mockResolvedValue({ status: 'ready', prefetch: {
-    requestedCount: 0, cachedCount: 0, downloadedCount: 0, failedCount: 0, complete: true, files: [],
-  } });
+  vi.mocked(prepareProductionModelCandidate).mockResolvedValue({
+    status: 'ready',
+    prefetch: {
+    requestedCount: 0,
+    cachedCount: 0,
+    downloadedCount: 0,
+    failedCount: 0,
+    complete: true,
+    files: [],
+  },
+  });
 });
 
 function idleProductionClient(): TransformersJsWorkerClient {
@@ -149,9 +165,13 @@ it('stops Production Download after accepted verification when the actual client
   const physicalFailure = new Error('Synthetic physical termination failure: out of memory');
   retirementFailure = { error: physicalFailure };
   const observations: unknown[] = [];
-  const result = await runProductionDownloadPreparation({ modelId, revision, onTiming: ({ observation }) => {
+  const result = await runProductionDownloadPreparation({
+    modelId,
+    revision,
+    onTiming: ({ observation }) => {
     observations.push(observation);
-  } }).then(
+  },
+  }).then(
     value => ({ status: 'fulfilled' as const, value }),
     (error: unknown) => ({ status: 'rejected' as const, error }),
   );
@@ -174,9 +194,13 @@ it('stops Production Download after rejected verification when the actual client
   const physicalFailure = new Error('Synthetic physical termination failure: out of memory');
   retirementFailure = { error: physicalFailure };
   const observations: unknown[] = [];
-  const result = await runProductionDownloadPreparation({ modelId, revision, onTiming: ({ observation }) => {
+  const result = await runProductionDownloadPreparation({
+    modelId,
+    revision,
+    onTiming: ({ observation }) => {
     observations.push(observation);
-  } }).then(
+  },
+  }).then(
     value => ({ status: 'fulfilled' as const, value }),
     (error: unknown) => ({ status: 'rejected' as const, error }),
   );
@@ -256,9 +280,13 @@ it('retains the original session failure when its physical termination also fail
   const cause = new Error('Synthetic physical stop failure after Worker error');
   retirementFailure = { error: cause };
   const observations: unknown[] = [];
-  const running = runProductionDownloadPreparation({ modelId, revision, onTiming: ({ observation }) => {
+  const running = runProductionDownloadPreparation({
+    modelId,
+    revision,
+    onTiming: ({ observation }) => {
     observations.push(observation);
-  } });
+  },
+  });
   const settled = running.then(() => undefined, (error: unknown) => error);
   await barrier.entered.promise;
   workers[0]!.dispatchEvent(new Event('error'));

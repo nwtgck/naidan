@@ -35,7 +35,11 @@ data: {"choices":[{"delta":{"content":"It is sunny."},"finish_reason":"stop"}]}
 
 `));
     const provider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher });
-    const history = await runProviderConversationForTest({ provider, messages: [{ role: 'user', content: 'Weather?' }], model: 'm', onChunk: () => {},
+    const history = await runProviderConversationForTest({
+      provider,
+      messages: [{ role: 'user', content: 'Weather?' }],
+      model: 'm',
+      onChunk: () => {},
       tools: [{ name: 'weather', description: 'Weather', parametersSchema: z.object({ city: z.string() }), execute }],
     });
     expect(execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ args: { city: 'Tokyo' } }));
@@ -62,7 +66,10 @@ data: {"choices":[{"finish_reason":"length"}]}
 
 `;
     const provider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher: async () => new Response(payload) });
-    const result = await consumeChatGeneration({ node: message, abortController: new AbortController(), onChange,
+    const result = await consumeChatGeneration({
+      node: message,
+      abortController: new AbortController(),
+      onChange,
       onToolCallDraftsChange: ({ drafts }) => {
         snapshots.push(drafts);
       },
@@ -78,36 +85,48 @@ data: {"choices":[{"finish_reason":"length"}]}
     expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
   it('streams reasoning without synthetic tags and publishes only one assistant', async () => {
-    const { message, result, fetcher } = await run({ payload: `\
+    const { message, result, fetcher } = await run({
+      payload: `\
 data: {"choices":[{"delta":{"reasoning_content":"  R\\n","content":"<think>literal</think>"}}]}
 
 data: {"choices":[{"finish_reason":"stop","delta":{}}]}
 
-`, onChange: () => {} });
+`,
+      onChange: () => {},
+    });
     expect(message.parts.map(part => part.type)).toEqual(['reasoning', 'text']);
     expect(message.parts).toMatchObject([{ text: '  R\n', completeness: 'complete' }, { text: '<think>literal</think>', completeness: 'complete' }]);
     expect(result).toEqual({ type: 'finished', next: 'user' }); expect(fetcher).toHaveBeenCalledOnce();
   });
   it('keeps the final line without newline and supports multiline SSE data events', async () => {
-    const { message } = await run({ payload: `\
+    const { message } = await run({
+      payload: `\
 data: {"choices":
-data: [{"delta":{"content":"🙂"},"finish_reason":"stop"}]}`, onChange: () => {} });
+data: [{"delta":{"content":"🙂"},"finish_reason":"stop"}]}`,
+      onChange: () => {},
+    });
     expect(message.parts[0]).toMatchObject({ text: '🙂', completeness: 'complete' });
   });
   it('does not persist or execute a call truncated by the token limit', async () => {
-    const { message, result } = await run({ payload: `\
+    const { message, result } = await run({
+      payload: `\
 data: {"choices":[{"delta":{"content":"prefix"}}]}
 
 data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"length"}]}
 
-`, onChange: () => {} });
+`,
+      onChange: () => {},
+    });
     expect(message.parts.map(part => part.type)).toEqual(['text']); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
   it('preserves completed calls for caller execution without a provider-internal second request', async () => {
-    const { message, result, fetcher } = await run({ payload: `\
+    const { message, result, fetcher } = await run({
+      payload: `\
 data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name":"f","arguments":"  {} "}}]},"finish_reason":"tool_calls"}]}
 
-`, onChange: () => {} });
+`,
+      onChange: () => {},
+    });
     expect(message.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: '  {} ' } } });
     expect(result).toEqual({ type: 'finished', next: 'tool_results' }); expect(fetcher).toHaveBeenCalledOnce();
   });
@@ -116,12 +135,15 @@ data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name"
     expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'unknown' });
   });
   it('keeps accepted text and surfaces an invalid later event', async () => {
-    const { message, result } = await run({ payload: `\
+    const { message, result } = await run({
+      payload: `\
 data: {"choices":[{"delta":{"content":"A"}}]}
 
 data: {broken}
 
-`, onChange: () => {} });
+`,
+      onChange: () => {},
+    });
     expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result.type).toBe('error');
   });
   it('rejects conflicting reasoning aliases instead of throwing one away', async () => {

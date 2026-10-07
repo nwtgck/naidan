@@ -80,9 +80,15 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       const interval = sampleRate({ sampledTokens: counters.sampledTokens - progressSampledTokens, elapsedMs: lastSampleMs - progressSampleMs });
       progressSampleMs = lastSampleMs;
       progressSampledTokens = counters.sampledTokens;
-      return { event: 'generation-progress', generationThroughput: {
-        sampledTokens: counters.sampledTokens, firstSampleMs, postFirstSample: postFirstSample(), interval,
-      } };
+      return {
+        event: 'generation-progress',
+        generationThroughput: {
+        sampledTokens: counters.sampledTokens,
+        firstSampleMs,
+        postFirstSample: postFirstSample(),
+        interval,
+      },
+      };
     },
     delivered(): void {
       if (enabled && !finished && firstDeliveryMs === undefined) firstDeliveryMs = Math.max(0, now() - started);
@@ -92,16 +98,28 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       finished = true;
       const ended = now();
       settle({ at: ended });
-      return { event: 'generation-performance', profile, elapsedMs: Math.max(0, ended - started),
-        performance: { version: 1, outcome, ...counters, postFirstSample: postFirstSample(), sampling: counters.sampling ? { ...counters.sampling } : undefined,
+      return {
+        event: 'generation-performance',
+        profile,
+        elapsedMs: Math.max(0, ended - started),
+        performance: {
+          version: 1,
+          outcome,
+          ...counters,
+          postFirstSample: postFirstSample(),
+          sampling: counters.sampling ? { ...counters.sampling } : undefined,
           sessionPreparation: counters.sessionPreparation ? { ...counters.sessionPreparation } : undefined,
           streaming: counters.streaming ? { ...counters.streaming } : undefined,
           tokenRendering: counters.tokenRendering ? { ...counters.tokenRendering } : undefined,
           memoryReset: counters.memoryReset ? { ...counters.memoryReset } : undefined,
           deliveryDecode: counters.deliveryDecode ? { ...counters.deliveryDecode } : undefined,
           prefillOutputs: counters.prefillOutputs ? { ...counters.prefillOutputs } : undefined,
-          generationYield: counters.generationYield ? { ...counters.generationYield } : undefined, firstSampleMs, firstDeliveryMs,
-          stages: Array.from(stages.values(), entry => ({ ...entry })) } };
+          generationYield: counters.generationYield ? { ...counters.generationYield } : undefined,
+          firstSampleMs,
+          firstDeliveryMs,
+          stages: Array.from(stages.values(), entry => ({ ...entry })),
+        },
+      };
     },
   };
 }

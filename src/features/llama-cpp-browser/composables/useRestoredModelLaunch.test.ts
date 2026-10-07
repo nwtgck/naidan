@@ -30,10 +30,13 @@ async function start({ context, path }: { context: 'present' | 'absent', path: s
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }] });
   await router.push({ path, state: context === 'present' ? { [modelLaunchViewHistoryKey]: modelLaunchViewState({ chatId, input: launch.input, modelId: target.modelId, revision: target.selection.revision }) } : {} });
   let state: ReturnType<typeof useRestoredModelLaunch> | undefined;
-  const host = mount(defineComponent({ setup() {
+  const host = mount(defineComponent({
+    setup() {
     state = useRestoredModelLaunch({ chat: computed(() => current.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId })) });
     return {};
-  }, template: '<div />' }), { global: { plugins: [router] } });
+  },
+    template: '<div />',
+  }), { global: { plugins: [router] } });
   hosts.push(host);
   if (state === undefined) throw new Error('Missing setup');
   return { state, router, host };

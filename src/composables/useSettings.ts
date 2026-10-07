@@ -134,7 +134,8 @@ let scheduledFakeLmRuntimePrefetch: ScheduledIdleTask | undefined;
 
 // --- Synchronization ---
 
-storageService.subscribeToChanges({ listener: async ({ event }) => {
+storageService.subscribeToChanges({
+  listener: async ({ event }) => {
   if (event.type === 'settings' || event.type === 'migration') {
     try {
       const fresh = await storageService.loadSettings();
@@ -161,7 +162,8 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
       console.error('Failed to synchronize settings:', error);
     }
   }
-} });
+},
+});
 
 // Performance-only watcher: this does not maintain application correctness.
 // It only prefetches the selected provider during idle time to reduce the
@@ -218,7 +220,8 @@ watch(
       default: { const exhaustive: never = endpointType; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
       }
     })();
-    const unsubscribe = modelService.subscribeModelList({ listener: async () => {
+    const unsubscribe = modelService.subscribeModelList({
+      listener: async () => {
       const { fetchModels } = useSettings();
       try {
         await fetchModels({});
@@ -226,7 +229,8 @@ watch(
         // fetchModels records the relevant error. Subscription callbacks must not
         // create unhandled promise rejections when a background refresh fails.
       }
-    } });
+    },
+    });
     onCleanup(() => {
       unsubscribe();
     });
@@ -492,10 +496,12 @@ export function useSettings(): UseSettingsApi {
     }
 
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
-    await storageService.updateSettings({ updater: ({ current: curr }) => {
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => {
       const base = curr || _settings.value;
       return { ...base, ...normalizedPatch } as Settings;
-    } });
+    },
+    });
 
     // Re-fetch models if connection changed
     const endpointChanged = normalizedPatch.endpoint !== undefined
@@ -556,11 +562,14 @@ export function useSettings(): UseSettingsApi {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }): Promise<'saved' | 'changed'> {
     let savedSettings: Settings | undefined;
-    const outcome = await storageService.updateSettingsForStorage({ isCurrent, updater: ({ current }) => {
+    const outcome = await storageService.updateSettingsForStorage({
+      isCurrent,
+      updater: ({ current }) => {
       const base = current ?? _settings.value;
       savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
       return savedSettings;
-    } });
+    },
+    });
     switch (outcome) {
     case 'changed': return outcome;
     case 'saved':
@@ -596,12 +605,14 @@ export function useSettings(): UseSettingsApi {
     );
     if (!expected.storedMatches || !stillExpected({ current: _settings.value })) return 'changed';
     let applied = false;
-    await storageService.updateSettings({ updater: ({ current }) => {
+    await storageService.updateSettings({
+      updater: ({ current }) => {
       const base = current ?? _settings.value;
       if (!stillExpected({ current: base })) return base;
       applied = true;
       return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
-    } });
+    },
+    });
     if (!applied) return 'changed';
     // A newer explicit in-memory selection must not be overwritten by the
     // completion of this write. It owns its own settings save.
@@ -628,7 +639,8 @@ export function useSettings(): UseSettingsApi {
     const nextEndpoint = cloneEndpoint({ endpoint });
     let applied = false;
     let observedDefault: { endpoint: Endpoint, modelId: string | undefined } | undefined;
-    await storageService.updateSettings({ updater: ({ current }) => {
+    await storageService.updateSettings({
+      updater: ({ current }) => {
       const base = current ?? _settings.value;
       // A dialog may be open while another settings action or browser tab saves.
       if (!matchesExpected({ current: base })) {
@@ -637,7 +649,8 @@ export function useSettings(): UseSettingsApi {
       }
       applied = true;
       return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
-    } });
+    },
+    });
     if (!applied) {
       // Show the newly observed default before requesting another confirmation.
       if (observedDefault) _settings.value = { ..._settings.value, endpoint: observedDefault.endpoint, defaultModelId: observedDefault.modelId };
@@ -656,10 +669,12 @@ export function useSettings(): UseSettingsApi {
 
     _settings.value.endpoint = nextEndpoint;
 
-    await storageService.updateSettings({ updater: ({ current: curr }) => ({
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => ({
       ...(curr || _settings.value),
       endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
-    }) });
+    }),
+    });
 
     if (!areEndpointsEqual({ left: previousEndpoint, right: nextEndpoint })) {
       await fetchModels({});
@@ -700,7 +715,8 @@ export function useSettings(): UseSettingsApi {
       fakeLm: status,
     };
 
-    await storageService.updateSettings({ updater: ({ current: curr }) => {
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => {
       const base = curr ?? _settings.value;
       return {
         ...base,
@@ -709,7 +725,8 @@ export function useSettings(): UseSettingsApi {
           fakeLm: status,
         },
       };
-    } });
+    },
+    });
 
     scheduleFakeLmRuntimePrefetch({ status });
   }

@@ -91,10 +91,12 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     };
 
     await storageService.updateChatGroup({ id: id, updater: () => newGroup });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       current.items.unshift({ type: 'chat_group', id, chat_ids: [] });
       return current;
-    } });
+    },
+    });
     await loadData();
     return id;
   }
@@ -121,7 +123,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
 
     await storageService.deleteChatGroup({ id });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat_group':
@@ -135,7 +138,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         }
       });
       return current;
-    } });
+    },
+    });
     await loadData();
   }
 
@@ -161,7 +165,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     };
 
     await storageService.updateChatGroup({ id: newId, updater: () => newGroup });
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       const originalIndex = current.items.findIndex((item) => item.type === 'chat_group' && item.id === groupId);
       const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
       if (originalIndex !== -1) {
@@ -170,7 +175,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         current.items.unshift(newNode);
       }
       return current;
-    } });
+    },
+    });
     await loadData();
     return newId;
   }
@@ -187,14 +193,17 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
+    await storageService.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       current.name = newName;
       current.updatedAt = Date.now();
       return current;
-    } });
+    },
+    });
     await loadData();
   }
 
@@ -210,12 +219,15 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup({ id: id, updater: ({ current }) => {
+    await storageService.updateChatGroup({
+      id: id,
+      updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       return { ...current, ...updates, updatedAt: Date.now() };
-    } });
+    },
+    });
     await loadData();
   }
 
@@ -231,7 +243,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       let detachedChatId: ChatId | undefined;
 
       current.items = current.items.filter((item) => {
@@ -279,7 +292,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         });
       }
       return current;
-    } });
+    },
+    });
     await loadData();
   }
 
@@ -300,7 +314,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
     }
 
-    await storageService.updateHierarchy({ updater: ({ current }) => {
+    await storageService.updateHierarchy({
+      updater: ({ current }) => {
       let chatNode: HierarchyNode | undefined;
       let sourceGroup: HierarchyChatGroupNode | undefined;
 
@@ -338,7 +353,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         node,
       });
       return current;
-    } });
+    },
+    });
     await loadData();
   }
 

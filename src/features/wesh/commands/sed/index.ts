@@ -673,8 +673,7 @@ async function executeSedLine({
       const newlineIndex = patternSpace.text.indexOf(patternSeparator);
       actions.push({
         kind: "output",
-        output:
-            newlineIndex < 0
+        output: newlineIndex < 0
               ? { ...patternSpace }
               : {
                 text: patternSpace.text.slice(0, newlineIndex),
@@ -842,8 +841,7 @@ async function executeSedLine({
       actions.push({
         kind: "writeFile",
         path: runtimeCommand.command.path,
-        output:
-            newlineIndex < 0
+        output: newlineIndex < 0
               ? { ...patternSpace }
               : {
                 text: patternSpace.text.slice(0, newlineIndex),

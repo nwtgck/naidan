@@ -22,7 +22,9 @@ export type CoreModule = Pick<MainModule,
 };
 const kindSchema = z.enum(['pointer', 'record', 'u64', 'i64', 'float', 'signed', 'unsigned', 'boolean', 'array', 'void']);
 const schema = z.object({
-  abiVersion: z.number().int(), schemaSha256: z.string(), constants: z.array(z.string()),
+  abiVersion: z.number().int(),
+  schemaSha256: z.string(),
+  constants: z.array(z.string()),
   records: z.array(z.object({ name: z.string(), id: z.number().int(), fields: z.array(z.object({ name: z.string(), id: z.number().int(), kind: kindSchema })) })),
   functions: z.array(z.object({ name: z.string(), export: z.string(), returnKind: kindSchema, parameters: z.array(z.object({ kind: kindSchema })) })),
 }).parse(rawSchema);
@@ -172,7 +174,15 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     assertIdle(); native({ name: '_lcb_free' })(pointer);
   }
   return {
-    module, api: api as unknown as LowLevelFunctions, pointerBytes: pointerBytes as 4 | 8, assertIdle, bytes, alloc, tryAlloc, recordSize, fieldLayout,
+    module,
+    api: api as unknown as LowLevelFunctions,
+    pointerBytes: pointerBytes as 4 | 8,
+    assertIdle,
+    bytes,
+    alloc,
+    tryAlloc,
+    recordSize,
+    fieldLayout,
     enumValues({ prefix }: { prefix: string }): { name: string, value: number }[] {
       assertIdle();
       return schema.constants.flatMap((name, id) => name.startsWith(prefix) ? [{ name, value: Number(scalar({ name: '_lcb_constant', args: [id] })) }] : []);
@@ -233,10 +243,22 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
 }): Promise<Core> {
   const options: CoreModuleOptions = usesWebGpu({ profile }) ? {
     ...moduleOptions,
-    naidanNavigator: createCoreWebGpuNavigator({ navigator: globalThis.navigator, report({ axis, count, limit, chunks }) {
-      logDiagnostic({ diagnostic: { event: 'native-info', nativeOperation: 'dispatch-split', nativeBackend: 'WebGPU',
-        dispatchAxis: axis, dispatchCount: count, dispatchLimit: limit, chunkCount: chunks } });
-    } }),
+    naidanNavigator: createCoreWebGpuNavigator({
+      navigator: globalThis.navigator,
+      report({ axis, count, limit, chunks }) {
+      logDiagnostic({
+        diagnostic: {
+        event: 'native-info',
+        nativeOperation: 'dispatch-split',
+        nativeBackend: 'WebGPU',
+        dispatchAxis: axis,
+        dispatchCount: count,
+        dispatchLimit: limit,
+        chunkCount: chunks,
+      },
+      });
+    },
+    }),
   } : moduleOptions;
   const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions: options });
   switch (profile) {

@@ -30,14 +30,16 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
   signal.addEventListener('abort', abort, { once: true });
   worker.addEventListener('error', crash); worker.addEventListener('messageerror', crash);
   try {
-    const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({ value: ({ progress }) => {
+    const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({
+      value: ({ progress }) => {
       const parsed = catalogDownloadProgressSchema.safeParse(progress);
       if (parsed.success && !signal.aborted) {
         try {
           onProgress({ progress: parsed.data });
         } catch { /* presentation only */ }
       }
-    } }), workerProxy({ value: bridge.open }));
+    },
+    }), workerProxy({ value: bridge.open }));
     if (signal.aborted) abort();
     await Promise.race([operation, stopped.promise]); signal.throwIfAborted();
   } finally {

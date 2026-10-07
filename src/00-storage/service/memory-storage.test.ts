@@ -33,7 +33,15 @@ describe('MemoryStorageProvider', () => {
     const chatId = toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' });
     const content: ChatContent = {
       root: {
-        items: [{ id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, { type: 'attachment', attachment: {
+        items: [{
+          id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }),
+          role: 'user',
+          createdAt: 1,
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'hello', completeness: 'complete' }, {
+          type: 'attachment',
+          attachment: {
           id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
           binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
           originalName: 'attachment.txt',
@@ -42,7 +50,10 @@ describe('MemoryStorageProvider', () => {
           uploadedAt: 1,
           status: 'memory',
           blob,
-        } }], replies: { items: [] } }],
+        },
+        }],
+          replies: { items: [] },
+        }],
       },
     };
 
@@ -58,14 +69,16 @@ describe('MemoryStorageProvider', () => {
   it('finds a volume reference in chat metadata even when the chat is detached from the hierarchy', async () => {
     const volumeId = toVolumeId({ raw: 'volume-detached-chat' });
     const chatId = toChatId({ raw: 'detached-chat' });
-    await provider.saveChatMeta({ meta: {
+    await provider.saveChatMeta({
+      meta: {
       id: chatId,
       title: 'Detached',
       createdAt: 1,
       updatedAt: 1,
       debugEnabled: false,
       mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
-    } });
+    },
+    });
 
     await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
     await expect(provider.hasVolumeMountReference({ volumeId: toVolumeId({ raw: 'unreferenced' }) })).resolves.toBe(false);
@@ -73,14 +86,16 @@ describe('MemoryStorageProvider', () => {
 
   it('finds a volume reference in a chat group even when the group is detached from the hierarchy', async () => {
     const volumeId = toVolumeId({ raw: 'volume-detached-group' });
-    await provider.saveChatGroup({ chatGroup: {
+    await provider.saveChatGroup({
+      chatGroup: {
       id: toChatGroupId({ raw: 'detached-group' }),
       name: 'Detached Group',
       updatedAt: 1,
       isCollapsed: false,
       items: [],
       mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
-    } });
+    },
+    });
 
     await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
   });
@@ -246,11 +261,13 @@ describe('MemoryStorageProvider', () => {
       expect(chats).toHaveLength(0);
       expect(groups).toHaveLength(0);
 
-      await provider.saveHierarchy({ hierarchy: {
+      await provider.saveHierarchy({
+        hierarchy: {
         items: [
           { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
         ],
-      } });
+      },
+      });
 
       const visibleChats = await provider.listChats();
       const visibleGroups = await provider.listChatGroups();

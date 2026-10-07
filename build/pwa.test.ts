@@ -45,7 +45,8 @@ function setup() {
       delayed?.(); await hold;
     }
     const bytes = deployed.files.get(file);
-    return new Response(bytes ? new Uint8Array(bytes) : 'missing', { status: bytes ? 200 : 404,
+    return new Response(bytes ? new Uint8Array(bytes) : 'missing', {
+      status: bytes ? 200 : 404,
       headers: { 'content-type': file === 'index.html' ? 'text/html' : 'application/octet-stream', 'cross-origin-embedder-policy': 'require-corp' },
     });
   };
@@ -58,7 +59,13 @@ function setup() {
       delayed = resolve;
     });
   };
-  return { storage, clients, network, requested, make, holdInstall,
+  return {
+    storage,
+    clients,
+    network,
+    requested,
+    make,
+    holdInstall,
     release: () => {
       release?.(); hold = undefined;
     },
@@ -84,7 +91,10 @@ describe('real generated Workbox worker', () => {
     const chunks = 256;
     let produced = 0, consumed = 0, maximumAhead = 0;
     const firstHop = new MessageChannel(), secondHop = new MessageChannel(), control = new MessageChannel();
-    const source = serveByteStream({ port: firstHop.port1, signal: undefined, openStream: async () => new ReadableStream<Uint8Array>({
+    const source = serveByteStream({
+      port: firstHop.port1,
+      signal: undefined,
+      openStream: async () => new ReadableStream<Uint8Array>({
       pull(controller) {
         if (produced === chunks) {
           controller.close(); return;
@@ -92,7 +102,8 @@ describe('real generated Workbox worker', () => {
         controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES).fill(produced % 251));
         produced += 1; maximumAhead = Math.max(maximumAhead, produced - consumed);
       },
-    }, { highWaterMark: 0 }) });
+    }, { highWaterMark: 0 }),
+    });
     const intermediate = receiveByteStream({ port: firstHop.port2 });
     const sender = serveByteStream({ port: secondHop.port1, signal: undefined, openStream: async () => intermediate.stream });
     const statuses: Array<ReturnType<typeof downloadStatusSchema.parse>> = [];
@@ -101,14 +112,22 @@ describe('real generated Workbox worker', () => {
     };
     const token = crypto.randomUUID();
     const downloadUrl = createDownloadUrl({ base: new URL(scope), token, version }).href;
-    const prepared = worker.messageWithPorts({ clientId: 'page', ports: [control.port2, secondHop.port2],
-      data: { type: 'naidan-download/prepare', version, token, metadata: { filename: 'large.bin', size: chunks * BYTE_STREAM_CHUNK_BYTES } } });
+    const prepared = worker.messageWithPorts({
+      clientId: 'page',
+      ports: [control.port2, secondHop.port2],
+      data: { type: 'naidan-download/prepare', version, token, metadata: { filename: 'large.bin', size: chunks * BYTE_STREAM_CHUNK_BYTES } },
+    });
     try {
       await vi.waitFor(() => expect(statuses).toContainEqual({ type: 'ready', version, token }));
       expect(produced).toBe(0);
       // A newly created iframe has its own ID, not the initiating page's ID.
-      const { response, completed } = await worker.streamRequest({ url: downloadUrl,
-        clientId: 'new-download-frame', resultingClientId: 'next-frame', navigation: true, referrer: version === 2 ? '' : scope });
+      const { response, completed } = await worker.streamRequest({
+        url: downloadUrl,
+        clientId: 'new-download-frame',
+        resultingClientId: 'next-frame',
+        navigation: true,
+        referrer: version === 2 ? '' : scope,
+      });
       expect(response.status).toBe(200);
       expect(response.headers.get('referrer-policy')).toBe('no-referrer');
       expect(response.headers.get('content-disposition')).toContain('attachment;');
@@ -280,9 +299,11 @@ describe('real generated Workbox worker', () => {
   it.each(['foreign-origin', 'worker-source', 'missing-port'] as const)('rejects %s network opt-ins', async kind => {
     const f = setup(), worker = f.make(a); await worker.lifecycle('install'); await worker.lifecycle('activate'); f.deployB();
     f.clients.clients.set('worker', { id: 'worker', type: 'worker', url: `${scope}worker.js` });
-    expect(await worker.message({ clientId: kind === 'worker-source' ? 'worker' : 'page',
+    expect(await worker.message({
+      clientId: kind === 'worker-source' ? 'worker' : 'page',
       origin: kind === 'foreign-origin' ? 'https://other.example' : new URL(scope).origin,
-      replyPort: kind !== 'missing-port', data: { type: USE_NETWORK_MESSAGE },
+      replyPort: kind !== 'missing-port',
+      data: { type: USE_NETWORK_MESSAGE },
     })).toBeUndefined();
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
   });

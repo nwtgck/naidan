@@ -109,8 +109,11 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
         const attachment = part.attachment;
         allImageIds.add(attachment.binaryObjectId);
         attachmentImages.set(attachment.binaryObjectId, {
-          id: attachment.binaryObjectId, name: attachment.originalName,
-          mimeType: attachment.mimeType, size: attachment.size, createdAt: attachment.uploadedAt,
+          id: attachment.binaryObjectId,
+          name: attachment.originalName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          createdAt: attachment.uploadedAt,
           memoryBlob: (() => {
             switch (attachment.status) {
             case 'memory': return attachment.blob;

@@ -25,7 +25,8 @@ vi.mock('../00-storage/service', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -75,14 +76,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
 
     // Default Global Settings
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
       titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    } });
+    },
+    });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
     mockOllamaModels.mockResolvedValue(['llama-global', 'llama-other']);
@@ -107,11 +110,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {
     // 1. Setup with Setting A
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpoint: { type: 'openai', url: 'http://endpoint-a' },
       defaultModelId: 'global-gpt',
-    } });
+    },
+    });
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
@@ -123,11 +128,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'global-gpt', signal: expect.any(AbortSignal) }));
 
     // 2. Change to Setting B
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpoint: { type: 'openai', url: 'http://endpoint-b' },
       defaultModelId: 'model-b',
-    } });
+    },
+    });
 
     // Send second message in SAME chat - should now use Global B
     await sendMessage({ content: 'Message 2' });
@@ -159,9 +166,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat({ id: idToRaw({ id }) });
-    await updateChatSettings({ id: idToRaw({ id }), updates: {
+    await updateChatSettings({
+      id: idToRaw({ id }),
+      updates: {
       endpoint: { type: 'ollama', url: 'http://pinned-ollama' },
-    } });
+    },
+    });
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
     await sendMessage({ content: 'M1' });
@@ -190,14 +200,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('Policy: Resolve an endpoint atomically at Chat or Global scope', async () => {
     // 1. Global only
-    __testOnlySetSettings({ newSettings: {
+    __testOnlySetSettings({
+      newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpoint: {
         type: 'openai',
         url: 'http://global-openai',
         httpHeaders: [['X-Global', '1']],
       },
-    } });
+    },
+    });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat({ id: idToRaw({ id }) });
@@ -296,7 +308,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 2. Add Group Default
     const group = reactive({
-      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', items: [], updatedAt: Date.now(), isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'Group 1',
+      items: [],
+      updatedAt: Date.now(),
+      isCollapsed: false,
       modelId: 'group-model',
     }) as any;
     rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];

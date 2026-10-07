@@ -32,14 +32,29 @@ async function pendingGptPublication() {
   const completion = Promise.withResolvers<unknown>();
   const generate = vi.spyOn(gpt, 'generateGptOss').mockReturnValue(completion.promise);
   const state: WorkerGenerationRuntimeState = {
-    activeModelId: 'synthetic/gpt', gemma4Processor: null, qwen3_5Processor: null,
-    gptOssPastKeyValues: { previous: true }, qwen3_5ConversationState: undefined,
-    generationStateOwner: {}, qwen3_5SequenceCache: undefined,
+    activeModelId: 'synthetic/gpt',
+    gemma4Processor: null,
+    qwen3_5Processor: null,
+    gptOssPastKeyValues: { previous: true },
+    qwen3_5ConversationState: undefined,
+    generationStateOwner: {},
+    qwen3_5SequenceCache: undefined,
   };
-  const operation = selectGenerationStrategy({ modelType: 'gpt_oss', activeModelId: 'synthetic/gpt' }).generate({ onGenerationEvent: undefined,
-    model: {} as never, tokenizer: {} as never, messages: [], onChunk: vi.fn(), onRawChunk: vi.fn(), onToolCalls: vi.fn(),
-    params: undefined, tools: undefined, runtimeState: state, stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
-    debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+  const operation = selectGenerationStrategy({ modelType: 'gpt_oss', activeModelId: 'synthetic/gpt' }).generate({
+    onGenerationEvent: undefined,
+    model: {} as never,
+    tokenizer: {} as never,
+    messages: [],
+    onChunk: vi.fn(),
+    onRawChunk: vi.fn(),
+    onToolCalls: vi.fn(),
+    params: undefined,
+    tools: undefined,
+    runtimeState: state,
+    stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+    debugLog: vi.fn(),
+    observationSink: undefined,
+    generationCapture: undefined,
   });
   return { state, completion, generate, operation };
 }
@@ -82,7 +97,9 @@ describe('verified content-route tool publication', () => {
     // Synthetic syntax controls, not captured model inference. The real parser
     // and strategy publication ordering are the boundary under test here.
     const resolve = vi.spyOn(standardToolProtocol, 'resolveStandardToolHandling').mockReturnValue({
-      outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11],
+      outputProtocol: 'delimited-pythonic',
+      historyEncoding: 'verified-content',
+      preservedDelimiterIds: [10, 11],
     });
     const chunks: string[] = [];
     const published: unknown[] = [];
@@ -90,20 +107,25 @@ describe('verified content-route tool publication', () => {
       streamer.emit(output); return { sequences: [], past_key_values: null };
     });
     try {
-      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({ onGenerationEvent: undefined,
+      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
+        onGenerationEvent: undefined,
         model: { generate, config: { model_type: 'synthetic' } } as never,
         tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
         messages: [{ role: 'user', content: 'Use a tool.' }],
         onChunk: ({ chunk }) => {
           chunks.push(chunk);
-        }, onRawChunk: vi.fn(),
+        },
+        onRawChunk: vi.fn(),
         onToolCalls: ({ toolCalls }) => {
           published.push(...toolCalls);
         },
         params: explicitParameters,
         tools: [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
         runtimeState: { activeModelId: 'synthetic/content', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-        stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+        stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+        debugLog: vi.fn(),
+        observationSink: undefined,
+        generationCapture: undefined,
       });
       if (rejected) await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
       else await operation;
@@ -137,10 +159,16 @@ describe('Qwen prompt-owned reasoning delivery', () => {
     { name: 'already generated split opening tag', effort: 'medium', prompt: openPrompt, output: ['<thi', 'nk>Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },
     { name: 'no native output', effort: undefined, prompt: openPrompt, output: ['', ''], expected: '' },
     { name: 'partial generated opening at stream end', effort: undefined, prompt: openPrompt, output: ['<thi'], expected: '<think><thi' },
-    { name: 'literal user suffix is not an assistant thinking prefix', effort: undefined, prompt: `\
+    {
+      name: 'literal user suffix is not an assistant thinking prefix',
+      effort: undefined,
+      prompt: `\
 <|im_start|>user
 literal <think>
-`, output: ['Answer'], expected: 'Answer' },
+`,
+      output: ['Answer'],
+      expected: 'Answer',
+    },
     { name: 'unknown custom template suffix is not inferred', effort: 'high', prompt: 'custom user text <think>\n', output: ['Answer'], expected: 'Answer' },
   ] satisfies Array<{ name: string; effort: LmParameters['reasoning']['effort']; prompt: string; output: string[]; expected: string }>)('$name', async ({ effort, prompt, output, expected }) => {
     const chunks: string[] = [];
@@ -151,18 +179,33 @@ literal <think>
       for (const text of output) streamer.emit(text);
       return { past_key_values: null, sequences: [] };
     });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
-      model: { generate, sessions: {} } as never, tokenizer: { apply_chat_template } as never,
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      onGenerationEvent: undefined,
+      model: { generate, sessions: {} } as never,
+      tokenizer: { apply_chat_template } as never,
       messages: [{ role: 'user', content: 'A fixed prompt.' }],
       onChunk: ({ chunk }) => {
         chunks.push(chunk);
-      }, onRawChunk: vi.fn(), onToolCalls: ({ toolCalls }) => {
+      },
+      onRawChunk: vi.fn(),
+      onToolCalls: ({ toolCalls }) => {
         tools.push(...toolCalls);
       },
-      params: { ...explicitParameters, reasoning: { effort } }, tools: undefined,
-      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      params: { ...explicitParameters, reasoning: { effort } },
+      tools: undefined,
+      runtimeState: {
+        activeModelId: 'synthetic/qwen',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
+      },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
     });
     expect(chunks.join('')).toBe(expected);
     if (expected === '') expect(chunks).toEqual([]);
@@ -177,21 +220,39 @@ literal <think>
     const chunks: string[] = [];
     const calls: unknown[] = [];
     const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
-      model: { sessions: {}, generate: async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      onGenerationEvent: undefined,
+      model: {
+        sessions: {},
+        generate: async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
         streamer.emit('<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function></tool_call>');
         return { past_key_values: null, sequences: [] };
-      } } as never,
-      tokenizer: { apply_chat_template: () => openPrompt } as never, messages: [{ role: 'user', content: 'Weather.' }],
+      },
+      } as never,
+      tokenizer: { apply_chat_template: () => openPrompt } as never,
+      messages: [{ role: 'user', content: 'Weather.' }],
       onChunk: ({ chunk }) => {
         chunks.push(chunk);
-      }, onRawChunk: vi.fn(), onToolCalls: ({ toolCalls }) => {
+      },
+      onRawChunk: vi.fn(),
+      onToolCalls: ({ toolCalls }) => {
         calls.push(...toolCalls);
       },
-      params: explicitParameters, tools: undefined,
-      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      params: explicitParameters,
+      tools: undefined,
+      runtimeState: {
+        activeModelId: 'synthetic/qwen',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
+      },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
     });
     expect(chunks).toEqual([]);
     expect(calls).toEqual([{ id: expect.any(String), type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }]);
@@ -210,15 +271,31 @@ literal <think>
     const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
       streamer.emit('Reason</think>Answer'); return { past_key_values: null, sequences: [] };
     });
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
-      model: { generate, sessions: { vision_encoder: {} } } as never, tokenizer: { apply_chat_template } as never, messages,
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      onGenerationEvent: undefined,
+      model: { generate, sessions: { vision_encoder: {} } } as never,
+      tokenizer: { apply_chat_template } as never,
+      messages,
       onChunk: ({ chunk }) => {
         chunks.push(chunk);
-      }, onRawChunk: vi.fn(), onToolCalls: vi.fn(), params: explicitParameters,
+      },
+      onRawChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: explicitParameters,
       tools: kind === 'tool-continuation' ? [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }] : undefined,
-      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      runtimeState: {
+        activeModelId: 'synthetic/qwen',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
+      },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
     });
     expect(chunks.join('')).toBe('<think>Reason</think>Answer');
     expect(apply_chat_template).toHaveBeenCalledOnce();
@@ -243,21 +320,33 @@ describe('schema-bound Qwen XML arguments, not captured model output', () => {
       return { past_key_values: null, sequences: [] };
     });
     const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
-    const operation = selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
+    const operation = selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      onGenerationEvent: undefined,
       model: { generate, sessions: {} } as never,
       tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
       messages: [{ role: 'user', content: 'Use the supplied tool.' }],
       onChunk: ({ chunk }) => {
         chunks.push(chunk);
-      }, onRawChunk: vi.fn(),
+      },
+      onRawChunk: vi.fn(),
       onToolCalls: ({ toolCalls }) => {
         calls.push(...toolCalls);
       },
       params: explicitParameters,
       tools: [{ type: 'function', function: { name: 'write_file', description: 'A synthetic schema control.', parameters: { type: 'object', properties: { content: schema } } } }],
-      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      runtimeState: {
+        activeModelId: 'synthetic/qwen',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
+      },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
     });
     await operation;
     expect(generate).toHaveBeenCalledOnce();
@@ -273,20 +362,41 @@ describe('schema-bound Qwen XML arguments, not captured model output', () => {
       streamer.emit('<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>');
       return { past_key_values: null, sequences: [] };
     });
-    await expect(selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({ onGenerationEvent: undefined,
+    await expect(selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
+      onGenerationEvent: undefined,
       model: { generate, sessions: {} } as never,
       tokenizer: { apply_chat_template: () => 'Explicit synthetic prompt.' } as never,
       messages: [{ role: 'user', content: 'Use the supplied tool.' }],
-      onChunk: () => {}, onRawChunk: () => {}, onToolCalls: ({ toolCalls }) => {
+      onChunk: () => {},
+      onRawChunk: () => {},
+      onToolCalls: ({ toolCalls }) => {
         calls.push(...toolCalls);
       },
       params: explicitParameters,
-      tools: [{ type: 'function', function: { name: 'write_file', description: 'Synthetic ambiguous schema.', parameters: {
-        type: 'object', properties: { content: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
-      } } }],
-      runtimeState: { activeModelId: 'synthetic/qwen', gemma4Processor: null, qwen3_5Processor: processor,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink: undefined, generationCapture: undefined,
+      tools: [{
+        type: 'function',
+        function: {
+        name: 'write_file',
+        description: 'Synthetic ambiguous schema.',
+        parameters: {
+        type: 'object',
+        properties: { content: { anyOf: [{ type: 'string' }, { type: 'object' }] } },
+      },
+      },
+      }],
+      runtimeState: {
+        activeModelId: 'synthetic/qwen',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
+      },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
     })).rejects.toThrow('Ambiguous Qwen XML parameter type');
     expect(calls).toEqual([]);
     expect(generate).toHaveBeenCalledOnce();
@@ -300,19 +410,34 @@ describe("generation strategy observation isolation", () => {
     const apply_chat_template = vi.fn(() => full);
     const generate = vi.fn(async () => ({ past_key_values: null, sequences: [] }));
     const observationSink: GenerationStrategyObservationSink = {
-      onFullConversationInputPrepared: vi.fn(), onGenerateStart: vi.fn(), onGenerateInvocation: vi.fn(), onGenerateComplete: vi.fn(),
+      onFullConversationInputPrepared: vi.fn(),
+      onGenerateStart: vi.fn(),
+      onGenerateInvocation: vi.fn(),
+      onGenerateComplete: vi.fn(),
     };
-    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/model' }).generate({ onGenerationEvent: undefined,
-      model: { generate } as never, tokenizer: { apply_chat_template } as never,
+    await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/model' }).generate({
+      onGenerationEvent: undefined,
+      model: { generate } as never,
+      tokenizer: { apply_chat_template } as never,
       messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'next' }],
-      onChunk: vi.fn(), onRawChunk: vi.fn(), onToolCalls: vi.fn(), params: explicitParameters, tools: undefined,
+      onChunk: vi.fn(),
+      onRawChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: explicitParameters,
+      tools: undefined,
       runtimeState: {
-        activeModelId: 'synthetic/model', gemma4Processor: null, qwen3_5Processor: processor,
+        activeModelId: 'synthetic/model',
+        gemma4Processor: null,
+        qwen3_5Processor: processor,
         gptOssPastKeyValues: null,
         qwen3_5ConversationState: { modelId: 'synthetic/model', messageCount: 1 },
-        generationStateOwner: {}, qwen3_5SequenceCache: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
       },
-      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() }, debugLog: vi.fn(), observationSink, generationCapture: undefined,
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink,
+      generationCapture: undefined,
     });
     expect(apply_chat_template).toHaveBeenCalledOnce();
     expect(processor).toHaveBeenCalledExactlyOnceWith(full);
@@ -369,7 +494,8 @@ describe("generation strategy observation isolation", () => {
         gptOssPastKeyValues: null,
 
         qwen3_5ConversationState: undefined,
-        generationStateOwner: {}, qwen3_5SequenceCache: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
       },
       stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
       debugLog: vi.fn(),
@@ -387,8 +513,12 @@ describe("generation strategy observation isolation", () => {
 });
 
 const explicitParameters: LmParameters = {
-  temperature: 0, topP: 1, maxCompletionTokens: 16,
-  presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+  temperature: 0,
+  topP: 1,
+  maxCompletionTokens: 16,
+  presencePenalty: undefined,
+  frequencyPenalty: undefined,
+  stop: undefined,
   reasoning: { effort: undefined },
 };
 
@@ -401,9 +531,12 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
     events.push('native');
     return Promise.resolve(nativeResult);
   });
-  const model = { config: modelConfig, get generate() {
+  const model = {
+    config: modelConfig,
+    get generate() {
     events.push('native-method'); return generate;
-  } };
+  },
+  };
   const sink: GenerationStrategyObservationSink = {
     onFullConversationInputPrepared: vi.fn(() => {
       events.push('full-input');
@@ -419,7 +552,8 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
     }),
   };
   function run({ observationSink, generationCapture }: { observationSink: GenerationStrategyObservationSink | undefined; generationCapture: GenerationCaptureCall | undefined }) {
-    return selectGenerationStrategy({ modelType: 'fixture', activeModelId: 'org/model' }).generate({ onGenerationEvent: undefined,
+    return selectGenerationStrategy({ modelType: 'fixture', activeModelId: 'org/model' }).generate({
+      onGenerationEvent: undefined,
       model: model as never,
       tokenizer: { apply_chat_template: vi.fn(() => inputs) } as never,
       messages: [{ role: 'user', content: 'Fixed synthetic invocation input.' }],
@@ -429,14 +563,22 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
       onRawChunk: () => {
         events.push('raw-chunk');
       },
-      onToolCalls: vi.fn(), params, tools: undefined,
+      onToolCalls: vi.fn(),
+      params,
+      tools: undefined,
       runtimeState: {
-        activeModelId: 'org/model', gemma4Processor: null, qwen3_5Processor: null,
-        gptOssPastKeyValues: null, qwen3_5ConversationState: undefined,
-        generationStateOwner: {}, qwen3_5SequenceCache: undefined,
+        activeModelId: 'org/model',
+        gemma4Processor: null,
+        qwen3_5Processor: null,
+        gptOssPastKeyValues: null,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
       },
       stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
-      debugLog: vi.fn(), observationSink, generationCapture,
+      debugLog: vi.fn(),
+      observationSink,
+      generationCapture,
     });
   }
   return { events, nativeResult, generate, model, sink, run };
@@ -465,7 +607,8 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     });
     const capture: GenerationCaptureCall = {
       beginInvocation: () => ({ recordInputs: failRecord, recordSettings: failRecord, recordSequence: failRecord, recordChunk: failRecord, recordNativeCall: failRecord, setNativeStreamAvailability: failRecord, recordNativeStream: failRecord }),
-      recordChunk: vi.fn(), finish: vi.fn(),
+      recordChunk: vi.fn(),
+      finish: vi.fn(),
     };
     await expect(fixture.run({ observationSink: undefined, generationCapture: capture })).rejects.toBe(failure);
     expect(fixture.generate).toHaveBeenCalledOnce();
@@ -477,9 +620,12 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     const inputIds = { dims: [1, 7], data: BigInt64Array.of(1n, 2n, 3n, 4n, 5n, 6n, 7n) };
     const inputs: Record<string, unknown> = { input_ids: inputIds };
     const fixture = createInvocationFixture({ inputs, params: explicitParameters, modelConfig: { max_position_embeddings: 10 } });
-    Object.defineProperty(inputs, 'extra_input', { enumerable: true, get() {
+    Object.defineProperty(inputs, 'extra_input', {
+      enumerable: true,
+      get() {
       fixture.events.push('input-getter'); return inputIds;
-    } });
+    },
+    });
     let observed: GenerationInvocationObservation | undefined;
     fixture.sink.onGenerateInvocation = vi.fn(({ observation }) => {
       observed = observation;
@@ -501,17 +647,22 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     expect(observed).toEqual({
       requested: {
         maxCompletionTokens: { status: 'value', value: 16 },
-        temperature: { status: 'value', value: 0 }, topP: { status: 'value', value: 1 },
+        temperature: { status: 'value', value: 0 },
+        topP: { status: 'value', value: 1 },
       },
       budget: { maxNewTokens: 3, source: 'explicit', contextLimit: 10, promptTokenCount: 7, pastTokenCount: 0, usedContextTokenCount: 7 },
       kwargs: {
         keys: {
-          status: 'complete', totalCount: 10,
+          status: 'complete',
+          totalCount: 10,
           values: ['input_ids', 'extra_input', 'past_key_values', 'max_new_tokens', 'temperature', 'top_p', 'do_sample', 'streamer', 'stopping_criteria', 'return_dict_in_generate'],
           incompleteReasons: [],
         },
-        maxNewTokens: { status: 'value', value: 3 }, temperature: { status: 'value', value: 0 },
-        topP: { status: 'value', value: 1 }, doSample: { status: 'value', value: false }, returnDictInGenerate: { status: 'value', value: true },
+        maxNewTokens: { status: 'value', value: 3 },
+        temperature: { status: 'value', value: 0 },
+        topP: { status: 'value', value: 1 },
+        doSample: { status: 'value', value: false },
+        returnDictInGenerate: { status: 'value', value: true },
       },
     });
     expect(fixture.generate).toHaveBeenCalledOnce();

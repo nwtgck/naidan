@@ -62,7 +62,8 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const { role, content, tool_calls: _toolCalls, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: typeof role }>>()({
-        id: messageId, role,
+        id: messageId,
+        role,
         parts: [{ type: 'text', text: content, completeness: 'complete' }],
       });
     }
@@ -70,13 +71,15 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const { role, content, tool_calls, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-        id: messageId, role,
+        id: messageId,
+        role,
         parts: [
           ...(content.length === 0 ? [] : [{ type: 'text' as const, text: content, completeness: 'complete' as const }]),
           ...(tool_calls ?? []).map((toolCall) => ({
             type: 'tool_call' as const,
             toolCall: {
-              id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id, type: toolCall.type,
+              id: typeof toolCall.id === 'string' ? toToolCallId({ raw: toolCall.id }) : toolCall.id,
+              type: toolCall.type,
               function: { name: toolCall.function.name, arguments: toolCall.function.arguments },
             },
           })),
@@ -87,11 +90,16 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
       const { role, content, tool_call_id, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
-        id: messageId, role,
-        parts: [{ type: 'tool_result', result: {
+        id: messageId,
+        role,
+        parts: [{
+          type: 'tool_result',
+          result: {
           toolCallId: typeof tool_call_id === 'string' ? toToolCallId({ raw: tool_call_id }) : tool_call_id,
-          status: 'success', content: { type: 'text', text: content },
-        } }],
+          status: 'success',
+          content: { type: 'text', text: content },
+        },
+        }],
       });
     }
     default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
@@ -105,7 +113,9 @@ function textMessage({ id, role, text }: { id: string; role: 'user' | 'assistant
 
 function imageMessage({ id, text, dataUrl }: { id: string; text: string; dataUrl: string }): ChatMessage {
   return {
-    id: toMessageId({ raw: id }), role: 'user', parts: [
+    id: toMessageId({ raw: id }),
+    role: 'user',
+    parts: [
       { type: 'text', text, completeness: 'complete' },
       { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl }) },
     ],
@@ -134,15 +144,21 @@ function captureProviderChat({ provider, request }: {
     ? request.messages
     : recordedMessages({ messages: request.messages as readonly RecordedMessage[] });
   const tools = request.tools === undefined || request.tools.length === 0 ? undefined : request.tools.map(tool => 'parameters' in tool ? tool : ({
-    name: tool.name, description: tool.description,
+    name: tool.name,
+    description: tool.description,
     parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
   }));
-  return captureStructuredProviderChat({ provider, request: {
-    ...request, messages, tools,
+  return captureStructuredProviderChat({
+    provider,
+    request: {
+    ...request,
+    messages,
+    tools,
     readBinaryObject: request.readBinaryObject,
     debug: request.debug,
     signal: request.signal,
-  } });
+  },
+  });
 }
 
 const messagesSchema = z.array(z.object({ role: z.literal('user'), content: z.string() }).strict()).length(1);
@@ -152,7 +168,8 @@ const evidence = z.object({
   identity: z.object({ modelId: z.literal('onnx-community/Qwen3.5-2B-ONNX'), resolvedRevision: z.literal('b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb'), transformersJsVersion: z.literal('4.2.0') }).strict(),
   nativeTemplate: z.object({ caseId: z.literal('user-generation'), messages: messagesSchema, addGenerationPrompt: z.literal(true), renderedText: z.string(), inputIds: tokenIdsSchema.length(17) }).strict(),
   productionInput: z.object({
-    messages: messagesSchema, inputKeys: z.tuple([z.literal('attention_mask'), z.literal('input_ids')]),
+    messages: messagesSchema,
+    inputKeys: z.tuple([z.literal('attention_mask'), z.literal('input_ids')]),
     inputTensors: z.array(z.object({ name: z.enum(['attention_mask', 'input_ids']), dtype: z.literal('int64'), dims: z.tuple([z.literal(1), z.literal(13)]), location: z.literal('cpu') }).strict()).length(2),
     inputTokenIds: tokenIdsSchema.length(13),
     // These are the four recorded request settings, not all merged defaults.
@@ -164,10 +181,12 @@ const inputCaseSchema = z.object({
   messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
   addGenerationPrompt: z.literal(true),
   selectedTemplateSha256: z.literal('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80'),
-  renderedText: z.string(), inputTokenIds: tokenIdsSchema.min(1),
+  renderedText: z.string(),
+  inputTokenIds: tokenIdsSchema.min(1),
 }).strict();
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('ca28e5780dfc709c8b070324783ef9faf90510285c06698266082073e3e69228'),
   modelId: z.literal('onnx-community/Qwen3.5-2B-ONNX'),
   revision: z.literal('b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb'),
@@ -179,63 +198,88 @@ const inputEvidence = z.object({
 
 const toolUserSchema = z.object({ role: z.literal('user'), content: z.string() }).strict();
 const toolCallSchema = z.object({
-  id: z.string(), type: z.literal('function'),
+  id: z.string(),
+  type: z.literal('function'),
   function: z.object({ name: z.string(), arguments: z.string() }).strict(),
 }).strict();
 const toolAssistantSchema = z.object({
-  role: z.literal('assistant'), content: z.literal(''), tool_calls: z.tuple([toolCallSchema]),
+  role: z.literal('assistant'),
+  content: z.literal(''),
+  tool_calls: z.tuple([toolCallSchema]),
 }).strict();
 const toolResultSchema = z.object({
-  role: z.literal('tool'), content: z.string(), tool_call_id: z.string(),
+  role: z.literal('tool'),
+  content: z.string(),
+  tool_call_id: z.string(),
 }).strict();
 const nativeToolDefinitionSchema = z.object({
-  type: z.literal('function'), function: z.object({
-    name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.literal('lookup_weather'),
+    description: z.literal('Return deterministic weather fixture data.'),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+      type: z.literal('object'),
+      properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
       required: z.tuple([z.literal('city')]),
     }).strict(),
   }).strict(),
 }).strict();
 const nativeToolCaseSchema = z.object({
-  tools: z.tuple([nativeToolDefinitionSchema]), addGenerationPrompt: z.literal(true),
+  tools: z.tuple([nativeToolDefinitionSchema]),
+  addGenerationPrompt: z.literal(true),
   selectedTemplateSha256: z.literal('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80'),
 }).strict();
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('ca28e5780dfc709c8b070324783ef9faf90510285c06698266082073e3e69228'),
-  modelId: z.literal('onnx-community/Qwen3.5-2B-ONNX'), revision: z.literal('b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb'),
+  modelId: z.literal('onnx-community/Qwen3.5-2B-ONNX'),
+  revision: z.literal('b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb'),
   cases: z.tuple([
     nativeToolCaseSchema.extend({
-      caseId: z.literal('tools-generation'), messages: z.tuple([toolUserSchema]), status: z.literal('passed'),
-      renderedText: z.string(), inputTokenIds: tokenIdsSchema.length(276),
+      caseId: z.literal('tools-generation'),
+      messages: z.tuple([toolUserSchema]),
+      status: z.literal('passed'),
+      renderedText: z.string(),
+      inputTokenIds: tokenIdsSchema.length(276),
     }),
     nativeToolCaseSchema.extend({
-      caseId: z.literal('tool-result-continuation'), messages: z.tuple([toolUserSchema, toolAssistantSchema, toolResultSchema]),
-      status: z.literal('failed'), failureStage: z.literal('render'),
+      caseId: z.literal('tool-result-continuation'),
+      messages: z.tuple([toolUserSchema, toolAssistantSchema, toolResultSchema]),
+      status: z.literal('failed'),
+      failureStage: z.literal('render'),
       error: z.object({ name: z.literal('Error'), message: z.literal('Unknown StringValue filter: items') }).strict(),
     }),
   ]),
 }).strict().parse(toolInputJson);
 const publicToolDefinitionSchema = z.object({
-  type: z.literal('function'), function: z.object({
-    name: z.literal('lookup_weather'), description: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.literal('lookup_weather'),
+    description: z.string(),
     parameters: z.object({
-      type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
-      required: z.tuple([z.literal('city')]), additionalProperties: z.literal(false),
+      type: z.literal('object'),
+      properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+      required: z.tuple([z.literal('city')]),
+      additionalProperties: z.literal(false),
     }).strict(),
   }).strict(),
 }).strict();
-const strictQwenTools: [z.infer<typeof publicToolDefinitionSchema>] = [{ type: 'function', function: {
-  name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+const strictQwenTools: [z.infer<typeof publicToolDefinitionSchema>] = [{
+  type: 'function',
+  function: {
+  name: 'lookup_weather',
+  description: 'Return deterministic weather fixture data.',
   parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-} }];
+},
+}];
 const observedBuilderInputSchema = z.object({
   messages: z.array(z.union([
     z.object({ role: z.enum(['user', 'tool']), content: z.string(), tool_calls: z.undefined().optional(), tool_call_id: z.string().optional() }).strict(),
     z.object({ role: z.literal('assistant'), content: z.union([z.string(), z.tuple([])]), tool_calls: z.tuple([toolCallSchema]).optional(), tool_call_id: z.undefined().optional() }).strict(),
   ])),
-  tools: z.tuple([publicToolDefinitionSchema]), reasoningMode: z.literal('default'),
+  tools: z.tuple([publicToolDefinitionSchema]),
+  reasoningMode: z.literal('default'),
 }).strict();
 const QWEN_TOOL_INPUT_STOP = 'Qwen2B tool input captured; no generated output supplied';
 
@@ -246,12 +290,16 @@ function snapshotQwenInput({ context }: { context: Parameters<ProviderReplayGene
   function tensorSnapshot({ value }: { value: unknown }) {
     if (!(value instanceof runtime.Tensor)) return undefined;
     return {
-      type: value.type, dims: [...value.dims], location: value.location,
+      type: value.type,
+      dims: [...value.dims],
+      location: value.location,
       data: structuredClone(value.data),
     };
   }
   return {
-    model: context.model, tokenizer: context.tokenizer, runtime,
+    model: context.model,
+    tokenizer: context.tokenizer,
+    runtime,
     optionKeys: Object.keys(options).sort(),
     streamerIsTextStreamer: options.streamer instanceof runtime.TextStreamer,
     stoppingCriteriaType: typeof options.stopping_criteria,
@@ -297,11 +345,17 @@ async function createQwenToolInputReplay() {
     throw new Error('No natural tool invocation belongs to this input-only capture');
   });
   const publicTool: Tool = {
-    name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-    parametersSchema: z.object({ city: z.string() }), execute,
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parametersSchema: z.object({ city: z.string() }),
+    execute,
   };
   const harness = await createProviderReplayTestRuntime({
-    modelId: toolInputEvidence.modelId, expectedRevision: toolInputEvidence.revision, cacheRevision: toolInputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+    modelId: toolInputEvidence.modelId,
+    expectedRevision: toolInputEvidence.revision,
+    cacheRevision: toolInputEvidence.revision,
+    metadataCache: "all-fixture",
+    imagePlatform: undefined,
     artifacts: [
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -319,7 +373,15 @@ async function createQwenToolInputReplay() {
     const builderSpy = vi.spyOn(serializer, 'buildQwen3_5Prompt');
     const processorSpy = vi.spyOn(processor, '_call');
     return {
-      harness, generate, inputs, execute, publicTool, processor, tokenizer: processor.tokenizer, builderSpy, processorSpy,
+      harness,
+      generate,
+      inputs,
+      execute,
+      publicTool,
+      processor,
+      tokenizer: processor.tokenizer,
+      builderSpy,
+      processorSpy,
       async close() {
         processorSpy.mockRestore();
         builderSpy.mockRestore();
@@ -364,8 +426,12 @@ function verifyQwenToolInput({
     return { role, content, tool_calls, tool_call_id };
   })).toStrictEqual(messages.map(message => message.role === 'tool'
     ? { role: message.role, content: message.content, tool_calls: undefined, tool_call_id: message.tool_call_id }
-    : { role: message.role, content: message.role === 'assistant' && message.tool_calls ? [] : message.content,
-      tool_calls: message.tool_calls, tool_call_id: undefined }));
+    : {
+      role: message.role,
+      content: message.role === 'assistant' && message.tool_calls ? [] : message.content,
+      tool_calls: message.tool_calls,
+      tool_call_id: undefined,
+    }));
   expect(observedTools).toStrictEqual([expectedToolDefinition]);
   expect(reasoningMode).toBe('default');
   // Qwen's actual Callable delegates to this inherited _call. The spy does not
@@ -396,19 +462,28 @@ function verifyQwenToolInput({
   expect(replay.harness.observations.forbiddenTransport).toEqual([]);
   expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   expect(replay.harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-    modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
+    modelId: toolInputEvidence.modelId,
+    revision: toolInputEvidence.revision,
     repositoryPaths: new Set([
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-    ]), core, options,
+    ]),
+    core,
+    options,
   })).toSorted((a, b) => a.corePath.localeCompare(b.corePath))).toEqual([
     {
-      modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/decoder_model_merged_q4f16.onnx',
-      externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }], executionProviders: ['webgpu'],
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: 'onnx/decoder_model_merged_q4f16.onnx',
+      externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }],
+      executionProviders: ['webgpu'],
     },
     {
-      modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: 'onnx/embed_tokens_q4f16.onnx',
-      externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }], executionProviders: ['webgpu'],
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: 'onnx/embed_tokens_q4f16.onnx',
+      externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }],
+      executionProviders: ['webgpu'],
     },
   ]);
 }
@@ -423,11 +498,15 @@ const recordedQwenCaptureSchema = z.object({
     }).strict(),
     pastKeyValuesProvided: z.literal(false),
     inputPastKeyValuesSummary: z.object({
-      kind: z.literal('nullish'), valueType: z.literal('null'), ownKeyCount: z.literal(0),
-      ownKeys: z.tuple([]), truncated: z.literal(false),
+      kind: z.literal('nullish'),
+      valueType: z.literal('null'),
+      ownKeyCount: z.literal(0),
+      ownKeys: z.tuple([]),
+      truncated: z.literal(false),
     }).strict(),
   }).strict(),
-  streamChunks: z.array(z.string()).min(1), replay: z.unknown(),
+  streamChunks: z.array(z.string()).min(1),
+  replay: z.unknown(),
 }).strict();
 
 function parseRecordedQwenCapture({ value }: { value: unknown }) {
@@ -435,8 +514,10 @@ function parseRecordedQwenCapture({ value }: { value: unknown }) {
   unhandled satisfies Record<PropertyKey, never>;
   const replay = parseProviderReplayTextEvidence({ value: rawReplay });
   expect(replay.identity).toStrictEqual({
-    modelId: 'onnx-community/Qwen3.5-2B-ONNX', resolvedRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
-    investigationRunId: '18926c5f-50e7-4da8-8395-dd5f4ee5556a', transformersJsVersion: '4.2.0',
+    modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+    resolvedRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    investigationRunId: '18926c5f-50e7-4da8-8395-dd5f4ee5556a',
+    transformersJsVersion: '4.2.0',
   });
   expect(sourceFacts.fullConversationInput.inputTokenIds).toEqual(replay.modelReplay.sourceInputTokenIds);
   expect(streamChunks.join('')).toBe(replay.expectedProviderSemantic.visibleContent);
@@ -458,9 +539,12 @@ const continuitySelection = z.object({
 const reasoningSelection = z.object({
   schemaVersion: z.literal(1),
   sourceMemberSha256: z.literal('e8bb944bc4dceb2b8c73530f3fa8dd1ef4f506c3b29268c91e9b7de4d783d198'),
-  source: z.literal('existing-production-strategy'), strategy: z.literal('qwen3_5'),
-  disabledEffort: z.literal('none'), enabledEffort: z.literal('high'),
-  disabled: recordedQwenCaptureSchema, enabled: recordedQwenCaptureSchema,
+  source: z.literal('existing-production-strategy'),
+  strategy: z.literal('qwen3_5'),
+  disabledEffort: z.literal('none'),
+  enabledEffort: z.literal('high'),
+  disabled: recordedQwenCaptureSchema,
+  enabled: recordedQwenCaptureSchema,
 }).strict().parse(reasoningJson);
 const firstQwenCapture = parseRecordedQwenCapture({ value: productionSelection.capture });
 const historyQwenCapture = parseRecordedQwenCapture({ value: continuitySelection.capture });
@@ -468,10 +552,13 @@ const disabledQwenCapture = parseRecordedQwenCapture({ value: reasoningSelection
 const enabledQwenCapture = parseRecordedQwenCapture({ value: reasoningSelection.enabled });
 const recordedQwenBuilderSchema = z.object({
   messages: z.array(z.object({
-    role: z.enum(['user', 'assistant', 'system']), content: z.string(),
-    tool_calls: z.undefined().optional(), tool_call_id: z.undefined().optional(),
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.string(),
+    tool_calls: z.undefined().optional(),
+    tool_call_id: z.undefined().optional(),
   }).strict()),
-  tools: z.undefined(), reasoningMode: z.enum(['default', 'enabled', 'disabled']),
+  tools: z.undefined(),
+  reasoningMode: z.enum(['default', 'enabled', 'disabled']),
 }).strict();
 
 // Independent render expectations for these RECORDED Production inputs, not
@@ -498,8 +585,13 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
     // Reject a changed request before its historical prompt can be substituted.
     expect(args.messages.map(message => ({ role: message.role, content: message.content }))).toStrictEqual(capture.replay.scenario.messages);
     expect(args.tools).toBeUndefined();
-    expect(args.params).toStrictEqual({ ...capture.replay.scenario.lmParameters,
-      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort } });
+    expect(args.params).toStrictEqual({
+      ...capture.replay.scenario.lmParameters,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort },
+    });
   });
   // Provider generation now uses its operation-owned scope. Keep the historical
   // request gate at that service boundary, before the unchanged native adapter.
@@ -562,9 +654,13 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
     expect(createHash('sha256').update(JSON.stringify(ids)).digest('hex')).toBe(capture.replay.modelReplay.sourceInputSha256);
     return historical;
   });
-  return { builderSpy, serviceSpy, restore() {
+  return {
+    builderSpy,
+    serviceSpy,
+    restore() {
     builderSpy.mockRestore(); operationSpy.mockRestore();
-  } };
+  },
+  };
 }
 
 async function createRecordedQwenOutputControl({ capture, effort, expectedMode, expectedPrompt, verifyBeforeRelease }: {
@@ -578,14 +674,22 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
   let builderSpy: MockInstance<typeof import('@/features/transformers-js/models/qwen3_5').buildQwen3_5Prompt> | undefined;
   let historicalAdapter: Awaited<ReturnType<typeof installHistoricalQwenSerializer>> | undefined;
   const harness = await createProviderReplayTestRuntime({
-    modelId: 'onnx-community/Qwen3.5-2B-ONNX', expectedRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb', cacheRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb', metadataCache: "all-fixture",
+    modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+    expectedRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    cacheRevision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+    metadataCache: "all-fixture",
     imagePlatform: undefined,
     artifacts: [
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-    ].map(path => ({ path, bytes: createSyntheticModelBody({
-      modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb', path,
-    }) })),
+    ].map(path => ({
+      path,
+      bytes: createSyntheticModelBody({
+      modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+      revision: 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb',
+      path,
+    }),
+    })),
     generate: async context => {
       const { options, tokenizer, runtime } = context;
       expect(runtime.env.version).toBe(replay.identity.transformersJsVersion);
@@ -635,38 +739,56 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
     historicalAdapter = await installHistoricalQwenSerializer({ harness, capture, effort, expectedMode, expectedPrompt });
     builderSpy = historicalAdapter.builderSpy;
     const processorSpy = vi.spyOn(processor, '_call');
-    return { harness, verifyObsoletePrefixRejected() {
+    return {
+      harness,
+      verifyObsoletePrefixRejected() {
       expect(gateAccepted).toBe(false);
       expect(releasedTokenCount).toBe(0);
       expect(harness.observations.inferenceCalls).toHaveLength(0);
       expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
       expect(builderSpy).toHaveBeenCalledOnce();
-    }, verifyNativeInput() {
+    },
+      verifyNativeInput() {
       expect(gateAccepted).toBe(true);
       expect(releasedTokenCount).toBe(replay.modelReplay.generatedTokenIds.length);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(processorSpy.mock.calls).toStrictEqual([[expectedPrompt]]);
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: replay.identity.modelId, revision: replay.identity.resolvedRevision,
+        modelId: replay.identity.modelId,
+        revision: replay.identity.resolvedRevision,
         repositoryPaths: new Set([
           'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
           'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-        ]), core, options,
+        ]),
+        core,
+        options,
       })).toSorted((a, b) => a.corePath.localeCompare(b.corePath))).toEqual([
-        { modelId: replay.identity.modelId, revision: replay.identity.resolvedRevision, corePath: 'onnx/decoder_model_merged_q4f16.onnx',
-          externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }], executionProviders: ['webgpu'] },
-        { modelId: replay.identity.modelId, revision: replay.identity.resolvedRevision, corePath: 'onnx/embed_tokens_q4f16.onnx',
-          externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }], executionProviders: ['webgpu'] },
+        {
+          modelId: replay.identity.modelId,
+          revision: replay.identity.resolvedRevision,
+          corePath: 'onnx/decoder_model_merged_q4f16.onnx',
+          externalData: [{ path: 'decoder_model_merged_q4f16.onnx_data', artifactPath: 'onnx/decoder_model_merged_q4f16.onnx_data' }],
+          executionProviders: ['webgpu'],
+        },
+        {
+          modelId: replay.identity.modelId,
+          revision: replay.identity.resolvedRevision,
+          corePath: 'onnx/embed_tokens_q4f16.onnx',
+          externalData: [{ path: 'embed_tokens_q4f16.onnx_data', artifactPath: 'onnx/embed_tokens_q4f16.onnx_data' }],
+          executionProviders: ['webgpu'],
+        },
       ]);
       expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
       expect(harness.observations.localImageFetchCalls).toEqual([]);
       expect(harness.observations.forbiddenTransport).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    }, async close() {
+    },
+      async close() {
       processorSpy.mockRestore();
       historicalAdapter?.restore();
       await harness.close();
-    } };
+    },
+    };
   } catch (error) {
     historicalAdapter?.restore();
     await harness.close();
@@ -681,7 +803,10 @@ function createQwenReplay({ generate }: { generate: ProviderReplayGenerate }) {
   expect(evidence.productionInput.messages).toEqual(evidence.nativeTemplate.messages);
   return createProviderReplayTestRuntime({
     imagePlatform: undefined,
-    modelId: evidence.identity.modelId, expectedRevision: evidence.identity.resolvedRevision, cacheRevision: evidence.identity.resolvedRevision, metadataCache: "all-fixture",
+    modelId: evidence.identity.modelId,
+    expectedRevision: evidence.identity.resolvedRevision,
+    cacheRevision: evidence.identity.resolvedRevision,
+    metadataCache: "all-fixture",
     artifacts: [
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
       'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -697,9 +822,14 @@ async function createHistoricalMutationControl() {
   const harness = await createQwenReplay({ generate });
   await harness.service.loadDownloadedModel({ modelId: firstQwenCapture.replay.identity.modelId });
   const adapter = await installHistoricalQwenSerializer({ harness, capture: firstQwenCapture, effort: undefined, expectedMode: 'default', expectedPrompt: recordedQwenUserPrompt });
-  return { harness, adapter, generate, async close() {
+  return {
+    harness,
+    adapter,
+    generate,
+    async close() {
     adapter.restore(); await harness.close();
-  } };
+  },
+  };
 }
 
 async function createCurrentQwenHistoricalOutputControl({ capture, effort, expectedNativePrompt }: {
@@ -709,7 +839,8 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
   const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
   const legacyAttempts: ({ status: 'rejected', error: unknown } | { status: 'returned', result: ReturnType<typeof replayRecordedText> })[] = [];
   const streamCalls: { put: number, end: number }[] = [];
-  const harness = await createQwenReplay({ generate: async context => {
+  const harness = await createQwenReplay({
+    generate: async context => {
     inputs.push(snapshotQwenInput({ context }));
     const { options, runtime } = context;
     const streamer = options.streamer instanceof runtime.TextStreamer ? options.streamer : undefined;
@@ -727,8 +858,12 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
       end?.mockRestore();
     }
     throw new Error(stop);
-  } });
-  return { harness, stop, verifyNativeInput() {
+  },
+  });
+  return {
+    harness,
+    stop,
+    verifyNativeInput() {
     expect(inputs).toHaveLength(1);
     const actual = inputs[0];
     if (!actual?.options.input_ids || !actual.options.attention_mask) throw new Error('Expected actual current native Qwen tensors');
@@ -752,7 +887,8 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
     expect(harness.observations.localImageFetchCalls).toEqual([]);
     expect(harness.observations.forbiddenTransport).toEqual([]);
     expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } };
+  },
+  };
 }
 
 // These are bounded synthetic opaque PNG inputs, not captured browser pixels or
@@ -762,12 +898,14 @@ const qwen2ImageCases = [
   {
     name: 'opaque black',
     imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-    rgba: Uint8ClampedArray.of(0, 0, 0, 255), rescaled: 0,
+    rgba: Uint8ClampedArray.of(0, 0, 0, 255),
+    rescaled: 0,
   },
   {
     name: 'opaque white',
     imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-    rgba: Uint8ClampedArray.of(255, 255, 255, 255), rescaled: 1,
+    rgba: Uint8ClampedArray.of(255, 255, 255, 255),
+    rescaled: 1,
   },
 ];
 // Independently read from this exact 2B template (273d8e0e...). Unlike 4B,
@@ -919,10 +1057,15 @@ describe('Qwen3.5 2B Provider / basic', () => {
     const stop = 'qwen3.5-2b first Production input verified; no output tokens supplied';
     const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
     const harness = await createProviderReplayTestRuntime({
-      modelId: 'onnx-community/Qwen3.5-2B-ONNX', expectedRevision: source.identity.resolvedRevision, cacheRevision: source.identity.resolvedRevision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+      expectedRevision: source.identity.resolvedRevision,
+      cacheRevision: source.identity.resolvedRevision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       // Identifiable synthetic bodies replace native weight execution only.
       artifacts: ['onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data'].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: source.identity.resolvedRevision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: 'onnx-community/Qwen3.5-2B-ONNX', revision: source.identity.resolvedRevision, path }),
       })),
       generate: async context => {
         inputs.push(snapshotQwenInput({ context }));
@@ -982,8 +1125,10 @@ describe('Qwen3.5 2B Provider / basic', () => {
       // The source records these four requested settings, not every merged
       // GenerationConfig default or native GPU state.
       expect({
-        maxNewTokens: options.max_new_tokens, temperature: options.temperature,
-        topP: options.top_p, doSample: options.do_sample,
+        maxNewTokens: options.max_new_tokens,
+        temperature: options.temperature,
+        topP: options.top_p,
+        doSample: options.do_sample,
       }).toEqual(source.inputContract.effectiveGenerationConfig);
       expect(options.past_key_values).toBeNull();
       expect(options.return_dict_in_generate).toBe(true);
@@ -1008,12 +1153,16 @@ describe('Qwen3.5 2B Provider / basic', () => {
   }, 30_000);
   it('rejects historical first-turn output at the repaired native input without a legacy adapter', async () => {
     {
-      const control = await createCurrentQwenHistoricalOutputControl({ capture: firstQwenCapture, effort: undefined, expectedNativePrompt: recordedQwenUserPrompt + `\
+      const control = await createCurrentQwenHistoricalOutputControl({
+        capture: firstQwenCapture,
+        effort: undefined,
+        expectedNativePrompt: recordedQwenUserPrompt + `\
 <think>
 
 </think>
 
-` });
+`,
+      });
       let capture: ProviderChatCapture | undefined;
       try {
         capture = captureProviderChat({
@@ -1134,7 +1283,10 @@ describe('Qwen3.5 2B Provider / basic', () => {
     expect(firstQwenCapture.sourceFacts.cacheDecision.reason).toBe('qwen3_5-missing-conversation-state');
     {
       const control = await createRecordedQwenOutputControl({
-        capture: firstQwenCapture, effort: undefined, expectedMode: 'default', expectedPrompt: recordedQwenUserPrompt,
+        capture: firstQwenCapture,
+        effort: undefined,
+        expectedMode: 'default',
+        expectedPrompt: recordedQwenUserPrompt,
         verifyBeforeRelease: ({ context }) => {
           if (!(context.options.input_ids instanceof context.runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
           expect(context.options.input_ids.dims).toEqual([1, 13]);
@@ -1244,7 +1396,10 @@ describe('Qwen3.5 2B Provider / system', () => {
 describe('Qwen3.5 2B Provider / history', () => {
   it('rejects historical raw-history output at the repaired native input without a legacy adapter', async () => {
     {
-      const control = await createCurrentQwenHistoricalOutputControl({ capture: historyQwenCapture, effort: undefined, expectedNativePrompt: `\
+      const control = await createCurrentQwenHistoricalOutputControl({
+        capture: historyQwenCapture,
+        effort: undefined,
+        expectedNativePrompt: `\
 <|im_start|>user
 Template probe user message.<|im_end|>
 <|im_start|>assistant
@@ -1257,16 +1412,20 @@ Continue with one short sentence.<|im_end|>
 
 </think>
 
-` });
+`,
+      });
       let capture: ProviderChatCapture | undefined;
       try {
         capture = captureProviderChat({
           provider: control.harness.provider,
           request: {
             model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: `\
+            messages: [{ role: "user", content: "Template probe user message." }, {
+              role: "assistant",
+              content: `\
 <think>
-Okay, the user is asking for a template for a user message.` }, { role: "user", content: "Continue with one short sentence." }],
+Okay, the user is asking for a template for a user message.`,
+            }, { role: "user", content: "Continue with one short sentence." }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -1315,7 +1474,10 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false,
+        tokenize: true,
+        add_generation_prompt: true,
+        return_tensor: false,
+        return_dict: false,
       })).toEqual(scenario.inputTokenIds);
       capture = captureProviderChat({
         provider: harness.provider,
@@ -1376,7 +1538,9 @@ Okay, the user is asking for a template for a user message.` }, { role: "user", 
     // assistant reconstructed from a successful Provider callback sequence.
     {
       const control = await createRecordedQwenOutputControl({
-        capture: historyQwenCapture, effort: undefined, expectedMode: 'default',
+        capture: historyQwenCapture,
+        effort: undefined,
+        expectedMode: 'default',
         expectedPrompt: `\
 <|im_start|>user
 Template probe user message.<|im_end|>
@@ -1400,9 +1564,12 @@ Continue with one short sentence.<|im_end|>
           provider: control.harness.provider,
           request: {
             model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: `\
+            messages: [{ role: "user", content: "Template probe user message." }, {
+              role: "assistant",
+              content: `\
 <think>
-Okay, the user is asking for a template for a user message.` }, { role: "user", content: "Continue with one short sentence." }],
+Okay, the user is asking for a template for a user message.`,
+            }, { role: "user", content: "Continue with one short sentence." }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -1506,7 +1673,11 @@ A separate synthetic Qwen conversation.<|im_end|>
       },
     ];
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
         'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -1709,12 +1880,16 @@ A separate synthetic Qwen conversation.<|im_end|>
 describe('Qwen3.5 2B Provider / reasoning', () => {
   it('rejects historical none output at the repaired native input without a legacy adapter', async () => {
     {
-      const control = await createCurrentQwenHistoricalOutputControl({ capture: disabledQwenCapture, effort: 'none', expectedNativePrompt: recordedQwenUserPrompt + `\
+      const control = await createCurrentQwenHistoricalOutputControl({
+        capture: disabledQwenCapture,
+        effort: 'none',
+        expectedNativePrompt: recordedQwenUserPrompt + `\
 <think>
 
 </think>
 
-` });
+`,
+      });
       let capture: ProviderChatCapture | undefined;
       try {
         capture = captureProviderChat({
@@ -1790,7 +1965,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
     expect(disabledQwenCapture.replay.modelReplay.sourceInputTokenIds).not.toEqual(evidence.nativeTemplate.inputIds);
     {
       const control = await createRecordedQwenOutputControl({
-        capture: disabledQwenCapture, effort: reasoningSelection.disabledEffort, expectedMode: 'disabled',
+        capture: disabledQwenCapture,
+        effort: reasoningSelection.disabledEffort,
+        expectedMode: 'disabled',
         expectedPrompt: recordedQwenUserPrompt + `\
 <think>
 
@@ -1801,10 +1978,13 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         verifyBeforeRelease: ({ context: { tokenizer, runtime, options } }) => {
           if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
           const native = tokenizer.apply_chat_template(evidence.nativeTemplate.messages, {
-            tokenize: true, return_dict: true, add_generation_prompt: true,
+            tokenize: true,
+            return_dict: true,
+            add_generation_prompt: true,
           });
           const nativeTensors = z.object({
-            input_ids: z.instanceof(runtime.Tensor), attention_mask: z.instanceof(runtime.Tensor),
+            input_ids: z.instanceof(runtime.Tensor),
+            attention_mask: z.instanceof(runtime.Tensor),
           }).parse(native);
           expect(nativeTensors.input_ids.dims).toEqual([1, 17]);
           expect(options.input_ids.dims).toEqual([1, 17]);
@@ -1864,7 +2044,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
     expect(enabledQwenCapture.replay.modelReplay.sourceInputTokenIds.slice(-2)).toEqual([248068, 271]);
     {
       const control = await createRecordedQwenOutputControl({
-        capture: enabledQwenCapture, effort: reasoningSelection.enabledEffort, expectedMode: 'enabled',
+        capture: enabledQwenCapture,
+        effort: reasoningSelection.enabledEffort,
+        expectedMode: 'enabled',
         expectedPrompt: recordedQwenUserPrompt + '<think>\n\n',
         verifyBeforeRelease: ({ context }) => {
           if (!(context.options.input_ids instanceof context.runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
@@ -2033,15 +2215,23 @@ describe('Qwen3.5 2B Provider / tools', () => {
       const { tokenizer } = replay;
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
       const strictNativePrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictQwenTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictQwenTools,
       })).toBe(strictNativePrompt);
       const strictNativeIds = tokenizer.encode(strictNativePrompt, { add_special_tokens: false });
       expect(strictNativeIds).not.toEqual(scenario.inputTokenIds);
@@ -2084,10 +2274,16 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(capturedChunks({ snapshot: observed })).toEqual([]);
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({ ...{
-          replay, messages: scenario.messages, publicTool: replay.publicTool,
-          expectedToolDefinition: strictQwenTools[0], expectedPrompt: strictNativePrompt,
-        }, before });
+        verifyQwenToolInput({
+          ...{
+          replay,
+          messages: scenario.messages,
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
+          expectedPrompt: strictNativePrompt,
+        },
+          before,
+        });
       }
 
       // Exercise actual public sensitivity, not only a second native render:
@@ -2124,12 +2320,16 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(capturedChunks({ snapshot: observed })).toEqual([]);
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({ ...{
-          replay, messages: [{ role: 'user', content: changedContent }],
+        verifyQwenToolInput({
+          ...{
+          replay,
+          messages: [{ role: 'user', content: changedContent }],
           publicTool: { ...replay.publicTool, description: changedDescription },
           expectedToolDefinition: { ...strictQwenTools[0], function: { ...strictQwenTools[0].function, description: changedDescription } },
           expectedPrompt: strictNativePrompt.replace(replay.publicTool.description, changedDescription).replace(scenario.messages[0].content, changedContent),
-        }, before });
+        },
+          before,
+        });
       }
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
@@ -2142,10 +2342,15 @@ Use the weather tool for Tokyo.<|im_end|>
     const captures: ProviderChatCapture[] = [];
     const messages: RecordedMessage[] = [
       scenario.messages[0],
-      { role: 'assistant', content: '', tool_calls: [{
-        id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+        id: toToolCallId({ raw: 'call_template_probe_1' }),
+        type: 'function',
         function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      }] },
+      }],
+      },
       { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: scenario.messages[2].content },
     ];
     try {
@@ -2153,20 +2358,29 @@ Use the weather tool for Tokyo.<|im_end|>
       const { tokenizer } = replay;
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toThrow(scenario.error.message);
       expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictQwenTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictQwenTools,
       })).toThrow(scenario.error.message);
 
       // Current native XML oracle for an explicit mapping. The handoff captured
       // no successful input IDs for this history; never claim these were recorded.
       const nativeMessages = [
         scenario.messages[0],
-        { role: 'assistant', content: '', tool_calls: [{
-          id: 'call_template_probe_1', type: 'function',
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
           function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-        }] },
+        }],
+        },
         scenario.messages[2],
       ];
       const nativeFirst = toolInputEvidence.cases[0];
@@ -2201,10 +2415,14 @@ Tokyo
 
 `;
       expect(tokenizer.apply_chat_template(nativeMessages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(nativeSystem + nativeSuffix);
       expect(tokenizer.apply_chat_template(nativeMessages, {
-        tokenize: false, add_generation_prompt: true, tools: strictQwenTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictQwenTools,
       })).toBe(strictNativeSystem + nativeSuffix);
       const expectedJsonPrompt = qwenJsonToolPrelude + `\
 
@@ -2253,10 +2471,16 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(capturedChunks({ snapshot: observed })).toEqual([]);
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({ ...{
-          replay, messages, publicTool: replay.publicTool,
-          expectedToolDefinition: strictQwenTools[0], expectedPrompt: strictNativeSystem + nativeSuffix,
-        }, before });
+        verifyQwenToolInput({
+          ...{
+          replay,
+          messages,
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
+          expectedPrompt: strictNativeSystem + nativeSuffix,
+        },
+          before,
+        });
       }
 
       // Another actual public invocation detects dropped arguments/results.
@@ -2269,10 +2493,15 @@ Use the weather tool for Tokyo.<|im_end|>
         const before = replay.generate.mock.calls.length;
         const changedMessages: RecordedMessage[] = [
           scenario.messages[0],
-          { role: 'assistant', content: '', tool_calls: [{
-            id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+            id: toToolCallId({ raw: 'call_template_probe_1' }),
+            type: 'function',
             function: { name: 'lookup_weather', arguments: changedArguments },
-          }] },
+          }],
+          },
           { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: changedResult },
         ];
         const capture = captureProviderChat({
@@ -2301,12 +2530,16 @@ Use the weather tool for Tokyo.<|im_end|>
         expect(capturedChunks({ snapshot: observed })).toEqual([]);
         expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
         expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({ ...{
+        verifyQwenToolInput({
+          ...{
           replay,
           messages: changedMessages,
-          publicTool: replay.publicTool, expectedToolDefinition: strictQwenTools[0],
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
           expectedPrompt: (strictNativeSystem + nativeSuffix).replace('\nTokyo\n', '\nOsaka\n').replace(scenario.messages[2].content, changedResult),
-        }, before });
+        },
+          before,
+        });
       }
       expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
     } finally {
@@ -2320,7 +2553,9 @@ Use the weather tool for Tokyo.<|im_end|>
     const parameters: NonNullable<CapturedChatRequest['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
     const tools: Tool[] = [{
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.', parametersSchema: z.object({ city: z.string() }),
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
@@ -2332,21 +2567,36 @@ Use the weather tool for Tokyo.<|im_end|>
       turn = await runProviderReplayTurn({
         provider: replay.provider,
         request: { model: 'onnx-community/Qwen3.5-2B-ONNX', messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })], parameters, readBinaryObject: undefined, debug: undefined },
-        tools, abortController: new AbortController(), onChange: undefined,
+        tools,
+        abortController: new AbortController(),
+        onChange: undefined,
       });
       replay.endNativeRequest();
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
       const [callAssistant, toolResult, finalAssistant] = turn.generated;
-      expect(callAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{
-        type: 'tool_call', toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
-      }] });
+      expect(callAssistant).toMatchObject({
+        role: 'assistant',
+        interruption: undefined,
+        parts: [{
+        type: 'tool_call',
+        toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
+      }],
+      });
       if (callAssistant?.role !== 'assistant') throw new Error('Expected tool-calling assistant');
       const call = callAssistant.parts[0];
       if (call?.type !== 'tool_call') throw new Error('Expected structured tool call');
-      expect(toolResult).toMatchObject({ role: 'tool', parts: [{ type: 'tool_result', result: {
-        toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-      } }] });
+      expect(toolResult).toMatchObject({
+        role: 'tool',
+        parts: [{
+        type: 'tool_result',
+        result: {
+        toolCallId: call.toolCall.id,
+        status: 'success',
+        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+      },
+      }],
+      });
       expect(finalAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{ type: 'text', text: expectedText, completeness: 'complete' }] });
       expect(turn.toolEvents).toEqual([]);
       expect(executions).toEqual([{ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal) }]);
@@ -2359,11 +2609,15 @@ Use the weather tool for Tokyo.<|im_end|>
     }
   }
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
-    await runNaturalToolCase({ caseId: 'natural-tool-minimal', prompt: 'Use the weather tool for Tokyo.', expectedText: `\
+    await runNaturalToolCase({
+      caseId: 'natural-tool-minimal',
+      prompt: 'Use the weather tool for Tokyo.',
+      expectedText: `\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
-*   **Condition:** Clear` });
+*   **Condition:** Clear`,
+    });
   }, 30_000);
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     await runNaturalToolCase({ caseId: 'natural-tool-representative', prompt: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', expectedText: 'Based on the tool result, the weather in Tokyo is **20°C** with **clear** conditions.' });
@@ -2435,10 +2689,13 @@ describe('Qwen3.5 2B Provider / images', () => {
     expect(context.metadata.map(row => row.path).sort()).toEqual([...fixture.files.keys()].sort());
     for (const row of context.metadata) expect(createHash('sha256').update(fixture.files.get(row.path)!).digest('hex')).toBe(row.sha256);
     const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-    const nativeMessages = [{ role: 'user' as const, content: [
+    const nativeMessages = [{
+      role: 'user' as const,
+      content: [
       { type: 'text', text: 'Describe the single synthetic image in one short phrase.' },
       { type: 'image_url', image_url: { url: imageUrl } },
-    ] }];
+    ],
+    }];
     const messages = [imageMessage({ id: 'message_0', text: 'Describe the single synthetic image in one short phrase.', dataUrl: imageUrl })];
     const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     expect(request.input).toEqual({ messages: nativeMessages, tools: [], parameters: { ...parameters, presencePenalty: null, frequencyPenalty: null, stop: null, reasoning: { effort: null } } });
@@ -2447,8 +2704,12 @@ describe('Qwen3.5 2B Provider / images', () => {
       'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'];
     const platform = createProviderReplayTestImagePlatform();
     let generations = 0;
-    const harness = await createProviderReplayTestRuntime({ modelId, expectedRevision: revision, cacheRevision: revision,
-      metadataCache: context.localMetadataPaths, artifacts: artifacts.map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
+    const harness = await createProviderReplayTestRuntime({
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: context.localMetadataPaths,
+      artifacts: artifacts.map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       imagePlatform: { platform, allowedDataUrls: [imageUrl] },
       generate: async ({ options, runtime, model }) => {
         ++generations;
@@ -2465,8 +2726,11 @@ describe('Qwen3.5 2B Provider / images', () => {
       expect(harness.observations.processors).toHaveLength(1);
       expect(harness.observations.processors[0]!.constructor.name).toBe('Qwen3VLProcessor');
       const expectedSessions = ['decoder_model_merged_q4f16', 'embed_tokens_q4f16', 'vision_encoder_q4f16'].map(name => ({
-        modelId, revision, corePath: `onnx/${name}.onnx`,
-        externalData: [{ path: `${name}.onnx_data`, artifactPath: `onnx/${name}.onnx_data` }], executionProviders: ['webgpu'],
+        modelId,
+        revision,
+        corePath: `onnx/${name}.onnx`,
+        externalData: [{ path: `${name}.onnx_data`, artifactPath: `onnx/${name}.onnx_data` }],
+        executionProviders: ['webgpu'],
       }));
       expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({ modelId, revision, repositoryPaths: new Set(artifacts), core, options }))
         .sort((a, b) => a.corePath.localeCompare(b.corePath))).toEqual(expectedSessions);
@@ -2517,24 +2781,34 @@ describe('Qwen3.5 2B Provider / images', () => {
       .toBe('14932921ca485d458a04dafd8069fbb0a4505622a48208d19ed247115801385b');
     const selectedConfig = z.object({
       size: z.object({ longest_edge: z.literal(16777216), shortest_edge: z.literal(65536) }).strict(),
-      patch_size: z.literal(16), temporal_patch_size: z.literal(2), merge_size: z.literal(2),
+      patch_size: z.literal(16),
+      temporal_patch_size: z.literal(2),
+      merge_size: z.literal(2),
       image_mean: z.tuple([z.literal(0.5), z.literal(0.5), z.literal(0.5)]),
       image_std: z.tuple([z.literal(0.5), z.literal(0.5), z.literal(0.5)]),
-      processor_class: z.literal('Qwen3VLProcessor'), image_processor_type: z.literal('Qwen2VLImageProcessorFast'),
+      processor_class: z.literal('Qwen3VLProcessor'),
+      image_processor_type: z.literal('Qwen2VLImageProcessorFast'),
     }).strict().parse(JSON.parse(new TextDecoder().decode(metadata.files.get('preprocessor_config.json')!)));
     const nestedConfig = z.object({ image_processor: z.object({ do_normalize: z.literal(true) }) })
       .parse(JSON.parse(new TextDecoder().decode(metadata.files.get('processor_config.json')!)));
     expect(nestedConfig.image_processor.do_normalize).toBe(true);
-    const nativeMessages = [{ role: 'user' as const, content: [
+    const nativeMessages = [{
+      role: 'user' as const,
+      content: [
       { type: 'text', text: 'Describe this synthetic Qwen2 image.' },
       { type: 'image_url', image_url: { url: imageUrl } },
-    ] }];
+    ],
+    }];
     const platform = createProviderReplayTestImagePlatform();
     const generate = vi.fn<ProviderReplayGenerate>(async () => {
       throw new Error('Native image control must never generate');
     });
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture", imagePlatform: { platform, allowedDataUrls: [imageUrl] },
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: "all-fixture",
+      imagePlatform: { platform, allowedDataUrls: [imageUrl] },
       // This model's own inventory, with synthetic native-weight substitutes.
       // Current routing also loads the vision session; input-only controls
       // still do not claim to execute native image inference.
@@ -2576,8 +2850,10 @@ describe('Qwen3.5 2B Provider / images', () => {
         .toEqual({ width: 1, height: 1, channels: 4 });
       expect(rawImage.data).toEqual(rgba);
       const native = z.object({
-        input_ids: z.instanceof(harness.runtime.Tensor), attention_mask: z.instanceof(harness.runtime.Tensor),
-        pixel_values: z.instanceof(harness.runtime.Tensor), image_grid_thw: z.instanceof(harness.runtime.Tensor),
+        input_ids: z.instanceof(harness.runtime.Tensor),
+        attention_mask: z.instanceof(harness.runtime.Tensor),
+        pixel_values: z.instanceof(harness.runtime.Tensor),
+        image_grid_thw: z.instanceof(harness.runtime.Tensor),
       }).parse(await processor(qwen2NativeImagePrompt, rawImage));
       // Own min-area 65536 and aspect 1 yield 256x256; patch16 gives 16x16.
       // Temporal2 duplicates the frame: 3 * 2 * 16 * 16 = 1536 per patch.
@@ -2600,7 +2876,8 @@ describe('Qwen3.5 2B Provider / images', () => {
           .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
       }
       expect(platform.observations.decodes).toEqual([{
-        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')), rgba,
+        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+        rgba,
       }]);
       expect(platform.observations.draws).toEqual([
         { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
@@ -2626,7 +2903,11 @@ describe('Qwen3.5 2B Provider / images', () => {
     const platform = createProviderReplayTestImagePlatform();
     const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture", imagePlatform: { platform, allowedDataUrls: [imageUrl] },
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: "all-fixture",
+      imagePlatform: { platform, allowedDataUrls: [imageUrl] },
       artifacts: [
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
         'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
@@ -2675,8 +2956,10 @@ describe('Qwen3.5 2B Provider / images', () => {
       expect(actual.options.attention_mask).toBeDefined();
       expect(actual.options.past_key_values).toBeNull();
       expect({
-        maxNewTokens: actual.options.max_new_tokens, temperature: actual.options.temperature,
-        topP: actual.options.top_p, doSample: actual.options.do_sample,
+        maxNewTokens: actual.options.max_new_tokens,
+        temperature: actual.options.temperature,
+        topP: actual.options.top_p,
+        doSample: actual.options.do_sample,
       }).toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
       expect(actual.options.return_dict_in_generate).toBe(true);
       expect(actual.streamerIsTextStreamer).toBe(true);
@@ -2724,7 +3007,8 @@ describe('Qwen3.5 2B Provider / images', () => {
         .toEqual({ type: 'int64', location: 'cpu', dims: [1, 3] });
       expect(tensors.image_grid_thw.data).toEqual(BigInt64Array.of(1n, 16n, 16n));
       expect(platform.observations.decodes).toEqual([{
-        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')), rgba,
+        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+        rgba,
       }]);
     } finally {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
@@ -2744,53 +3028,141 @@ const qwen2FullStructuredParts = {
     { callOrdinal: 14, terminal: { kind: 'control', tokenId: '248046' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'It looks like you might be looking for a **prompt template** to use with', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: "Got it! I'm ready to continue the conversation. What would you like to", completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'I', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'system-user', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'system-user',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'Hello', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'supplied-history',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'Hello', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
       { type: 'text', text: 'It', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    ],
+      terminal: { type: 'interrupted', reason: 'unknown' },
+    }],
+    },
     ...(['reasoning-low', 'reasoning-medium', 'reasoning-high'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [{
+        kind: 'assistant' as const,
+        parts: [
         { type: 'reasoning' as const, text: 'Okay', completeness: 'partial' as const },
-      ], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+      ],
+        terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
+      }],
     })),
-    { scenario: 'natural-tool-minimal', settlement: 'fulfilled', events: [
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'fulfilled',
+      events: [
       { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [{ type: 'text', text: `\
+      {
+        kind: 'assistant',
+        parts: [{
+        type: 'text',
+        text: `\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
-*   **Condition:** Clear`, completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'fulfilled', events: [
+*   **Condition:** Clear`,
+        completeness: 'complete',
+      }],
+        terminal: { type: 'finished', next: 'user' },
+      },
+    ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'fulfilled',
+      events: [
       { kind: 'assistant', parts: [{ type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' } },
       { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'Based on the tool result, the weather in Tokyo is **20°C** with **clear** conditions.', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: `\
+    ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+      kind: 'assistant',
+      parts: [
+      {
+        type: 'text',
+        text: `\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
-*   **Condition:** Clear`, completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
-    { scenario: 'image', settlement: 'rejected', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' },
-    }] },
+*   **Condition:** Clear`,
+        completeness: 'complete',
+      },
+    ],
+      terminal: { type: 'finished', next: 'user' },
+    }],
+    },
+    {
+      scenario: 'image',
+      settlement: 'rejected',
+      events: [{
+      kind: 'assistant',
+      parts: [],
+      terminal: { type: 'error', errorName: 'unknown' },
+    }],
+    },
   ],
   legacyInputProjections: [{
     scenario: 'continuity',
@@ -2866,12 +3238,17 @@ describe('Qwen3.5 2B Provider / sequences', () => {
     // The source local inventory already held vision files. Current routing now
     // actually plans them; this is an intentional source correction, not the
     // historical CausalLM receipt or proof of successful native image inference.
-    const currentReceipt = { ...recorded.loadReceipt, autoClass: 'AutoModelForImageTextToText' as const,
+    const currentReceipt = {
+      ...recorded.loadReceipt,
+      autoClass: 'AutoModelForImageTextToText' as const,
       plannedRequiredPaths: [...recorded.loadReceipt.plannedRequiredPaths, ...vision].sort(),
       cacheLookup: { ...recorded.loadReceipt.cacheLookup, hitPaths: [...new Set([...recorded.loadReceipt.cacheLookup.hitPaths, ...vision])].sort() },
     };
     const imageInputs: ReturnType<typeof snapshotQwenInput>[] = [];
-    await verifyCapturedFullReplay({ evidence: recorded, completeResult: undefined, expectedLoadReceipt: currentReceipt,
+    await verifyCapturedFullReplay({
+      evidence: recorded,
+      completeResult: undefined,
+      expectedLoadReceipt: currentReceipt,
       reviewedPublicContract: {
         correctedEvents: [],
         invalidatedOutputs: [],
@@ -2881,7 +3258,10 @@ describe('Qwen3.5 2B Provider / sequences', () => {
       },
       imagePlatform: { platform, allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='] },
       artifactPaths: ['onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data', 'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data', ...vision],
-      unavailableOutputs: [{ callOrdinal: 15, scenario: 'image', requestInput: gap.requestInput,
+      unavailableOutputs: [{
+        callOrdinal: 15,
+        scenario: 'image',
+        requestInput: gap.requestInput,
         expectedEventsBeforeGap: [{ sequence: 0, phase: 'before-settlement', kind: 'assistant-start' }],
         verifyInput: context => {
           imageInputs.push(snapshotQwenInput({ context }));

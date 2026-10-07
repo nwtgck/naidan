@@ -63,17 +63,29 @@ function storageRoot({ revision, repositoryPath, bytes }: {
   let current: FakeHandle = file({ bytes });
   current = directory({ children: { [fileName]: current } });
   for (const part of pathParts.reverse()) current = directory({ children: { [part]: current } });
-  return toDirectoryHandle({ value: directory({ children: {
-    models: directory({ children: {
-      'huggingface.co': directory({ children: {
-        org: directory({ children: {
-          model: directory({ children: {
+  return toDirectoryHandle({
+    value: directory({
+    children: {
+    models: directory({
+      children: {
+      'huggingface.co': directory({
+        children: {
+        org: directory({
+          children: {
+          model: directory({
+            children: {
             resolve: directory({ children: { [revision]: current } }),
-          } }),
-        } }),
-      } }),
-    } }),
-  } }) });
+          },
+          }),
+        },
+        }),
+      },
+      }),
+    },
+    }),
+  },
+  }),
+  });
 }
 
 function repository({ revision, repositoryPath, size }: {

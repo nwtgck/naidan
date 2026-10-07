@@ -2,8 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { inspectImageInventory, INSPECTION_STALL_MS } from './client';
 import type { InspectionReport } from './types';
 const mocks = vi.hoisted(() => ({ inspect: vi.fn(), release: vi.fn(), terminate: vi.fn(), workers: [] as EventTarget[] }));
-vi.mock('@/utils/worker-transport', async original => ({ ...await original<typeof import('@/utils/worker-transport')>(),
-  wrapWorkerRemote: () => ({ inspect: mocks.inspect }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value,
+vi.mock('@/utils/worker-transport', async original => ({
+  ...await original<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: () => ({ inspect: mocks.inspect }),
+  releaseWorkerRemote: () => mocks.release(),
+  workerProxy: ({ value }: { value: unknown }) => value,
 }));
 beforeEach(() => {
   vi.resetAllMocks(); mocks.workers.length = 0;

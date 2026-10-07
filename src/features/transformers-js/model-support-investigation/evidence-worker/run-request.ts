@@ -20,10 +20,14 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
   }
   const { productionProviderCapture, productionProviderInvestigation, ...body } = run;
   const providerCaptureEvidence = productionProviderCapture === undefined ? undefined : createProductionProviderCaptureEvidence({
-    capture: productionProviderCapture, runId: run.runId, modelId: run.modelId,
+    capture: productionProviderCapture,
+    runId: run.runId,
+    modelId: run.modelId,
   }).json;
   const providerInvestigationEvidence = productionProviderInvestigation === undefined ? undefined : createProductionProviderInvestigationSummaryEvidence({
-    summary: productionProviderInvestigation, runId: run.runId, modelId: run.modelId,
+    summary: productionProviderInvestigation,
+    runId: run.runId,
+    modelId: run.modelId,
   }).json;
   return { run: body, providerCaptureEvidence, providerInvestigationEvidence };
 }

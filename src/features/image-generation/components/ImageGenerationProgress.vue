@@ -67,9 +67,12 @@ const phaseLabel = computed(() => {
 });
 // Copy the Ollama loader's visual language without coupling the generation paths.
 const particles = Array.from({ length: 30 }, (_, index) => ({
-  '--direction': `${index * 137.5}deg`, '--duration': `${3 + index % 3}s`,
-  '--delay': `${-index * 0.37}s`, '--distance': `${100 + index % 5 * 16}px`,
-  '--size': `${1.2 + index % 4}px`, '--color': index % 6 === 0 ? '#fbbf24' : '#3b82f6',
+  '--direction': `${index * 137.5}deg`,
+  '--duration': `${3 + index % 3}s`,
+  '--delay': `${-index * 0.37}s`,
+  '--distance': `${100 + index % 5 * 16}px`,
+  '--size': `${1.2 + index % 4}px`,
+  '--color': index % 6 === 0 ? '#fbbf24' : '#3b82f6',
 }));
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

@@ -35,8 +35,11 @@ function statusLabel({ execution }: { execution: ImageGenerationRunExecution }):
 async function editTag({ tagId }: { tagId: ImageGenerationTagId | undefined }): Promise<void> {
   const storeId = view.store.value?.storeId;
   if (!storeId) return;
-  const label = await showPrompt({ title: tagId ? await ensureStrings.imageGeneration__rename_tag() : await ensureStrings.imageGeneration__new_tag(),
-    message: await ensureStrings.imageGeneration__tag_rules(), defaultValue: view.userTags.value.find(tag => tag.id === tagId)?.name });
+  const label = await showPrompt({
+    title: tagId ? await ensureStrings.imageGeneration__rename_tag() : await ensureStrings.imageGeneration__new_tag(),
+    message: await ensureStrings.imageGeneration__tag_rules(),
+    defaultValue: view.userTags.value.find(tag => tag.id === tagId)?.name,
+  });
   if (typeof label === 'string' && view.store.value?.storeId === storeId) await view.editTag({ tagId, name: label });
 }
 function chooseTag({ event }: { event: Event }): void {

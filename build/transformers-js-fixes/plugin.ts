@@ -31,11 +31,17 @@ export function createTransformersJsFixesPlugin({ projectRoot }: { projectRoot: 
     transform(code, id) {
       if (normalizePath(id.split(/[?#]/u, 1)[0] ?? id) !== target) return undefined;
       const result = applyTransformersJsFixes({ code, version: installed.version });
-      return { code: result.code, map: result.map, meta: { naidanTransformersJsFixes: {
+      return {
+        code: result.code,
+        map: result.map,
+        meta: {
+        naidanTransformersJsFixes: {
         patchId: TRANSFORMERS_JS_FIXES_PROVENANCE.patchId,
         originalSha256: result.originalSha256,
         transformedSha256: result.transformedSha256,
-      } } };
+      },
+      },
+      };
     },
   };
 }

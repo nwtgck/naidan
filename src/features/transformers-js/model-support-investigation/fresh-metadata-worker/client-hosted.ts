@@ -59,7 +59,8 @@ export function createFreshMetadataWorkerClient() {
         // An already-aborted request must not start remote work.
         operationSignal.throwIfAborted();
         const result = await Promise.race([
-          remote.run(input, workerProxy({ value: ({ summary: value }: { summary: FreshMetadataSummary }) => {
+          remote.run(input, workerProxy({
+            value: ({ summary: value }: { summary: FreshMetadataSummary }) => {
             if (!accepting || operationSignal.aborted) return;
             try {
               const next = freshMetadataSummarySchema.parse(value);
@@ -70,7 +71,8 @@ export function createFreshMetadataWorkerClient() {
               accepting = false;
               interruption.reject(error);
             }
-          } })),
+          },
+          })),
           interruption.promise,
         ]);
         const parsed = freshMetadataResultSchema.parse(result);

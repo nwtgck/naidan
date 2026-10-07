@@ -10,15 +10,18 @@ const scaffoldCharacters = 65536;
 const eventMetadataCharacters = 512;
 const traceLimits = Object.freeze({ maximumEvents: 1024, maximumCharacters: 65536 });
 const reservationSchema = z.object({
-  unit: z.literal('json-characters'), scenarioCount: z.number().int().min(1).max(13),
+  unit: z.literal('json-characters'),
+  scenarioCount: z.number().int().min(1).max(13),
   maximumCharacters: z.literal(PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS),
   upperBoundCharacters: z.number().int().positive().max(PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS),
 }).strict().readonly();
 export const productionProviderCapturePolicySchema = z.object({
-  format: z.literal('production-provider-capture-policy-v1'), plan: capturePlanSchema,
+  format: z.literal('production-provider-capture-policy-v1'),
+  plan: capturePlanSchema,
   // Exactly the two keys accepted by the trace recorder's strict input schema.
   traceLimits: z.object({ maximumEvents: z.literal(1024), maximumCharacters: z.literal(65536) }).strict().readonly(),
-  maximumFieldCharacters: z.literal(16384), reservation: reservationSchema,
+  maximumFieldCharacters: z.literal(16384),
+  reservation: reservationSchema,
 }).strict().readonly();
 export type ProductionProviderCapturePolicy = z.infer<typeof productionProviderCapturePolicySchema>;
 
@@ -46,8 +49,10 @@ function preflightReservation({ scenarios, traceLimits }: {
     throw new Error('Provider capture policy exceeds the JSON reservation');
   }
   return reservationSchema.parse({
-    unit: 'json-characters', scenarioCount: rows.data.length,
-    maximumCharacters: PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS, upperBoundCharacters,
+    unit: 'json-characters',
+    scenarioCount: rows.data.length,
+    maximumCharacters: PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS,
+    upperBoundCharacters,
   });
 }
 
@@ -61,8 +66,11 @@ export function createProductionProviderCapturePolicy({ plan: inputPlan }: { pla
   const plan = capturePlanSchema.parse(inputPlan);
   const reservation = preflightReservation({ scenarios: captureScenarios({ plan }), traceLimits });
   return productionProviderCapturePolicySchema.parse({
-    format: 'production-provider-capture-policy-v1', plan, traceLimits,
-    maximumFieldCharacters: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters, reservation,
+    format: 'production-provider-capture-policy-v1',
+    plan,
+    traceLimits,
+    maximumFieldCharacters: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters,
+    reservation,
   });
 }
 

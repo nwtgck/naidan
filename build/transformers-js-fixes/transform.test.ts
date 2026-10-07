@@ -48,11 +48,13 @@ it('retains exact upstream originals and maps the bounded web edits to the origi
   // removing their redundant source copies.
   const sections = {
     modelLoader: originalSection({
-      startMarker: 'async function getModelDataFiles(', endMarker: '// src/models/session.js',
+      startMarker: 'async function getModelDataFiles(',
+      endMarker: '// src/models/session.js',
       expectedSha256: '4cf81c9c88860ba8dd0f299e26c4a2da33c2fb9130d125ba2485832a3648958f',
     }),
     session: originalSection({
-      startMarker: 'async function getSession(', endMarker: 'async function constructSessions(',
+      startMarker: 'async function getSession(',
+      endMarker: 'async function constructSessions(',
       expectedSha256: '35eb6ed88032b17792172591c820e89bfd1ff2bbb44a5908e54d36ad76187489',
     }),
     modelPreparation: originalSection({
@@ -65,7 +67,8 @@ it('retains exact upstream originals and maps the bounded web edits to the origi
       expectedSha256: '245efca51862a96afe06fa8d9d60595c4b29959faf481978e1e1fa84a8dbbbba',
     }),
     optionalConfigs: originalSection({
-      startMarker: 'async function get_optional_configs(', endMarker: '\n\n// src/models/models.js',
+      startMarker: 'async function get_optional_configs(',
+      endMarker: '\n\n// src/models/models.js',
       expectedSha256: 'e740709bab12cebcbb2ca8ef3a00fbb93f0ed797b46d35c4b4798992c12c810a',
     }),
   };
@@ -76,7 +79,8 @@ it('retains exact upstream originals and maps the bounded web edits to the origi
   expect(transformed.originalSha256).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');
   expect(transformed.transformedSha256).toBe('3e02fd2fca2997e8a4dae4c38ecd1db5cab0911a01da08d95b33f03387eec50f');
   const jinjaOriginal = originalSection({
-    startMarker: 'var TOKEN_TYPES = Object.freeze({', endMarker: '\n// src/utils/hub/FileResponse.js',
+    startMarker: 'var TOKEN_TYPES = Object.freeze({',
+    endMarker: '\n// src/utils/hub/FileResponse.js',
     expectedSha256: TRANSFORMERS_JS_FIXES_PROVENANCE.bundledJinja.sectionSha256,
   });
   expect(original).toContain(jinjaOriginal);
@@ -180,9 +184,12 @@ it('owns a late external rejection after an earlier core failure', async () => {
 
 it('rejects an excessive external declaration without waiting for a held core', async () => {
   const core = deferred<Uint8Array>();
-  const getSession = sessionFixture({ core: () => core.promise, external: async () => {
+  const getSession = sessionFixture({
+    core: () => core.promise,
+    external: async () => {
     throw new Error('Must not request a chunk');
-  } });
+  },
+  });
   await expect(getSession(101)).rejects.toThrow('exceeds the maximum');
   core.resolve(new Uint8Array([1]));
 });
@@ -214,9 +221,12 @@ it('owns a late core rejection after an earlier external failure', async () => {
 
 it('propagates a synchronous external reader throw through the async upstream consumer', async () => {
   const failure = new Error('Synchronous reader fixture failure');
-  const getSession = sessionFixture({ core: async () => new Uint8Array([1]), external: () => {
+  const getSession = sessionFixture({
+    core: async () => new Uint8Array([1]),
+    external: () => {
     throw failure;
-  } });
+  },
+  });
   await expect(getSession(1)).rejects.toBe(failure);
 });
 

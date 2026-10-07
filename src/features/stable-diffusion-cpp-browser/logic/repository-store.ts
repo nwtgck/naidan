@@ -193,8 +193,12 @@ export async function listHostImageRepositories({ directories, signal, onProgres
           } catch (error) {
             content = unreadableRepository({ error, signal });
           }
-          if (content.files.length || content.issues?.length) result.push({ id, name: `${directory.name}/${repository}`, ...content,
-            hostSource: { directoryId: directory.id, directoryName: directory.name, repository } });
+          if (content.files.length || content.issues?.length) result.push({
+            id,
+            name: `${directory.name}/${repository}`,
+            ...content,
+            hostSource: { directoryId: directory.id, directoryName: directory.name, repository },
+          });
         }
       }
     } catch (error) {

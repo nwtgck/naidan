@@ -42,7 +42,9 @@ ${code.slice(optionalFrom, optionalEnd)}
 return () => load.call(Fixture);
 `);
   return execute(read, create, () => ({
-    typeConfig: { sessions: select, optional_configs: names }, textOnly: false, modelType: 0,
+    typeConfig: { sessions: select, optional_configs: names },
+    textOnly: false,
+    modelType: 0,
   })) as () => Promise<{ config: unknown; info: unknown[] }>;
 }
 
@@ -69,7 +71,9 @@ it('retains the optional configuration failure origin and cause without creating
     names: { generation_config: 'generation_config.json' },
     read: async () => {
       throw failure;
-    }, select: () => ({ model: 'model' }), create,
+    },
+    select: () => ({ model: 'model' }),
+    create,
   })();
   const error = await result.catch((error: unknown) => error);
   expect(error).toMatchObject({ name: 'TransformersJsOptionalConfigurationError', cause: failure });
@@ -86,9 +90,12 @@ it('reports optional preparation failure before a session selector can fail', as
   });
   const create = vi.fn(async () => 'session');
   const result = modelFixture({
-    names: { generation_config: 'generation_config.json' }, read: async () => {
+    names: { generation_config: 'generation_config.json' },
+    read: async () => {
       throw failure;
-    }, select, create,
+    },
+    select,
+    create,
   })();
   await expect(result).rejects.toMatchObject({ name: 'TransformersJsOptionalConfigurationError', cause: failure });
   expect(select).not.toHaveBeenCalled();
@@ -121,8 +128,10 @@ it('preserves the JSON reader default for absent optional files', async () => {
 it('does not relabel a session failure after successful optional preparation', async () => {
   const failure = new Error('Synthetic backend failure');
   const result = modelFixture({
-    names: { generation_config: 'generation_config.json' }, read: async () => ({ eos_token_id: 2 }),
-    select: () => ({ model: 'model' }), create: async () => {
+    names: { generation_config: 'generation_config.json' },
+    read: async () => ({ eos_token_id: 2 }),
+    select: () => ({ model: 'model' }),
+    create: async () => {
       throw failure;
     },
   })();

@@ -19,7 +19,9 @@ function fixture() {
     cancelDirectoryArchive: vi.fn(async () => undefined),
   };
   const client = createFileExplorerStreamClient({
-    worker, remote: remote as unknown as WorkerRemote<IFileExplorerWorker>, sessionId: 'session',
+    worker,
+    remote: remote as unknown as WorkerRemote<IFileExplorerWorker>,
+    sessionId: 'session',
   });
   cleanups.push(client.disposeStreams);
   return { worker, remote, client };
@@ -56,9 +58,11 @@ describe('File Explorer stream client lifecycle', () => {
 
   it('does not read a single file before its consumer asks for bytes', async () => {
     const { remote, client } = fixture();
-    const opened = vi.fn(async () => new ReadableStream<Uint8Array>({ start(controller) {
+    const opened = vi.fn(async () => new ReadableStream<Uint8Array>({
+      start(controller) {
       controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-    } }));
+    },
+    }));
     remote.streamFile.mockImplementation(({ port }: { port: MessagePort }) => {
       return serveByteStream({ port, openStream: opened, signal: undefined }).completed;
     });

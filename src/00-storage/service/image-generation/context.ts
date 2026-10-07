@@ -44,7 +44,9 @@ export async function readImageGenerationCatalogDto({ directory }: { directory: 
 }
 
 export async function openImageGenerationCatalogDto({ storageType, creation }: { storageType: StorageType, creation: 'allow' | 'forbid' }): Promise<ExperimentalImageGenerationCatalogDto | undefined> {
-  return withImageGenerationLock({ storageType, operation: async () => {
+  return withImageGenerationLock({
+    storageType,
+    operation: async () => {
     let directory = await imageGenerationRoot({ create: false });
     if (directory) {
       const existing = await readImageGenerationCatalogDto({ directory });
@@ -60,7 +62,8 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
     const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
     await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
     return catalog;
-  } });
+  },
+  });
 }
 
 export async function withImageGenerationStore<T>({ store, operation }: {
@@ -68,12 +71,15 @@ export async function withImageGenerationStore<T>({ store, operation }: {
   operation: ({ directory, catalog }: { directory: FileSystemDirectoryHandle, catalog: ExperimentalImageGenerationCatalogDto }) => Promise<T>,
 }): Promise<T> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: store.storeId }));
-  return withImageGenerationLock({ storageType: store.storageType, operation: async () => {
+  return withImageGenerationLock({
+    storageType: store.storageType,
+    operation: async () => {
     const directory = await imageGenerationRoot({ create: false });
     const catalog = directory && await readImageGenerationCatalogDto({ directory });
     if (!directory || !catalog || catalog.id !== id) throw new Error('Image Generation store changed or was removed. Reopen it before writing.');
     return operation({ directory, catalog });
-  } });
+  },
+  });
 }
 
 /** A lost acknowledgement may retry the identical successor, not repeat a mutation. */

@@ -16,7 +16,8 @@ function databaseHarness({ value }: { value: unknown }) {
     }),
   };
   const transaction = {
-    objectStore: vi.fn(() => store), error: undefined as DOMException | undefined,
+    objectStore: vi.fn(() => store),
+    error: undefined as DOMException | undefined,
     oncomplete: undefined as (() => void) | undefined,
     onabort: undefined as (() => void) | undefined,
     onerror: undefined as (() => void) | undefined,
@@ -41,11 +42,16 @@ afterEach(() => {
 describe('host model handles database', () => {
   it('stores only the directory handle under its registration ID and waits for commit', async () => {
     const harness = databaseHarness({ value: undefined });
-    const handle = { kind: 'directory', getDirectoryHandle() {}, async queryPermission() {
+    const handle = {
+      kind: 'directory',
+      getDirectoryHandle() {},
+      async queryPermission() {
       return 'granted';
-    }, async requestPermission() {
+    },
+      async requestPermission() {
       return 'granted';
-    } };
+    },
+    };
     const settled = vi.fn();
     const operation = hostModelHandles.put({ id, handle: handle as unknown as FileSystemDirectoryHandle }).then(settled);
     await tick();

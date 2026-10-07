@@ -29,9 +29,13 @@ export function createLazyImageQuerySession<Api extends object>({ createWorker, 
         worker.terminate(); throw new DOMException('Image query client disposed', 'AbortError');
       }
       try {
-        const target: State = { worker, remote: createRemote({ worker }), onFailure: () => {
+        const target: State = {
+          worker,
+          remote: createRemote({ worker }),
+          onFailure: () => {
           if (state === target) retire({ cause: new Error('Image query Worker communication failed') });
-        } };
+        },
+        };
         worker.addEventListener('error', target.onFailure); worker.addEventListener('messageerror', target.onFailure);
         state = target; return target;
       } catch (error) {

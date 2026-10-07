@@ -252,7 +252,8 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
 
   thumbnailLoading.value.add(obj.id);
   try {
-    await thumbnailSemaphore.run({ task: async () => {
+    await thumbnailSemaphore.run({
+      task: async () => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
@@ -273,7 +274,8 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
           thumbnailCount.value++;
         }
       }
-    } });
+    },
+    });
   } catch (e) {
     console.error('Failed to load thumbnail:', e);
   } finally {

@@ -14,10 +14,14 @@ const ONE = numericValueFromBigInt({ value: 1n });
 
 export const AGGREGATION_CALCULATOR_FUNCTIONS = [
   {
-    name: 'min', category: 'aggregation',
+    name: 'min',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Return the smallest value.', requirements: [],
-    examples: [{ expression: 'min(8, -2, 5)', result: '-2', exactness: 'rational' }], related: ['max', 'clamp'],
+    precision: 'conditional',
+    summary: 'Return the smallest value.',
+    requirements: [],
+    examples: [{ expression: 'min(8, -2, 5)', result: '-2', exactness: 'rational' }],
+    related: ['max', 'clamp'],
     evaluate: ({ values, runtime, callSpan }) => {
       let result = values[0]!;
       for (const value of values.slice(1)) {
@@ -28,10 +32,14 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'max', category: 'aggregation',
+    name: 'max',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Return the largest value.', requirements: [],
-    examples: [{ expression: 'max(8, -2, 5)', result: '8', exactness: 'rational' }], related: ['min', 'clamp'],
+    precision: 'conditional',
+    summary: 'Return the largest value.',
+    requirements: [],
+    examples: [{ expression: 'max(8, -2, 5)', result: '8', exactness: 'rational' }],
+    related: ['min', 'clamp'],
     evaluate: ({ values, runtime, callSpan }) => {
       let result = values[0]!;
       for (const value of values.slice(1)) {
@@ -42,10 +50,14 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'sum', category: 'aggregation',
+    name: 'sum',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Add all values while retaining exact rational arithmetic.', requirements: [],
-    examples: [{ expression: 'sum(1, 2, 3, 4)', result: '10', exactness: 'rational' }], related: ['product', 'mean'],
+    precision: 'conditional',
+    summary: 'Add all values while retaining exact rational arithmetic.',
+    requirements: [],
+    examples: [{ expression: 'sum(1, 2, 3, 4)', result: '10', exactness: 'rational' }],
+    related: ['product', 'mean'],
     evaluate: ({ values, runtime, callSpan }) => {
       let result = ZERO;
       for (const value of values) {
@@ -56,10 +68,14 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'product', category: 'aggregation',
+    name: 'product',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Multiply all values.', requirements: [],
-    examples: [{ expression: 'product(2, 3, 4)', result: '24', exactness: 'rational' }], related: ['sum'],
+    precision: 'conditional',
+    summary: 'Multiply all values.',
+    requirements: [],
+    examples: [{ expression: 'product(2, 3, 4)', result: '24', exactness: 'rational' }],
+    related: ['sum'],
     evaluate: ({ values, runtime, callSpan }) => {
       let result = ONE;
       for (const value of values) {
@@ -70,10 +86,14 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'mean', category: 'aggregation',
+    name: 'mean',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Calculate the arithmetic mean while preserving a rational result.', requirements: [],
-    examples: [{ expression: 'mean(10, 20, 30)', result: '20', exactness: 'rational' }], related: ['sum', 'median'],
+    precision: 'conditional',
+    summary: 'Calculate the arithmetic mean while preserving a rational result.',
+    requirements: [],
+    examples: [{ expression: 'mean(10, 20, 30)', result: '20', exactness: 'rational' }],
+    related: ['sum', 'median'],
     evaluate: ({ values, runtime, callSpan }) => {
       let sum = ZERO;
       for (const value of values) {
@@ -88,10 +108,14 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
     },
   },
   {
-    name: 'median', category: 'aggregation',
+    name: 'median',
+    category: 'aggregation',
     arguments: { type: 'variadic', requiredNames: ['value'], maximumCount: CALCULATOR_LIMITS.maximumFunctionArgumentCount },
-    precision: 'conditional', summary: 'Calculate the median.', requirements: [],
-    examples: [{ expression: 'median(1, 9, 3, 5)', result: '4', exactness: 'rational' }], related: ['mean'],
+    precision: 'conditional',
+    summary: 'Calculate the median.',
+    requirements: [],
+    examples: [{ expression: 'median(1, 9, 3, 5)', result: '4', exactness: 'rational' }],
+    related: ['mean'],
     evaluate: ({ values, runtime, callSpan }) => {
       runtime.consumeOperations({ count: values.length * Math.ceil(Math.log2(values.length + 1)), span: callSpan });
       const sorted = [...values].sort((left, right) => compareNumericValues({ left, right }));

@@ -143,8 +143,11 @@ function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
 function addMessage({ index }: { index: number }) {
   const role = predictNextRole({ index });
   const common = {
-    id: generateId<MessageId>(), createdAt: Date.now(), replies: { items: [] },
-    modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }),
+    id: generateId<MessageId>(),
+    createdAt: Date.now(),
+    replies: { items: [] },
+    modelId: undefined,
+    lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }),
     parts: [{ type: 'text' as const, text: '', completeness: 'complete' as const }],
   };
   editableMessages.value.splice(index + 1, 0, {
@@ -200,7 +203,10 @@ function switchRole({ item }: { item: EditableHistoryItem }) {
     }
   });
   const common = {
-    id: message.id, createdAt: message.createdAt, replies: { items: [] }, parts,
+    id: message.id,
+    createdAt: message.createdAt,
+    replies: { items: [] },
+    parts,
     lmParameters: cloneLmParameters({ lmParameters: message.lmParameters }),
   };
   switch (message.role) {
@@ -237,9 +243,14 @@ function appendImages({ index, files }: { index: number; files: readonly File[] 
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     const attachment: Attachment = {
-      id: generateId<AttachmentId>(), binaryObjectId: generateId<BinaryObjectId>(),
-      originalName: file.name, mimeType: file.type, size: file.size, uploadedAt: Date.now(),
-      status: 'memory', blob: file,
+      id: generateId<AttachmentId>(),
+      binaryObjectId: generateId<BinaryObjectId>(),
+      originalName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: file,
     };
     message.parts.push({ type: 'attachment', attachment });
   }

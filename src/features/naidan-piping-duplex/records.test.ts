@@ -11,7 +11,10 @@ async function codecs() {
   const keys = await keyPair();
   const left = keys.a.createDomain({ label: 'test/record-contracts', context: new Uint8Array() });
   const right = keys.b.createDomain({ label: 'test/record-contracts', context: new Uint8Array() });
-  return { keys, left, right,
+  return {
+    keys,
+    left,
+    right,
     tx: new Records({ domain: left, context: keys.a.contextId, direction: 1, usage: 'encrypt' }),
     rx: new Records({ domain: right, context: keys.b.contextId, direction: 1, usage: 'decrypt' }),
   };
@@ -33,14 +36,20 @@ it('authenticated but malformed plaintext never advances the replay watermark or
 it('a rejected semantic transaction does not consume an authenticated record', async () => {
   const { tx, rx } = await codecs();
   const capsule = await tx.seal({ plaintext: plaintext() });
-  await expect(rx.accept({ capsule, apply: () => {
+  await expect(rx.accept({
+    capsule,
+    apply: () => {
     throw new Error('Semantic rejection');
-  } })).rejects.toThrow('Semantic');
+  },
+  })).rejects.toThrow('Semantic');
   expect(rx.high).toBe(-1n);
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
-  expect(await rx.accept({ capsule, apply: () => {
+  expect(await rx.accept({
+    capsule,
+    apply: () => {
     throw new Error('Duplicate application');
-  } })).toBe('stale');
+  },
+  })).toBe('stale');
 });
 
 it('all visible header bytes are authenticated and mutation cannot change accepted state', async () => {
@@ -61,9 +70,12 @@ it('invalid outer lengths, types, and sequence bounds never invoke cryptography'
   const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
   for (const capsule of [new Uint8Array(), new Uint8Array(24), new Uint8Array(25), tooHigh,
     new Uint8Array(CAPSULE_BYTES + 1), new Uint8Array(new SharedArrayBuffer(25)), null as unknown as Uint8Array]) {
-    expect(await rx.accept({ capsule, apply: () => {
+    expect(await rx.accept({
+      capsule,
+      apply: () => {
       throw new Error('Invalid outer record');
-    } })).toBe('unauthenticated');
+    },
+    })).toBe('unauthenticated');
   }
   expect(decrypt).not.toHaveBeenCalled(); expect(rx.high).toBe(-1n);
 });
@@ -86,9 +98,12 @@ it('sealing copies the input before asynchronous derivation and rejects a concur
   const pending = tx.seal({ plaintext: bytes }); await entered.promise; bytes.fill(255);
   await expect(tx.seal({ plaintext: plaintext() })).rejects.toThrow('unavailable');
   expect(tx.next).toBe(1n); release.resolve();
-  expect(await rx.accept({ capsule: await pending, apply: ({ snapshot }) => {
+  expect(await rx.accept({
+    capsule: await pending,
+    apply: ({ snapshot }) => {
     expect(snapshot.goaway).toBe(false);
-  } })).toBe('accepted');
+  },
+  })).toBe('accepted');
 });
 
 it('receiving copies the encrypted record before an asynchronous key lookup', async () => {
@@ -118,9 +133,12 @@ it('epoch rotation changes the key before reusing the per-epoch nonce', async ()
   }
   expect(inbound.mock.calls.map(([args]) => args.epoch)).toEqual([0n, 1n]);
   expect(selected.get(0)!.slice(9)).not.toEqual(selected.get(16384)!.slice(9));
-  expect(await rx.accept({ capsule: selected.get(16383)!, apply: () => {
+  expect(await rx.accept({
+    capsule: selected.get(16383)!,
+    apply: () => {
     throw new Error('Previous epoch replay');
-  } })).toBe('stale');
+  },
+  })).toBe('stale');
 }, 15000);
 
 it('failed-authentication accounting survives success and epoch changes and reserves concurrent attempts', async () => {

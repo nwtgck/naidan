@@ -11,9 +11,12 @@ describe('full document reload', () => {
   });
   it('still reloads when optional legacy marker cleanup is denied', () => {
     const location = { href: 'https://example.test/naidan/?__naidan_update=old#/chat/42', reload: vi.fn() };
-    const history = { state: null, replaceState: vi.fn(() => {
+    const history = {
+      state: null,
+      replaceState: vi.fn(() => {
       throw new DOMException('blocked', 'SecurityError');
-    }) };
+    }),
+    };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       reloadPWAPage({ location, history });

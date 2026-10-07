@@ -165,9 +165,12 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const requirements = computed(() => componentRequirements({ family: selected.value?.family ?? 'unknown' }));
   function describe({ candidate, status }: { candidate: ModelCandidate, status: ImageModelChoice['status'] }): ImageModelChoice {
     return {
-      id: candidate.id, label: candidate.path.split('/').at(-1) ?? candidate.path,
+      id: candidate.id,
+      label: candidate.path.split('/').at(-1) ?? candidate.path,
       detail: `${candidate.hostSource ? `${candidate.hostSource.directoryName}/${candidate.hostSource.repository}` : candidate.repositoryId}/${candidate.path} · ${candidate.format} · ${(candidate.size / 1024 ** 3).toFixed(2)} GiB`,
-      evidence: candidate.evidence, status: candidate.issue ? 'incompatible' : status, issue: candidate.issue,
+      evidence: candidate.evidence,
+      status: candidate.issue ? 'incompatible' : status,
+      issue: candidate.issue,
     };
   }
   const models = computed(() => inventory.value.candidates.filter(candidate => {
@@ -180,11 +183,18 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     // Native LoRA requests mount one original file, not a shard/index bundle.
     if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || !entry || !/\.(gguf|safetensors)$/i.test(entry.path)) return [];
     const source = candidate.hostSource;
-    return [{ id: candidate.id, label: entry.file.name, path: entry.path, file: entry.file,
-      detail: source ? `Host: ${source.directoryName}/${source.repository}/${entry.path}` : `OPFS: ${candidate.repositoryId}/${entry.path}` }];
+    return [{
+      id: candidate.id,
+      label: entry.file.name,
+      path: entry.path,
+      file: entry.file,
+      detail: source ? `Host: ${source.directoryName}/${source.repository}/${entry.path}` : `OPFS: ${candidate.repositoryId}/${entry.path}`,
+    }];
   }).sort((a, b) => a.detail.localeCompare(b.detail) || a.id.localeCompare(b.id)));
   const components = computed(() => requirements.value.map(requirement => ({
-    slot: requirement.slot, selected: selections.value[requirement.slot] ?? '', required: requirement.required,
+    slot: requirement.slot,
+    selected: selections.value[requirement.slot] ?? '',
+    required: requirement.required,
     choices: inventory.value.candidates.filter(candidate => candidate.id !== main.value && !candidate.classes.includes('lora')).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
       .filter(choice => showAll.value || choice.status === 'matching' || choice.id === selections.value[requirement.slot])
       .sort((a, b) => Number(b.status === 'matching') - Number(a.status === 'matching') || a.detail.localeCompare(b.detail)),
@@ -280,7 +290,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     })();
     const requirements = componentRequirements({ family });
     const files = selectedRecipeFiles({ recipe, selections: requested });
-    const candidates = files.map(file => findRecipeFile({ file, destinationId, match: ({ candidate }) => {
+    const candidates = files.map(file => findRecipeFile({
+      file,
+      destinationId,
+      match: ({ candidate }) => {
       switch (file.role) {
       case 'model': case 'diffusion': return candidate.family === family;
       case 'vae': case 'lm': {
@@ -289,9 +302,11 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
       default: { const exhaustive: never = file.role; throw new Error(String(exhaustive)); }
       }
-    } }));
+    },
+    }));
     return {
-      available: candidates.filter(candidate => candidate !== undefined).length, total: files.length,
+      available: candidates.filter(candidate => candidate !== undefined).length,
+      total: files.length,
       selected: candidates.every((candidate, index) => {
         if (!candidate) return false;
         const role = files[index]!.role;
@@ -370,10 +385,19 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     const key = JSON.stringify([destinationId, files.map(file => [file.repository, file.revision, file.path]).sort()]);
     if (jobs.value.some(job => job.key === key)) return;
     const job: DownloadJob = {
-      id: String(++jobSequence), key, target, files: files.map(file => ({ ...file })), destinationId,
+      id: String(++jobSequence),
+      key,
+      target,
+      files: files.map(file => ({ ...file })),
+      destinationId,
       destinationName: destinationId === 'opfs' ? 'OPFS' : hostDirectories.entries.value.find(entry => entry.id === destinationId)?.name ?? destinationId,
-      label, authorization: authorizeDownload({ destinationId }), state: 'queued', error: '', completion: Promise.withResolvers<void>(),
-      selectionVersion, selectWhenComplete: !main.value && origin !== 'files',
+      label,
+      authorization: authorizeDownload({ destinationId }),
+      state: 'queued',
+      error: '',
+      completion: Promise.withResolvers<void>(),
+      selectionVersion,
+      selectWhenComplete: !main.value && origin !== 'files',
     };
     jobs.value = [...jobs.value, job]; void processDownloads();
     await job.completion.promise;
@@ -429,9 +453,14 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       controller.signal.throwIfAborted();
       if (!authorization.destination) throw authorization.error;
       if (host && destinationId !== 'opfs' && !host.registrations().some(entry => entry.id === destinationId)) throw new Error('Linked model directory is unavailable');
-      await deps.download({ files, destination: authorization.destination, signal: controller.signal, onProgress: ({ progress }) => {
+      await deps.download({
+        files,
+        destination: authorization.destination,
+        signal: controller.signal,
+        onProgress: ({ progress }) => {
         if (!disposed && !controller.signal.aborted) downloadProgress.value = progress;
-      } });
+      },
+      });
       controller.signal.throwIfAborted(); transferred = true;
     } catch (error) {
       if (!disposed) {
@@ -600,11 +629,14 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           if (activeScan === operation && !scan.signal.aborted) scanProgress.value = progress;
         };
         // Dependency injection remains read-only and abort-raced for regression tests.
-        const next = await awaitInspection({ signal: scan.signal, task: dependencies ? (async () => {
+        const next = await awaitInspection({
+          signal: scan.signal,
+          task: dependencies ? (async () => {
           const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds }), signal: scan.signal });
           scan.signal.throwIfAborted();
           return dependencies.scan({ repositories: repositoryIds ? repositories.filter(repository => repositoryIds.includes(repository.id)) : repositories, signal: scan.signal, onProgress });
-        })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds }) });
+        })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds }),
+        });
         if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport) return 'failed';
         if (blocked() && !preparingHistoryFiles && !preserveSelection) return 'blocked';
         // A targeted scan is not evidence that other repositories disappeared.
@@ -659,9 +691,13 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       const directories = await collect({ signal: controller.signal }); controller.signal.throwIfAborted();
       for (const input of directories) {
         controller.signal.throwIfAborted();
-        const repositoryId = await deps.import({ input, signal: controller.signal, onProgress: ({ progress }) => {
+        const repositoryId = await deps.import({
+          input,
+          signal: controller.signal,
+          onProgress: ({ progress }) => {
           if (!disposed) importProgress.value = progress;
-        } });
+        },
+        });
         publishedRepositories.push(repositoryId);
       }
     } catch (error) {
@@ -828,7 +864,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     // Preserve publication identity and shard membership; never copy weight bytes.
     // Host files can change outside Naidan. Fresh File snapshots deliberately
     // invalidate retained-model identity, even when an old receipt still matches.
-    const sourceId = !candidate.hostSource && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({ repository: candidate.repositoryId, path: candidate.path,
+    const sourceId = !candidate.hostSource && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
+      repository: candidate.repositoryId,
+      path: candidate.path,
       files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
     }) : undefined;
     return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
@@ -846,7 +884,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         // Benchmark overrides are independent per primary model. Empty selections
         // are intentional; never silently replace them with an automatic companion.
         const id = benchmarkOverrides?.[requirement.slot] ?? (useSelection ? selections.value[requirement.slot] : requirement.required ? defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement }) : undefined);
-        components.push({ slot: requirement.slot, selected: id ?? '', required: requirement.required,
+        components.push({
+          slot: requirement.slot,
+          selected: id ?? '',
+          required: requirement.required,
           choices: inventory.value.candidates.filter(item => item.id !== candidate.id && (item.roles.includes(requirement.slot) || item.id === id || componentMatch({ candidate: item, requirement }) !== 'incompatible'))
             .map(item => describe({ candidate: item, status: componentMatch({ candidate: item, requirement }) }))
             .sort((a, b) => a.detail.localeCompare(b.detail)),
@@ -857,10 +898,17 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           && !overrides.has(requirement.slot) && recipeIntent?.files.some(file => file.role === requirement.slot)) missing.push(requirement.slot);
       }
       const issue = candidate.issue ?? (members.some(item => !item.candidate.files.some(file => file.path === item.candidate.path)) ? 'Missing local file' : undefined);
-      return [{ id: candidate.id, label: candidate.path.split('/').at(-1) ?? candidate.path,
-        detail: `${candidate.repositoryId}/${candidate.path}`, facts: { family: candidate.family, variant: candidate.variant, evidence: [...candidate.evidence] },
-        composition: useSelection || benchmarkOverrides ? 'selected' as const : 'automatic' as const, components, missing, issue,
-        models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined }];
+      return [{
+        id: candidate.id,
+        label: candidate.path.split('/').at(-1) ?? candidate.path,
+        detail: `${candidate.repositoryId}/${candidate.path}`,
+        facts: { family: candidate.family, variant: candidate.variant, evidence: [...candidate.evidence] },
+        composition: useSelection || benchmarkOverrides ? 'selected' as const : 'automatic' as const,
+        components,
+        missing,
+        issue,
+        models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined,
+      }];
     }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   }
 
@@ -873,9 +921,57 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   onScopeDispose(() => {
     disposed = true; for (const job of jobs.value) if (job !== currentJob) job.completion.resolve(); jobs.value = []; cancelScan(); activeImport.value?.abort(); activeDownload.value?.abort(); hostPublication?.abort();
   });
-  return { captureModelSelection, restoreModelSelection, downloadsDisabled, downloadQueue, retryQueuedDownload, removeQueuedDownload, hostDirectories, benchmarkTargets, selectedFacts, models, savedLoras, main, components, scanState, scanProgress, cancelScan, showAll, importProgress, importing, failure, issues, ready, refresh, refreshAccess, downloading, downloadProgress, downloadState, downloadRecipeId, downloadLoraId, downloadLora, loraAvailable, downloadRecipe, chooseRecipe, cancelDownload, resumeDownload, resetDownloadIntent, downloadSelections, recipeAvailability,
-    chooseMain, chooseComponent, importDirectory, dropDirectory, cancelImport, useManualFiles, selectedModels, historyFileLocation, findHistoryFile, prepareHistoryFiles,
-    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return {
+    captureModelSelection,
+    restoreModelSelection,
+    downloadsDisabled,
+    downloadQueue,
+    retryQueuedDownload,
+    removeQueuedDownload,
+    hostDirectories,
+    benchmarkTargets,
+    selectedFacts,
+    models,
+    savedLoras,
+    main,
+    components,
+    scanState,
+    scanProgress,
+    cancelScan,
+    showAll,
+    importProgress,
+    importing,
+    failure,
+    issues,
+    ready,
+    refresh,
+    refreshAccess,
+    downloading,
+    downloadProgress,
+    downloadState,
+    downloadRecipeId,
+    downloadLoraId,
+    downloadLora,
+    loraAvailable,
+    downloadRecipe,
+    chooseRecipe,
+    cancelDownload,
+    resumeDownload,
+    resetDownloadIntent,
+    downloadSelections,
+    recipeAvailability,
+    chooseMain,
+    chooseComponent,
+    importDirectory,
+    dropDirectory,
+    cancelImport,
+    useManualFiles,
+    selectedModels,
+    historyFileLocation,
+    findHistoryFile,
+    prepareHistoryFiles,
+    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
+  };
 }
 export const TEST_ONLY = {
 };

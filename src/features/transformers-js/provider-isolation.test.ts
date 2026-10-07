@@ -111,16 +111,21 @@ describe('Explicit hosted Provider service ownership', () => {
     const fixture = createServiceFixture({ modelId: 'fixture/tool', answer: 'unused' });
     const provider = createTransformersJsProvider({ service: fixture.service });
     const call: ToolCall = {
-      id: toToolCallId({ raw: 'call_fixed_lookup' }), type: 'function',
+      id: toToolCallId({ raw: 'call_fixed_lookup' }),
+      type: 'function',
       function: { name: 'lookup_fixture', arguments: '{"key":"fixed"}' },
     };
     const requests: InferenceMessage[][] = [];
     fixture.generate.mockImplementationOnce(async ({ messages, tools, onEvent }) => {
       requests.push(structuredClone(messages));
-      expect(tools).toEqual([{ type: 'function', function: {
-        name: 'lookup_fixture', description: 'Read a fixed synthetic value.',
+      expect(tools).toEqual([{
+        type: 'function',
+        function: {
+        name: 'lookup_fixture',
+        description: 'Read a fixed synthetic value.',
         parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'], additionalProperties: false },
-      } }]);
+      },
+      }]);
       await onEvent({ event: { type: 'tool_start', index: 0 } });
       await onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'tool_results' } } });
@@ -137,16 +142,23 @@ describe('Explicit hosted Provider service ownership', () => {
       return { status: 'success', content: 'synthetic result sentinel' };
     });
     const tool: Tool = {
-      name: 'lookup_fixture', description: 'Read a fixed synthetic value.',
-      parametersSchema: z.object({ key: z.string() }), execute,
+      name: 'lookup_fixture',
+      description: 'Read a fixed synthetic value.',
+      parametersSchema: z.object({ key: z.string() }),
+      execute,
     };
     const chunks: string[] = [];
     const onToolCall = vi.fn();
     const onToolResult = vi.fn();
     const input: Parameters<typeof runProviderConversationForTest>[0]['messages'] = [{ role: 'user', content: 'Use the fixed tool.' }];
-    await runProviderConversationForTest({ provider,
-      model: 'fixture/tool', messages: input, tools: [tool],
-      onChunk: ({ chunk }) => chunks.push(chunk), onToolCall, onToolResult,
+    await runProviderConversationForTest({
+      provider,
+      model: 'fixture/tool',
+      messages: input,
+      tools: [tool],
+      onChunk: ({ chunk }) => chunks.push(chunk),
+      onToolCall,
+      onToolResult,
     });
     expect(requests).toEqual([
       input,
@@ -157,10 +169,13 @@ describe('Explicit hosted Provider service ownership', () => {
     expect(chunks).toEqual(['Final answer.']);
     expect(execute).toHaveBeenCalledOnce();
     expect(onToolCall).toHaveBeenCalledExactlyOnceWith({
-      id: call.id, toolName: 'lookup_fixture', modelVisibleArguments: '{"key":"fixed"}',
+      id: call.id,
+      toolName: 'lookup_fixture',
+      modelVisibleArguments: '{"key":"fixed"}',
     });
     expect(onToolResult).toHaveBeenCalledExactlyOnceWith({
-      id: call.id, result: { status: 'success', content: 'synthetic result sentinel' },
+      id: call.id,
+      result: { status: 'success', content: 'synthetic result sentinel' },
     });
     expectOrdinaryServiceUntouched();
   });

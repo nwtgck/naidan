@@ -109,9 +109,15 @@ export async function discoverCandidate({ role, room, endpoint, owner, signal, c
   case undefined: case 'initiator': {
     const reply = await rendezvousRoute({ room, kind: 'reply', attempts: [attempt] });
     signal.throwIfAborted();
-    discovery = await exchange({ endpoint, send: { route: offerRoute, bytes: joinBytes({ parts: [new Uint8Array([2, 1]), attempt] }) },
-      receiveRoute: reply, accept: ({ bytes }) => receiveResponse({ bytes, attemptI: attempt }),
-      duplicateSender: role === undefined ? () => ({ kind: 'receive-offer' }) : undefined, signal, intervalMs });
+    discovery = await exchange({
+      endpoint,
+      send: { route: offerRoute, bytes: joinBytes({ parts: [new Uint8Array([2, 1]), attempt] }) },
+      receiveRoute: reply,
+      accept: ({ bytes }) => receiveResponse({ bytes, attemptI: attempt }),
+      duplicateSender: role === undefined ? () => ({ kind: 'receive-offer' }) : undefined,
+      signal,
+      intervalMs,
+    });
     break;
   }
   case 'responder': discovery = { kind: 'receive-offer' }; break;
@@ -122,8 +128,13 @@ export async function discoverCandidate({ role, room, endpoint, owner, signal, c
     const confirmation = new Deadline({ parent: signal, milliseconds: confirmationTimeoutMs });
     let channel: RendezvousChannel | undefined;
     try {
-      channel = await RendezvousChannel.create({ role: 'initiator', room, attemptI: attempt, attemptR: discovery.attemptR,
-        challenge: crypto.getRandomValues(new Uint8Array(32)) });
+      channel = await RendezvousChannel.create({
+        role: 'initiator',
+        room,
+        attemptI: attempt,
+        attemptR: discovery.attemptR,
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+      });
       confirmation.signal.throwIfAborted();
       return { channel, confirmation };
     } catch (error) {
@@ -135,7 +146,10 @@ export async function discoverCandidate({ role, room, endpoint, owner, signal, c
     }
   }
   case 'receive-offer': {
-    const attemptI = await exchange({ endpoint, send: undefined, receiveRoute: offerRoute,
+    const attemptI = await exchange({
+      endpoint,
+      send: undefined,
+      receiveRoute: offerRoute,
       accept: ({ bytes }) => {
         const offer = receiveOffer({ bytes, owner });
         if (!offer) return undefined;
@@ -149,20 +163,31 @@ export async function discoverCandidate({ role, room, endpoint, owner, signal, c
           return undefined;
         default: { const unreachable: never = offer; throw new Error(String(unreachable)); }
         }
-      }, duplicateSender: undefined, signal, intervalMs });
+      },
+      duplicateSender: undefined,
+      signal,
+      intervalMs,
+    });
     const confirmation = new Deadline({ parent: signal, milliseconds: confirmationTimeoutMs });
     let channel: RendezvousChannel | undefined;
     try {
       const attemptR = freshAttempt({ owner });
       const reply = await rendezvousRoute({ room, kind: 'reply', attempts: [attemptI] });
       const selectRoute = await rendezvousRoute({ room, kind: 'initiator', attempts: [attemptI, attemptR] });
-      const selected = await exchange({ endpoint, send: { route: reply, bytes: joinBytes({ parts: [new Uint8Array([2, 2]), attemptI, attemptR] }) },
-        receiveRoute: selectRoute, accept: ({ bytes }) => {
+      const selected = await exchange({
+        endpoint,
+        send: { route: reply, bytes: joinBytes({ parts: [new Uint8Array([2, 2]), attemptI, attemptR] }) },
+        receiveRoute: selectRoute,
+        accept: ({ bytes }) => {
           // SELECT is a challenge followed by the empty initiator journal for this exact pair.
           if (bytes.length !== 99 || !bytes.subarray(0, 32).some(Boolean) || bytes[32] !== 1 || bytes[33] !== 1 || bytes[98] !== 0 ||
             !equalBytes({ left: bytes.subarray(34, 66), right: attemptI }) || !equalBytes({ left: bytes.subarray(66, 98), right: attemptR })) return undefined;
           return ownBytes({ bytes, maxBytes: 99 });
-        }, duplicateSender: undefined, signal: confirmation.signal, intervalMs });
+        },
+        duplicateSender: undefined,
+        signal: confirmation.signal,
+        intervalMs,
+      });
       channel = await RendezvousChannel.create({ role: 'responder', room, attemptI, attemptR, challenge: selected.subarray(0, 32) });
       confirmation.signal.throwIfAborted();
       channel.accept({ bytes: selected });

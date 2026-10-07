@@ -54,9 +54,13 @@ describe('worker transport', () => {
         reader.releaseLock();
       },
     };
-    await api.consume({ stream: new ReadableStream({ start(controller) {
+    await api.consume({
+      stream: new ReadableStream({
+      start(controller) {
       controller.enqueue(new Uint8Array([7])); controller.close();
-    } }) });
+    },
+    }),
+    });
   });
 
   it('detects readable stream transfer by actually transferring a probe', async () => {

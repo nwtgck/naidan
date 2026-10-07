@@ -225,11 +225,23 @@ describe('transformersJsService', () => {
       [orphanName]: createMockFile(999, 99),
     };
     const revision = createMockDir(entries);
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(createMockDir({
-      models: createMockDir({ 'huggingface.co': createMockDir({ org: createMockDir({ repo: createMockDir({ resolve: createMockDir({
+    vi.stubGlobal('navigator', {
+      storage: {
+      getDirectory: vi.fn().mockResolvedValue(createMockDir({
+      models: createMockDir({
+        'huggingface.co': createMockDir({
+        org: createMockDir({
+        repo: createMockDir({
+        resolve: createMockDir({
         '0123456789abcdef0123456789abcdef01234567': revision,
-      }) }) }) }) }),
-    })) } });
+      }),
+      }),
+      }),
+      }),
+      }),
+    })),
+    },
+    });
     const { transformersJsService } = await import('./index');
     expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 100, fileCount: 1, lastModified: 1 }));
     // A retry commits its own final path but cannot clean a terminated writer's
@@ -372,9 +384,11 @@ describe('transformersJsService', () => {
 
     // Subscribe to track status changes
     const statuses: string[] = [];
-    transformersJsService.subscribe({ listener: ({ status }) => {
+    transformersJsService.subscribe({
+      listener: ({ status }) => {
       statuses.push(status);
-    } });
+    },
+    });
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 

@@ -85,23 +85,48 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
       const plan = planImageGenerationSeeds({ baseSeed: snapshot.request.parameters.seed, count });
       if (plan.length !== seeds.length || plan.some((seed, index) => seed !== seeds[index])) throw new Error('Accepted seeds must match the requested output count and base seed.');
       startedAt = Date.now();
-      run = { acceptedOrder: undefined, id: generateId<ImageGenerationRunId>(), sessionId, revision: 0, createdAt: snapshot.createdAt,
-        request: structuredClone(snapshot.request), seeds: [...seeds], sources: sources.map(source => ({ ...source })), execution: { type: 'queued' } };
+      run = {
+        acceptedOrder: undefined,
+        id: generateId<ImageGenerationRunId>(),
+        sessionId,
+        revision: 0,
+        createdAt: snapshot.createdAt,
+        request: structuredClone(snapshot.request),
+        seeds: [...seeds],
+        sources: sources.map(source => ({ ...source })),
+        execution: { type: 'queued' },
+      };
       inputs = snapshot.inputFiles.map(file => ({ ...file }));
       changed(); await publish();
     },
     async output({ index, record, files }) {
       if (!run || !started || completion || recovered || record.result.confirmation === 'unconfirmed' || index !== received || record.request.parameters.seed !== run.seeds[index]) throw new Error('Image Generation received an unexpected output slot.');
-      const asset: ImageGenerationAsset = { id: generateId<ImageGenerationAssetId>(), sessionId, runId: run.id, index,
-        createdAt: Date.now(), seed: record.request.parameters.seed, result: structuredClone(record.result), previews: structuredClone(record.previews) };
+      const asset: ImageGenerationAsset = {
+        id: generateId<ImageGenerationAssetId>(),
+        sessionId,
+        runId: run.id,
+        index,
+        createdAt: Date.now(),
+        seed: record.request.parameters.seed,
+        result: structuredClone(record.result),
+        previews: structuredClone(record.previews),
+      };
       const ids = new Set([asset.result.binaryObjectId, ...asset.previews.map(preview => preview.binaryObjectId)]);
       pending.set(asset.id, { asset, files: files.filter(file => ids.has(file.binaryObjectId)).map(file => ({ ...file })) });
       received++; changed(); await publish();
     },
     async recovered({ index, record, files, onPersisted, onDiscarded }) {
       if (!run || !started || completion || recovered || index !== received || record.result.confirmation !== 'unconfirmed' || record.request.parameters.seed !== run.seeds[index]) throw new Error('Unexpected recovered image slot.');
-      const asset: ImageGenerationAsset = { id: generateId<ImageGenerationAssetId>(), sessionId, runId: run.id, index,
-        createdAt: Date.now(), seed: record.request.parameters.seed, result: structuredClone(record.result), previews: [] };
+      const asset: ImageGenerationAsset = {
+        id: generateId<ImageGenerationAssetId>(),
+        sessionId,
+        runId: run.id,
+        index,
+        createdAt: Date.now(),
+        seed: record.request.parameters.seed,
+        result: structuredClone(record.result),
+        previews: [],
+      };
       const images = files.filter(file => file.binaryObjectId === asset.result.binaryObjectId);
       pending.set(asset.id, { asset, files: images, onPersisted, onDiscarded });
       recovered++; changed(); await publish();

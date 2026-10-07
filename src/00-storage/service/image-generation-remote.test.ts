@@ -11,8 +11,13 @@ import type { ImageGenerationRecord } from '@/01-models/image-generation-history
 
 function remote() {
   const run = generationRunFixture({ id: 'run-example', sessionId: toImageGenerationSessionId({ raw: 'session-example' }), count: 1, seed: '42' });
-  run.request.runtime = { profile: 'naidan-rpc', connectionId: toNaidanRpcConnectionId({ raw: 'connection-example' }), peerId: toNaidanRpcPeerId({ raw: 'A'.repeat(43) }), label: 'Remote machine',
-    modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/example.gguf' }, expected: { size: 1000, lastModified: 1 } } }, components: [], loras: [] } };
+  run.request.runtime = {
+    profile: 'naidan-rpc',
+    connectionId: toNaidanRpcConnectionId({ raw: 'connection-example' }),
+    peerId: toNaidanRpcPeerId({ raw: 'A'.repeat(43) }),
+    label: 'Remote machine',
+    modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/example.gguf' }, expected: { size: 1000, lastModified: 1 } } }, components: [], loras: [] },
+  };
   run.request.models = []; run.request.loras = [];
   for (const key of ['vaeTiling', 'vaeTileSize', 'flashAttention', 'bf16WeightType', 'qwenVaePolicy', 'conditioningCacheSize', 'modelArguments'] as const) delete run.request.parameters[key];
   return run;
@@ -27,9 +32,18 @@ it('roundtrips remote provenance without claiming local files or native settings
 it('preserves unknown recovery facts while retaining a valid image asset', () => {
   const run = remote();
   const record: ImageGenerationRecord = {
-    id: toImageGenerationId({ raw: 'output-example' }), createdAt: 1, request: run.request,
-    result: { binaryObjectId: toBinaryObjectId({ raw: 'output-binary' }), width: 256, height: 256, elapsedMs: 2,
-      confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined },
+    id: toImageGenerationId({ raw: 'output-example' }),
+    createdAt: 1,
+    request: run.request,
+    result: {
+      binaryObjectId: toBinaryObjectId({ raw: 'output-binary' }),
+      width: 256,
+      height: 256,
+      elapsedMs: 2,
+      confirmation: 'unconfirmed',
+      modelVersion: undefined,
+      uniformOutput: undefined,
+    },
     previews: [],
   };
   const dto = ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record }));

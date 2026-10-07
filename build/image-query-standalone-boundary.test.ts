@@ -25,12 +25,21 @@ globalThis.imageQueryClients = { createImageHistoryClient, createImageGeneration
     const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath: relativePath => path.join(projectRoot, relativePath) })
       .filter(worker => worker.name === 'image-history-worker' || worker.name === 'image-generation-query-worker');
     expect(workers).toHaveLength(2);
-    const result = await build({ configFile: false, root, base: './', logLevel: 'silent',
+    const result = await build({
+      configFile: false,
+      root,
+      base: './',
+      logLevel: 'silent',
       resolve: { alias: { '@': path.join(projectRoot, 'src') } },
       define: { __BUILD_MODE_IS_STANDALONE__: 'true', __BUILD_MODE_IS_HOSTED__: 'false', __BUILD_MODE_IS_TEST__: 'false' },
       plugins: [createNaidanStandalonePlugin({ workers, systemRuntimePath: require.resolve('systemjs/dist/system.min.js') })],
-      build: { write: false, minify: false, assetsInlineLimit: 0, modulePreload: false,
-        rolldownOptions: { output: { entryFileNames: 'assets/[name]-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } } },
+      build: {
+        write: false,
+        minify: false,
+        assetsInlineLimit: 0,
+        modulePreload: false,
+        rolldownOptions: { output: { entryFileNames: 'assets/[name]-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } },
+      },
     });
     if (!('output' in result)) throw new Error('Expected one isolated build output.');
     const chunks = result.output.filter(item => item.type === 'chunk');

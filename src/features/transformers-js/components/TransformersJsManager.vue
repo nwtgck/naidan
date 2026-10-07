@@ -204,7 +204,8 @@ onMounted(async () => {
   if (isUnavailableInBuild) return;
   searchQuery.value = '';
   await refreshLocalModels();
-  unsubscribe = transformersJsService.subscribe({ listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
+  unsubscribe = transformersJsService.subscribe({
+    listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
     status.value = s;
     progress.value = p;
     error.value = e;
@@ -231,10 +232,13 @@ onMounted(async () => {
     device.value = state.device;
     totalLoadedAmount.value = state.totalLoadedAmount;
     totalSizeAmount.value = state.totalSizeAmount;
-  } });
-  unsubscribeList = transformersJsService.subscribeModelList({ listener: () => {
+  },
+  });
+  unsubscribeList = transformersJsService.subscribeModelList({
+    listener: () => {
     refreshLocalModels();
-  } });
+  },
+  });
 });
 
 onUnmounted(() => {

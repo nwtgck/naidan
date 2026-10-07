@@ -9,9 +9,11 @@ export function transportPair({ capacity, fragmentBytes }: { capacity: number; f
   const create = () => {
     const final = deferred<void>(), finished = [false, false]; let done = false;
     const controls: TransformStreamDefaultController<Uint8Array>[] = [];
-    const flows = [0, 1].map(() => new TransformStream<Uint8Array, Uint8Array>({ start(controller) {
+    const flows = [0, 1].map(() => new TransformStream<Uint8Array, Uint8Array>({
+      start(controller) {
       controls.push(controller);
-    } }, { highWaterMark: 1 }, { highWaterMark: 1 }));
+    },
+    }, { highWaterMark: 1 }, { highWaterMark: 1 }));
     const abort = () => {
       if (done) return; done = true; active--; aborters.delete(abort);
       const error = new Error('Memory duplex aborted'); for (const control of controls) control.error(error); final.reject(error);
@@ -67,12 +69,16 @@ export function transportPair({ capacity, fragmentBytes }: { capacity: number; f
       },
     },
   } satisfies NaidanRpcTransport));
-  return { a: transports[0]!, b: transports[1]!, stats: () => ({ active, total }),
+  return {
+    a: transports[0]!,
+    b: transports[1]!,
+    stats: () => ({ active, total }),
     close() {
       for (const abort of [...aborters]) abort(); for (const side of [0, 1]) {
         ended[side] = true; wake[side]!.resolve();
       } lifetime.resolve();
-    } };
+    },
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

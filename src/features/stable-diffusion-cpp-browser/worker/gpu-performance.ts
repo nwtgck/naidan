@@ -3,12 +3,36 @@ import { createWaitAccounting, UPLOAD_BUCKET_LIMITS, uploadBucket } from './perf
 export type MeasurementPoint = { phase: string, step: number, reason: string };
 export type MeasurementOutcome = 'complete' | 'cancelled' | 'failed';
 const counters = () => ({
-  buffers: 0, bufferBytesRequested: 0, shaders: 0, pipelineSync: 0, pipelineAsync: 0,
-  shaderHostMs: 0, pipelineHostMs: 0, pipelineAsyncSettled: 0, pipelineAsyncFailed: 0, pipelineAsyncWallMs: 0,
-  writes: 0, writeBytes: 0, writeBytesUnknown: 0, uniformWriteBytes: 0, storageWriteBytes: 0, otherWriteBytes: 0,
-  submissions: 0, encoders: 0, computePasses: 0, dispatches: 0, indirectDispatches: 0,
-  copies: 0, copyBytes: 0, copyBytesUnknown: 0, copyToMapReadBytes: 0,
-  mapReadRequests: 0, mapReadBytes: 0, mapWriteRequests: 0, mapWriteBytes: 0, mapBytesUnknown: 0,
+  buffers: 0,
+  bufferBytesRequested: 0,
+  shaders: 0,
+  pipelineSync: 0,
+  pipelineAsync: 0,
+  shaderHostMs: 0,
+  pipelineHostMs: 0,
+  pipelineAsyncSettled: 0,
+  pipelineAsyncFailed: 0,
+  pipelineAsyncWallMs: 0,
+  writes: 0,
+  writeBytes: 0,
+  writeBytesUnknown: 0,
+  uniformWriteBytes: 0,
+  storageWriteBytes: 0,
+  otherWriteBytes: 0,
+  submissions: 0,
+  encoders: 0,
+  computePasses: 0,
+  dispatches: 0,
+  indirectDispatches: 0,
+  copies: 0,
+  copyBytes: 0,
+  copyBytesUnknown: 0,
+  copyToMapReadBytes: 0,
+  mapReadRequests: 0,
+  mapReadBytes: 0,
+  mapWriteRequests: 0,
+  mapWriteBytes: 0,
+  mapBytesUnknown: 0,
 });
 export type GpuCounters = ReturnType<typeof counters>;
 const delta = ({ value, previous }: { value: Record<string, number>, previous: Record<string, number> }) =>
@@ -31,19 +55,40 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
   function flush({ final, reason }: { final: boolean, reason: string }): void {
     const run = current; if (!run || run.closed) return;
     const time = now();
-    const fields = { runId: run.runId, phase: run.point.phase, step: run.point.step, reason,
-      windowStartMs: final ? 0 : run.lastAt - run.began, windowWallMs: Math.max(0, time - (final ? run.began : run.lastAt)),
-      scope: final ? 'run-total' : 'window' };
+    const fields = {
+      runId: run.runId,
+      phase: run.point.phase,
+      step: run.point.step,
+      reason,
+      windowStartMs: final ? 0 : run.lastAt - run.began,
+      windowWallMs: Math.max(0, time - (final ? run.began : run.lastAt)),
+      scope: final ? 'run-total' : 'window',
+    };
     const counts = final ? { ...run.counts } : delta({ value: run.counts, previous: run.previous });
     report({ metric: 'gpu-counters', fields: { ...fields, ...counts } });
-    report({ metric: 'gpu-write-sizes', fields: { ...fields, bucketUpperBytes: [...UPLOAD_BUCKET_LIMITS],
-      // Last bucket is > final upper bound, no unbounded histogram/labels.
-      calls: run.histogram.map((n, i) => final ? n : n - run.previousHistogram[i]!) } });
+    report({
+      metric: 'gpu-write-sizes',
+      fields: {
+      ...fields,
+      bucketUpperBytes: [...UPLOAD_BUCKET_LIMITS],
+        // Last bucket is > final upper bound, no unbounded histogram/labels.
+      calls: run.histogram.map((n, i) => final ? n : n - run.previousHistogram[i]!),
+    },
+    });
     for (const [kind, wait, previous] of [['queue', run.queue, run.previousQueue], ['map', run.mapping, run.previousMapping]] as const) {
       const value = wait.snapshot();
       const difference = final ? value : delta({ value, previous });
-      report({ metric: 'gpu-wait', fields: { ...fields, kind, ...difference,
-        pending: value.pending, peakPending: value.peakPending, maxCompletedMs: value.maxCompletedMs } });
+      report({
+        metric: 'gpu-wait',
+        fields: {
+        ...fields,
+        kind,
+        ...difference,
+        pending: value.pending,
+        peakPending: value.peakPending,
+        maxCompletedMs: value.maxCompletedMs,
+      },
+      });
       if (!final) Object.assign(previous, value);
     }
     if (!final) {
@@ -65,10 +110,32 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
     begin({ runId }: { runId: number }): void {
       if (current) current.closed = true;
       const time = now();
-      current = { runId, began: time, lastAt: time, closed: false, point: { phase: 'runtime', step: 0, reason: 'begin' }, counts: counters(), previous: counters(),
-        histogram: Array(8).fill(0), previousHistogram: Array(8).fill(0), queue: createWaitAccounting({ now }), mapping: createWaitAccounting({ now }), previousQueue: {}, previousMapping: {} };
-      report({ metric: 'gpu-observation', fields: { runId, gpuTimestamps: false, addedQueueWaits: false,
-        countsAreHostCalls: true, bufferBytesAreLiveVram: false, unavailableMethods: [...unavailable].join(',').slice(0, 512) } });
+      current = {
+        runId,
+        began: time,
+        lastAt: time,
+        closed: false,
+        point: { phase: 'runtime', step: 0, reason: 'begin' },
+        counts: counters(),
+        previous: counters(),
+        histogram: Array(8).fill(0),
+        previousHistogram: Array(8).fill(0),
+        queue: createWaitAccounting({ now }),
+        mapping: createWaitAccounting({ now }),
+        previousQueue: {},
+        previousMapping: {},
+      };
+      report({
+        metric: 'gpu-observation',
+        fields: {
+        runId,
+        gpuTimestamps: false,
+        addedQueueWaits: false,
+        countsAreHostCalls: true,
+        bufferBytesAreLiveVram: false,
+        unavailableMethods: [...unavailable].join(',').slice(0, 512),
+      },
+      });
       for (const fields of deviceSummaries) report({ metric: 'gpu-device', fields: { ...fields, runId, reusedDevice: true } });
     },
     checkpoint({ point }: { point: MeasurementPoint }): void {

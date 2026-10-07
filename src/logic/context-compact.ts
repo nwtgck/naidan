@@ -199,7 +199,8 @@ export function buildCompactRequestMessages({
   let raw = 'compact_instruction';
   while (ids.has(raw)) raw += '_';
   messages.push({
-    id: toMessageId({ raw }), role: 'user',
+    id: toMessageId({ raw }),
+    role: 'user',
     parts: [{ type: 'text', text: instructionContent ?? createCompactInstruction({ promptMode }), completeness: 'complete' }],
   });
   return messages;

@@ -22,10 +22,16 @@ export function createImageHistoryClient(): ImageHistoryClient {
   function create(): State {
     const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-history' });
     const remote = wrapWorkerRemote<ImageHistoryWorker>({ endpoint: worker });
-    const target: State = { worker, remote, pending: new Set(), closed: false, failed: event => {
+    const target: State = {
+      worker,
+      remote,
+      pending: new Set(),
+      closed: false,
+      failed: event => {
       const message = event instanceof ErrorEvent && event.message ? event.message : 'Image history Worker communication failed';
       retire({ target, cause: new Error(message) });
-    } };
+    },
+    };
     worker.addEventListener('error', target.failed);
     worker.addEventListener('messageerror', target.failed);
     return target;

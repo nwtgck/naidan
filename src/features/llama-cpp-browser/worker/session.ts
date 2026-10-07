@@ -229,15 +229,29 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         // shard or start native loading after a cancelled storage acquisition.
         checkCancelled();
         if (access.getSize() !== entry.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
-        mounts.push(mountReadOnlyFile({ core, path: `/models/${entry.path}`, source: readCache.wrap({ source: { size: access.getSize(), read({ destination, offset }) {
+        mounts.push(mountReadOnlyFile({
+          core,
+          path: `/models/${entry.path}`,
+          source: readCache.wrap({
+          source: {
+          size: access.getSize(),
+          read({ destination, offset }) {
           return access.read(destination, { at: offset });
-        } } }), maxChunkBytes: 8 * 1024 * 1024 }));
+        },
+        },
+        }),
+          maxChunkBytes: 8 * 1024 * 1024,
+        }));
       }
       checkCancelled();
       const params = core.allocRecord({ name: "llama_model_params" }); allocations.push(params);
       await api.llama_model_default_params(params);
-      for (const [field, value] of Object.entries({ n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
-        load_mode: core.constant({ name: "LLAMA_LOAD_MODE_NONE" }), lazy_mode: core.constant({ name: "LLAMA_LAZY_MODE_OFF" }), check_tensors: 0 })) {
+      for (const [field, value] of Object.entries({
+        n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
+        load_mode: core.constant({ name: "LLAMA_LOAD_MODE_NONE" }),
+        lazy_mode: core.constant({ name: "LLAMA_LAZY_MODE_OFF" }),
+        check_tensors: 0,
+      })) {
         core.setField({ name: "llama_model_params", pointer: params, field: field, value: value });
       }
       let lastProgress = 0;
@@ -281,8 +295,13 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         } finally {
           readCache.dispose();
           try {
-            if (reportFileReads) logDiagnostic({ diagnostic: { event: 'file-read-performance', profile,
-              fileReads: { target: 'model', ...readCache.counters } } });
+            if (reportFileReads) logDiagnostic({
+              diagnostic: {
+              event: 'file-read-performance',
+              profile,
+              fileReads: { target: 'model', ...readCache.counters },
+            },
+            });
           } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
         }
       }

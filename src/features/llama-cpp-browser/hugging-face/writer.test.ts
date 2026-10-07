@@ -33,9 +33,11 @@ describe('resumable GGUF storage writer', () => {
   it('cancels a transferred reader without treating cancellation as EOF publication', async () => {
     const writer = createDownloadWriter(); await writer.begin({ selection }); await writer.open({ fileIndex: 0, start: 0 });
     const waiting = Promise.withResolvers<void>(); let pulls = 0;
-    const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({ pull(controller) {
+    const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull(controller) {
       if (pulls++ === 0) controller.enqueue(ggufBytes().slice(0, 64)); else waiting.resolve();
-    } }, { highWaterMark: 0 });
+    },
+    }, { highWaterMark: 0 });
     const consumed = writer.consume({ stream }, async () => {}); const rejected = expect(consumed).rejects.toThrow('Download paused');
     await waiting.promise; await writer.stop(); await rejected; await writer.pause();
     expect((await listPendingDownloads())[0]?.bytes).toEqual([64]); expect(await listHuggingFaceModels()).toEqual([]);
@@ -83,9 +85,12 @@ describe('resumable GGUF storage writer', () => {
     writer = createDownloadWriter(); await writer.begin({ selection: upgrade });
     await writer.open({ fileIndex: 0, start: 0 }); await writer.append({ bytes: ggufBytes() }); await writer.finishFile();
     await writer.open({ fileIndex: 1, start: 0 }); await writer.append({ bytes: ggufBytes().slice(0, 48) }); await writer.pause();
-    vi.stubGlobal('navigator', { ...navigator, locks: {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
       request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
-    } });
+    },
+    });
     const { plan } = await prepareModelRemoval({ id: 'hf.co/owner/repo' });
     expect(plan.files.some(file => file.path === selection.files[0]!.path)).toBe(false);
     expect(await deleteRepository({ repository: selection.repository, plan })).toBe('deleted');
@@ -108,14 +113,19 @@ describe('resumable GGUF storage writer', () => {
   });
   it('rejects concurrent operations for the same repository across callers', async () => {
     const locks = new Set<string>();
-    vi.stubGlobal('navigator', { ...navigator, locks: { request: async (name: string, _options: object, operation: (lock: object | undefined) => Promise<unknown>) => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
+      request: async (name: string, _options: object, operation: (lock: object | undefined) => Promise<unknown>) => {
       if (locks.has(name)) return operation(undefined);
       locks.add(name); try {
         return await operation({});
       } finally {
         locks.delete(name);
       }
-    } } });
+    },
+    },
+    });
     const gate = Promise.withResolvers<void>();
     const first = withRepositoryLock({ repository: selection.repository, operation: () => gate.promise });
     await expect(withRepositoryLock({ repository: selection.repository, operation: async () => {} })).rejects.toThrow('busy');

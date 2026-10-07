@@ -19,7 +19,8 @@ vi.mock('../00-storage/service', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => {
       return Promise.resolve(updater({ current: null })) as any;
     }),
@@ -42,7 +43,8 @@ vi.mock('../00-storage/service', () => ({
             return { id: `chat:${node.id}`, type: 'chat', chat: { id: toChatId({ raw: node.id }), title: node.id === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } };
           }
           return {
-            id: `chat_group:${node.id}`, type: 'chat_group',
+            id: `chat_group:${node.id}`,
+            type: 'chat_group',
             chatGroup: { id: toChatGroupId({ raw: node.id }), name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: toChatId({ raw: cid }), title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) },
           };
         }) as any;
@@ -83,7 +85,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ];
 
     (storageService.loadChat as any).mockResolvedValue({
-      id: 'a', title: 'A', root: { items: [{
+      id: 'a',
+      title: 'A',
+      root: {
+        items: [{
         id: 'm1',
         role: 'user',
         replies: { items: [] },
@@ -91,13 +96,21 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         createdAt: 0,
         modelId: undefined,
         lmParameters: undefined,
-      }] },
-      updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
+      }],
+      },
+      updatedAt: 0,
+      createdAt: 0,
+      modelId: '',
+      debugEnabled: false,
       currentLeafId: 'm1',
     });
 
-    chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
-      id: 'a', title: 'A', root: { items: [{
+    chat.TEST_ONLY.__testOnlySetCurrentChat({
+      chat: {
+      id: 'a',
+      title: 'A',
+      root: {
+        items: [{
         id: 'm1',
         role: 'user',
         replies: { items: [] },
@@ -105,10 +118,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         createdAt: 0,
         modelId: undefined,
         lmParameters: undefined,
-      }] },
-      updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
+      }],
+      },
+      updatedAt: 0,
+      createdAt: 0,
+      modelId: '',
+      debugEnabled: false,
       currentLeafId: 'm1',
-    } as any });
+    } as any,
+    });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {
       return chat.rootItems.value;
@@ -151,8 +169,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     ];
 
     (storageService.loadChat as any).mockResolvedValue({
-      id: 'a', title: 'A', groupId: 'g1',
-      root: { items: [{
+      id: 'a',
+      title: 'A',
+      groupId: 'g1',
+      root: {
+        items: [{
         id: 'm1',
         role: 'user',
         replies: { items: [] },
@@ -160,14 +181,22 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         createdAt: 0,
         modelId: undefined,
         lmParameters: undefined,
-      }] },
-      updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
+      }],
+      },
+      updatedAt: 0,
+      createdAt: 0,
+      modelId: '',
+      debugEnabled: false,
       currentLeafId: 'm1',
     });
 
-    chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
-      id: 'a', title: 'A', groupId: 'g1',
-      root: { items: [{
+    chat.TEST_ONLY.__testOnlySetCurrentChat({
+      chat: {
+      id: 'a',
+      title: 'A',
+      groupId: 'g1',
+      root: {
+        items: [{
         id: 'm1',
         role: 'user',
         replies: { items: [] },
@@ -175,10 +204,15 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         createdAt: 0,
         modelId: undefined,
         lmParameters: undefined,
-      }] },
-      updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
+      }],
+      },
+      updatedAt: 0,
+      createdAt: 0,
+      modelId: '',
+      debugEnabled: false,
       currentLeafId: 'm1',
-    } as any });
+    } as any,
+    });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {
       return chat.rootItems.value;

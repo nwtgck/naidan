@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { requireDownloadedModelConfig } from './required-downloaded-config';
 
 const identity = {
-  modelId: 'org/model', revision: undefined, workerLocationUrl: 'https://naidan.invalid/worker.js',
+  modelId: 'org/model',
+  revision: undefined,
+  workerLocationUrl: 'https://naidan.invalid/worker.js',
 };
 
 describe('required local configuration admission', () => {
@@ -29,7 +31,9 @@ describe('required local configuration admission', () => {
     const json = vi.spyOn(response, 'json');
     const match = vi.fn(async () => response);
     await expect(requireDownloadedModelConfig({
-      ...identity, revision: 'fixed', modelCache: { match },
+      ...identity,
+      revision: 'fixed',
+      modelCache: { match },
     })).resolves.toBeUndefined();
     expect(match.mock.calls).toEqual([['https://huggingface.co/org/model/resolve/fixed/config.json']]);
     expect(cancel).toHaveBeenCalledTimes(1);

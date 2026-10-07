@@ -17,18 +17,36 @@ afterEach(() => {
 
 function snapshot(): ImageEngineSnapshot {
   return {
-    type: 'naidan-image-engine-snapshot-v1', collectedAt: Date.UTC(2026, 8, 28, 12, 34, 56),
-    profile: 'webgpu-wasm64-jspi', source: 'a'.repeat(40), modelVersion: 'Fixture model',
-    wasmCapacityBytes: 2 * 1024 ** 3, fileReadCacheBytes: 2 * 1024 ** 2,
+    type: 'naidan-image-engine-snapshot-v1',
+    collectedAt: Date.UTC(2026, 8, 28, 12, 34, 56),
+    profile: 'webgpu-wasm64-jspi',
+    source: 'a'.repeat(40),
+    modelVersion: 'Fixture model',
+    wasmCapacityBytes: 2 * 1024 ** 3,
+    fileReadCacheBytes: 2 * 1024 ** 2,
     runtime: { nThreads: 4, runnersReady: true, eagerLoad: true, mmap: false, prefetch: false, segmentedCompute: false, autoFit: true },
     memory: {
-      registeredTensorCount: '100', registeredTensorBytes: '1073741824',
-      managerHostBufferCount: '2', managerHostBufferBytes: '268435456',
-      managerDeviceBufferCount: '3', managerDeviceBufferBytes: '536870912',
-      trackedRuntimeCpuBytes: '67108864', trackedRuntimeNonCpuBytes: '134217728', trackedRuntimeUnknownBytes: '0', saturated: false,
+      registeredTensorCount: '100',
+      registeredTensorBytes: '1073741824',
+      managerHostBufferCount: '2',
+      managerHostBufferBytes: '268435456',
+      managerDeviceBufferCount: '3',
+      managerDeviceBufferBytes: '536870912',
+      trackedRuntimeCpuBytes: '67108864',
+      trackedRuntimeNonCpuBytes: '134217728',
+      trackedRuntimeUnknownBytes: '0',
+      saturated: false,
     },
-    requested: { nThreads: 4, computeBackend: 'GPU', paramsBackend: 'CPU', maxVram: '0', flashAttention: false,
-      diffusionFlashAttention: false, bf16WeightType: 'f16', conditioningCacheSize: 0 },
+    requested: {
+      nThreads: 4,
+      computeBackend: 'GPU',
+      paramsBackend: 'CPU',
+      maxVram: '0',
+      flashAttention: false,
+      diffusionFlashAttention: false,
+      bf16WeightType: 'f16',
+      conditioningCacheSize: 0,
+    },
   };
 }
 
@@ -45,12 +63,22 @@ function setup({ loaded = true, supported = true, busy = false, captured = false
     opened.value = next;
   });
   const engineState: ImageEngineStateView = {
-    opened, status, snapshot: current, reason, error,
+    opened,
+    status,
+    snapshot: current,
+    reason,
+    error,
     canRefresh: computed(() => opened.value && supported && loaded && !running.value && status.value !== 'refreshing'),
-    setOpened, refresh,
+    setOpened,
+    refresh,
   };
-  const view = { ...useImageGeneration(), engineState,
-    supported: computed(() => supported), busy: computed(() => running.value), modelResident: ref(loaded) };
+  const view = {
+    ...useImageGeneration(),
+    engineState,
+    supported: computed(() => supported),
+    busy: computed(() => running.value),
+    modelResident: ref(loaded),
+  };
   wrapper = mount(ImageEngineState, { props: { view, active: true } });
   return { view, engineState, refresh, setOpened, running, wrapper };
 }

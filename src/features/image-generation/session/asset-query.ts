@@ -49,8 +49,11 @@ export function selectImageGenerationAssets({ snapshot, query }: {
   });
   matches.sort((a, b) => b.createdAt - a.createdAt || compareIds({ a: idToRaw({ id: a.id }), b: idToRaw({ id: b.id }) }));
   const remaining = matches.filter(item => !query.cursor || item.createdAt < query.cursor.createdAt || item.createdAt === query.cursor.createdAt && compareIds({ a: idToRaw({ id: item.id }), b: idToRaw({ id: query.cursor.id }) }) > 0);
-  const items = remaining.slice(0, query.limit).map(asset => ({ ...asset, annotations: byAsset.get(asset.id)
-    ?? (annotations.warningCount ? undefined : { assetId: asset.id, sessionId: asset.sessionId, revision: 0, state: 'active' as const, tags: [] }) }));
+  const items = remaining.slice(0, query.limit).map(asset => ({
+    ...asset,
+    annotations: byAsset.get(asset.id)
+    ?? (annotations.warningCount ? undefined : { assetId: asset.id, sessionId: asset.sessionId, revision: 0, state: 'active' as const, tags: [] }),
+  }));
   const last = items.at(-1);
   return { items, warnings, warningCount, total: matches.length, nextCursor: remaining.length > items.length && last ? { createdAt: last.createdAt, id: last.id } : undefined };
 }

@@ -12,20 +12,42 @@ import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures'
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
-vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({ createImageClient: () => {
+vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
+  createImageClient: () => {
   mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel() {}, updatePreview() {} };
-} }));
-vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
-  kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
-} }));
+},
+}));
+vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
+  default: {
+  kind: 'available',
+  sourceCommit: 'a'.repeat(40),
+  artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+},
+}));
 let wrapper: VueWrapper | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks();
   const file = ggufFile();
-  mocks.inspect.mockResolvedValue({ candidates: [{ id: 'model', repositoryId: 'user/model', path: 'model.gguf', files: [{ path: 'model.gguf', file }], size: file.size,
-    format: 'gguf', family: 'sd-checkpoint', roles: ['model'], classes: [], evidence: [], variant: 'unknown', turboHint: false, issue: undefined }], issues: [] });
+  mocks.inspect.mockResolvedValue({
+    candidates: [{
+    id: 'model',
+    repositoryId: 'user/model',
+    path: 'model.gguf',
+    files: [{ path: 'model.gguf', file }],
+    size: file.size,
+    format: 'gguf',
+    family: 'sd-checkpoint',
+    roles: ['model'],
+    classes: [],
+    evidence: [],
+    variant: 'unknown',
+    turboHint: false,
+    issue: undefined,
+  }],
+    issues: [],
+  });
   vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
 });
@@ -43,10 +65,12 @@ async function open({ path }: { path: string }): Promise<Router> {
   expect(records[0]!.children?.find(child => child.path === 'session')?.children?.map(child => child.path)).toEqual([':sessionId']);
   const router = createRouter({ history: createMemoryHistory(), routes: records });
   await router.push(path); await router.isReady();
-  const surface = defineComponent({ setup() {
+  const surface = defineComponent({
+    setup() {
     const { active } = useImageGenerationWorkspaceNavigation();
     return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
-  } });
+  },
+  });
   wrapper = mount(surface, { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises(); return router;
 }

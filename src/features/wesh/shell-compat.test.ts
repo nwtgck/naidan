@@ -740,13 +740,15 @@ printf '%s\n' "$?"
   });
 
   it('supports legacy backquote command substitution and escape processing', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=\`printf 'alpha\\n'\`
 printf 'basic:<%s>\\n' "$value"
 printf 'quoted:<%s>\\n' "\`printf 'a b'\`"
 HOME=/tmp/backquote-home
 printf 'dollar:<%s>\\n' \`printf '%s' \\$HOME\`
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 basic:<alpha>
@@ -818,10 +820,12 @@ second
   });
 
   it('trims Linux shebang trailing separators before invoking the interpreter', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf '%s\\n' '#!/bin/bash -e   ' 'printf "TRAILING-SHEBANG\\n"' > /script.sh
 /script.sh
-` });
+`,
+    });
 
     expect(result.result.exitCode).toBe(0);
     expect(result.stdout.text).toBe('TRAILING-SHEBANG\n');
@@ -829,9 +833,11 @@ printf '%s\\n' '#!/bin/bash -e   ' 'printf "TRAILING-SHEBANG\\n"' > /script.sh
   });
 
   it('matches Linux NUL termination while resolving a shebang', async () => {
-    const result = await execute({ script: String.raw`printf '#!/bin/bash -e\000ignored\nprintf "NUL-SHEBANG\n"\n' > /script.sh
+    const result = await execute({
+      script: String.raw`printf '#!/bin/bash -e\000ignored\nprintf "NUL-SHEBANG\n"\n' > /script.sh
 /script.sh
-` });
+`,
+    });
 
     expect(result.result.exitCode).toBe(0);
     expect(result.stdout.text).toBe('NUL-SHEBANG\n');
@@ -1268,10 +1274,12 @@ value#suffix
     expect(result.result.exitCode).toBe(0);
   });
   it('matches Bash locale-quoted word semantics when no message translation is present', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 x=Y
 printf '<%s>|<%s>|<%s>\n' $"abc" $"a$x" pre$"a$x"post
-` });
+`,
+    });
     expect(result.stdout.text).toBe('<abc>|<aY>|<preaYpost>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
@@ -1365,49 +1373,59 @@ beta>|<AA>|<α>|<literal * $HOME>
   });
 
   it('expands here-string words after quote removal without pathname expansion', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 VALUE='alpha beta'
-cat <<< "$VALUE"` });
+cat <<< "$VALUE"`,
+    });
     expect(result.stdout.text).toBe('alpha beta\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('rejects multi-match redirection targets as ambiguous', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf alpha > alpha.txt
 printf beta > beta.txt
-printf changed > *.txt` });
+printf changed > *.txt`,
+    });
     expect(result.stdout.text).toBe('');
     expect(result.stderr.text).toContain('ambiguous redirect');
     expect(result.result.exitCode).toBe(1);
   });
 
   it('continues a command list after an ordinary redirection failure', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 cat < missing
-printf 'status:%s\\n' "$?"` });
+printf 'status:%s\\n' "$?"`,
+    });
     expect(result.stdout.text).toBe('status:1\n');
     expect(result.stderr.text).not.toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('lets a following command observe an ambiguous-redirection status', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf alpha > alpha.txt
 printf beta > beta.txt
 printf changed > *.txt
-printf 'status:%s\\n' "$?"` });
+printf 'status:%s\\n' "$?"`,
+    });
     expect(result.stdout.text).toBe('status:1\n');
     expect(result.stderr.text).toContain('ambiguous redirect');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('accepts a physical newline after a pipeline operator but not a semicolon', async () => {
-    const continued = await execute({ script: `\
+    const continued = await execute({
+      script: `\
 printf 'alpha\\n' |
   cat
-` });
+`,
+    });
     expect(continued.stdout.text).toBe('alpha\n');
     expect(continued.stderr.text).toBe('');
     expect(continued.result.exitCode).toBe(0);
@@ -1419,11 +1437,13 @@ printf 'alpha\\n' |
   });
 
   it('returns the rightmost failing pipeline status when pipefail is enabled', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -o pipefail
 false | true
 printf 'status:%s\\n' "$?"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('status:1\n');
     expect(result.stderr.text).toBe('');
@@ -1431,12 +1451,14 @@ printf 'status:%s\\n' "$?"
   });
 
   it('restores last-command pipeline status when pipefail is disabled', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -o pipefail
 set +o pipefail
 false | true
 printf 'status:%s\\n' "$?"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('status:0\n');
     expect(result.stderr.text).toBe('');
@@ -1444,12 +1466,14 @@ printf 'status:%s\\n' "$?"
   });
 
   it('stops a command list after an ordinary failure when errexit is enabled', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -e
 printf 'before\\n'
 false
 printf 'after\\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('before\n');
     expect(result.stderr.text).toBe('');
@@ -1457,12 +1481,14 @@ printf 'after\\n'
   });
 
   it('does not apply errexit to AND-list left operands or if conditions', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -e
 false && printf 'unexpected\\n'
 if false; then printf 'unexpected\\n'; fi
 printf 'after\\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('after\n');
     expect(result.stderr.text).toBe('');
@@ -1470,11 +1496,13 @@ printf 'after\\n'
   });
 
   it('preserves errexit suppression through redirection wrappers', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -e
 false > ignored.txt && printf 'unexpected\n'
 printf 'after\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('after\n');
     expect(result.stderr.text).toBe('');
@@ -1482,12 +1510,14 @@ printf 'after\n'
   });
 
   it('can disable errexit after enabling it', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -e
 set +e
 false
 printf 'status:%s\\n' "$?"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('status:1\n');
     expect(result.stderr.text).toBe('');
@@ -1495,31 +1525,37 @@ printf 'status:%s\\n' "$?"
   });
 
   it('aborts on a direct unset parameter under nounset but permits a default operator', async () => {
-    const fatal = await execute({ script: `\
+    const fatal = await execute({
+      script: `\
 set -u
 printf 'before\\n'
 printf '%s\\n' "$missing"
 printf 'after\\n'
-` });
+`,
+    });
     expect(fatal.stdout.text).toBe('before\n');
     expect(fatal.stderr.text).toContain('missing: unbound variable');
     expect(fatal.result.exitCode).toBe(127);
 
-    const fallback = await execute({ script: `\
+    const fallback = await execute({
+      script: `\
 set -u
 printf '<%s>\\n' "${'${missing:-fallback}'}"
-` });
+`,
+    });
     expect(fallback.stdout.text).toBe('<fallback>\n');
     expect(fallback.stderr.text).toBe('');
     expect(fallback.result.exitCode).toBe(0);
   });
 
   it('accepts the common combined errexit nounset pipefail option form', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -euo pipefail
 value=ready
 printf '%s\\n' "$value" | cat
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('ready\n');
     expect(result.stderr.text).toBe('');
@@ -1527,10 +1563,12 @@ printf '%s\\n' "$value" | cat
   });
 
   it('does not pathname-expand assignment right-hand sides', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf x > present.txt
 value=*
-printf '<%s>\\n' "$value"` });
+printf '<%s>\\n' "$value"`,
+    });
     expect(result.stdout.text).toBe('<*>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
@@ -1558,10 +1596,12 @@ printf '<%s>\\n' $pattern
   });
 
   it('sorts pathname expansion results like the C-locale Bash oracle', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf x > b.txt
 printf x > a.txt
-printf '<%s>\\n' *.txt` });
+printf '<%s>\\n' *.txt`,
+    });
     expect(result.stdout.text).toBe(`\
 <a.txt>
 <b.txt>
@@ -1571,11 +1611,13 @@ printf '<%s>\\n' *.txt` });
   });
 
   it('evaluates command substitution inside a selected parameter default', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 result=\${value:-$(printf 'fallback\\n')}
 printf '<%s>\\n' "$result"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('<fallback>\n');
     expect(result.stderr.text).toBe('');
@@ -1583,12 +1625,14 @@ printf '<%s>\\n' "$result"
   });
 
   it('keeps an unquoted parameter operand substitution eligible for field splitting', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 IFS=,
 set -- \${value:-$(printf 'alpha,beta')}
 printf 'count:%s first:<%s> second:<%s>\\n' "$#" "$1" "$2"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('count:2 first:<alpha> second:<beta>\n');
     expect(result.stderr.text).toBe('');
@@ -1596,11 +1640,13 @@ printf 'count:%s first:<%s> second:<%s>\\n' "$#" "$1" "$2"
   });
 
   it('field-splits ordinary literal bytes selected from an unquoted parameter operand', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 IFS=,
 set -- \${value:-alpha,beta}
-printf 'count:%s first:<%s> second:<%s>\n' "$#" "$1" "$2"` });
+printf 'count:%s first:<%s> second:<%s>\n' "$#" "$1" "$2"`,
+    });
 
     expect(result.stdout.text).toBe('count:2 first:<alpha> second:<beta>\n');
     expect(result.stderr.text).toBe('');
@@ -1608,11 +1654,13 @@ printf 'count:%s first:<%s> second:<%s>\n' "$#" "$1" "$2"` });
   });
 
   it('preserves source quote protection inside an unquoted parameter operand', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 IFS=,
 set -- \${value:-alpha\\,beta} \${value:-'gamma,delta'} \${value:-"epsilon,zeta"}
-printf 'count:%s <%s> <%s> <%s>\n' "$#" "$1" "$2" "$3"` });
+printf 'count:%s <%s> <%s> <%s>\n' "$#" "$1" "$2" "$3"`,
+    });
 
     expect(result.stdout.text).toBe('count:3 <alpha,beta> <gamma,delta> <epsilon,zeta>\n');
     expect(result.stderr.text).toBe('');
@@ -1620,13 +1668,15 @@ printf 'count:%s <%s> <%s> <%s>\n' "$#" "$1" "$2" "$3"` });
   });
 
   it('keeps tilde expansion in a selected operand protected from later splitting and globbing', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 HOME='/tmp/home with space'
 set -- \${value:-~}
 printf 'count:%s first:<%s>\n' "$#" "$1"
 HOME='*'
-printf 'glob:<%s>\n' \${value:-~}` });
+printf 'glob:<%s>\n' \${value:-~}`,
+    });
 
     expect(result.stdout.text).toBe(`\
 count:1 first:</tmp/home with space>
@@ -1637,7 +1687,8 @@ glob:<*>
   });
 
   it('keeps operand pathname provenance through literal, escaped, quoted, and nested expansion', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 mkdir work
 cd work
 touch alpha beta
@@ -1646,7 +1697,8 @@ nested='*'
 printf 'literal:<%s>\n' \${value:-*}
 printf 'escaped:<%s>\n' \${value:-\\*}
 printf 'quoted:<%s>\n' \${value:-'*'}
-printf 'nested:<%s>\n' \${value:-$nested}` });
+printf 'nested:<%s>\n' \${value:-$nested}`,
+    });
 
     expect(result.stdout.text).toBe(`\
 literal:<alpha>
@@ -1661,11 +1713,13 @@ nested:<beta>
   });
 
   it('parses parameter operands nested inside outer double quotes without leaking quote syntax', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 printf '<%s>\n' "\${value:-"alpha beta"}"
 printf '<%s>\n' "\${value:-"\\q"}"
-printf '<%s>\n' "\${value:-$'gamma\\ndelta'}"` });
+printf '<%s>\n' "\${value:-$'gamma\\ndelta'}"`,
+    });
 
     expect(result.stdout.text).toBe(`\
 <alpha beta>
@@ -1678,9 +1732,11 @@ delta>
   });
 
   it('keeps nested command-substitution quotes inside a parameter operand', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 cat <(printf '%s' "\${x:-$(printf ")")}"; printf tail)
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(')tail');
     expect(result.stderr.text).toBe('');
@@ -1688,11 +1744,13 @@ cat <(printf '%s' "\${x:-$(printf ")")}"; printf tail)
   });
 
   it('does not count parameter-operand parentheses as command-substitution delimiters', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 closing=$(printf '<%s>\n' \${value:-)})
 opening=$(printf '<%s>\n' \${value:-(})
-printf '%s|%s\n' "$closing" "$opening"` });
+printf '%s|%s\n' "$closing" "$opening"`,
+    });
 
     expect(result.stdout.text).toBe('<)>|<(>\n');
     expect(result.stderr.text).toBe('');
@@ -1700,9 +1758,11 @@ printf '%s|%s\n' "$closing" "$opening"` });
   });
 
   it('keeps process-substitution braces inside parameter operands', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
-printf '<%s>|<%s>\n' "\${value:-<(printf %s a}b)}" "\${value:->(printf %s a}b)}"` });
+printf '<%s>|<%s>\n' "\${value:-<(printf %s a}b)}" "\${value:->(printf %s a}b)}"`,
+    });
 
     expect(result.stdout.text).toBe('<<(printf %s a}b)>|<>(printf %s a}b)>\n');
     expect(result.stderr.text).toBe('');
@@ -1710,46 +1770,55 @@ printf '<%s>|<%s>\n' "\${value:-<(printf %s a}b)}" "\${value:->(printf %s a}b)}"
   });
 
   it('expands nested parameter defaults recursively', async () => {
-    const unsetInner = await execute({ script: `\
+    const unsetInner = await execute({
+      script: `\
 unset outer inner
-printf '<%s>\\n' "${'${outer:-${inner:-fallback}}'}"` });
+printf '<%s>\\n' "${'${outer:-${inner:-fallback}}'}"`,
+    });
     expect(unsetInner.stdout.text).toBe('<fallback>\n');
     expect(unsetInner.stderr.text).toBe('');
     expect(unsetInner.result.exitCode).toBe(0);
 
-    const setInner = await execute({ script: `\
+    const setInner = await execute({
+      script: `\
 unset outer
 inner=ready
-printf '<%s>\\n' "${'${outer:-${inner:-fallback}}'}"` });
+printf '<%s>\\n' "${'${outer:-${inner:-fallback}}'}"`,
+    });
     expect(setInner.stdout.text).toBe('<ready>\n');
     expect(setInner.stderr.text).toBe('');
     expect(setInner.result.exitCode).toBe(0);
   });
 
   it('resolves braced positional parameters above nine', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   printf '<%s>|<%s>\\n' "${'${10}'}" "$#"
 }
-show one two three four five six seven eight nine ten` });
+show one two three four five six seven eight nine ten`,
+    });
     expect(result.stdout.text).toBe('<ten>|<10>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('applies value operators and substring expansion to positional parameters', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   printf '<%s>|<%s>\n' "${'${10:-fallback}'}" "${'${1:1:2}'}"
 }
-show alpha two three four five six seven eight nine ten` });
+show alpha two three four five six seven eight nine ten`,
+    });
     expect(result.stdout.text).toBe('<ten>|<lp>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('keeps dollar-dollar stable across subshells while BASHPID follows the active shell process', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 outer=$$
 outer_bashpid=$BASHPID
 (
@@ -1762,7 +1831,8 @@ outer_bashpid=$BASHPID
 inner=$(printf '%s' "$$")
 [ "$inner" = "$outer" ]
 printf 'command-substitution:%s\\n' "$?"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 dollar:0
@@ -1775,13 +1845,15 @@ command-substitution:0
   });
 
   it('shifts positional parameters in the current shell state', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -- alpha beta gamma
 shift
 printf '%s|%s|%s\\n' "$#" "$1" "$2"
 shift 1
 printf '%s|%s\\n' "$#" "$1"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 2|beta|gamma
@@ -1792,14 +1864,16 @@ printf '%s|%s\\n' "$#" "$1"
   });
 
   it('does not field-split or pathname-expand the HOME value introduced by tilde expansion', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 HOME='home with space'
 printf '<%s>\\n' ~
 printf x > home-one
 printf x > home-two
 HOME='home-*'
 printf '<%s>\\n' ~
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 <home with space>
@@ -1810,9 +1884,11 @@ printf '<%s>\\n' ~
   });
 
   it('interprets leading-zero arithmetic literals as octal', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf '%s\\n' "$((010 + 1))"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('9\n');
     expect(result.stderr.text).toBe('');
@@ -1820,11 +1896,13 @@ printf '%s\\n' "$((010 + 1))"
   });
 
   it('expands a leading tilde in parameter pattern operands', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 HOME=/home
 value=/home/child
 printf '<%s>\\n' "\${value#~}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('</child>\n');
     expect(result.stderr.text).toBe('');
@@ -1832,11 +1910,13 @@ printf '<%s>\\n' "\${value#~}"
   });
 
   it('keeps tilde-produced pattern metacharacters literal in parameter pattern operands', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 HOME='*'
 value=abc
 printf '<%s>\\n' "\${value#~}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('<abc>\n');
     expect(result.stderr.text).toBe('');
@@ -1844,30 +1924,36 @@ printf '<%s>\\n' "\${value#~}"
   });
 
   it('counts positional arguments for braced aggregate parameter lengths', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 set -- 'a b' c ''
-printf '%s:%s\n' "${'${#@}'}" "${'${#*}'}"` });
+printf '%s:%s\n' "${'${#@}'}" "${'${#*}'}"`,
+    });
     expect(result.stdout.text).toBe('3:3\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('counts and slices parameter values by Unicode scalar values', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='a😀b'
-printf '%s|<%s>|<%s>\n' "${'${#value}'}" "${'${value:1:1}'}" "${'${value:1:2}'}"` });
+printf '%s|<%s>|<%s>\n' "${'${#value}'}" "${'${value:1:1}'}" "${'${value:1:2}'}"`,
+    });
     expect(result.stdout.text).toBe('3|<😀>|<😀b>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('aborts the current non-interactive shell when a required parameter is unset', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset value
 printf 'before\\n'
 printf '<%s>\\n' "\${value:?value is required}"
 printf 'after\\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('before\n');
     expect(result.stderr.text).toContain('value: value is required');
@@ -1875,23 +1961,27 @@ printf 'after\\n'
   });
 
   it('rejects a negative substring end that falls before the selected offset', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='a😀b'
-printf '<%s>\n' "${'${value:3:-3}'}"` });
+printf '<%s>\n' "${'${value:3:-3}'}"`,
+    });
     expect(result.stdout.text).toBe('');
     expect(result.stderr.text).toContain('substring expression < 0');
     expect(result.result.exitCode).toBe(1);
   });
 
   it('expands aggregate positional parameters for argv forwarding', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 sink() {
   printf 'count:%s\\n' "$#"
   for item in "$@"; do printf '<%s>\\n' "$item"; done
 }
 forward() { sink $@; }
 sink alpha 'beta gamma' ''
-forward alpha 'beta gamma'` });
+forward alpha 'beta gamma'`,
+    });
     expect(result.stdout.text).toBe(`\
 count:3
 <alpha>
@@ -1907,7 +1997,8 @@ count:3
   });
 
   it('attaches lexical edges to quoted at-expansion fields', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   printf 'count:%s\n' "$#"
   for item in "$@"; do printf '<%s>\n' "$item"; done
@@ -1915,7 +2006,8 @@ show() {
 forward() { show pre"$@"post; }
 forward alpha 'beta gamma' ''
 forward alpha
-forward` });
+forward`,
+    });
     expect(result.stdout.text).toBe(`\
 count:3
 <prealpha>
@@ -1931,12 +2023,14 @@ count:1
   });
 
   it('handles braced aggregate positional forms inside larger words', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show_at() { printf '<%s>\n' pre"${'${@}'}"post; }
 show_star() { IFS=:; printf '<%s>\n' pre"${'${*}'}"post; }
 show_at alpha 'beta gamma'
 show_at
-show_star alpha beta` });
+show_star alpha beta`,
+    });
     expect(result.stdout.text).toBe(`\
 <prealpha>
 <beta gammapost>
@@ -1948,12 +2042,14 @@ show_star alpha beta` });
   });
 
   it('joins quoted star with surrounding lexical text', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() { printf 'count:%s first:<%s>\n' "$#" "$1"; }
 forward() { show pre"$*"post; }
 forward_custom() { IFS=,; show pre"$*"post; }
 forward alpha 'beta gamma' ''
-forward_custom alpha 'beta gamma' ''` });
+forward_custom alpha 'beta gamma' ''`,
+    });
     expect(result.stdout.text).toBe(`\
 count:1 first:<prealpha beta gamma post>
 count:1 first:<prealpha,beta gamma,post>
@@ -1963,7 +2059,8 @@ count:1 first:<prealpha,beta gamma,post>
   });
 
   it('field-splits unquoted aggregate positional expansions after edge attachment', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   printf 'count:%s\n' "$#"
   for item in "$@"; do printf '<%s>\n' "$item"; done
@@ -1971,7 +2068,8 @@ show() {
 forward_at() { show pre$@post; }
 forward_star() { show pre$*post; }
 forward_at alpha 'beta gamma' ''
-forward_star alpha 'beta gamma' ''` });
+forward_star alpha 'beta gamma' ''`,
+    });
     expect(result.stdout.text).toBe(`\
 count:4
 <prealpha>
@@ -1989,13 +2087,15 @@ count:4
   });
 
   it('joins quoted star with the first IFS character', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   printf '<%s>\\n' "$*"
   IFS=,
   printf '<%s>\\n' "$*"
 }
-show alpha 'beta gamma' delta` });
+show alpha 'beta gamma' delta`,
+    });
     expect(result.stdout.text).toBe(`\
 <alpha beta gamma delta>
 <alpha,beta gamma,delta>
@@ -2020,11 +2120,13 @@ show $value
   });
 
   it('iterates positional parameters when for omits an in-list', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() {
   for value; do printf '<%s>\\n' "$value"; done
 }
-show one 'two words' three` });
+show one 'two words' three`,
+    });
     expect(result.stdout.text).toBe(`\
 <one>
 <two words>
@@ -2035,12 +2137,14 @@ show one 'two words' three` });
   });
 
   it('distinguishes set and unset variables with double-bracket -v', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=ready
 [[ -v value ]]
 printf 'set:%s\\n' "$?"
 [[ -v missing ]]
-printf 'missing:%s\\n' "$?"` });
+printf 'missing:%s\\n' "$?"`,
+    });
     expect(result.stdout.text).toBe(`\
 set:0
 missing:1
@@ -2050,23 +2154,27 @@ missing:1
   });
 
   it('unsets variables and functions through shell-owned state', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=ready
 probe() { printf 'function-body\\n'; }
 unset -v value
 printf '<%s>\\n' "${'${value-unset}'}"
 unset -f probe
-probe` });
+probe`,
+    });
     expect(result.stdout.text).toBe('<unset>\n');
     expect(result.stderr.text).toContain('Command not found: probe');
     expect(result.result.exitCode).toBe(127);
   });
 
   it('reports shell functions and registered commands through type -t', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 probe_function() { :; }
 type -t printf
-type -t probe_function` });
+type -t probe_function`,
+    });
     expect(result.stdout.text).toBe(`\
 builtin
 function
@@ -2076,7 +2184,8 @@ function
   });
 
   it('treats quoted double-bracket pattern operands as literals', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='report.txt'
 pattern='*.txt'
 [[ $value == '*.txt' ]]
@@ -2085,7 +2194,8 @@ printf 'literal:%s\n' "$?"
 printf 'quoted-variable:%s\n' "$?"
 [[ $value == $pattern ]]
 printf 'active-variable:%s\n' "$?"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 literal:1
@@ -2097,12 +2207,14 @@ active-variable:0
   });
 
   it('preserves empty unquoted expansions inside double-bracket tests', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 unset missing
 [[ -z $missing ]]
 printf 'zero:%s\\n' "$?"
 [[ -n $missing ]]
-printf 'nonzero:%s\\n' "$?"` });
+printf 'nonzero:%s\\n' "$?"`,
+    });
     expect(result.stdout.text).toBe(`\
 zero:0
 nonzero:1
@@ -2112,11 +2224,13 @@ nonzero:1
   });
 
   it('supports substring and indirect parameter expansion', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=abcdef
 target=VALUE
 VALUE=resolved
-printf '<%s>|<%s>|<%s>\\n' "${'${value:1:3}'}" "${'${value: -2}'}" "${'${!target}'}"` });
+printf '<%s>|<%s>|<%s>\\n' "${'${value:1:3}'}" "${'${value: -2}'}" "${'${!target}'}"`,
+    });
     expect(result.stdout.text).toBe('<bcd>|<ef>|<resolved>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
@@ -2124,7 +2238,8 @@ printf '<%s>|<%s>|<%s>\\n' "${'${value:1:3}'}" "${'${value: -2}'}" "${'${!target
 
 
   it('iterates shell options with getopts and updates OPTIND and OPTARG', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 parse() {
   OPTIND=1
   while getopts 'ab:' opt; do
@@ -2135,7 +2250,8 @@ parse() {
 }
 parse -a -b value tail
 parse -abvalue tail
-` });
+`,
+    });
 
     expect(result.stderr.text).toBe('');
     expect(result.stdout.text).toBe(`\
@@ -2150,7 +2266,8 @@ rest:1:<tail>
   });
 
   it('handles getopts unknown and missing-argument modes', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 probe() {
   label=$1
   optstring=$2
@@ -2164,7 +2281,8 @@ probe() {
 }
 probe silent-unknown ':a' -x
 probe silent-missing ':b:' -b
-` });
+`,
+    });
 
     expect(result.stderr.text).toBe('');
     expect(result.stdout.text).toBe(`\
@@ -2177,14 +2295,16 @@ silent-missing:end ind=2 arg=<>
   });
 
   it('supports parameter pattern substitution variants', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='alpha-beta-alpha'
 printf '<%s>|<%s>|<%s>|<%s>\n' "${'${value/alpha/item}'}" "${'${value//alpha/item}'}" "${'${value/#alpha/item}'}" "${'${value/%alpha/item}'}"
 value='abcabc'
 printf '<%s>|<%s>\n' "${'${value/a*c/X}'}" "${'${value//a?/X}'}"
 value='aba'
 printf '<%s>|<%s>\n' "${'${value//b/}'}" "${'${value/a/}'}"
-` });
+`,
+    });
 
     expect(result.stderr.text).toBe('');
     expect(result.stdout.text).toBe(`\
@@ -2196,10 +2316,12 @@ printf '<%s>|<%s>\n' "${'${value//b/}'}" "${'${value/a/}'}"
   });
 
   it('handles empty parameter substitution patterns like Bash', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=abc
 printf '<%s>|<%s>|<%s>|<%s>\n' "${'${value/}'}" "${'${value///X}'}" "${'${value/#/X}'}" "${'${value/%/X}'}"
-` });
+`,
+    });
 
     expect(result.stderr.text).toBe('');
     expect(result.stdout.text).toBe('<abc>|<abc>|<Xabc>|<abcX>\n');
@@ -2207,11 +2329,13 @@ printf '<%s>|<%s>|<%s>|<%s>\n' "${'${value/}'}" "${'${value///X}'}" "${'${value/
   });
 
   it('stops the current shell after exec runs its replacement command', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf 'before\n'
 exec printf 'after\n'
 printf 'unreachable\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 before
@@ -2222,10 +2346,12 @@ after
   });
 
   it('applies whole-value parameter case conversion operators', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='alpha BETA'
 printf '<%s>|<%s>\n' "${'${value^^}'}" "${'${value,,}'}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('<ALPHA BETA>|<alpha beta>\n');
     expect(result.stderr.text).toBe('');
@@ -2233,11 +2359,13 @@ printf '<%s>|<%s>\n' "${'${value^^}'}" "${'${value,,}'}"
   });
 
   it('evaluates let expressions in the current shell state', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=1
 let 'value += 2'
 printf 'status:%s value:%s\n' "$?" "$value"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('status:0 value:3\n');
     expect(result.stderr.text).toBe('');
@@ -2245,11 +2373,13 @@ printf 'status:%s value:%s\n' "$?" "$value"
   });
 
   it('lets command bypass a same-named shell function', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf() { echo 'function'; }
 printf 'direct\n'
 command printf 'builtin\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 function
@@ -2260,11 +2390,13 @@ builtin
   });
 
   it('lets builtin bypass a same-named shell function', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf() { echo 'function'; }
 printf 'direct\n'
 builtin printf 'builtin\n'
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 function
@@ -2275,10 +2407,12 @@ builtin
   });
 
   it('does not apply redirections after a failing prefix assignment expansion', async () => {
-    const failed = await execute({ script: `\
+    const failed = await execute({
+      script: `\
 set -u
 value=$missing printf output > marker.txt
-` });
+`,
+    });
     expect(failed.stdout.text).toBe('');
     expect(failed.stderr.text).toContain('missing: unbound variable');
     expect(failed.result.exitCode).not.toBe(0);
@@ -2290,11 +2424,13 @@ value=$missing printf output > marker.txt
   });
 
   it('applies command redirections before shell intrinsic dispatch', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 eval 'printf eval-output' > eval.txt
 type printf > type.txt
 printf '<%s>|<%s>\n' "$(cat eval.txt)" "$(cat type.txt)"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe('<eval-output>|<printf is a shell builtin>\n');
     expect(result.stderr.text).toBe('');
@@ -2302,7 +2438,8 @@ printf '<%s>|<%s>\n' "$(cat eval.txt)" "$(cat type.txt)"
   });
 
   it('applies prefix assignments temporarily to shell-owned commands', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=outer
 value=eval-prefix eval 'printf "eval:<%s>\\n" "$value"; value=eval-mutated'
 printf 'after-eval:<%s>\\n' "$value"
@@ -2320,7 +2457,8 @@ printf 'after-function:<%s>\\n' "$value"
 chained() { printf 'chained:<%s>|<%s>\\n' "$first" "$second"; }
 first=one second=$first chained
 printf 'after-chained:<%s>|<%s>\\n' "${'${first-unset}'}" "${'${second-unset}'}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 eval:<eval-prefix>
@@ -2349,7 +2487,8 @@ after-chained:<unset>|<unset>
     expect(unsetHelp.stderr.text).toBe('');
     expect(unsetHelp.result.exitCode).toBe(0);
 
-    const stateful = await execute({ script: `\
+    const stateful = await execute({
+      script: `\
 value=present
 probe() { printf 'function\n'; }
 builtin eval -- 'printf "eval:%s\n" "$value"'
@@ -2357,7 +2496,8 @@ builtin unset value
 builtin unset -f probe
 printf 'value:<%s>\n' "${'${value-unset}'}"
 type -t probe || printf 'function:<missing>\n'
-` });
+`,
+    });
 
     expect(stateful.stdout.text).toBe(`\
 eval:present
@@ -2379,13 +2519,15 @@ function:<missing>
       },
     });
 
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 custom-command() { printf 'function\n'; }
 custom-command
 builtin custom-command
 unset -f custom-command
 type -t custom-command
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 function
@@ -2397,12 +2539,14 @@ builtin
   });
 
   it('restores caller variables after local function assignments', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=outer
 show() { local value=inner; printf 'inside:%s\n' "$value"; }
 show
 printf 'outside:%s\n' "$value"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 inside:inner
@@ -2413,7 +2557,8 @@ outside:outer
   });
 
   it('preserves dynamic local scope, recursive positional frames, and quoted function arguments', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=global
 inner() { printf 'inner:<%s>\n' "$value"; value=changed; }
 outer() { local value=outer; inner; printf 'outer:<%s>\n' "$value"; }
@@ -2429,7 +2574,8 @@ recursive() {
 recursive alpha
 spread() { for argument in "$@"; do printf 'arg:<%s>\n' "$argument"; done; }
 spread first 'two words' ''
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 inner:<outer>
@@ -2448,10 +2594,12 @@ arg:<>
   });
 
   it('applies invocation redirections to shell function bodies', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 show() { printf 'function-output\\n'; }
 show > function.txt
-printf '<%s>\\n' "$(cat function.txt)"` });
+printf '<%s>\\n' "$(cat function.txt)"`,
+    });
     expect(result.stdout.text).toBe('<function-output>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
@@ -2505,7 +2653,8 @@ trim:<b>
   });
 
   it('preserves quote provenance and trailing escapes in case patterns', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value='report.txt'
 case "$value" in
   '*.txt') printf 'quoted:unexpected\n' ;;
@@ -2518,7 +2667,8 @@ case "$value" in
   *) printf 'trailing:no-match\n' ;;
 esac
 printf 'trim:<%s>\n' "${'${value%$pattern}'}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 quoted:literal
@@ -2530,7 +2680,8 @@ trim:<abc\\>
   });
 
   it('supports POSIX character classes across shell pattern consumers', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=5
 case "$value" in
   [[:digit:]]) printf 'digit:yes\n' ;;
@@ -2544,7 +2695,8 @@ case "$newline" in
 esac
 value='5tail'
 printf 'trim:<%s>\n' "${'${value#[[:digit:]]}'}"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 digit:yes
@@ -2556,7 +2708,8 @@ trim:<tail>
   });
 
   it('supports single-character equivalence classes and collating symbols across shell pattern consumers', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf x > a
 value=a
 case "$value" in
@@ -2569,7 +2722,8 @@ case "$value" in
 esac
 printf 'trim:<%s>\n' "${'${value#[[=a=]]}'}"
 printf 'glob:<%s>\n' [[=a=]]
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 equivalence:yes
@@ -2582,12 +2736,14 @@ glob:<a>
   });
 
   it('strips leading tabs from <<- here-document bodies and delimiters', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 cat <<-EOF
 	alpha
 		beta
 	EOF
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 alpha
@@ -2598,13 +2754,15 @@ beta
   });
 
   it('supports explicit arithmetic bases, exponentiation, and comma expressions', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 value=1
 left=right
 right=7
 printf '%s|%s|%s|%s|%s|%s\n' "$((16#10 + 2#10))" "$((2 ** 5))" "$((-2 ** 2))" "$((value += 1, value += 2))" "$(((1 + 2) * 3))" "$((left + 1))"
 printf 'value:%s\n' "$value"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 18|32|-4|4|9|8
@@ -2615,9 +2773,11 @@ value:4
   });
 
   it('supports arithmetic shifts with additive precedence', async () => {
-    const result = await execute({ script: `\
+    const result = await execute({
+      script: `\
 printf '%s|%s|%s|%s\n' "$((1 << 3))" "$((16 >> 2))" "$((1 + 1 << 2))" "$((16 >> 1 + 1))"
-` });
+`,
+    });
 
     expect(result.stdout.text).toBe(`\
 8|4|8|4

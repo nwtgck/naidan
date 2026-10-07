@@ -46,9 +46,11 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   let catalogStop: AbortController | undefined;
   const selected = computed(() => entries.value.find(item => item.connection.id === connectionId.value));
   const connected = computed(() => selected.value?.phase === 'connected' && selected.value.connection.peerId === peerId.value);
-  const unsubscribe = subscribeRpcState({ listener() {
+  const unsubscribe = subscribeRpcState({
+    listener() {
     if (isRemote.value) void refresh({ fromStorage: false });
-  } });
+  },
+  });
   onScopeDispose(() => {
     disposed = true; catalogStop?.abort(); unsubscribe();
   });
@@ -199,8 +201,11 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
       default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
       }
     })();
-    return { inferenceLocation: location, remoteModelEditors: editors.value.filter(item => durable({ id: item.connectionId, peer: item.peerId }))
-      .map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) })) };
+    return {
+      inferenceLocation: location,
+      remoteModelEditors: editors.value.filter(item => durable({ id: item.connectionId, peer: item.peerId }))
+      .map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) })),
+    };
   }
   function restorePreferences({ inferenceLocation, remoteModelEditors }: {
     inferenceLocation: ImageInferenceLocationPreference | undefined, remoteModelEditors: readonly RemoteImageModelEditorPreference[] | undefined,
@@ -240,8 +245,13 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   }
   function runtime(): ImageGenerationRemoteRuntime {
     if (!connectionId.value || !peerId.value) throw new Error('Choose a registered Naidan RPC connection first');
-    return { profile: 'naidan-rpc', connectionId: connectionId.value, peerId: peerId.value, label: label.value,
-      modelSelection: selection.value && imageModelSelectionSchema.parse(selection.value) };
+    return {
+      profile: 'naidan-rpc',
+      connectionId: connectionId.value,
+      peerId: peerId.value,
+      label: label.value,
+      modelSelection: selection.value && imageModelSelectionSchema.parse(selection.value),
+    };
   }
   function captureDraftRequest({ seed }: { seed: string }): { request: ImageGenerationDraftRequest, inputFiles: HistoryBinaryFile[] } {
     const inputFiles: HistoryBinaryFile[] = [];
@@ -254,15 +264,32 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     // and this request must not claim that the provider applied local defaults.
     const { prompt, negativePrompt, width, height, steps, guidance, sampler, scheduler, distilledGuidance } = form.parameters.value;
     const inputs = form.imageInputs.value;
-    return { inputFiles, request: { parameters: { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler, distilledGuidance },
-      preview: { ...form.preview.value }, models: [], loras: [], runtime: isRemote.value && connectionId.value && peerId.value ? runtime() : undefined,
-      imageInputs: { initImage: inputs.initImage && image({ file: inputs.initImage }), strength: inputs.strength,
-        referenceImages: inputs.referenceImages.map(file => image({ file })) } } };
+    return {
+      inputFiles,
+      request: {
+      parameters: { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler, distilledGuidance },
+      preview: { ...form.preview.value },
+      models: [],
+      loras: [],
+      runtime: isRemote.value && connectionId.value && peerId.value ? runtime() : undefined,
+      imageInputs: {
+        initImage: inputs.initImage && image({ file: inputs.initImage }),
+        strength: inputs.strength,
+        referenceImages: inputs.referenceImages.map(file => image({ file })),
+      },
+    },
+    };
   }
   function snapshot({ seed, createdAt }: { seed: string, createdAt: number }): ImageGenerationSnapshot {
     const captured = captureDraftRequest({ seed });
-    return copyImageGenerationSnapshot({ snapshot: { id: generateId<ImageGenerationId>(), createdAt, inputFiles: captured.inputFiles,
-      request: { ...captured.request, runtime: runtime() } } });
+    return copyImageGenerationSnapshot({
+      snapshot: {
+      id: generateId<ImageGenerationId>(),
+      createdAt,
+      inputFiles: captured.inputFiles,
+      request: { ...captured.request, runtime: runtime() },
+    },
+    });
   }
   async function prepare({ seed, createdAt, signal }: { seed: string, createdAt: number, signal: AbortSignal }): Promise<PreparedImageExecution> {
     // Capture before awaiting the manager; edits belong to the next generation.
@@ -271,15 +298,22 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     if (runtimeSnapshot.profile !== 'naidan-rpc' || !runtimeSnapshot.modelSelection || !ready.value) throw new Error('Choose an explicit remote model configuration');
     const parameters = peerImageParametersSchema.parse(captured.request.parameters), preview = peerImagePreviewSchema.parse(captured.request.preview);
     const inputs = form.imageInputs.value;
-    const input = { modelSelection: imageModelSelectionSchema.parse(runtimeSnapshot.modelSelection), parameters, preview,
-      imageInputs: { initial: inputs.initImage, references: [...inputs.referenceImages], strength: inputs.strength } };
+    const input = {
+      modelSelection: imageModelSelectionSchema.parse(runtimeSnapshot.modelSelection),
+      parameters,
+      preview,
+      imageInputs: { initial: inputs.initImage, references: [...inputs.referenceImages], strength: inputs.strength },
+    };
     const binding = (await getRpcManager()).bindClient({ id: runtimeSnapshot.connectionId });
     signal.throwIfAborted();
     if (binding.connection.peerId !== runtimeSnapshot.peerId) throw new Error('The saved model belongs to a different remote identity');
     const plan = preparePeerImageExecution({ binding, input });
-    return { get snapshot() {
+    return {
+      get snapshot() {
       return copyImageGenerationSnapshot({ snapshot: captured });
-    }, start: plan.start };
+    },
+      start: plan.start,
+    };
   }
   function restore({ value, modelEditor }: { value: ImageGenerationRemoteRuntime, modelEditor: RemoteImageModelEditor | undefined }): void {
     discardCatalog(); kind.value = 'naidan_rpc'; connectionId.value = value.connectionId; peerId.value = value.peerId;
@@ -290,15 +324,49 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   function setKind({ value }: { value: 'local' | 'naidan_rpc' }): void {
     if (!blocked()) kind.value = value;
   }
-  return { setKind, kind, connectionId, peerId, label, selection, editor, ready, primaryChoices, primaryKey, components, loraChoices, entries, catalog, loading, failure, connected,
-    refresh, chooseConnection, loadModels, selectModel, snapshot, prepare, restore, choosePrimary, chooseComponent, addLora, changeLora, removeLora, capturePreferences, restorePreferences, captureLocation, restoreLocation, captureDraftRequest,
+  return {
+    setKind,
+    kind,
+    connectionId,
+    peerId,
+    label,
+    selection,
+    editor,
+    ready,
+    primaryChoices,
+    primaryKey,
+    components,
+    loraChoices,
+    entries,
+    catalog,
+    loading,
+    failure,
+    connected,
+    refresh,
+    chooseConnection,
+    loadModels,
+    selectModel,
+    snapshot,
+    prepare,
+    restore,
+    choosePrimary,
+    chooseComponent,
+    addLora,
+    changeLora,
+    removeLora,
+    capturePreferences,
+    restorePreferences,
+    captureLocation,
+    restoreLocation,
+    captureDraftRequest,
     connectionKey: computed(() => connectionId.value ? idToRaw({ id: connectionId.value }) : ''),
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.
         // ESLint-required for useXxx return objects.
       },
-    }) || {}), };
+    }) || {}),
+  };
 }
 export type ImageInferenceLocationView = ReturnType<typeof useImageInferenceLocation>;
 export const TEST_ONLY = {

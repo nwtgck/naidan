@@ -18,10 +18,12 @@ describe('shared browser core adapter', () => {
     const files = new Map<string, Uint8Array>();
     const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
     if (typeof hook !== 'function') throw new Error('Expected hosted asset hook');
-    await hook.call({ emitFile(file: { type: string, fileName?: string, source?: Uint8Array }) {
+    await hook.call({
+      emitFile(file: { type: string, fileName?: string, source?: Uint8Array }) {
       if (file.type !== 'asset' || !file.fileName || !file.source) throw new Error('Unexpected runtime emission');
       files.set(file.fileName, file.source); return file.fileName;
-    } } as never, {} as never, {} as never, false);
+    },
+    } as never, {} as never, {} as never, false);
     expect(files.size).toBe(5);
     for (const profile of profiles) {
       const name = `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`;
@@ -32,7 +34,10 @@ describe('shared browser core adapter', () => {
   });
   it.each(profiles)('transforms %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));
-    const server = await createServer({ configFile: false, root, logLevel: 'silent',
+    const server = await createServer({
+      configFile: false,
+      root,
+      logLevel: 'silent',
       plugins: [createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin],
       server: { middlewareMode: true, fs: { allow: [repo, root] }, watch: null },
     });
@@ -110,13 +115,25 @@ describe('shared browser core adapter', () => {
       throw new Error('Unexpected runtime fetch');
     });
     // A browser-like VM proves the adapter rather than relying on a Node-only import branch.
-    const context = createContext({ WebAssembly: wasm, console, TextEncoder, TextDecoder, URL,
-      crypto: globalThis.crypto, performance, setTimeout, clearTimeout,
-      fetch: fetcher, WorkerGlobalScope: class {},
+    const context = createContext({
+      WebAssembly: wasm,
+      console,
+      TextEncoder,
+      TextDecoder,
+      URL,
+      crypto: globalThis.crypto,
+      performance,
+      setTimeout,
+      clearTimeout,
+      fetch: fetcher,
+      WorkerGlobalScope: class {},
     });
-    const module = new SourceTextModule(source, { context, initializeImportMeta(meta) {
+    const module = new SourceTextModule(source, {
+      context,
+      initializeImportMeta(meta) {
       meta.url = 'file:///fixture/core.mjs';
-    } });
+    },
+    });
     await module.link(() => {
       throw new Error('Unexpected core dependency');
     });

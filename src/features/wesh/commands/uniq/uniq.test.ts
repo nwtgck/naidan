@@ -607,12 +607,14 @@ describe('wesh uniq ASCII case compatibility', () => {
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
       source: createTextShellSource({ text: 'uniq -ic' }),
-      stdin: createTestReadHandleFromText({ text: `\
+      stdin: createTestReadHandleFromText({
+        text: `\
 É
 é
 E
 e
-` }),
+`,
+      }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });

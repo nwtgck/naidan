@@ -30,4 +30,5 @@ export function createDevServerIsolationPlugin(): Plugin {
   };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

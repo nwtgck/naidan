@@ -8,8 +8,15 @@ import { generateChatTurn } from '@/logic/generate-chat-turn';
 import type { GenerationCallback, GenerationResult } from '@/features/llama-cpp-browser/types';
 
 export function chatRequest(): Parameters<LmProvider['chat']>[0] {
-  return { messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }] }],
-    model: 'local.gguf', parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: undefined };
+  return {
+    messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }] }],
+    model: 'local.gguf',
+    parameters: undefined,
+    tools: undefined,
+    readBinaryObject: undefined,
+    debug: undefined,
+    signal: undefined,
+  };
 }
 export async function deliverNativeResult({ result, onEvent }: { result: GenerationResult, onEvent: GenerationCallback }): Promise<GenerationResult> {
   if (result.reasoningContent) await onEvent({ event: { type: 'reasoning', text: result.reasoningContent } });
@@ -35,21 +42,45 @@ export function createChatFixture({ provider, request, tools, controller, onTool
   const nodes: (AssistantMessageNode | ToolMessageNode)[] = [];
   // The approval context belongs to the actual caller, not the Provider.
   const run = () => generateChatTurn({
-    provider, model: request.model, parameters: request.parameters, debug: request.debug, tools,
-    readBinaryObject: request.readBinaryObject, abortController: controller, approvalContext,
+    provider,
+    model: request.model,
+    parameters: request.parameters,
+    debug: request.debug,
+    tools,
+    readBinaryObject: request.readBinaryObject,
+    abortController: controller,
+    approvalContext,
     createAssistantMessage: () => {
-      const node: AssistantMessageNode = { id: toMessageId({ raw: `assistant_${nodes.length}` }), role: 'assistant', createdAt: 1,
-        modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] } };
+      const node: AssistantMessageNode = {
+        id: toMessageId({ raw: `assistant_${nodes.length}` }),
+        role: 'assistant',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        interruption: undefined,
+        parts: [],
+        replies: { items: [] },
+      };
       nodes.push(node); return node;
     },
     createToolMessage: () => {
-      const node: ToolMessageNode = { id: toMessageId({ raw: `tool_${nodes.length}` }), role: 'tool', createdAt: 1,
-        modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [] } };
+      const node: ToolMessageNode = {
+        id: toMessageId({ raw: `tool_${nodes.length}` }),
+        role: 'tool',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [],
+        replies: { items: [] },
+      };
       nodes.push(node); return node;
     },
     buildMessages: ({ excludedMessageId }) => [...request.messages, ...nodes.filter(n => n.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node }))],
-    onChange: () => {}, onToolEvent, onToolCallDraftsChange: undefined,
-    persistToolContent: async ({ text }) => ({ type: 'text', text }), describeError: ({ error }) => error.message,
+    onChange: () => {},
+    onToolEvent,
+    onToolCallDraftsChange: undefined,
+    persistToolContent: async ({ text }) => ({ type: 'text', text }),
+    describeError: ({ error }) => error.message,
   });
   return { run, nodes };
 }

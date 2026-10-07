@@ -127,10 +127,12 @@ export async function continueRebase({ context }: {
   const entries = await readIndex({ files: context.files, repository });
   const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
-    await context.text().error({ text: `\
+    await context.text().error({
+      text: `\
 You must edit all merge conflicts and then
 mark them as resolved using git add
-` });
+`,
+    });
     return { exitCode: 1 };
   }
   const created = await createReplayCommit({

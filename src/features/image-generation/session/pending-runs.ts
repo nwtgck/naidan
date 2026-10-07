@@ -42,8 +42,13 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
   };
   return {
     list() {
-      return [...entries.values()].map(entry => ({ id: entry.id, store: { ...entry.store }, sessionId: entry.sessionId,
-        phase: entry.phase, state: entry.sink.snapshot() }));
+      return [...entries.values()].map(entry => ({
+        id: entry.id,
+        store: { ...entry.store },
+        sessionId: entry.sessionId,
+        phase: entry.phase,
+        state: entry.sink.snapshot(),
+      }));
     },
     subscribe({ listener }: { listener(): void }) {
       listeners.add(listener);
@@ -64,19 +69,31 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
       if (entries.size >= maxRuns || bytes >= byteLimit) throw new Error('Save or discard pending image runs before generating again.');
       const id = generateId<ImageGenerationId>();
       // This closure belongs to the registry, not to a mounted workspace.
-      const sink = createImageGenerationRunSink({ sessionId, count, sources, persistence, changed: () => {
+      const sink = createImageGenerationRunSink({
+        sessionId,
+        count,
+        sources,
+        persistence,
+        changed: () => {
         const entry = entries.get(id);
         if (entry) collect({ entry });
-      } });
+      },
+      });
       const entry: PendingRun = { id, store: { ...store }, sessionId, sink, phase: 'running' };
       let finished = false;
-      const submission: ImageGenerationSubmission = { ...sink.submission, retry: () => retry({ id }), async finished({ completion }) {
+      const submission: ImageGenerationSubmission = {
+        ...sink.submission,
+        retry: () => retry({ id }),
+        async finished({ completion }) {
         finished = true;
         await sink.submission.finished({ completion });
-      } };
+      },
+      };
       entries.set(id, entry); changed();
       return {
-        id, submission, snapshot: sink.snapshot,
+        id,
+        submission,
+        snapshot: sink.snapshot,
         async retire(): Promise<void> {
           // A caller that returns or throws without finishing cannot strand a
           // running record, nor turn a missing terminal into a successful run.

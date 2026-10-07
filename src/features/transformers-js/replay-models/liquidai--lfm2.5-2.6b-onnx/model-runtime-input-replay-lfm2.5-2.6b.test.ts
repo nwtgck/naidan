@@ -6,7 +6,8 @@ import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from '@
 
 const modelId = 'LiquidAI/LFM2.5-2.6B-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: '66826372fd4fa166f53be0371c9315745c07cace',
   files: {
@@ -17,7 +18,8 @@ installRawReplay({ evidence: {
     'generation_config.json': { sha256: 'e5e1e91829a9ae65809b578bff350dca876febbda88a9e36f415b002f6b3ddf0', byteLength: 146 },
     'tokenizer.json': { sha256: '695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41', byteLength: 17905598 },
   },
-} });
+},
+});
 
 describe('LFM2.5 2.6B raw metadata replay', () => {
   it('constructs the tokenizer and renders its original template', async () => {
@@ -40,7 +42,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'LiquidAI/LFM2.5-2.6B-ONNX', chunks: { q4f16: { model: 2 }, q4: { model: 1 } }, registryExtra: [], missing: [] },
-      dtype, expectedAutoClass: 'AutoModelForCausalLM',
+      dtype,
+      expectedAutoClass: 'AutoModelForCausalLM',
     });
   });
 });

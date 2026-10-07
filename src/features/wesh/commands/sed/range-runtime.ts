@@ -91,8 +91,7 @@ function matchesRangeEndAddress({
     const remainder = startLineValue % endAddress.modulus;
     const targetLine = addSedUnsigned64({
       left: startLineValue,
-      right:
-        remainder === 0n
+      right: remainder === 0n
           ? endAddress.modulus
           : endAddress.modulus - remainder,
     });

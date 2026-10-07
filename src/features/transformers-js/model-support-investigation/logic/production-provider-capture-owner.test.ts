@@ -59,7 +59,11 @@ function createOwner({ client, runId, plan, traceLimits }: {
 }) {
   const factory = vi.fn(() => client);
   const owner = createProductionProviderCaptureOwner({
-    runId, modelId: 'fixture/model', plan, createWorkerClient: factory, traceLimits,
+    runId,
+    modelId: 'fixture/model',
+    plan,
+    createWorkerClient: factory,
+    traceLimits,
   });
   owners.push(owner);
   return { owner, factory };
@@ -108,21 +112,35 @@ describe('isolated fixed Production Provider capture owner', () => {
     });
     const { owner } = createOwner({ client, runId: 'progress', plan: 'first-continuity-independent', traceLimits: limits });
     expect(owner.getProgress()).toEqual({
-      runId: 'progress', modelId: 'fixture/model', plan: 'first-continuity-independent',
-      run: { status: 'not-started' }, lifetime: 'open', activeRequest: undefined,
-      totalRequests: 3, selectedRequests: 3, settledRequests: 0, loadStatus: 'idle',
+      runId: 'progress',
+      modelId: 'fixture/model',
+      plan: 'first-continuity-independent',
+      run: { status: 'not-started' },
+      lifetime: 'open',
+      activeRequest: undefined,
+      totalRequests: 3,
+      selectedRequests: 3,
+      settledRequests: 0,
+      loadStatus: 'idle',
     });
     const running = owner.run();
     try {
       await firstEntered.promise;
       const first = owner.getProgress();
-      expect(first).toMatchObject({ run: { status: 'running' }, loadStatus: 'ready', settledRequests: 0,
-        activeRequest: { runId: 'progress', requestId: 'progress-first-turn', scenario: 'first-turn' } });
+      expect(first).toMatchObject({
+        run: { status: 'running' },
+        loadStatus: 'ready',
+        settledRequests: 0,
+        activeRequest: { runId: 'progress', requestId: 'progress-first-turn', scenario: 'first-turn' },
+      });
       expect(Object.isFrozen(first)).toBe(true);
       releaseFirst.resolve();
       await secondEntered.promise;
-      expect(owner.getProgress()).toMatchObject({ run: { status: 'running' }, settledRequests: 1,
-        activeRequest: { runId: 'progress', requestId: 'progress-continuity', scenario: 'continuity' } });
+      expect(owner.getProgress()).toMatchObject({
+        run: { status: 'running' },
+        settledRequests: 1,
+        activeRequest: { runId: 'progress', requestId: 'progress-continuity', scenario: 'continuity' },
+      });
       expect(first.settledRequests).toBe(0);
       releaseSecond.resolve();
       await running;
@@ -328,7 +346,10 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(client.resetCache).not.toHaveBeenCalled();
     expect(Object.keys(owner).sort()).toEqual(['abort', 'dispose', 'getActiveRequest', 'getProgress', 'run', 'snapshot']);
     expect(result.capabilities).toEqual({
-      providerCallbacks: 'parts_and_tools_projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected',
+      providerCallbacks: 'parts_and_tools_projection',
+      nativeInvocations: 'not-collected-by-this-owner',
+      tools: 'not-selected',
+      images: 'not-selected',
     });
     expect(transformersJsService.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
   });
@@ -358,10 +379,13 @@ describe('isolated fixed Production Provider capture owner', () => {
       await emitMessage({ onEvent, chunks: ['second text'] });
     });
     const result = await owner.run();
-    expect(duringContinuity).toEqual({ assistant: [], firstEvents: [
+    expect(duringContinuity).toEqual({
+      assistant: [],
+      firstEvents: [
       { kind: 'assistant_message', messageId: 'capture_assistant_0', phase: 'before-settlement', sequence: 0 },
       { kind: 'generation_finished', next: 'user', phase: 'before-settlement', sequence: 1 },
-    ] });
+    ],
+    });
     expect(result.run).toEqual({ status: 'completed' });
     expect(result.requests[1]?.input?.messages[1]).toEqual({ role: 'assistant', parts: [] });
     // The fixture can retain a callback beyond its RPC, but the real service
@@ -433,7 +457,10 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(result.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
     expect(result.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'RangeError' });
     expect(result.requests[0]?.trace.events).toContainEqual(expect.objectContaining({
-      kind: 'part_text', text: 'partial before failure', completeness: 'partial', phase: 'before-settlement',
+      kind: 'part_text',
+      text: 'partial before failure',
+      completeness: 'partial',
+      phase: 'before-settlement',
     }));
     expect(result.requests.slice(1).map(request => ({ status: request.status, input: request.input, settled: request.trace.settled })))
       .toEqual([{ status: 'not-started', input: undefined, settled: undefined }, { status: 'not-started', input: undefined, settled: undefined }]);
@@ -446,7 +473,10 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => emitMessage({ onEvent, chunks: ['not fully retained'] }));
     const { owner } = createOwner({
-      client, runId: 'overflow', plan: 'first-continuity-independent', traceLimits: { maximumEvents: 1, maximumCharacters: 10 },
+      client,
+      runId: 'overflow',
+      plan: 'first-continuity-independent',
+      traceLimits: { maximumEvents: 1, maximumCharacters: 10 },
     });
     const result = await owner.run();
     expect(result.run).toEqual({ status: 'stopped', reason: 'capture-incomplete' });
@@ -600,19 +630,38 @@ describe('isolated fixed Production Provider capture owner', () => {
   it('rejects malformed identities and recording limits before creating a client', () => {
     const factory = vi.fn(() => clientFixture());
     expect(() => createProductionProviderCaptureOwner({
-      runId: 'valid', modelId: 'https://external.invalid/model', plan: 'first-only', createWorkerClient: factory, traceLimits: limits,
+      runId: 'valid',
+      modelId: 'https://external.invalid/model',
+      plan: 'first-only',
+      createWorkerClient: factory,
+      traceLimits: limits,
     })).toThrow();
     expect(() => createProductionProviderCaptureOwner({
-      runId: 'valid', modelId: 'fixture/..', plan: 'first-only', createWorkerClient: factory, traceLimits: limits,
+      runId: 'valid',
+      modelId: 'fixture/..',
+      plan: 'first-only',
+      createWorkerClient: factory,
+      traceLimits: limits,
     })).toThrow();
     expect(() => createProductionProviderCaptureOwner({
-      runId: 'valid', modelId: 'huggingface.co/fixture/model', plan: 'first-only', createWorkerClient: factory, traceLimits: limits,
+      runId: 'valid',
+      modelId: 'huggingface.co/fixture/model',
+      plan: 'first-only',
+      createWorkerClient: factory,
+      traceLimits: limits,
     })).toThrow();
     expect(() => createProductionProviderCaptureOwner({
-      runId: 'invalid/identity', modelId: 'fixture/model', plan: 'first-only', createWorkerClient: factory, traceLimits: limits,
+      runId: 'invalid/identity',
+      modelId: 'fixture/model',
+      plan: 'first-only',
+      createWorkerClient: factory,
+      traceLimits: limits,
     })).toThrow();
     expect(() => createProductionProviderCaptureOwner({
-      runId: 'valid', modelId: 'fixture/model', plan: 'first-only', createWorkerClient: factory,
+      runId: 'valid',
+      modelId: 'fixture/model',
+      plan: 'first-only',
+      createWorkerClient: factory,
       traceLimits: { maximumEvents: 5000, maximumCharacters: 10 },
     })).toThrow();
     expect(factory).not.toHaveBeenCalled();
@@ -621,8 +670,11 @@ describe('isolated fixed Production Provider capture owner', () => {
   it('preserves the supported hf.co spelling through the real Provider and service without alias reloads', async () => {
     const client = clientFixture();
     const owner = createProductionProviderCaptureOwner({
-      runId: 'hf-alias', modelId: 'hf.co/fixture/model', plan: 'first-continuity-independent',
-      createWorkerClient: () => client, traceLimits: limits,
+      runId: 'hf-alias',
+      modelId: 'hf.co/fixture/model',
+      plan: 'first-continuity-independent',
+      createWorkerClient: () => client,
+      traceLimits: limits,
     });
     owners.push(owner);
     const result = await owner.run();

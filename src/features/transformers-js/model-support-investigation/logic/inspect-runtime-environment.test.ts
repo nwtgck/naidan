@@ -36,9 +36,13 @@ describe("inspectRuntimeEnvironment", () => {
 
   it("records request failure without throwing", async () => {
     const result = await inspectRuntimeEnvironment({
-      navigatorValue: { gpu: { requestAdapter: async () => {
+      navigatorValue: {
+        gpu: {
+        requestAdapter: async () => {
         throw new Error("adapter denied");
-      } } },
+      },
+      },
+      },
       crossOriginIsolatedValue: false,
     });
 

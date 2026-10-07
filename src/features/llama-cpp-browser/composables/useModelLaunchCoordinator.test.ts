@@ -19,11 +19,14 @@ vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ initialized,
 vi.mock('@/composables/useAppPresentation', () => ({ useAppPresentation: () => ({ appInteraction: interaction }), isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled' }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ loadData: vi.fn(async () => {}) }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: {
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
   loadChatMeta: ({ id }: Parameters<MemoryStorageProvider['loadChatMeta']>[0]) => provider.loadChatMeta({ id }),
-  getModelLaunch: ({ chatId }: { chatId: ModelLaunchChatRequest['chatId'] }) => readModelLaunch({ provider, chatId }), prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
+  getModelLaunch: ({ chatId }: { chatId: ModelLaunchChatRequest['chatId'] }) => readModelLaunch({ provider, chatId }),
+  prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
   captureModelLaunchStorage: () => () => storageCurrent,
-} }));
+},
+}));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: [{ label: 'Model-Q4_K_M', size: 256, files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] }] };
 const hosts: ReturnType<typeof mount>[] = [];
 beforeEach(() => {
@@ -35,9 +38,12 @@ afterEach(() => {
 async function start({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }, { path: '/elsewhere', component: { template: '<div />' } }] });
   await router.push(path); await router.isReady();
-  const wrapper = mount(defineComponent({ setup() {
+  const wrapper = mount(defineComponent({
+    setup() {
     useModelLaunchCoordinator(); return {};
-  }, template: '<div />' }), { global: { plugins: [router] } });
+  },
+    template: '<div />',
+  }), { global: { plugins: [router] } });
   hosts.push(wrapper); return router;
 }
 describe('direct-chat model link coordinator', () => {

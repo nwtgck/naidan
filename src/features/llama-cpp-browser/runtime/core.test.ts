@@ -10,17 +10,25 @@ describe('native call adaptation', () => {
   let core: Core;
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
-    core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
-    } });
+    core = await createCore({
+      profile: 'cpu-wasm32',
+      baseURL,
+      moduleOptions: {
+      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+      print() {},
+      printErr() {},
+    },
+    });
   });
   afterEach(() => vi.restoreAllMocks());
 
   it('allows optional allocations to decline without hiding native traps', () => {
     let allocate = (): bigint => 0n;
-    const module = new Proxy(core.module, { get(target, property) {
+    const module = new Proxy(core.module, {
+      get(target, property) {
       return property === '_lcb_malloc' ? allocate : Reflect.get(target, property, target);
-    } });
+    },
+    });
     const optionalCore = attachCore({ module, callMode: 'direct' });
     expect(optionalCore.tryAlloc({ bytes: 8 })).toBeUndefined();
     expect(() => optionalCore.alloc({ bytes: 8 })).toThrow('Native allocation failed');
@@ -41,9 +49,15 @@ describe('native call adaptation', () => {
     // without host JSPI. Exercise its call-mode selection and the wasm32 ABI.
     const load = vi.spyOn(artifacts, 'loadCoreModule').mockImplementationOnce(args => original({ ...args, profile: 'cpu-wasm32' }));
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
-    const jspiCore = await createCore({ profile: 'webgpu-wasm32-jspi', baseURL, moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
-    } });
+    const jspiCore = await createCore({
+      profile: 'webgpu-wasm32-jspi',
+      baseURL,
+      moduleOptions: {
+      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+      print() {},
+      printErr() {},
+    },
+    });
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });
     try {
@@ -128,7 +142,8 @@ describe('native call adaptation', () => {
 
   it.each(['string', 'record'] as const)('releases an unpublished %s allocation when the current heap rejects initialization', kind => {
     let truncated = false; const freed: bigint[] = [];
-    const module = new Proxy(core.module, { get(target, property) {
+    const module = new Proxy(core.module, {
+      get(target, property) {
       const value: unknown = Reflect.get(target, property, target);
       if (property === 'HEAPU8' && truncated) return new Uint8Array(0);
       if (property === '_lcb_malloc') return (...args: bigint[]) => {
@@ -140,7 +155,8 @@ describe('native call adaptation', () => {
         freed.push(pointer); return Reflect.apply(value, target, [pointer]);
       };
       return value;
-    } });
+    },
+    });
     const bound = attachCore({ module, callMode: 'direct' });
     const run = () => kind === 'string' ? bound.utf8({ text: 'owned native string' }) : bound.allocRecord({ name: 'llama_batch' });
     expect(run).toThrow('out of bounds'); expect(freed).toHaveLength(1); expect(freed[0]).not.toBe(0n);

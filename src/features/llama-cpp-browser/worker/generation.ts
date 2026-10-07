@@ -41,8 +41,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
   const measurements = createGenerationPerformance({ enabled: request.debug === 'on', now: () => performance.now() });
-  measurements.counters.sampling = { temperature: request.temperature, topP: request.topP,
-    presencePenalty: request.presencePenalty, frequencyPenalty: request.frequencyPenalty };
+  measurements.counters.sampling = {
+    temperature: request.temperature,
+    topP: request.topP,
+    presencePenalty: request.presencePenalty,
+    frequencyPenalty: request.frequencyPenalty,
+  };
   const setStage = ({ value }: { value: DiagnosticStage }): void => {
     stage = value;
     measurements.enter({ next: value });
@@ -167,9 +171,16 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
     } else {
-      const tokenized = await tokenizePrompt({ core, vocab, prompt: promptPointer, promptBytes: promptLength, contextTokens: capacity, onTokenize: () => {
+      const tokenized = await tokenizePrompt({
+        core,
+        vocab,
+        prompt: promptPointer,
+        promptBytes: promptLength,
+        contextTokens: capacity,
+        onTokenize: () => {
         measurements.counters.tokenizeCalls++;
-      } });
+      },
+      });
       tokens = tokenized.pointer;
       // The helper transfers ownership only after native tokenization has settled.
       allocations.push(tokens);
@@ -269,10 +280,22 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     // avoids repeated copies and preserves a boundary before generated thinking.
     if (!reuse) discardCheckpoint();
     measurements.counters.reusedTokens = reusedTokens;
-    logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
-      tokens: tokenCount, cachedTokens, commonPrefixTokens, cacheComparison,
-      nativeMemoryKind, nativePositionMin, nativePositionMax, nativeRollbackTokens,
-      reason } });
+    logDiagnostic({
+      diagnostic: {
+      event: 'cache-reuse',
+      reusedTokens,
+      evaluatedTokens: tokenCount - reusedTokens,
+      tokens: tokenCount,
+      cachedTokens,
+      commonPrefixTokens,
+      cacheComparison,
+      nativeMemoryKind,
+      nativePositionMin,
+      nativePositionMax,
+      nativeRollbackTokens,
+      reason,
+    },
+    });
     if (reusedTokens === 0) {
       cache.tokens = [];
       if (memory !== 0n) {
@@ -290,10 +313,17 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     let checkpointBoundary: number | undefined;
     if (checkpointEnabled && !cache.checkpoint) {
       setStage({ value: 'cache-checkpoint' });
-      const boundary = await promptCheckpointBoundary({ core, vocab, prompt: promptText, promptPointer,
-        generationPrompt: chat.params.generation_prompt, tokens: promptTokens, onTokenize: () => {
+      const boundary = await promptCheckpointBoundary({
+        core,
+        vocab,
+        prompt: promptText,
+        promptPointer,
+        generationPrompt: chat.params.generation_prompt,
+        tokens: promptTokens,
+        onTokenize: () => {
           measurements.counters.checkpointTokenizeCalls++;
-        } });
+        },
+      });
       if (boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) checkpointBoundary = boundary;
     }
     const captureAtBoundary = async ({ offset }: { offset: number }): Promise<void> => {
@@ -388,8 +418,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       now: () => performance.now(),
     });
     const streaming = measurements.counters.streaming = {
-      mode: outputPacing.mode, partialParseCalls: 0, finalParseCalls: 0,
-      parsedCodeUnits: 0, skippedPartialParses: 0, deliveredEvents: 0,
+      mode: outputPacing.mode,
+      partialParseCalls: 0,
+      finalParseCalls: 0,
+      parsedCodeUnits: 0,
+      skippedPartialParses: 0,
+      deliveredEvents: 0,
     };
     const parseOutput = ({ partial }: { partial: boolean }): Omit<GenerationResult, 'finishReason'> => {
       outputPacing.parsed({ outputLength: output.length });
@@ -401,7 +435,8 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     let deliveryDecodeActive = false;
     const deliveryDecode = createDeliveryDecode({
       mode: usesWebGpu({ profile: request.options.profile }) && !multimodal && !request.tools?.length ? 'overlap' : 'serial',
-      signal, now: (() => {
+      signal,
+      now: (() => {
         switch (request.debug) {
         case 'on': return () => performance.now();
         case 'off': case undefined: return undefined;
@@ -423,8 +458,14 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     };
     const validateParsed = ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): void => {
       if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < pendingCalls) {
-        logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated,
-          reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning' } });
+        logDiagnostic({
+          diagnostic: {
+          event: 'failed',
+          stage,
+          tokens: generated,
+          reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning',
+        },
+        });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
     };
@@ -485,7 +526,8 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     // Cooperation is independent of parse pacing: enabling tool-preview
     // coalescing later must not also relax the task-yield policy implicitly.
     const generationYield = createGenerationYieldPacing({
-      mode: chat.images.length || request.tools?.length ? 'per-token' : 'coalesced', now: () => performance.now(),
+      mode: chat.images.length || request.tools?.length ? 'per-token' : 'coalesced',
+      now: () => performance.now(),
     });
     measurements.counters.generationYield = generationYield.counters;
     const decodeToken = async ({ token }: { token: number }): Promise<void> => {
@@ -529,8 +571,10 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       checkCancelled();
       output += rendered.text;
       let partial: Omit<GenerationResult, 'finishReason'> | undefined;
-      if (outputPacing.shouldParse({ outputLength: output.length,
-        force: rendered.done || Boolean(endOfGeneration) || generated + 1 === maximum })) {
+      if (outputPacing.shouldParse({
+        outputLength: output.length,
+        force: rendered.done || Boolean(endOfGeneration) || generated + 1 === maximum,
+      })) {
         setStage({ value: 'partial-parse' });
         partial = parseOutput({ partial: true });
         // Finish every native read before pairing. emitParsed validates the

@@ -228,7 +228,10 @@ describe('useFileExplorerOperations', () => {
     const entry = makeEntry('file.txt');
     await ops.downloadEntry({ entry });
     expect(downloadStream).toHaveBeenCalledWith({
-      filename: 'file.txt', size: undefined, signal: expect.any(AbortSignal), openStream: expect.any(Function),
+      filename: 'file.txt',
+      size: undefined,
+      signal: expect.any(AbortSignal),
+      openStream: expect.any(Function),
     });
     expect(client.prepareFileDownload).toHaveBeenCalledWith({ path: entry.path });
     expect(client.readFile).not.toHaveBeenCalled();

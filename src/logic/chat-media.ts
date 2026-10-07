@@ -54,10 +54,21 @@ export function collectChatMedia({ messages, order }: {
         }
         }
         items.push({
-          id: JSON.stringify([idToRaw({ id: message.id }), getMessagePartDisplayKey({ part })]), messageId: message.id,
-          binaryObjectId: attachment.binaryObjectId, mimeType: attachment.mimeType, size: attachment.size,
-          name: attachment.originalName, prompt: undefined, steps: undefined, seed: undefined,
-          model: undefined, width: undefined, height: undefined, memoryBlob, index: 0, total: 0,
+          id: JSON.stringify([idToRaw({ id: message.id }), getMessagePartDisplayKey({ part })]),
+          messageId: message.id,
+          binaryObjectId: attachment.binaryObjectId,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          name: attachment.originalName,
+          prompt: undefined,
+          steps: undefined,
+          seed: undefined,
+          model: undefined,
+          width: undefined,
+          height: undefined,
+          memoryBlob,
+          index: 0,
+          total: 0,
         });
         break;
       }
@@ -74,10 +85,21 @@ export function collectChatMedia({ messages, order }: {
             const data = parsed.data;
             if (!sharedPrompt) sharedPrompt = data.prompt;
             items.push({
-              id: JSON.stringify([idToRaw({ id: message.id }), getMessagePartDisplayKey({ part }), blockIndex]), messageId: message.id,
-              binaryObjectId: toBinaryObjectId({ raw: data.binaryObjectId }), mimeType: 'image/png', size: 0,
-              name: undefined, prompt: data.prompt, steps: data.steps, seed: data.seed,
-              model: message.modelId, width: data.width, height: data.height, memoryBlob: undefined, index: 0, total: 0,
+              id: JSON.stringify([idToRaw({ id: message.id }), getMessagePartDisplayKey({ part }), blockIndex]),
+              messageId: message.id,
+              binaryObjectId: toBinaryObjectId({ raw: data.binaryObjectId }),
+              mimeType: 'image/png',
+              size: 0,
+              name: undefined,
+              prompt: data.prompt,
+              steps: data.steps,
+              seed: data.seed,
+              model: message.modelId,
+              width: data.width,
+              height: data.height,
+              memoryBlob: undefined,
+              index: 0,
+              total: 0,
             });
           } catch {
             // Incomplete or invalid experimental blocks stay in the original text.

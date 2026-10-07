@@ -10,10 +10,16 @@ import { ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, ORDINARY_DOWNLOAD_TIMING_MAXIMU
 import { CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, cacheAcceptanceTimingEvidenceSchema } from '@/features/transformers-js/download-verification/evidence/cache-acceptance-timing';
 
 const providerAcceptanceDocumentSchema = z.object({
-  schemaVersion: z.literal(1), status: z.enum(['accepted', 'failed', 'exhausted']), source: z.literal('ordinary-provider-load'),
-  repositoryResolvedRevision: z.string(), cacheRevision: z.string().nullable(), loaderRevisionOption: z.string().nullable(),
+  schemaVersion: z.literal(1),
+  status: z.enum(['accepted', 'failed', 'exhausted']),
+  source: z.literal('ordinary-provider-load'),
+  repositoryResolvedRevision: z.string(),
+  cacheRevision: z.string().nullable(),
+  loaderRevisionOption: z.string().nullable(),
   revisionIdentity: z.enum(['exact-resolved-revision', 'legacy-main-unverified', 'unverified']).nullable(),
-  selectedCandidate: productionLoadReceiptSchema.shape.candidate.nullable(), receipt: productionLoadReceiptSchema.nullable(), cacheReuse: z.null(),
+  selectedCandidate: productionLoadReceiptSchema.shape.candidate.nullable(),
+  receipt: productionLoadReceiptSchema.nullable(),
+  cacheReuse: z.null(),
   error: z.object({ name: z.string(), message: z.string() }).strict().nullable(),
 }).strict();
 
@@ -130,7 +136,8 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   // MSI run. Both dangling references and unowned documents must be rejected.
   const runFile = await archive.read({ path: 'run.json' });
   const run = runFile === undefined ? undefined : z.object({
-    runId: z.string().min(1), modelId: z.string().min(1),
+    runId: z.string().min(1),
+    modelId: z.string().min(1),
     productionProviderCapture: productionProviderCaptureReferenceSchema.optional(),
     productionProviderNativeCapture: productionProviderNativeCaptureReferenceSchema.optional(),
     productionProviderInvestigation: productionProviderInvestigationSummaryReferenceSchema.optional(),
@@ -152,7 +159,8 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
       if (nativeFile === undefined || run.productionProviderNativeCapture === undefined) throw new Error('Evidence archive is missing its native capture index or run reference');
       const manifestByPath = new Map(manifest.files.map(entry => [entry.path, entry]));
       const { referencedPaths } = await verifyProductionProviderNativeEvidence({
-        json: await nativeFile.text(), provider,
+        json: await nativeFile.text(),
+        provider,
         async readBinary({ reference }) {
           const entry = manifestByPath.get(reference.path);
           if (entry === undefined || entry.byteLength !== reference.byteLength || entry.sha256 !== reference.sha256) {
@@ -199,15 +207,25 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
     const summary = readProductionProviderInvestigationSummaryEvidence({ json: await summaryFile.text(), runId: run.runId, modelId: run.modelId });
     const nativeFile = await archive.read({ path: PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH });
     const expected = ordinaryProviderRuntimeCompletionSchema.parse(providerLoadRuntimeCompletion({
-      repositoryResolvedRevision: projection.run.resolvedRevision, provider, summary, nativeJson: await nativeFile?.text(),
+      repositoryResolvedRevision: projection.run.resolvedRevision,
+      provider,
+      summary,
+      nativeJson: await nativeFile?.text(),
     }));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Provider Load acceptance does not match its captured Load owner');
     if (acceptanceFile === undefined) throw new Error('Provider Load acceptance document is missing');
     const expectedDocument = {
-      schemaVersion: 1, status: actual.status, source: actual.source, repositoryResolvedRevision: actual.repositoryResolvedRevision,
-      cacheRevision: actual.cacheRevision, loaderRevisionOption: actual.loaderRevisionOption,
+      schemaVersion: 1,
+      status: actual.status,
+      source: actual.source,
+      repositoryResolvedRevision: actual.repositoryResolvedRevision,
+      cacheRevision: actual.cacheRevision,
+      loaderRevisionOption: actual.loaderRevisionOption,
       revisionIdentity: downloadRuntimeAcceptanceIdentity({ evidence: projection }) ?? null,
-      selectedCandidate: actual.selectedCandidate ?? null, receipt: actual.receipt ?? null, cacheReuse: null, error: actual.error ?? null,
+      selectedCandidate: actual.selectedCandidate ?? null,
+      receipt: actual.receipt ?? null,
+      cacheReuse: null,
+      error: actual.error ?? null,
     };
     // Object order is not evidence. Parsing into the expected shape also refuses
     // extra acceptance fields that could silently claim unobserved independent work.

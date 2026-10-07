@@ -35,15 +35,21 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
   const adapter = createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: standalone ? 'standalone' : 'hosted' });
   try {
     const result = await build({
-      configFile: false, root: fixtureRoot ?? process.cwd(), base: './', logLevel: 'silent',
+      configFile: false,
+      root: fixtureRoot ?? process.cwd(),
+      base: './',
+      logLevel: 'silent',
       plugins: [entry, adapter.corePlugin, ...(standalone ? [createNaidanStandalonePlugin({
         workers: createFileProtocolStandaloneWorkerDefinitions({ resolvePath: relative => path.resolve(relative) }).filter(worker => worker.name.startsWith('llama-cpp-browser')),
         systemRuntimePath: createRequire(import.meta.url).resolve('systemjs/dist/system.min.js'),
-        sourceAudit: { mode: 'inline' }, embeddedBinaries: adapter.embeddedBinaries,
+        sourceAudit: { mode: 'inline' },
+        embeddedBinaries: adapter.embeddedBinaries,
       })] : [createLlamaCppRuntimeAssetsPlugin({ rootDir: process.cwd() })])],
       define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: JSON.stringify(standalone), __BUILD_MODE_IS_HOSTED__: JSON.stringify(!standalone) },
       resolve: { alias: [...(standalone ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(relative) }) : []), { find: '@', replacement: path.resolve('src') }] },
-      worker: { format: 'es', plugins: () => [createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: 'hosted' }).corePlugin, {
+      worker: {
+        format: 'es',
+        plugins: () => [createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: 'hosted' }).corePlugin, {
         name: 'llama-worker-provenance-fixture',
         generateBundle(_options, output) {
           for (const file of Object.values(output)) {
@@ -51,9 +57,15 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
             for (const id of Object.keys(file.modules)) if (id.includes('llama-cpp-browser-core/profiles/')) workerCores.add(id);
           }
         },
-      }] },
-      build: { write: false, minify: false, emptyOutDir: false, reportCompressedSize: false,
-        rollupOptions: { input: fixtureRoot ? path.join(fixtureRoot, 'index.html') : 'virtual:llama-build-fixture', preserveEntrySignatures: 'strict' } },
+      }],
+      },
+      build: {
+        write: false,
+        minify: false,
+        emptyOutDir: false,
+        reportCompressedSize: false,
+        rollupOptions: { input: fixtureRoot ? path.join(fixtureRoot, 'index.html') : 'virtual:llama-build-fixture', preserveEntrySignatures: 'strict' },
+      },
     });
     const resultList = Array.isArray(result) ? result : [result];
     const files = resultList.flatMap(item => {

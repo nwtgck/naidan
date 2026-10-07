@@ -4,11 +4,15 @@ import { createInferenceLifetime } from './inference-lifetime';
 import type { OwnedInferenceResources } from '@/features/naidan-peer-rpc/handlers/inference/resources';
 
 function resource(): OwnedInferenceResources {
-  return { listChatModels: vi.fn(async () => []), listImageModels: vi.fn(async () => []),
+  return {
+    listChatModels: vi.fn(async () => []),
+    listImageModels: vi.fn(async () => []),
     generateChat: vi.fn<OwnedInferenceResources['generateChat']>(async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' })),
     generateImage: vi.fn(async () => {
       throw new Error('Unused image method');
-    }), dispose: vi.fn() };
+    }),
+    dispose: vi.fn(),
+  };
 }
 it('does not import resources when constructed or when an unused feature stops', async () => {
   const load = vi.fn(async () => resource());

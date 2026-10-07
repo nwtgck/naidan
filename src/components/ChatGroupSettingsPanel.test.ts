@@ -315,7 +315,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('ollama');
     await flushPromises();
     expect(mockGroup.titleGeneration).toMatchObject({
-      endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: 0.4, reasoning: { effort } },
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { temperature: 0.4, reasoning: { effort } },
     });
     wrapper.unmount();
   });
@@ -1388,12 +1390,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({
+        options: expect.objectContaining({
         kind: 'wesh-mounts',
         rootName: 'Files',
         title: 'Folders',
         initialPath: ['home', 'user', 'work'],
-      }) });
+      }),
+      });
     });
 
     it('opens explorer with correct initialPath derived from clicked mount', async () => {
@@ -1411,9 +1415,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await explorerBtns[1]!.trigger('click');
       await flushPromises();
 
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({
+        options: expect.objectContaining({
         initialPath: ['home', 'user', 'beta'],
-      }) });
+      }),
+      });
     });
   });
 

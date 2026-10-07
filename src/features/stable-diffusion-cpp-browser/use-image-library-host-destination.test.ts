@@ -28,11 +28,17 @@ let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' },
-    experimental: { hostModelDirectories: [
+  settings = ref<Settings>({
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: {
+      hostModelDirectories: [
       { id: toHostModelDirectoryId({ raw: 'selected' }), name: 'models' },
       { id: toHostModelDirectoryId({ raw: 'other' }), name: 'other models' },
-    ] } });
+    ],
+    },
+  });
   handles.clear(); handles.set('selected', new MemoryDirectory('models')); handles.set('other', new MemoryDirectory('other models'));
   mocks.get.mockImplementation(async ({ id }: { id: string }) => handles.get(id));
   mocks.delete.mockImplementation(async ({ id }: { id: string }) => {

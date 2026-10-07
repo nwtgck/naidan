@@ -8,7 +8,8 @@ import { archiveFor, start, assertRawModelSelection, assertRawTokenizer, install
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 // Fixed model evidence: do not regenerate these expectations to make a failing test pass.
-installRawReplay({ evidence: {
+installRawReplay({
+  evidence: {
   modelId,
   revision: '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7',
   files: {
@@ -20,7 +21,8 @@ installRawReplay({ evidence: {
     'generation_config.json': { sha256: '912bb474f36eb600f91a5a32f70f5dd2534313423adfc3d6726cb123e3b1de9d', byteLength: 175 },
     'tokenizer.json': { sha256: '0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3', byteLength: 27868174 },
   },
-} });
+},
+});
 
 describe('GPT-OSS 20B raw metadata replay', () => {
   it('constructs the tokenizer and renders its original template', async () => {
@@ -43,7 +45,8 @@ describe('parsed metadata candidate requests', () => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),
       expected: { modelId: 'onnx-community/gpt-oss-20b-ONNX', chunks: { q4f16: { model: 7 }, q4: { model: 0 } }, registryExtra: [], missing: ['q4'] },
-      dtype, expectedAutoClass: 'AutoModelForCausalLM',
+      dtype,
+      expectedAutoClass: 'AutoModelForCausalLM',
     });
   });
 });
@@ -54,28 +57,36 @@ describe('GPT-OSS structured reasoning in native model inputs', () => {
     const archive = await archiveFor({ modelId });
     const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     const callId = toToolCallId({ raw: 'synthetic-call' });
     const question = { role: 'user', content: 'Question.' };
     // Only the unchanged system preamble comes from this control render.
     // Every message/channel boundary under test is written independently below.
     const prefix = tokenizer.apply_chat_template([question], { tokenize: false, add_generation_prompt: false });
-    const mapped = buildGptOssPromptMessages({ messages: [
+    const mapped = buildGptOssPromptMessages({
+      messages: [
       question,
       { role: 'assistant', content: '', reasoning: { text: '  Reason\n', completeness: 'complete' }, tool_calls: [{ id: callId, type: 'function', function: { name: 'calculator', arguments: '{}' } }] },
       { role: 'tool', tool_call_id: callId, content: '391' },
-    ], tools: undefined });
+    ],
+      tools: undefined,
+    });
     expect(mapped[1]?.thinking).toBe('  Reason\n');
     const prompt = tokenizer.apply_chat_template(mapped, { tokenize: false, add_generation_prompt: true });
     const expected = prefix + `<|start|>assistant<|channel|>analysis<|message|>  Reason
 <|end|><|start|>assistant to=functions.calculator<|channel|>commentary json<|message|>"{}"<|call|><|start|>functions.calculator to=assistant<|channel|>commentary<|message|>"391"<|end|><|start|>assistant`;
     expect(prompt).toBe(expected);
     expect(tokenizer.encode(prompt, { add_special_tokens: false })).toEqual(tokenizer.encode(expected, { add_special_tokens: false }));
-    const later = buildGptOssPromptMessages({ messages: [question,
+    const later = buildGptOssPromptMessages({
+      messages: [question,
       { role: 'assistant', content: '<think>literal</think>Answer', reasoning: { text: 'Reason', completeness: 'complete' } },
       { role: 'user', content: 'Next.' },
-    ], tools: undefined });
+    ],
+      tools: undefined,
+    });
     const followUp = tokenizer.apply_chat_template(later, { tokenize: false, add_generation_prompt: true });
     const expectedFollowUp = prefix + '<|start|>assistant<|channel|>final<|message|><think>literal</think>Answer<|end|><|start|>user<|message|>Next.<|end|><|start|>assistant';
     expect(followUp).toBe(expectedFollowUp);

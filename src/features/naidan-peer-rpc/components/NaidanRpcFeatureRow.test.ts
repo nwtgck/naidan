@@ -8,10 +8,13 @@ const fixture = vi.hoisted(() => ({ status: 'idle' as RpcStopStatus, request: vi
 const settings = ref({ experimental: { naidanRpc: 'enabled' as 'enabled' | 'disabled' } });
 vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_, key) => () => String(key) }), ensureStrings: new Proxy({}, { get: (_, key) => async () => String(key) }) }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: fixture.update }) }));
-vi.mock('../runtime/feature', () => ({ requestRpcStop: fixture.request, rpcStopStatus: () => fixture.status,
+vi.mock('../runtime/feature', () => ({
+  requestRpcStop: fixture.request,
+  rpcStopStatus: () => fixture.status,
   subscribeRpcState: ({ listener }: { listener(): void }) => {
     fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
-  } }));
+  },
+}));
 const wrappers: ReturnType<typeof mount>[] = [];
 function panel() {
   const wrapper = mount(NaidanRpcFeatureRow, { global: { stubs: { ExperimentalFeatureRow: defineComponent({ emits: ['toggle'], template: '<button data-testid="toggle" @click="$emit(\'toggle\')">toggle</button>' }) } } });

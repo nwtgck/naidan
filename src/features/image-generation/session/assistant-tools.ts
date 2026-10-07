@@ -68,9 +68,18 @@ export function createImageGenerationAssistantTools({ chatId, bindingSignal, rea
       if (!target || target.chatId !== chatId || idToRaw({ id: target.revision }) !== parsed.data.expectedRevision) return failed({ message: 'The draft changed or the connection ended. Read the context again; do not overwrite a newer draft.' });
       const { field, value } = parsed.data;
       try {
-        const outcome = await applyImageGenerationPromptEdit({ target, edit: { field, value }, signal: signalFor({ signal }), readTarget, commit,
-          ensureApproval: ({ change, signal }) => approvalContext.ensureApproval({ chatId, action: { id: 'tool.image_generation.set_prompt', label: 'Edit Image Generation prompt' },
-            preview: { type: 'image_generation_prompt', field: change.field, before: change.before, after: change.after }, signal }),
+        const outcome = await applyImageGenerationPromptEdit({
+          target,
+          edit: { field, value },
+          signal: signalFor({ signal }),
+          readTarget,
+          commit,
+          ensureApproval: ({ change, signal }) => approvalContext.ensureApproval({
+            chatId,
+            action: { id: 'tool.image_generation.set_prompt', label: 'Edit Image Generation prompt' },
+            preview: { type: 'image_generation_prompt', field: change.field, before: change.before, after: change.after },
+            signal,
+          }),
         });
         switch (outcome.status) {
         case 'applied': return { status: 'success', content: 'Prompt draft updated. No image generation was started.' };

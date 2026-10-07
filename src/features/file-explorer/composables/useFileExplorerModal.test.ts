@@ -16,7 +16,8 @@ describe('useFileExplorerModal', () => {
     const { fileExplorerOptions, openFileExplorer } = useFileExplorerModal();
     const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' });
 
-    openFileExplorer({ options: {
+    openFileExplorer({
+      options: {
       kind: 'wesh-mounts',
       title: 'Files',
       rootName: 'Files',
@@ -36,7 +37,8 @@ describe('useFileExplorerModal', () => {
         currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       }],
       initialPath: ['home', 'user', 'project'],
-    } });
+    },
+    });
 
     expect(() => structuredClone(fileExplorerOptions.value)).not.toThrow();
     expect(() => structuredClone(mapFileExplorerModalOptionsToRootDescriptor({

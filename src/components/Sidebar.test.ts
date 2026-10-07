@@ -625,7 +625,10 @@ describe('Sidebar Logic Stability', () => {
   describe('Group Deletion Confirmation', () => {
     it('should prompt for confirmation when deleting a group with chats', async () => {
       const groupWithChats: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'Group 1',
+        isCollapsed: false,
+        updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [groupWithChats];
@@ -648,7 +651,11 @@ describe('Sidebar Logic Stability', () => {
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
       const groupWithSettings: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'Group 1',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
         systemPrompt: { content: 'sys', behavior: 'append' },
       };
       mockChatGroups.value = [groupWithSettings];
@@ -671,7 +678,11 @@ describe('Sidebar Logic Stability', () => {
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
       const emptyGroup: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'Group 1',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
       };
       mockChatGroups.value = [emptyGroup];
 
@@ -692,7 +703,10 @@ describe('Sidebar Logic Stability', () => {
 
     it('should call deleteChatGroup after confirmation is accepted', async () => {
       const group: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'Group 1',
+        isCollapsed: false,
+        updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [group];
@@ -715,7 +729,10 @@ describe('Sidebar Logic Stability', () => {
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
       const group: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        id: toChatGroupId({ raw: 'g1' }),
+        name: 'Group 1',
+        isCollapsed: false,
+        updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [group];

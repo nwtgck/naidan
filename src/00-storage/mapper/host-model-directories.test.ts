@@ -29,9 +29,14 @@ describe('native model directory settings', () => {
 
   it('isolates malformed registrations while retaining unrelated settings and unreadable evidence', () => {
     const hostModelDirectories = [{ id: 'first', name: 42 }];
-    const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: {
-      hostModelDirectories, locale: 'ja', futureFeature: { active: true },
-    } });
+    const dto = SettingsSchemaDto.parse({
+      ...settingsToDto({ domain: base }),
+      experimental: {
+      hostModelDirectories,
+      locale: 'ja',
+      futureFeature: { active: true },
+    },
+    });
     const restored = settingsToDomain({ dto });
     expect(restored.experimental?.locale).toBe('ja');
     expect(restored.experimental?.hostModelDirectories).toBeUndefined();

@@ -42,7 +42,8 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     replace({ before: source.slice(from, to), after: replacement });
   }
   replaceBetween({
-    start: 'var readAsync,readBinary;', end: 'var out=console.log.bind(console);',
+    start: 'var readAsync,readBinary;',
+    end: 'var out=console.log.bind(console);',
     replacement: '/* Naidan fix: Naidan supplies wasmBinary in every build mode; external runtime reads must never be attempted. */var readBinary=()=>{throw new Error("Browser core requires supplied wasmBinary")};var readAsync=async()=>readBinary();',
   });
   replace({
@@ -50,7 +51,8 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     after: '/* Naidan fix: prevent external WASM emission, including when locateFile is not supplied. */function findWasmBinary(){assert(wasmBinary&&wasmBinary.byteLength,"Browser core requires supplied wasmBinary");return "naidan:supplied-core.wasm"}',
   });
   replaceBetween({
-    start: 'async function instantiateAsync(binary,binaryFile,imports){', end: 'function getWasmImports(){',
+    start: 'async function instantiateAsync(binary,binaryFile,imports){',
+    end: 'function getWasmImports(){',
     replacement: '/* Naidan fix: both builds supply bytes; never fall back to network or file-fetch. */async function instantiateAsync(binary,binaryFile,imports){assert(binary&&binary.byteLength,"Browser core requires supplied wasmBinary");return instantiateArrayBuffer(binaryFile,imports)}',
   });
   replace({

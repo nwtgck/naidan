@@ -99,9 +99,11 @@ it('uses the cumulative origin even when every earlier sample was coalesced', ()
 });
 
 it('does not let an unavailable host clock throw from the progress snapshot', () => {
-  const eta = createDownloadEtaEstimator({ now: () => {
+  const eta = createDownloadEtaEstimator({
+    now: () => {
     throw new Error('Clock unavailable');
-  } });
+  },
+  });
   eta.observe({ info: { status: 'progress', downloadCumulativeTiming: { clockId: 'source', sequence: 1, firstFetchStartedAtMs: 0, observedAtMs: 4000, receivedBytes: 100 } } });
   expect(eta.snapshot({ remainingBytes: 100, active: true })).toEqual({ status: 'unavailable' });
 });

@@ -20,7 +20,8 @@ export type ModelCandidate = {
 };
 export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
 const configSchema = z.object({
-  model_type: z.string().optional(), _class_name: z.string().optional(),
+  model_type: z.string().optional(),
+  _class_name: z.string().optional(),
   text_config: z.object({ model_type: z.string().optional() }).optional(),
 });
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0) });
@@ -246,8 +247,17 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           }
         }
       }
-      candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue,
-        ...(repository.hostSource ? { hostSource: repository.hostSource } : {}) });
+      candidates.push({
+        id: JSON.stringify([repository.id, path]),
+        repositoryId: repository.id,
+        path,
+        files,
+        format,
+        size: files.reduce((n, f) => n + f.file.size, 0),
+        ...facts,
+        issue,
+        ...(repository.hostSource ? { hostSource: repository.hostSource } : {}),
+      });
     }
     for (const index of indices) {
       const shards = new Set<string>(); let issue: string | undefined;

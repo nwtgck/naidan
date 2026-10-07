@@ -38,8 +38,12 @@ async function publishCompletedCall({ onEvent, toolCall }: { onEvent: InferenceG
 
 function generationArgs({ continuationOwner }: { continuationOwner: string }) {
   return {
-    messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(),
-    params: undefined, tools: undefined, continuationOwner,
+    messages: [],
+    onChunk: vi.fn(),
+    onToolCalls: vi.fn(),
+    params: undefined,
+    tools: undefined,
+    continuationOwner,
   } satisfies Parameters<TransformersJsInferenceScope['generateText']>[0];
 }
 
@@ -111,7 +115,8 @@ describe('Transformers.js inference scope ownership', () => {
       entered.resolve(); await release.promise;
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const operation = observe({ promise: owner.service.runInferenceOperation({
+    const operation = observe({
+      promise: owner.service.runInferenceOperation({
       signal: undefined,
       operation: async ({ scope }) => {
         const first = scope.generateText(generationArgs({ continuationOwner: 'first' }));
@@ -119,7 +124,8 @@ describe('Transformers.js inference scope ownership', () => {
         secondOutcome.resolve(await observe({ promise: scope.generateText(generationArgs({ continuationOwner: 'second' })) }));
         await first;
       },
-    }) });
+    }),
+    });
     try {
       expect(await secondOutcome.promise).toMatchObject({ status: 'rejected', error: expect.any(Error) });
       expect(client.generateText).toHaveBeenCalledTimes(1);
@@ -149,7 +155,8 @@ describe('Transformers.js inference scope ownership', () => {
       }
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const first = observe({ promise: owner.service.runInferenceOperation({
+    const first = observe({
+      promise: owner.service.runInferenceOperation({
       signal: undefined,
       operation: async ({ scope }) => {
         child = observe({ promise: scope.generateText(generationArgs({ continuationOwner: 'first' })) });
@@ -157,7 +164,8 @@ describe('Transformers.js inference scope ownership', () => {
         trace.push('callback:finished');
         callbackFinished.resolve();
       },
-    }) });
+    }),
+    });
     let firstSettled = false;
     void first.then(() => {
       firstSettled = true;
@@ -202,7 +210,8 @@ describe('Transformers.js inference scope ownership', () => {
       }
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const first = observe({ promise: owner.service.runInferenceOperation({
+    const first = observe({
+      promise: owner.service.runInferenceOperation({
       signal: undefined,
       operation: async ({ scope }) => {
         child = observe({ promise: scope.generateText(generationArgs({ continuationOwner: 'first' })) });
@@ -211,7 +220,8 @@ describe('Transformers.js inference scope ownership', () => {
         callbackFinished.resolve();
         throw callbackError;
       },
-    }) });
+    }),
+    });
     let firstSettled = false;
     void first.then(() => {
       firstSettled = true;
@@ -263,16 +273,24 @@ describe('Transformers.js inference scope ownership', () => {
       freshEntered.resolve(); await releaseFresh.promise;
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/old' });
-    const old = observe({ promise: owner.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+    const old = observe({
+      promise: owner.service.runInferenceOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
       escaped.resolve(scope);
       try {
-        await scope.generateText({ ...generationArgs({ continuationOwner: 'old' }), onChunk: ({ chunk }) => {
+        await scope.generateText({
+          ...generationArgs({ continuationOwner: 'old' }),
+          onChunk: ({ chunk }) => {
           chunks.push(chunk);
-        } });
+        },
+        });
       } finally {
         oldChildSettled.resolve();
       }
-    } }) });
+    },
+    }),
+    });
     await entered.promise;
     const waiting = observe({ promise: owner.service.loadDownloadedModel({ modelId: 'fixture/waiting' }) });
     const restart = observe({ promise: owner.service.restart() });
@@ -347,7 +365,9 @@ describe('Transformers.js inference scope ownership', () => {
     const onToolEvent = vi.fn();
     const onToolResult = vi.fn();
     const tool: Tool = {
-      name: 'controlled_tool', description: 'Synthetic noncooperative tool lifetime.', parametersSchema: z.object({}),
+      name: 'controlled_tool',
+      description: 'Synthetic noncooperative tool lifetime.',
+      parametersSchema: z.object({}),
       execute: async ({ signal, onEvent }) => {
         toolEntered.resolve(signal);
         await releaseTool.promise;
@@ -394,7 +414,9 @@ describe('Transformers.js inference scope ownership', () => {
     const onToolEvent = vi.fn();
     const onToolResult = vi.fn();
     const tool: Tool = {
-      name: 'controlled_tool', description: 'Synthetic noncooperative tool lifetime.', parametersSchema: z.object({}),
+      name: 'controlled_tool',
+      description: 'Synthetic noncooperative tool lifetime.',
+      parametersSchema: z.object({}),
       execute: async ({ signal, onEvent }) => {
         toolEntered.resolve(signal);
         await releaseTool.promise;
@@ -559,7 +581,9 @@ describe('Transformers.js inference scope ownership', () => {
     const trace: string[] = [];
     const toolId = toToolCallId({ raw: 'synthetic-fifo-tool' });
     const tool: Tool = {
-      name: 'controlled_tool', description: 'Synthetic successful tool lifetime.', parametersSchema: z.object({}),
+      name: 'controlled_tool',
+      description: 'Synthetic successful tool lifetime.',
+      parametersSchema: z.object({}),
       execute: async () => {
         trace.push('tool:entered');
         toolEntered.resolve();
@@ -617,7 +641,9 @@ describe('Transformers.js inference scope ownership', () => {
     const onToolEvent = vi.fn();
     const onToolResult = vi.fn();
     const tool: Tool = {
-      name: 'controlled_tool', description: 'Synthetic noncooperative normal cancellation.', parametersSchema: z.object({}),
+      name: 'controlled_tool',
+      description: 'Synthetic noncooperative normal cancellation.',
+      parametersSchema: z.object({}),
       execute: async ({ signal, onEvent }) => {
         trace.push('tool:entered');
         toolEntered.resolve(signal);
@@ -702,20 +728,24 @@ describe('Transformers.js inference scope ownership', () => {
     const operations: Array<ReturnType<typeof observe>> = [];
     try {
       await harness.service.loadDownloadedModel({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' });
-      const first = observe({ promise: harness.service.generateText({
+      const first = observe({
+        promise: harness.service.generateText({
         ...generationArgs({ continuationOwner: '00000000-0000-4000-8000-000000000001' }),
         messages: [{ role: 'user', content: 'First synthetic ownership input.' }],
-      }) });
+      }),
+      });
       operations.push(first);
       expect(await Promise.race([entered.promise.then(() => ({ status: 'entered' })), first])).toEqual({ status: 'entered' });
       let firstSettled = false;
       void first.then(() => {
         firstSettled = true;
       });
-      const second = observe({ promise: harness.service.generateText({
+      const second = observe({
+        promise: harness.service.generateText({
         ...generationArgs({ continuationOwner: '00000000-0000-4000-8000-000000000002' }),
         messages: [{ role: 'user', content: 'Second independent synthetic ownership input.' }],
-      }) });
+      }),
+      });
       operations.push(second);
       const worker = harness.observations.workers[0]!;
       const interruptAcknowledged = Promise.withResolvers<void>();
@@ -797,7 +827,10 @@ describe('Transformers.js inference scope ownership', () => {
     const operations: Array<ReturnType<typeof observe>> = [];
     try {
       await harness.service.loadDownloadedModel({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' });
-      const first = observe({ promise: harness.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+      const first = observe({
+        promise: harness.service.runInferenceOperation({
+        signal: undefined,
+        operation: async ({ scope }) => {
         await scope.generateText({
           ...generationArgs({ continuationOwner: '00000000-0000-4000-8000-000000000003' }),
           messages: [{ role: 'user', content: 'Synthetic delivery ownership input.' }],
@@ -807,13 +840,17 @@ describe('Transformers.js inference scope ownership', () => {
             return callbackResult;
           },
         });
-      } }) });
+      },
+      }),
+      });
       operations.push(first);
       expect(await Promise.race([callbackEntered.promise.then(() => ({ status: 'entered' })), first])).toEqual({ status: 'entered' });
-      const second = observe({ promise: harness.service.generateText({
+      const second = observe({
+        promise: harness.service.generateText({
         ...generationArgs({ continuationOwner: '00000000-0000-4000-8000-000000000004' }),
         messages: [{ role: 'user', content: 'Independent input after delivery failure.' }],
-      }) });
+      }),
+      });
       operations.push(second);
       expect(trace).toEqual(['native:1:entered', 'native:1:returned', 'callback:entered']);
       releaseCallback.resolve();
@@ -842,15 +879,21 @@ describe('structured message operations keep the existing inference lane', () =>
     client.generateMessage.mockImplementation(async ({ onEvent }) => {
       trace.push('generation'); await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
-    const first = owner.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+    const first = owner.service.runInferenceOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
       const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: 'one-scope' };
       await scope.generateMessage(request); toolWait.resolve(); await release.promise;
       scope.assertActive(); await scope.generateMessage(request); trace.push('first-complete');
-    } });
+    },
+    });
     await toolWait.promise;
-    const next = owner.service.runInferenceOperation({ signal: undefined, operation: async () => {
+    const next = owner.service.runInferenceOperation({
+      signal: undefined,
+      operation: async () => {
       trace.push('next-scope');
-    } });
+    },
+    });
     await Promise.resolve(); expect(trace).toEqual(['generation']);
     release.resolve(); await first; await next;
     expect(trace).toEqual(['generation', 'generation', 'first-complete', 'next-scope']);
@@ -870,17 +913,29 @@ describe('structured message operations keep the existing inference lane', () =>
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } }); entered.resolve();
       await stopSeen.promise; await onEvent({ event: { type: 'text_delta', index: 0, text: 'B' } }); await drain.promise;
     });
-    const first = observe({ promise: owner.service.runInferenceOperation({ signal: controller.signal, operation: async ({ scope }) => {
-      await scope.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined,
+    const first = observe({
+      promise: owner.service.runInferenceOperation({
+      signal: controller.signal,
+      operation: async ({ scope }) => {
+      await scope.generateMessage({
+        messages: [],
+        params: undefined,
+        tools: undefined,
+        continuationOwner: undefined,
         onEvent: ({ event }) => {
           if (event.type === 'text_delta') delivered.push(event.text);
         },
       });
-    } }) });
+    },
+    }),
+    });
     await entered.promise; controller.abort(); await stopSeen.promise;
-    let nextEntered = false; const next = owner.service.runInferenceOperation({ signal: undefined, operation: async () => {
+    let nextEntered = false; const next = owner.service.runInferenceOperation({
+      signal: undefined,
+      operation: async () => {
       nextEntered = true;
-    } });
+    },
+    });
     await vi.waitFor(() => expect(delivered).toEqual(['A', 'B'])); expect(nextEntered).toBe(false);
     drain.resolve(); expect((await first).status).toBe('rejected'); await next; expect(nextEntered).toBe(true);
   });
@@ -894,10 +949,13 @@ describe('structured message operations keep the existing inference lane', () =>
     });
     let escaped: TransformersJsInferenceScope | undefined;
     const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: undefined };
-    await owner.service.runInferenceOperation({ signal: undefined, operation: async ({ scope }) => {
+    await owner.service.runInferenceOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
       escaped = scope; const first = scope.generateMessage(request); await entered.promise;
       await expect(scope.generateMessage(request)).rejects.toThrow('active operation'); release.resolve(); await first;
-    } });
+    },
+    });
     await expect(escaped!.generateMessage(request)).rejects.toThrow(); expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 });

@@ -112,9 +112,11 @@ git config remote.configonly.fetch '+refs/heads/*:refs/remotes/configonly/*'`,
     expect(duplicateAdd.stdout.text).toBe('');
     expect(duplicateAdd.stderr.text).toBe('error: remote configonly already exists.\n');
 
-    const setUrl = await execute({ script: `\
+    const setUrl = await execute({
+      script: `\
 git remote set-url configonly configured-url
-git remote get-url configonly` });
+git remote get-url configonly`,
+    });
     expect(setUrl.result.exitCode).toBe(0);
     expect(setUrl.stderr.text).toBe('');
     expect(setUrl.stdout.text).toBe('configured-url\n');
@@ -258,9 +260,11 @@ git remote -v`,
     expect(added.stdout.text).toBe('');
     expect(added.stderr.text).toBe('');
 
-    const effective = await execute({ script: `\
+    const effective = await execute({
+      script: `\
 git remote get-url global
-git remote -v` });
+git remote -v`,
+    });
     expect(effective.result.exitCode).toBe(0);
     expect(effective.stderr.text).toBe('');
     expect(effective.stdout.text).toBe(`\

@@ -71,10 +71,15 @@ export function createProductionRuntimeStartupFixture({ emitFromWorker }: {
     start() {
       if (started) throw new Error('Fixture startup already started');
       started = true;
-      emitFromWorker({ message: {
-        ...PRODUCTION_WORKER_READY, status: 'runtime-module', requestId, variant: 'asyncify',
+      emitFromWorker({
+        message: {
+        ...PRODUCTION_WORKER_READY,
+        status: 'runtime-module',
+        requestId,
+        variant: 'asyncify',
         bytes: productionRuntimeModuleFixtureBytes({ variant: 'asyncify' }),
-      } });
+      },
+      });
     },
     acceptHostMessage({ message }: { message: unknown }): boolean {
       const parsed = productionRuntimeModuleReplySchema.safeParse(message);

@@ -8,8 +8,14 @@ import AudioHistoryResult from './AudioHistoryResult.vue';
 const text = '  First line\n日本語のテキスト。\nSecond line\twith spacing.  ';
 function entry(): AudioHistoryEntry {
   const { wav, ...result } = audioResult();
-  return { id: 1, url: 'blob:history', createdAt: 1, bytes: wav.byteLength, result,
-    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }) };
+  return {
+    id: 1,
+    url: 'blob:history',
+    createdAt: 1,
+    bytes: wav.byteLength,
+    result,
+    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }),
+  };
 }
 let wrapper: VueWrapper | undefined;
 const copy = vi.fn<(text: string) => Promise<void>>();

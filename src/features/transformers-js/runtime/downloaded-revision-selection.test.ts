@@ -10,7 +10,10 @@ const cachePrefix = `models/huggingface.co/${modelId}/resolve/`;
 
 function createRuntime() {
   return createProviderReplayTestRuntime({
-    modelId, expectedRevision: revision, cacheRevision: 'main', metadataCache: 'all-fixture',
+    modelId,
+    expectedRevision: revision,
+    cacheRevision: 'main',
+    metadataCache: 'all-fixture',
     artifacts: [{ path: modelPath, bytes: createSyntheticModelBody({ modelId, revision, path: modelPath }) }],
     imagePlatform: undefined,
     generate: async () => {
@@ -56,10 +59,16 @@ describe('ordinary offline revision selection through the actual Production Work
     Object.defineProperty(navigator, 'locks', { configurable: true, value: q.locks });
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const writer = withOpfsFileLease({ path: `${cachePrefix}main/config.json`, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
+    const writer = withOpfsFileLease({
+      path: `${cachePrefix}main/config.json`,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
       entered.resolve();
       await release.promise;
-    } });
+    },
+    });
     try {
       await entered.promise;
       await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
@@ -91,7 +100,9 @@ describe('ordinary offline revision selection through the actual Production Work
       await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
       expect(harness.observations.fs.files.delete(`${cachePrefix}main/config.json`)).toBe(true);
       await expect(client.loadDownloadedModel({
-        modelId, revisionSelection: { kind: 'pinned', revision: undefined }, progressCallback: () => undefined,
+        modelId,
+        revisionSelection: { kind: 'pinned', revision: undefined },
+        progressCallback: () => undefined,
       })).rejects.toMatchObject({ name: 'MissingDownloadedModelArtifact' });
       expect(harness.observations.ortCalls).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.path.startsWith(`${cachePrefix}${revision}/`))).toEqual([]);
@@ -111,7 +122,9 @@ describe('ordinary offline revision selection through the actual Production Work
       await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
       harness.observations.fs.files.delete(`${cachePrefix}main/tokenizer.json`);
       await expect(client.loadDownloadedModel({
-        modelId, revisionSelection: { kind: 'pinned', revision: undefined }, progressCallback: () => undefined,
+        modelId,
+        revisionSelection: { kind: 'pinned', revision: undefined },
+        progressCallback: () => undefined,
       })).rejects.toThrow();
       expect(harness.observations.ortCalls).toEqual([]);
       expect(harness.observations.fs.activity.filter(item => item.path.startsWith(`${cachePrefix}${revision}/`))).toEqual([]);

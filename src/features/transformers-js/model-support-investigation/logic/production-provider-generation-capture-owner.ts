@@ -86,7 +86,10 @@ export function createProductionProviderGenerationCaptureOwner({
     }
   }
   const provider: ReturnType<typeof createProductionProviderCaptureOwner> = createProductionProviderCaptureOwner({
-    runId, modelId, plan, traceLimits,
+    runId,
+    modelId,
+    plan,
+    traceLimits,
     createWorkerClient() {
       if (!canAdoptNative()) {
         // A late ordinary service restart remains service-owned. It cannot
@@ -121,10 +124,16 @@ export function createProductionProviderGenerationCaptureOwner({
 
   function nativeSnapshot(): ProductionProviderNativeCollectionSnapshot {
     return {
-      format: 'production-provider-native-collection-v1', runId, maximumWorkerEpochs, phase, unrecordedWorkerCreations,
+      format: 'production-provider-native-collection-v1',
+      runId,
+      maximumWorkerEpochs,
+      phase,
+      unrecordedWorkerCreations,
       incompleteReasons: unrecordedWorkerCreations === 0 ? [] : ['epoch-limit'],
       epochs: epochs.map(epoch => ({
-        workerEpoch: epoch.workerEpoch, lifetime: readLifetime({ epoch }), collection: { ...epoch.collection },
+        workerEpoch: epoch.workerEpoch,
+        lifetime: readLifetime({ epoch }),
+        collection: { ...epoch.collection },
       })),
     };
   }
@@ -236,11 +245,17 @@ export function createProductionProviderGenerationCaptureOwner({
     adoption = 'closed';
     const capture = nativeSnapshot();
     cutoff = Object.freeze({
-      format: 'production-provider-native-cutoff-v1', runId, reason, phaseAtCutoff: capture.phase,
-      maximumWorkerEpochs, unrecordedWorkerCreations,
+      format: 'production-provider-native-cutoff-v1',
+      runId,
+      reason,
+      phaseAtCutoff: capture.phase,
+      maximumWorkerEpochs,
+      unrecordedWorkerCreations,
       incompleteReasons: Object.freeze([...capture.incompleteReasons]),
       epochs: Object.freeze(capture.epochs.map(epoch => Object.freeze({
-        workerEpoch: epoch.workerEpoch, lifetime: cutoffLifetime({ lifetime: epoch.lifetime }), collectionStatus: epoch.collection.status,
+        workerEpoch: epoch.workerEpoch,
+        lifetime: cutoffLifetime({ lifetime: epoch.lifetime }),
+        collectionStatus: epoch.collection.status,
       }))),
     });
     for (const epoch of epochs) {

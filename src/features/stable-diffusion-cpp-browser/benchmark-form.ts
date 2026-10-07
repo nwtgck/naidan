@@ -7,8 +7,14 @@ import type { ImageLoraSelection } from './lora-form';
 /** Shared presentation state, also used by the unavailable standalone facade.
  * No schema/runtime imports, network access or model reads. */
 export function createBenchmarkForm() {
-  const common = ref<Parameters>({ ...createImageForm({ profile: 'webgpu-wasm32-asyncify' }).parameters.value,
-    prompt: 'A fluffy cat curled up asleep by a window in soft morning light. Small potted plants and warm wooden furnishings create a quiet, soothing scene. Gentle warm colors and soft shadows.', width: 512, height: 512, steps: 8, guidance: 6 });
+  const common = ref<Parameters>({
+    ...createImageForm({ profile: 'webgpu-wasm32-asyncify' }).parameters.value,
+    prompt: 'A fluffy cat curled up asleep by a window in soft morning light. Small potted plants and warm wooden furnishings create a quiet, soothing scene. Gentle warm colors and soft shadows.',
+    width: 512,
+    height: 512,
+    steps: 8,
+    guidance: 6,
+  });
   const preview = ref({ enabled: false, mode: 'vae' as 'vae' | 'projection', interval: 2, startStep: 1, maxEdge: 256 });
   const protocol = ref<BenchmarkProtocol>({ mode: 'fresh-each', repeats: 2, order: 'listed', cooldownSeconds: 2, timeoutSeconds: 0, keepImages: true });
   const strategy = ref<'shared' | 'model-defaults'>('model-defaults');

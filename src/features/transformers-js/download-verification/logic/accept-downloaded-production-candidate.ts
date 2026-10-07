@@ -17,7 +17,12 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
   onTiming?: DownloadTimingCallback;
   createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationCandidateAcceptanceObservation> {
-  return await measureDownloadAcceptance({ revision: loadRevision ?? 'main', candidate, route: 'candidate', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
+  return await measureDownloadAcceptance({
+    revision: loadRevision ?? 'main',
+    candidate,
+    route: 'candidate',
+    callback: onTiming,
+    operation: async ({ attempt, cleanup, load }) => {
     signal?.throwIfAborted();
     const client = createAcceptanceClient === undefined
       ? createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: signal })
@@ -73,7 +78,8 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
     } finally {
       await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: cleanup });
     }
-  } });
+  },
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

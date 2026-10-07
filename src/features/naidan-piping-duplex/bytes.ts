@@ -14,8 +14,10 @@ export function ownBytes({ bytes, maxBytes }: {
     bytes: Uint8Array;
     maxBytes: number;
 }): Uint8Array<ArrayBuffer> {
-  requireValue({ condition: bytes instanceof Uint8Array && bytes.buffer instanceof ArrayBuffer,
-    message: 'A non-shared Uint8Array is required' });
+  requireValue({
+    condition: bytes instanceof Uint8Array && bytes.buffer instanceof ArrayBuffer,
+    message: 'A non-shared Uint8Array is required',
+  });
   requireValue({ condition: bytes.byteLength <= maxBytes, message: 'Input exceeds byte limit' });
   return new Uint8Array(bytes);
 }

@@ -19,17 +19,34 @@ function fixture() {
     const abort = () => reject(signal.reason);
     signal.addEventListener('abort', abort, { once: true });
     const cleanup = () => signal.removeEventListener('abort', abort);
-    attempts.push({ signal, start: onRequestStarted, confirm: () => {
+    attempts.push({
+      signal,
+      start: onRequestStarted,
+      confirm: () => {
       cleanup(); resolve();
-    } });
+    },
+    });
     if (signal.aborted) abort();
   }));
   const changed = vi.fn(), unresponsive = vi.fn<({ revision }: { revision: number }) => 'retiring' | 'observe-again'>(() => 'retiring');
-  const task = monitorRpcConnection({ signal: stop.signal, confirmResponse: confirmation, idleRevision: () => idle,
-    policy: { intervalMs: 100, responseMs: 200, missedResponses: 3, suspensionToleranceMs: 50 }, changed, unresponsive });
-  return { stop, task, attempts, changed, unresponsive, idle: ({ revision }: { revision: number | undefined }) => {
+  const task = monitorRpcConnection({
+    signal: stop.signal,
+    confirmResponse: confirmation,
+    idleRevision: () => idle,
+    policy: { intervalMs: 100, responseMs: 200, missedResponses: 3, suspensionToleranceMs: 50 },
+    changed,
+    unresponsive,
+  });
+  return {
+    stop,
+    task,
+    attempts,
+    changed,
+    unresponsive,
+    idle: ({ revision }: { revision: number | undefined }) => {
     idle = revision;
-  } };
+  },
+  };
 }
 
 it('keeps an unstarted request unbounded and owns only one confirmation', async () => {

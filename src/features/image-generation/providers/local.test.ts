@@ -8,11 +8,21 @@ import type { WorkerResult } from '@/features/stable-diffusion-cpp-browser/types
 
 function setup() {
   const request = requestFixture();
-  const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1,
-    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }) });
+  const snapshot = snapshotImageGeneration({
+    request,
+    sourceCommit: 'a'.repeat(40),
+    createdAt: 1,
+    locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }),
+  });
   const gate = Promise.withResolvers<WorkerResult>();
-  const native: ImageClient = { generate: vi.fn(() => gate.promise), cancel: vi.fn(), updatePreview: vi.fn(), dispose: vi.fn(), release: vi.fn(),
-    inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'not-loaded' })) };
+  const native: ImageClient = {
+    generate: vi.fn(() => gate.promise),
+    cancel: vi.fn(),
+    updatePreview: vi.fn(),
+    dispose: vi.fn(),
+    release: vi.fn(),
+    inspectEngine: vi.fn<ImageClient['inspectEngine']>(async () => ({ status: 'unavailable', reason: 'not-loaded' })),
+  };
   const client = vi.fn(() => native), onModelResident = vi.fn();
   const execution = prepareLocalImageExecution({ request, snapshot, client, onDiagnostic() {}, onModelResident });
   const args = { seed: '43', signal: new AbortController().signal, onProgress() {}, onPreview() {} };

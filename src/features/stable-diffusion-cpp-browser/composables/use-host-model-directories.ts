@@ -32,7 +32,8 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
   function registrations(): HostImageDirectory[] {
     return (settings.value.experimental?.hostModelDirectories ?? []).map(({ id, name }) => ({ id: idToRaw({ id }), name }));
   }
-  const entries = computed(() => registrations().map(entry => ({ ...entry,
+  const entries = computed(() => registrations().map(entry => ({
+    ...entry,
     ...(supported.value ? observed.value.get(entry.id) ?? { access: 'prompt' as const, error: undefined } : { access: 'unsupported' as const, error: undefined }),
   })));
   let refreshVersion = 0;
@@ -87,13 +88,18 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       const previous = await hostModelHandles.get({ id });
       await hostModelHandles.put({ id, handle });
       try {
-        await updateExperimental({ updater: ({ experimental }) => {
+        await updateExperimental({
+          updater: ({ experimental }) => {
           const directories = experimental?.hostModelDirectories ?? [];
           if (existingId && !directories.some(entry => entry.id === id)) throw new Error('Model directory registration was removed');
-          return { ...experimental, hostModelDirectories: existingId
+          return {
+            ...experimental,
+            hostModelDirectories: existingId
             ? directories.map(entry => entry.id === id ? { id, name: handle.name } : entry)
-            : [...directories, { id, name: handle.name }] };
-        } });
+            : [...directories, { id, name: handle.name }],
+          };
+        },
+        });
       } catch (error) {
         // A failed settings save must preserve the previous usable registration.
         if (previous) await hostModelHandles.put({ id, handle: previous });
@@ -103,31 +109,43 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     });
   }
   async function reconnect({ id }: { id: string }): Promise<void> {
-    await perform({ operation: async () => {
+    await perform({
+      operation: async () => {
       const handle = handles.get(id);
       if (handle) {
         if (!hostModelPermissionGranted({ permission: await handle.requestPermission({ mode: 'readwrite' }) })) throw new Error('Model directory needs read and write permission');
       } else await pick({ existingId: id });
-    } });
+    },
+    });
   }
   async function remove({ id: raw }: { id: string }): Promise<void> {
-    await perform({ operation: async () => {
+    await perform({
+      operation: async () => {
       await stopDownload({ id: raw });
       const id = toHostModelDirectoryId({ raw });
       let removed: NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>[number] | undefined;
-      await unregisterHostModelDirectory({ id, save: async () => {
-        await updateExperimental({ updater: ({ experimental }) => {
+      await unregisterHostModelDirectory({
+        id,
+        save: async () => {
+        await updateExperimental({
+          updater: ({ experimental }) => {
           const directories = experimental?.hostModelDirectories ?? [];
           removed = directories.find(entry => entry.id === id);
           return { ...experimental, hostModelDirectories: directories.filter(entry => entry.id !== id) };
-        } });
-      }, restore: async () => {
-        await updateExperimental({ updater: ({ experimental }) => {
+        },
+        });
+      },
+        restore: async () => {
+        await updateExperimental({
+          updater: ({ experimental }) => {
           const directories = experimental?.hostModelDirectories ?? [];
           return { ...experimental, hostModelDirectories: removed && !directories.some(entry => entry.id === id) ? [...directories, removed] : directories };
-        } });
-      } });
-    } });
+        },
+        });
+      },
+      });
+    },
+    });
   }
   async function downloadDestination({ id }: { id: string }): Promise<ImageDownloadDestination> {
     if (id === 'opfs') return { kind: 'opfs' };
@@ -138,12 +156,20 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     if (!hostModelPermissionGranted({ permission: await handle.requestPermission({ mode: 'readwrite' }) })) throw new Error('Model directory needs read and write permission');
     return { kind: 'host', directoryId: id };
   }
-  return { registrations, refresh, downloadDestination, view: {
-    supported, entries, busy, destination,
+  return {
+    registrations,
+    refresh,
+    downloadDestination,
+    view: {
+    supported,
+    entries,
+    busy,
+    destination,
     async add() {
       await perform({ operation: () => pick({ existingId: undefined }) });
     },
-    reconnect, remove,
+    reconnect,
+    remove,
     selectDestination({ id }) {
       if (busy.value) return;
       if (id === 'opfs' || supported.value && registrations().some(entry => entry.id === id)) destination.value = id;
@@ -154,7 +180,8 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
       // ESLint-required for useXxx return objects.
     },
-  }) || {}), };
+  }) || {}),
+  };
 }
 
 export const TEST_ONLY = {

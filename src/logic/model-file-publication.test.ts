@@ -15,12 +15,18 @@ describe('failed model marker creation', () => {
     vi.spyOn(MemoryFile.prototype, 'createWritable').mockImplementation(async function (this: MemoryFile, options) {
       if (phase === 'open') throw failure;
       const writer = await original.call(this, options);
-      if (phase === 'write') return { ...writer, write: async () => {
+      if (phase === 'write') return {
+        ...writer,
+        write: async () => {
         throw failure;
-      } };
-      return { ...writer, close: async () => {
+      },
+      };
+      return {
+        ...writer,
+        close: async () => {
         throw failure;
-      } };
+      },
+      };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);
     expect(directory.children.has(name)).toBe(false);
@@ -46,7 +52,9 @@ describe('failed model marker creation', () => {
     const original = MemoryFile.prototype.createWritable;
     vi.spyOn(MemoryFile.prototype, 'createWritable').mockImplementation(async function (this: MemoryFile, options) {
       const writer = await original.call(this, options);
-      return { ...writer, write: async () => {
+      return {
+        ...writer,
+        write: async () => {
         switch (change) {
         case 'replaced': directory.children.set(name, new MemoryFile(name)); break;
         case 'bytes-changed': this.data = new TextEncoder().encode('foreign'); break;
@@ -56,7 +64,8 @@ describe('failed model marker creation', () => {
         default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
         }
         throw failure;
-      } };
+      },
+      };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);
     expect(directory.children.has(name)).toBe(true);

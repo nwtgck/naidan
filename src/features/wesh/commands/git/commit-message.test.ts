@@ -12,7 +12,8 @@ two`);
   });
 
   it('removes leading and trailing blank paragraphs and collapses blank runs', () => {
-    expect(cleanupMessage({ text: `\
+    expect(cleanupMessage({
+      text: `\
 
 
  one  
@@ -21,16 +22,19 @@ two`);
 
  two 
 
-` })).toBe(`\
+`,
+    })).toBe(`\
  one
 
  two`);
   });
 
   it('normalizes whitespace-only messages to empty', () => {
-    expect(cleanupMessage({ text: `\
+    expect(cleanupMessage({
+      text: `\
   
 	
-` })).toBe('');
+`,
+    })).toBe('');
   });
 });

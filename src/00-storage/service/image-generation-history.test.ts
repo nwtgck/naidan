@@ -67,15 +67,31 @@ let root: MockDirectory;
 const getDirectory = vi.fn();
 function record({ id, prompt, createdAt }: { id: string, prompt: string, createdAt: number }): ImageGenerationRecord {
   return {
-    id: toImageGenerationId({ raw: id }), createdAt,
+    id: toImageGenerationId({ raw: id }),
+    createdAt,
     request: {
       parameters: {
-        prompt, negativePrompt: 'blur', width: 256, height: 256, steps: 9, guidance: 1, seed: '-1',
-        sampler: 'euler', scheduler: 'simple', distilledGuidance: 3.5, vaeTiling: false, vaeTileSize: 32,
-        flashAttention: true, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 4, modelArguments: '',
+        prompt,
+        negativePrompt: 'blur',
+        width: 256,
+        height: 256,
+        steps: 9,
+        guidance: 1,
+        seed: '-1',
+        sampler: 'euler',
+        scheduler: 'simple',
+        distilledGuidance: 3.5,
+        vaeTiling: false,
+        vaeTileSize: 32,
+        flashAttention: true,
+        bf16WeightType: 'f32',
+        qwenVaePolicy: 'bounded',
+        conditioningCacheSize: 4,
+        modelArguments: '',
       },
       models: [{ slot: 'diffusion', path: 'model.gguf', file: { type: 'opfs', path: 'models/user/example/model.gguf', name: 'model.gguf', size: 1000, lastModified: 1 }, companions: [] }],
-      loras: [], imageInputs: { initImage: undefined, strength: 0.75, referenceImages: [] },
+      loras: [],
+      imageInputs: { initImage: undefined, strength: 0.75, referenceImages: [] },
       preview: { enabled: true, interval: 2, startStep: 1, mode: 'projection', maxEdge: 256 },
       runtime: { sourceCommit: 'source', profile: 'webgpu-wasm64-jspi', weightResidency: 'auto', gpuBudgetMiB: undefined },
     },
@@ -181,8 +197,11 @@ describe('experimental image history storage', () => {
     const original = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
     const file = await (await shard()).getFileHandle('first-aB.json');
-    const extended = { ...original, futureRecordField: { enabled: true },
-      request: { ...original.request, parameters: { ...original.request.parameters, futureSetting: 'preserved in source' } } };
+    const extended = {
+      ...original,
+      futureRecordField: { enabled: true },
+      request: { ...original.request, parameters: { ...original.request.parameters, futureSetting: 'preserved in source' } },
+    };
     file.text = JSON.stringify(extended, undefined, 2);
     const source = file.text;
     const page = await queryImageGenerationHistory({ storageType: 'opfs', query });

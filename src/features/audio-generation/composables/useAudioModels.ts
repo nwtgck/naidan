@@ -92,8 +92,21 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
   onScopeDispose(() => {
     disposed = true; scan?.abort(); scan = undefined;
   });
-  return { models, model, scope, scanState, detections, visibleModels, detectedCount, updateModels, selectModel,
-    selectionChanged, scopeChanged, showAllModels, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return {
+    models,
+    model,
+    scope,
+    scanState,
+    detections,
+    visibleModels,
+    detectedCount,
+    updateModels,
+    selectModel,
+    selectionChanged,
+    scopeChanged,
+    showAllModels,
+    ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
+  };
 }
 export const TEST_ONLY = {
 };

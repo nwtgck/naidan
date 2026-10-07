@@ -1173,11 +1173,13 @@ export const patchCommandImplementation: WeshCommandImplementation = {
       if (environmentStyle !== undefined && environmentStyle.length > 0) {
         const parsedEnvironmentStyle = parsePatchBackupStyle({ value: environmentStyle });
         if (!parsedEnvironmentStyle.ok) {
-          await context.text().error({ text: `patch: invalid argument '${environmentStyle}' for '$VERSION_CONTROL'\nValid arguments are:
+          await context.text().error({
+            text: `patch: invalid argument '${environmentStyle}' for '$VERSION_CONTROL'\nValid arguments are:
   - 'none', 'off'
   - 'simple', 'never'
   - 'existing', 'nil'
-  - 'numbered', 't'\n` });
+  - 'numbered', 't'\n`,
+          });
           return { exitCode: 2 };
         }
         options.backupStyle = parsedEnvironmentStyle.value;

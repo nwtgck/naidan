@@ -449,7 +449,10 @@ export async function prepareDownloadVerificationEvidence({ evidence }: {
   const { files: laneFiles, readiness, candidates, runtimeIdentity } = createDownloadVerificationEvidenceLaneFiles({ evidence });
 
   setEvidenceFile({ files, path: 'SUMMARY.md', content: summaryMarkdown({ evidence, candidates }) });
-  setEvidenceFile({ files, path: 'run.json', content: `${JSON.stringify({
+  setEvidenceFile({
+    files,
+    path: 'run.json',
+    content: `${JSON.stringify({
     schemaVersion: 1,
     runId: evidence.runId,
     mode: evidence.mode,
@@ -459,12 +462,16 @@ export async function prepareDownloadVerificationEvidence({ evidence }: {
     startedAt: evidence.run.startedAt,
     completedAt: evidence.run.finishedAt,
     runtimeIdentity,
-  }, undefined, 2)}\n` });
+  }, undefined, 2)}\n`,
+  });
   setEvidenceFile({ files, path: 'test-readiness.json', content: `${JSON.stringify(readiness, undefined, 2)}\n` });
   for (const [path, content] of Object.entries(laneFiles)) {
     setEvidenceFile({ files, path, content });
   }
-  setEvidenceFile({ files, path: 'package-assessment.json', content: `${JSON.stringify({
+  setEvidenceFile({
+    files,
+    path: 'package-assessment.json',
+    content: `${JSON.stringify({
     schemaVersion: 1,
     status: 'valid-partial',
     runId: evidence.runId,
@@ -474,19 +481,24 @@ export async function prepareDownloadVerificationEvidence({ evidence }: {
       ...runtimeAcceptanceLimitation({ evidence }),
       'First inference, generation, protocol, and continuity evidence are separate Model Support Investigation domains.',
     ],
-  }, undefined, 2)}\n` });
+  }, undefined, 2)}\n`,
+  });
 
   const manifestFiles = [];
   for (const [path, file] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     manifestFiles.push({ path, byteLength: bytes.byteLength, sha256: await sha256Hex({ bytes }) });
   }
-  setEvidenceFile({ files, path: 'manifest.json', content: `${JSON.stringify({
+  setEvidenceFile({
+    files,
+    path: 'manifest.json',
+    content: `${JSON.stringify({
     schemaVersion: 1,
     runId: evidence.runId,
     generatedAt: evidence.run.finishedAt,
     files: manifestFiles,
-  }, undefined, 2)}\n` });
+  }, undefined, 2)}\n`,
+  });
 
   await verifyGeneratedEvidenceFiles({ archive: createEvidenceFilesReader({ files }) });
   return {

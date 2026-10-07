@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import type { LlamaCppBrowserService } from './service-contract';
-const fixture = vi.hoisted(() => ({ generate: vi.fn<LlamaCppWorkerClient['generate']>(), probeProfiles: vi.fn(), dispose: vi.fn(),
-  subscribeDisposed: vi.fn(() => () => {}), canReuse: vi.fn(() => true), resolve: vi.fn(async () => 'cpu-wasm32') }));
+const fixture = vi.hoisted(() => ({
+  generate: vi.fn<LlamaCppWorkerClient['generate']>(),
+  probeProfiles: vi.fn(),
+  dispose: vi.fn(),
+  subscribeDisposed: vi.fn(() => () => {}),
+  canReuse: vi.fn(() => true),
+  resolve: vi.fn(async () => 'cpu-wasm32'),
+}));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: () => fixture }));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ resolveRuntimeProfile: fixture.resolve }));
 vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ listStoredModels: vi.fn(async () => []), removeStoredModel: vi.fn(), withModelMutationLock: vi.fn() }));

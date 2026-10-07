@@ -100,11 +100,21 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const common = { id: toMessageId({ raw: id }), createdAt: Date.now(), replies: { items: replies } };
     const body = { type: 'text', text: content, completeness: 'complete' } as const;
     switch (role) {
-    case 'user': return { ...common, role, modelId: undefined, lmParameters: extra.lmParameters,
-      parts: [body, ...(extra.attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))] };
-    case 'assistant': return { ...common, role, modelId: extra.modelId, lmParameters: extra.lmParameters,
+    case 'user': return {
+      ...common,
+      role,
+      modelId: undefined,
+      lmParameters: extra.lmParameters,
+      parts: [body, ...(extra.attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))],
+    };
+    case 'assistant': return {
+      ...common,
+      role,
+      modelId: extra.modelId,
+      lmParameters: extra.lmParameters,
       parts: [...(extra.thinking === undefined ? [] : [{ type: 'reasoning' as const, text: extra.thinking, completeness: 'complete' as const }]), body],
-      interruption: extra.error === undefined ? undefined : { type: 'error', message: extra.error } };
+      interruption: extra.error === undefined ? undefined : { type: 'error', message: extra.error },
+    };
     case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
     default: { const unhandled: never = role; throw new Error(`Unhandled role: ${unhandled}`); }
     }
@@ -150,11 +160,23 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 1: Pure Linear Path (A -> B -> C)', async () => {
     const chat = createMockChat([
-      createNode({ id: 'A', role: 'user', content: 'A', replies: [
-        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+      createNode({
+        id: 'A',
+        role: 'user',
+        content: 'A',
+        replies: [
+        createNode({
+          id: 'B',
+          role: 'assistant',
+          content: 'B',
+          replies: [
           createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
-        ], extra: {} }),
-      ], extra: {} }),
+        ],
+          extra: {},
+        }),
+      ],
+        extra: {},
+      }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -194,12 +216,24 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 3: Branching followed by Linear (A -> [B -> D, C])', async () => {
     const chat = createMockChat([
-      createNode({ id: 'A', role: 'user', content: 'A', replies: [
-        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+      createNode({
+        id: 'A',
+        role: 'user',
+        content: 'A',
+        replies: [
+        createNode({
+          id: 'B',
+          role: 'assistant',
+          content: 'B',
+          replies: [
           createNode({ id: 'D', role: 'user', content: 'D', replies: [], extra: {} }),
-        ], extra: {} }),
+        ],
+          extra: {},
+        }),
         createNode({ id: 'C', role: 'assistant', content: 'C', replies: [], extra: {} }),
-      ], extra: {} }),
+      ],
+        extra: {},
+      }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -217,11 +251,23 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 4: Detail Panel Full Context Path', async () => {
     const chat = createMockChat([
-      createNode({ id: 'A', role: 'user', content: 'A', replies: [
-        createNode({ id: 'B', role: 'assistant', content: 'B', replies: [
+      createNode({
+        id: 'A',
+        role: 'user',
+        content: 'A',
+        replies: [
+        createNode({
+          id: 'B',
+          role: 'assistant',
+          content: 'B',
+          replies: [
           createNode({ id: 'C', role: 'user', content: 'C', replies: [], extra: {} }),
-        ], extra: {} }),
-      ], extra: {} }),
+        ],
+          extra: {},
+        }),
+      ],
+        extra: {},
+      }),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -387,7 +433,12 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 9: Attachment Event Handling', async () => {
-    const nodeWithAtt = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {
+    const nodeWithAtt = createNode({
+      id: 'A',
+      role: 'user',
+      content: 'A',
+      replies: [],
+      extra: {
       attachments: [{
         id: toAttachmentId({ raw: 'att-1' }),
         binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
@@ -397,7 +448,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         uploadedAt: Date.now(),
         status: 'persisted' as const,
       }],
-    } });
+    },
+    });
     const activeMessages = [nodeWithAtt];
 
     const chat = createMockChat(activeMessages);
@@ -411,10 +463,16 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 10: Thinking and Error Display', async () => {
-    const nodeWithDetails = createNode({ id: 'A', role: 'assistant', content: 'Final Content', replies: [], extra: {
+    const nodeWithDetails = createNode({
+      id: 'A',
+      role: 'assistant',
+      content: 'Final Content',
+      replies: [],
+      extra: {
       thinking: 'Analyzing the request...',
       error: 'Simulated API Timeout',
-    } });
+    },
+    });
     const activeMessages = [nodeWithDetails];
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
@@ -439,9 +497,15 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('opens the selected tree node with a message-id query parameter', async () => {
-    const nodeB = createNode({ id: 'B', role: 'assistant', content: 'B content', replies: [
+    const nodeB = createNode({
+      id: 'B',
+      role: 'assistant',
+      content: 'B content',
+      replies: [
       createNode({ id: 'C', role: 'user', content: 'C content', replies: [], extra: {} }),
-    ], extra: {} });
+    ],
+      extra: {},
+    });
     const chat = createMockChat([
       createNode({ id: 'A', role: 'user', content: 'A content', replies: [nodeB], extra: {} }),
     ]);
@@ -506,11 +570,17 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('reports malformed preview image metadata once per scanned node', async () => {
     await ensureAllStringsForTest({ locale: 'en' });
 
-    const node = createNode({ id: 'A', role: 'assistant', content: `\
+    const node = createNode({
+      id: 'A',
+      role: 'assistant',
+      content: `\
 \`\`\`naidan_experimental_image
 not-json
 \`\`\`
-`, replies: [], extra: {} });
+`,
+      replies: [],
+      extra: {},
+    });
     const activeMessages = [node];
     const chat = createMockChat(activeMessages);
     const clickedBinaryObjectId = toBinaryObjectId({ raw: 'clicked-image' });
@@ -611,8 +681,14 @@ not-json
   it('keeps unsaved attachment bytes when opening its preview without persisted metadata', async () => {
     const blob = new Blob(['local'], { type: 'image/png' });
     const attachment: Attachment = {
-      id: toAttachmentId({ raw: 'memory-a' }), binaryObjectId: toBinaryObjectId({ raw: 'memory-b' }),
-      originalName: 'memory.png', mimeType: 'image/png', size: blob.size, uploadedAt: 0, status: 'memory', blob,
+      id: toAttachmentId({ raw: 'memory-a' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'memory-b' }),
+      originalName: 'memory.png',
+      mimeType: 'image/png',
+      size: blob.size,
+      uploadedAt: 0,
+      status: 'memory',
+      blob,
     };
     const node = createNode({ id: 'memory-u', role: 'user', content: 'local', replies: [], extra: { attachments: [attachment] } });
     const { storageService } = await import('@/00-storage/service');
@@ -625,8 +701,12 @@ not-json
     await flushPromises();
     const modal = wrapper.getComponent({ name: 'BinaryObjectPreviewModal' });
     expect(modal.props('objects')).toEqual([{
-      id: attachment.binaryObjectId, name: attachment.originalName, mimeType: attachment.mimeType,
-      size: blob.size, createdAt: 0, memoryBlob: blob,
+      id: attachment.binaryObjectId,
+      name: attachment.originalName,
+      mimeType: attachment.mimeType,
+      size: blob.size,
+      createdAt: 0,
+      memoryBlob: blob,
     }]);
     expect(storageService.getBinaryObject).not.toHaveBeenCalled();
     wrapper.unmount();

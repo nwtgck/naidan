@@ -7,7 +7,9 @@ export function createInferenceGeneration({ signal, generate }: {
   signal: AbortSignal | undefined,
   generate: ({ onEvent, signal }: { onEvent: InferenceGenerationCallback, signal: AbortSignal }) => Promise<void>,
 }): AsyncIterable<ChatGenerationItem> {
-  return createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
+  return createChatGenerationStream({
+    signal,
+    run: async ({ writer, signal }) => {
     let position = 0;
     let active: { index: number, kind: 'text' | 'reasoning' } | undefined;
     let result: ChatGenerationResult | undefined;
@@ -23,7 +25,9 @@ export function createInferenceGeneration({ signal, generate }: {
       position++;
     }
     try {
-      await generate({ signal, onEvent: async ({ event: raw }) => {
+      await generate({
+        signal,
+        onEvent: async ({ event: raw }) => {
         if (!accepting) return;
         if (callbackFailure !== undefined) throw callbackFailure.error;
         if (processing) {
@@ -93,7 +97,8 @@ export function createInferenceGeneration({ signal, generate }: {
         } finally {
           processing = false;
         }
-      } });
+      },
+      });
       if (processing) throw new Error('Inference returned before its callback acknowledgement.');
       if (callbackFailure !== undefined) throw callbackFailure.error;
       if (result === undefined) throw new Error('Inference ended without a native result.');
@@ -103,7 +108,8 @@ export function createInferenceGeneration({ signal, generate }: {
     } finally {
       accepting = false;
     }
-  } });
+  },
+  });
 }
 
 export const TEST_ONLY = {

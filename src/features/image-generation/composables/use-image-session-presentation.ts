@@ -25,9 +25,18 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
     const key = ownerKey.value;
     if (!key) return;
     if (capturing) {
-      snapshots.set(key, { latestRun: generation.latestRun.value && { ...generation.latestRun.value }, progress: generation.progress.value && { ...generation.progress.value },
-        failure: generation.failure.value, invalid: generation.invalid.value, cancelled: generation.cancelled.value, previewError: generation.previewError.value,
-        diagnosticText: generation.diagnosticText.value, diagnosticStatus: generation.diagnosticStatus.value, diagnosticFeedback: generation.diagnosticFeedback.value, startedAt });
+      snapshots.set(key, {
+        latestRun: generation.latestRun.value && { ...generation.latestRun.value },
+        progress: generation.progress.value && { ...generation.progress.value },
+        failure: generation.failure.value,
+        invalid: generation.invalid.value,
+        cancelled: generation.cancelled.value,
+        previewError: generation.previewError.value,
+        diagnosticText: generation.diagnosticText.value,
+        diagnosticStatus: generation.diagnosticStatus.value,
+        diagnosticFeedback: generation.diagnosticFeedback.value,
+        startedAt,
+      });
       for (const result of generation.results.value) if (!resultOwners.has(result.id)) resultOwners.set(result.id, key);
       for (const preview of generation.previewSnapshots.value) if (!previewOwners.has(preview.id)) previewOwners.set(preview.id, key);
       if (generation.livePreview.value && !previewOwners.has(generation.livePreview.value.id)) previewOwners.set(generation.livePreview.value.id, key);
@@ -67,12 +76,17 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
   const belongs = computed(() => ownerKey.value === selectedKey.value);
   const view: ImageGenerationView = {
     ...generation,
-    latestRun: computed(() => snapshot.value?.latestRun), progress: computed(() => snapshot.value?.progress),
-    failure: computed(() => snapshot.value?.failure ?? ''), invalid: computed(() => snapshot.value?.invalid ?? false),
-    cancelled: computed(() => snapshot.value?.cancelled ?? false), previewError: computed(() => snapshot.value?.previewError ?? ''),
-    diagnosticText: computed(() => snapshot.value?.diagnosticText ?? ''), diagnosticStatus: computed(() => snapshot.value?.diagnosticStatus ?? ''),
+    latestRun: computed(() => snapshot.value?.latestRun),
+    progress: computed(() => snapshot.value?.progress),
+    failure: computed(() => snapshot.value?.failure ?? ''),
+    invalid: computed(() => snapshot.value?.invalid ?? false),
+    cancelled: computed(() => snapshot.value?.cancelled ?? false),
+    previewError: computed(() => snapshot.value?.previewError ?? ''),
+    diagnosticText: computed(() => snapshot.value?.diagnosticText ?? ''),
+    diagnosticStatus: computed(() => snapshot.value?.diagnosticStatus ?? ''),
     diagnosticFeedback: computed(() => snapshot.value?.diagnosticFeedback ?? ''),
-    busy: computed(() => belongs.value && generation.busy.value), stopping: computed(() => belongs.value && generation.stopping.value),
+    busy: computed(() => belongs.value && generation.busy.value),
+    stopping: computed(() => belongs.value && generation.stopping.value),
     results: computed(() => {
       void revision.value; return generation.results.value.filter(result => resultOwners.get(result.id) === selectedKey.value);
     }),

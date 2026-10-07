@@ -17,9 +17,12 @@ export class TransformersJsProvider implements LmProvider {
     signal: AbortSignal | undefined,
   }): AsyncIterable<ChatGenerationItem> {
     // Use the same local contract without importing or starting the hosted runtime.
-    return createChatGenerationStream({ signal, run: async () => {
+    return createChatGenerationStream({
+      signal,
+      run: async () => {
       throw createUnsupportedError();
-    } });
+    },
+    });
   }
 
   async listModels({ signal: _signal }: { signal: AbortSignal | undefined }): Promise<string[]> {

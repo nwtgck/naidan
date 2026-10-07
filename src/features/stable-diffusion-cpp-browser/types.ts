@@ -64,7 +64,8 @@ export type PreviewControl = z.infer<typeof previewControlSchema>;
 
 /** Cancellation is a run-scoped request, not Worker destruction. */
 export const cancelControlSchema = z.object({
-  type: z.literal('naidan-image-cancel-v1'), runId: z.number().int().positive(),
+  type: z.literal('naidan-image-cancel-v1'),
+  runId: z.number().int().positive(),
 }).strict();
 export type CancelControl = z.infer<typeof cancelControlSchema>;
 export const cancelledResultSchema = z.object({ cancelled: z.literal(true), modelResident: z.boolean() }).strict();
@@ -89,7 +90,6 @@ export const parametersSchema = z.object({
   qwenVaePolicy: z.enum(['bounded', 'native']).default('bounded'),
   conditioningCacheSize: z.number().int().min(0).max(32),
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),
-
 });
 export const weightResidencySchema = z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']);
 export const modelSlotSchema = z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']);

@@ -17,9 +17,15 @@ afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop(); vi.clearAllMocks();
 });
 function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPreference {
-  return { connectionId: toNaidanRpcConnectionId({ raw: `connection-${name}` }), peerId: toNaidanRpcPeerId({ raw: (name === 'one' ? 'B' : 'C').repeat(43) }),
-    editor: { primary: { slot: 'model', file: { location: { kind: 'host', directoryId: 'remote-root', path: 'models/main.gguf' } }, family: 'sd-checkpoint' }, components: [],
-      loras: [{ file: { location: { kind: 'opfs', path: 'models/off.gguf' } }, strength: 0.7, enabled: 'disabled' }] } };
+  return {
+    connectionId: toNaidanRpcConnectionId({ raw: `connection-${name}` }),
+    peerId: toNaidanRpcPeerId({ raw: (name === 'one' ? 'B' : 'C').repeat(43) }),
+    editor: {
+      primary: { slot: 'model', file: { location: { kind: 'host', directoryId: 'remote-root', path: 'models/main.gguf' } }, family: 'sd-checkpoint' },
+      components: [],
+      loras: [{ file: { location: { kind: 'opfs', path: 'models/off.gguf' } }, strength: 0.7, enabled: 'disabled' }],
+    },
+  };
 }
 function saved(): BrowserImageGenerationSettings {
   const one = preference({ name: 'one' });
@@ -40,14 +46,28 @@ function harness({ preferences }: { preferences: BrowserImageGenerationSettings 
   const inferenceLocation = scope.run(() => {
     const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
     const inferenceLocation = useImageInferenceLocation({ form, blocked: () => false, identifyInput: () => toBinaryObjectId({ raw: 'image-input' }) });
-    useImageInferencePreferences({ settings, initialized: ref(true), inferenceLocation, captureStorage() {
+    useImageInferencePreferences({
+      settings,
+      initialized: ref(true),
+      inferenceLocation,
+      captureStorage() {
       const captured = generation; return () => captured === generation;
-    }, updateForStorage: update, failed });
+    },
+      updateForStorage: update,
+      failed,
+    });
     return inferenceLocation;
   })!;
-  return { inferenceLocation, settings, update, failed, scope, replaceStorage() {
+  return {
+    inferenceLocation,
+    settings,
+    update,
+    failed,
+    scope,
+    replaceStorage() {
     generation++;
-  } };
+  },
+  };
 }
 async function settle(): Promise<void> {
   await nextTick(); await Promise.resolve(); await nextTick();
@@ -98,14 +118,22 @@ it('resumes new provider edits while an obsolete save still owns its cleanup', a
   h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.3 }); await settle();
   h.replaceStorage();
   const two = preference({ name: 'two' });
-  h.settings.value.experimental = { browserImageGeneration: { width: 1024,
-    inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } }, remoteModelEditors: [two] } };
+  h.settings.value.experimental = {
+    browserImageGeneration: {
+    width: 1024,
+    inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } },
+    remoteModelEditors: [two],
+  },
+  };
   await settle(); expect(h.update).toHaveBeenCalledOnce();
   expect(h.inferenceLocation.connectionId.value).toBe(two.connectionId);
   h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.9 }); h.inferenceLocation.setKind({ value: 'local' }); await settle();
   gate.resolve(); await settle();
-  expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ width: 1024, inferenceLocation: { kind: 'local' },
-    remoteModelEditors: [{ connectionId: two.connectionId, editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }] });
+  expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({
+    width: 1024,
+    inferenceLocation: { kind: 'local' },
+    remoteModelEditors: [{ connectionId: two.connectionId, editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }],
+  });
   expect(h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors).toHaveLength(1);
   expect(h.update).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
 });

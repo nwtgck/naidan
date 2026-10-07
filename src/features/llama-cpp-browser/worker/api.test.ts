@@ -22,11 +22,26 @@ vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.impor
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
 vi.mock("./session", () => ({ prepareSession: calls.prepare, invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
-vi.mock("../runtime/model-store", () => ({ withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
-  importStoredModel: calls.import, removeStoredModel: calls.remove, listStoredModels: calls.list }));
+vi.mock("../runtime/model-store", () => ({
+  withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
+  importStoredModel: calls.import,
+  removeStoredModel: calls.remove,
+  listStoredModels: calls.list,
+}));
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
-  return { generationId, model: "local.gguf", assetBaseURL: "https://example.invalid/profiles/", options: { profile: "cpu-wasm32" },
-    messages: [{ role: "user", content: "hello" }], temperature: 0, topP: 1, maxTokens: 10, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+  return {
+    generationId,
+    model: "local.gguf",
+    assetBaseURL: "https://example.invalid/profiles/",
+    options: { profile: "cpu-wasm32" },
+    messages: [{ role: "user", content: "hello" }],
+    temperature: 0,
+    topP: 1,
+    maxTokens: 10,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+  };
 }
 function deferred() {
   let resolve: () => void = () => {};
@@ -531,10 +546,19 @@ describe('generation progress mailbox integration', () => {
       await vi.waitFor(() => expect(seen).toEqual([1])); blocked.resolve(); await pending;
       const reports = readDiagnostics({ calls: log.mock.calls }).filter(item => item.event === 'generation-progress');
       if (debug === 'on') {
-        expect(reports).toEqual([{ event: 'generation-progress', progressDelivery: {
-          received: 33, sent: 2, settled: 2, coalesced: 31, discarded: 0,
-          callbackFailures: 0, peakInFlight: 1, peakPending: 1,
-        } }]);
+        expect(reports).toEqual([{
+          event: 'generation-progress',
+          progressDelivery: {
+          received: 33,
+          sent: 2,
+          settled: 2,
+          coalesced: 31,
+          discarded: 0,
+          callbackFailures: 0,
+          peakInFlight: 1,
+          peakPending: 1,
+        },
+        }]);
       } else expect(reports).toEqual([]);
     } finally {
       blocked.resolve(); log.mockRestore();

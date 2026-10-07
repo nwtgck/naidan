@@ -9,7 +9,8 @@ describe('chat-search AND logic', () => {
       {
         id: toMessageId({ raw: '1' }),
         role: 'user',
-        modelId: undefined, lmParameters: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
         parts: [{ type: 'text', text: 'Hello world, this is a test message with multiple keywords', completeness: 'complete' }],
         createdAt: Date.now(),
         replies: {
@@ -17,7 +18,9 @@ describe('chat-search AND logic', () => {
             {
               id: toMessageId({ raw: '2' }),
               role: 'assistant',
-              modelId: undefined, lmParameters: undefined, interruption: undefined,
+              modelId: undefined,
+              lmParameters: undefined,
+              interruption: undefined,
               parts: [{ type: 'text', text: 'I see your test message about the world', completeness: 'complete' }],
               createdAt: Date.now(),
               replies: { items: [] },
@@ -28,7 +31,8 @@ describe('chat-search AND logic', () => {
       {
         id: toMessageId({ raw: '3' }),
         role: 'user',
-        modelId: undefined, lmParameters: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
         parts: [{ type: 'text', text: 'Another unrelated message', completeness: 'complete' }],
         createdAt: Date.now(),
         replies: { items: [] },

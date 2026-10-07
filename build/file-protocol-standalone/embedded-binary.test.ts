@@ -23,7 +23,11 @@ afterEach(() => {
   for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 async function buildBinary({ root, binary, diagnostics }: { root: string, binary: StandaloneEmbeddedBinary, diagnostics: Record<string, unknown> }) {
-  const result = await build({ configFile: false, root, base: './', logLevel: 'silent',
+  const result = await build({
+    configFile: false,
+    root,
+    base: './',
+    logLevel: 'silent',
     plugins: [createEmbeddedBinaryPlugin({ binaries: [binary], diagnostics }), createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
     build: { write: false, minify: false, modulePreload: false, rollupOptions: { input: path.join(root, 'main.js') } },
   });
@@ -47,10 +51,16 @@ describe('standalone binary embedding', () => {
   it.each(['unexpected.wasm', 'unexpected.wasm.gz', 'unexpected.wasm.br'])('rejects emitted sidecar %s', async fileName => {
     const { root } = fixture();
     writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');
-    await expect(build({ configFile: false, root, logLevel: 'silent',
-      plugins: [{ name: 'unexpected-sidecar', generateBundle() {
+    await expect(build({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      plugins: [{
+        name: 'unexpected-sidecar',
+        generateBundle() {
         this.emitFile({ type: 'asset', fileName, source: gzipSync(new Uint8Array([1])) });
-      } }, createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
+      },
+      }, createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
       build: { write: false, rollupOptions: { input: path.join(root, 'main.js') } },
     })).rejects.toThrow('External WebAssembly');
   });
@@ -69,10 +79,21 @@ describe('standalone binary embedding', () => {
     const asset = path.join(root, 'public', name); mkdirSync(path.dirname(asset), { recursive: true }); writeFileSync(asset, 'unexpected');
     writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');
     let packaged = false;
-    const packaging: Plugin = { name: 'packaging-must-not-run', writeBundle: { order: 'post', sequential: true, handler() {
+    const packaging: Plugin = {
+      name: 'packaging-must-not-run',
+      writeBundle: {
+      order: 'post',
+      sequential: true,
+      handler() {
       packaged = true;
-    } } };
-    await expect(build({ configFile: false, root, logLevel: 'silent', plugins: [createExternalWasmGuardPlugin({ allowExternalWasmAssets: false }), packaging],
+    },
+    },
+    };
+    await expect(build({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      plugins: [createExternalWasmGuardPlugin({ allowExternalWasmAssets: false }), packaging],
       build: { write: true, rollupOptions: { input: path.join(root, 'main.js') } },
     })).rejects.toThrow('External WebAssembly');
     expect(packaged).toBe(false);

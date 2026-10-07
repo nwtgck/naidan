@@ -19,11 +19,17 @@ class HostedTransformersJsProvider implements LmProvider {
     const request = snapshotChatRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal });
     // Direct callers own one generation. A common tool loop uses the scoped
     // facade below so its intervening waits keep the same lane and cache owner.
-    return createInferenceGeneration({ signal, generate: async ({ onEvent, signal }) => {
-      await this.service.runInferenceOperation({ signal, operation: async ({ scope }) => {
+    return createInferenceGeneration({
+      signal,
+      generate: async ({ onEvent, signal }) => {
+      await this.service.runInferenceOperation({
+        signal,
+        operation: async ({ scope }) => {
         await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner: crypto.randomUUID() });
-      } });
-    } });
+      },
+      });
+    },
+    });
   }
 
   async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
@@ -33,7 +39,9 @@ class HostedTransformersJsProvider implements LmProvider {
     if (signal?.aborted) abort();
     let callbackCompleted = false;
     try {
-      await this.service.runInferenceOperation({ signal: controller.signal, operation: async ({ scope }) => {
+      await this.service.runInferenceOperation({
+        signal: controller.signal,
+        operation: async ({ scope }) => {
         const owned = createScopedChat({ scope, controller, continuationOwner: crypto.randomUUID() });
         let failure: { error: unknown } | undefined;
         try {
@@ -51,7 +59,8 @@ class HostedTransformersJsProvider implements LmProvider {
         }
         if (failure !== undefined) throw failure.error;
         callbackCompleted = true;
-      } });
+      },
+      });
     } catch (error) {
       // The lane rejects an ordinary cancellation at release. If the callback
       // already consumed and recorded that interruption, do not replace it with

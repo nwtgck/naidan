@@ -37,9 +37,12 @@ function fixture({ limit }: { limit: number }) {
     },
     end: vi.fn(),
   };
-  const encoder = { beginComputePass() {
+  const encoder = {
+    beginComputePass() {
     return pass as unknown as GPUComputePassEncoder;
-  }, finish: vi.fn(() => ({ marker: 'command-buffer' })) };
+  },
+    finish: vi.fn(() => ({ marker: 'command-buffer' })),
+  };
   const raw = {
     limits: { maxComputeWorkgroupsPerDimension: limit },
     queue: { submit: vi.fn() },
@@ -48,13 +51,16 @@ function fixture({ limit }: { limit: number }) {
     },
     createComputePipeline(descriptor: GPUComputePipelineDescriptor) {
       const layouts = new Map<number, GPUBindGroupLayout>();
-      const pipeline: GPUComputePipeline = { label: descriptor.label ?? '', getBindGroupLayout(index: number) {
+      const pipeline: GPUComputePipeline = {
+        label: descriptor.label ?? '',
+        getBindGroupLayout(index: number) {
         let layout = layouts.get(index);
         if (!layout) {
           layout = { owner: pipeline, index } as unknown as GPUBindGroupLayout; layouts.set(index, layout);
         }
         return layout;
-      } } as GPUComputePipeline;
+      },
+      } as GPUComputePipeline;
       pipelineDescriptors.set(pipeline, descriptor); return pipeline;
     },
     async createComputePipelineAsync(descriptor: GPUComputePipelineDescriptor) {
@@ -69,9 +75,12 @@ function fixture({ limit }: { limit: number }) {
     destroy: vi.fn(),
   };
   const reports: DispatchSplit[] = [];
-  const device = TEST_ONLY.wrapDevice({ device: raw as unknown as GPUDevice, report(detail) {
+  const device = TEST_ONLY.wrapDevice({
+    device: raw as unknown as GPUDevice,
+    report(detail) {
     reports.push(detail);
-  } });
+  },
+  });
   function prepare({ code }: { code: string }) {
     const shader = device.createShaderModule({ code });
     const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: shader, entryPoint: 'main', constants: { original: 7 } } });
@@ -200,9 +209,11 @@ describe('scoped WebGPU compatibility facade', () => {
   });
   it('forwards genuine device creation errors instead of silently selecting a CPU backend', async () => {
     const failure = new Error('device creation failure');
-    const adapter = { requestDevice: vi.fn(async () => {
+    const adapter = {
+      requestDevice: vi.fn(async () => {
       throw failure;
-    }) } as unknown as GPUAdapter;
+    }),
+    } as unknown as GPUAdapter;
     const gpu = { requestAdapter: vi.fn(async () => adapter) } as unknown as GPU;
     const wrapped = createCoreWebGpuNavigator({ navigator: { gpu }, report() {} })!;
     const selected = await wrapped.gpu.requestAdapter();
@@ -210,9 +221,12 @@ describe('scoped WebGPU compatibility facade', () => {
   });
   it('does not let a diagnostic callback failure change GPU work', () => {
     const f = fixture({ limit: 4 });
-    const device = TEST_ONLY.wrapDevice({ device: f.raw as unknown as GPUDevice, report() {
+    const device = TEST_ONLY.wrapDevice({
+      device: f.raw as unknown as GPUDevice,
+      report() {
       throw new Error('logging');
-    } });
+    },
+    });
     const module = device.createShaderModule({ code: source });
     const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module } });
     const pass = device.createCommandEncoder().beginComputePass(); pass.setPipeline(pipeline);
@@ -226,9 +240,12 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws).toHaveLength(2);
   });
   it('retains native this receivers, event setters, and unwrapped return values', () => {
-    const target = { value: 3, method() {
+    const target = {
+      value: 3,
+      method() {
       expect(this).toBe(target); return this.value;
-    } };
+    },
+    };
     const wrapped = TEST_ONLY.facade({ target, overrides: {} });
     expect(wrapped.method()).toBe(3); expect(wrapped.method).toBe(wrapped.method);
     wrapped.value = 5; expect(target.value).toBe(5);

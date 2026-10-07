@@ -31,30 +31,70 @@ function fixture({ runId }: { runId: string }) {
   const trace = createProductionProviderTrace({ requestId: context.requestId, limits: policy.traceLimits });
   trace.settle({ outcome: 'fulfilled', error: undefined });
   const provider: ProductionProviderCaptureSnapshot = {
-    format: 'production-provider-capture-v2', runId, modelId, plan: 'first-only', run: { status: 'completed' },
-    lifetime: 'open', abortReason: undefined, disposal: 'not-requested', observation: 'open', events: [],
-    requests: [{ runId, requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined,
-      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), trace: trace.snapshot() }],
+    format: 'production-provider-capture-v2',
+    runId,
+    modelId,
+    plan: 'first-only',
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
+    events: [],
+    requests: [{
+      runId,
+      requestId: context.requestId,
+      scenario: 'first-turn',
+      status: 'settled',
+      notStartedReason: undefined,
+      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
+      trace: trace.snapshot(),
+    }],
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
   checkpoint.run.productionProviderCapture = provider;
   const native: ProductionProviderNativeCollectionSnapshot = {
-    format: 'production-provider-native-collection-v1', runId, maximumWorkerEpochs: 8, phase: 'finished', unrecordedWorkerCreations: 0, incompleteReasons: [],
-    epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
-      collection: { status: 'returned', result: { status: 'captured', capture: {
-        schemaVersion: 1, runId, workerEpoch: 1, byteOrder: 'little-endian',
+    format: 'production-provider-native-collection-v1',
+    runId,
+    maximumWorkerEpochs: 8,
+    phase: 'finished',
+    unrecordedWorkerCreations: 0,
+    incompleteReasons: [],
+    epochs: [{
+      workerEpoch: 1,
+      lifetime: { status: 'observed', value: { runId, workerEpoch: 1, session: 'active', issuedCalls: [context], loadRequests: [{ requestedModelId: modelId, requestedRevision: undefined }], incompleteReasons: [] } },
+      collection: {
+        status: 'returned',
+        result: {
+        status: 'captured',
+        capture: {
+        schemaVersion: 1,
+        runId,
+        workerEpoch: 1,
+        byteOrder: 'little-endian',
         limits: { maxCalls: 1, maxInvocationsPerCall: 1, maxEvents: 4, maxTextBytes: 256, maxTensorBytes: 16, maxTotalTensorBytes: 16, maxTokensPerStreamEvent: 4, maxTotalStreamTokens: 8, maxTotalStreamTokenBytes: 64 },
         calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
         events: [{ kind: 'sequence', identity: { ...context, nativeInvocationOrdinal: 1 }, resultShape: 'tensor', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }],
-        incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-      } } } }],
+        incompleteReasons: [],
+        unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+      },
+      },
+      },
+    }],
   };
   const summary: ProductionProviderInvestigationResult['summary'] = {
-    format: 'production-provider-investigation-v1', policy, completion: 'completed', stopReason: undefined, providerEvidence: 'available',
+    format: 'production-provider-investigation-v1',
+    policy,
+    completion: 'completed',
+    stopReason: undefined,
+    providerEvidence: 'available',
     providerProgress: { runId, modelId, plan: 'first-only', run: { status: 'completed' }, lifetime: 'closed', activeRequest: undefined, totalRequests: 1, selectedRequests: 1, settledRequests: 1, loadStatus: 'idle' },
     requests: [{ requestId: context.requestId, scenario: 'first-turn', status: 'settled', notStartedReason: undefined, outcome: 'fulfilled', settledCompleteness: 'complete', completeness: 'complete', limits: { ...policy.traceLimits, maximumFieldCharacters: 16384 }, retainedCharacters: 0, eventCount: 0 }],
     cutoff: { format: 'production-provider-native-cutoff-v1', runId, reason: 'normal-completion', phaseAtCutoff: 'finished', maximumWorkerEpochs: 8, unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', session: 'active', issuedCallCount: 1, loadRequestCount: 1 }, collectionStatus: 'returned' }] },
-    nativeEvidenceStatus: 'available', cleanup: 'completed', sealOwnership: 'settled', progressCallbackFailures: 0,
+    nativeEvidenceStatus: 'available',
+    cleanup: 'completed',
+    sealOwnership: 'settled',
+    progressCallbackFailures: 0,
   };
   checkpoint.run.productionProviderInvestigation = summary;
   return { ...checkpoint, provider, native, summary };
@@ -76,9 +116,13 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => {
     throw new Error('Evidence transport must not access the network');
   }));
-  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(() => {
+  vi.stubGlobal('navigator', {
+    storage: {
+    getDirectory: vi.fn(() => {
     throw new Error('Evidence transport must not access OPFS');
-  }) } });
+  }),
+  },
+  });
 });
 
 afterEach(() => {
@@ -133,9 +177,13 @@ describe('Provider and native Evidence Worker transport', () => {
       const second = await remote.createPartialEvidence(repeatedInput);
       const output = new MessageChannel();
       const received = receiveByteStream({ port: output.port1 });
-      const metadata = await remote.streamEvidence(workerTransfer({ value: {
-        input: { kind: 'partial', ...repeatedInput }, port: output.port2,
-      }, transferables: [output.port2] }));
+      const metadata = await remote.streamEvidence(workerTransfer({
+        value: {
+        input: { kind: 'partial', ...repeatedInput },
+        port: output.port2,
+      },
+        transferables: [output.port2],
+      }));
       // Buffer only in this verification sink to run an independent ZIP reader.
       const streamed = { blob: await new Response(received.stream).blob(), fileName: metadata.fileName };
       await received.completed;
@@ -166,7 +214,11 @@ describe('Provider and native Evidence Worker transport', () => {
     const first = fixture({ runId: 'batch-first' });
     const second = fixture({ runId: 'batch-second' });
     const items = await Promise.all([first, second].map(async item => ({
-      target: item.run.modelId, status: 'passed' as const, run: item.run, recovery: item.recovery, error: undefined,
+      target: item.run.modelId,
+      status: 'passed' as const,
+      run: item.run,
+      recovery: item.recovery,
+      error: undefined,
       nativeEvidence: await createProductionProviderNativeEvidence({ native: item.native, provider: item.provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES }),
     })));
     const channel = new MessageChannel();

@@ -20,10 +20,14 @@ describe('structured parts Full replay contract', () => {
       { kind: 'generation_finished', next: 'user', sequence: 7, phase: 'before-settlement' },
     ];
     expect(TEST_ONLY.projectStructuredEvents({ events })).toEqual([
-      { kind: 'assistant', parts: [
+      {
+        kind: 'assistant',
+        parts: [
         { type: 'reasoning', text: 'private', completeness: 'complete' },
         { type: 'tool_call', name: 'lookup', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
+      ],
+        terminal: { type: 'none' },
+      },
       { kind: 'tool-success', call: 1, content: 'clear' },
       { kind: 'assistant', parts: [{ type: 'text', text: 'done', completeness: 'complete' }], terminal: { type: 'finished', next: 'user' } },
     ]);
@@ -34,7 +38,9 @@ describe('structured parts Full replay contract', () => {
     const resequenced = terminalBeforeTool.map((event, sequence) => ({ ...event, sequence }));
     expect(() => TEST_ONLY.projectStructuredEvents({ events: resequenced })).toThrow(/open structured call boundary/);
     expect(TEST_ONLY.projectStructuredEvents({ events: events.slice(0, -1) }).at(-1)).toEqual({
-      kind: 'assistant', parts: [{ type: 'text', text: 'done', completeness: 'complete' }], terminal: { type: 'none' },
+      kind: 'assistant',
+      parts: [{ type: 'text', text: 'done', completeness: 'complete' }],
+      terminal: { type: 'none' },
     });
   });
 
@@ -43,16 +49,24 @@ describe('structured parts Full replay contract', () => {
       { kind: 'assistant_message', messageId: 'assistant', sequence: 0, phase: 'before-settlement' },
       { kind: 'part_text', messageId: 'assistant', partId: 'text', index: 0, partType: 'text', text: 'partial', completeness: 'partial', sequence: 1, phase: 'before-settlement' },
     ];
-    const fulfilled = { scenario: 'first-turn' as const, settlement: 'fulfilled' as const, events: [{
-      kind: 'assistant' as const, parts: [{ type: 'text' as const, text: 'partial', completeness: 'partial' as const }], terminal: { type: 'none' as const },
-    }] };
+    const fulfilled = {
+      scenario: 'first-turn' as const,
+      settlement: 'fulfilled' as const,
+      events: [{
+      kind: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: 'partial', completeness: 'partial' as const }],
+      terminal: { type: 'none' as const },
+    }],
+    };
     verifyStructuredPartsObservation({ events: noResult, expected: fulfilled, settlement: 'fulfilled' });
     verifyStructuredPartsObservation({ events: noResult, expected: { ...fulfilled, settlement: 'rejected' }, settlement: 'rejected' });
     expect(() => verifyStructuredPartsObservation({ events: noResult, expected: fulfilled, settlement: 'rejected' })).toThrow(/settlement/);
-    expect(TEST_ONLY.projectStructuredEvents({ events: [
+    expect(TEST_ONLY.projectStructuredEvents({
+      events: [
       ...noResult,
       { kind: 'generation_error', errorName: 'Error', sequence: 2, phase: 'before-settlement' },
-    ] })).toEqual([{ kind: 'assistant', parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], terminal: { type: 'error', errorName: 'Error' } }]);
+    ],
+    })).toEqual([{ kind: 'assistant', parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], terminal: { type: 'error', errorName: 'Error' } }]);
   });
 
   it('distinguishes stream-end, native protocol markers and trailing model framing', () => {
@@ -60,7 +74,8 @@ describe('structured parts Full replay contract', () => {
     const prompt = source.sequence.tokens.slice(0, source.settings.budget.promptTokenCount);
     const partial = { ...source, sequence: { ...source.sequence, tokens: [...prompt, '41', '42'] } };
     const contract = {
-      completionTokenIds: ['2', '9'], endTokenIds: ['2'],
+      completionTokenIds: ['2', '9'],
+      endTokenIds: ['2'],
       invocations: [{ callOrdinal: source.callOrdinal, terminal: { kind: 'stream-end' as const } }],
       requests: [],
     };
@@ -78,12 +93,16 @@ describe('structured parts Full replay contract', () => {
       contract,
     })).toThrow(/does not precede/);
     expect(() => verifyStructuredInvocationTermination({
-      invocation: completed, expected: contract.invocations[0]!, contract,
+      invocation: completed,
+      expected: contract.invocations[0]!,
+      contract,
     })).toThrow(/no accepted native control/);
 
     const framed = { ...source, sequence: { ...source.sequence, tokens: [...prompt, '7', '41', '9', '7', '2'] } };
-    const framedTerminal = { callOrdinal: source.callOrdinal,
-      terminal: { kind: 'control' as const, tokenId: '9', trailerTokenIds: ['7', '2'] } };
+    const framedTerminal = {
+      callOrdinal: source.callOrdinal,
+      terminal: { kind: 'control' as const, tokenId: '9', trailerTokenIds: ['7', '2'] },
+    };
     verifyStructuredInvocationTermination({ invocation: framed, expected: framedTerminal, contract });
     for (const trailerTokenIds of [['8', '2'], ['7'], ['7', '2', '2']] as const) {
       expect(() => verifyStructuredInvocationTermination({
@@ -121,34 +140,57 @@ describe('structured parts Full replay contract', () => {
 
   it('rejects unknown declarations and duplicate controls without changing evidence', () => {
     const before = structuredClone(evidence);
-    expect(() => validateStructuredPartsContract({ evidence, contract: {
-      completionTokenIds: ['2', '2'], endTokenIds: ['2'], invocations: [], requests: [],
-    } })).toThrow(/Duplicate/);
-    expect(() => validateStructuredPartsContract({ evidence, contract: {
-      completionTokenIds: ['2'], endTokenIds: ['2'],
-      invocations: [{ callOrdinal: 999, terminal: { kind: 'control', tokenId: '2' } }], requests: [],
-    } })).toThrow(/Unknown/);
-    expect(() => validateStructuredPartsContract({ evidence, contract: {
-      completionTokenIds: ['2'], endTokenIds: ['2'],
-      invocations: [{ callOrdinal: evidence.invocations[0]!.callOrdinal,
-        terminal: { kind: 'control', tokenId: '2', trailerTokenIds: ['not-a-token-id'] } }], requests: [],
-    } })).toThrow();
+    expect(() => validateStructuredPartsContract({
+      evidence,
+      contract: {
+      completionTokenIds: ['2', '2'],
+      endTokenIds: ['2'],
+      invocations: [],
+      requests: [],
+    },
+    })).toThrow(/Duplicate/);
+    expect(() => validateStructuredPartsContract({
+      evidence,
+      contract: {
+      completionTokenIds: ['2'],
+      endTokenIds: ['2'],
+      invocations: [{ callOrdinal: 999, terminal: { kind: 'control', tokenId: '2' } }],
+      requests: [],
+    },
+    })).toThrow(/Unknown/);
+    expect(() => validateStructuredPartsContract({
+      evidence,
+      contract: {
+      completionTokenIds: ['2'],
+      endTokenIds: ['2'],
+      invocations: [{
+        callOrdinal: evidence.invocations[0]!.callOrdinal,
+        terminal: { kind: 'control', tokenId: '2', trailerTokenIds: ['not-a-token-id'] },
+      }],
+      requests: [],
+    },
+    })).toThrow();
     expect(evidence).toEqual(before);
   });
 
   it('rejects missing declarations for replayed requests and native invocations', () => {
     const source = evidence.invocations[0]!;
     const contract = {
-      completionTokenIds: ['2'], endTokenIds: ['2'],
+      completionTokenIds: ['2'],
+      endTokenIds: ['2'],
       invocations: [{ callOrdinal: source.callOrdinal, terminal: { kind: 'stream-end' as const } }],
       requests: [{ scenario: 'first-turn' as const, settlement: 'fulfilled' as const, events: [] }],
     };
     verifyStructuredPartsInventory({ contract, invocationOrdinals: [source.callOrdinal], requestScenarios: ['first-turn'] });
     expect(() => verifyStructuredPartsInventory({
-      contract, invocationOrdinals: [source.callOrdinal, source.callOrdinal + 1], requestScenarios: ['first-turn'],
+      contract,
+      invocationOrdinals: [source.callOrdinal, source.callOrdinal + 1],
+      requestScenarios: ['first-turn'],
     })).toThrow(/every replayed structured invocation/);
     expect(() => verifyStructuredPartsInventory({
-      contract, invocationOrdinals: [source.callOrdinal], requestScenarios: ['first-turn', 'continuity'],
+      contract,
+      invocationOrdinals: [source.callOrdinal],
+      requestScenarios: ['first-turn', 'continuity'],
     })).toThrow(/every settled structured request/);
   });
 });

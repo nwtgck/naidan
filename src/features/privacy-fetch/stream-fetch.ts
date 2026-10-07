@@ -9,7 +9,8 @@ import { validatePrivacyFetchUrl } from './validate-url';
 function sanitizeBodyErrors({ body, signal }: { body: ReadableStream<Uint8Array<ArrayBuffer>>, signal: AbortSignal | undefined }): ReadableStream<Uint8Array<ArrayBuffer>> {
   const reader = body.getReader();
   const failure = () => createPrivacyFetchError({
-    code: signal?.aborted ? 'aborted' : 'fetch_failed', message: 'Privacy fetch response stream failed',
+    code: signal?.aborted ? 'aborted' : 'fetch_failed',
+    message: 'Privacy fetch response stream failed',
   });
   return new ReadableStream<Uint8Array<ArrayBuffer>>({
     async pull(controller) {
@@ -48,7 +49,11 @@ export async function fetchPrivacyStream({ request }: { request: PrivacyFetchReq
   }
   if (signal?.aborted) throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
   const response = await fetch(validation.normalizedUrl, {
-    method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer', signal, headers: requestFields.headers,
+    method: 'GET',
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    signal,
+    headers: requestFields.headers,
   }).catch(() => {
     throw createPrivacyFetchError({ code: signal?.aborted ? 'aborted' : 'fetch_failed', message: 'Privacy fetch stream request failed' });
   });
@@ -57,12 +62,19 @@ export async function fetchPrivacyStream({ request }: { request: PrivacyFetchReq
     throw createPrivacyFetchError({ code: 'rejected', message: 'Unsupported Hugging Face delivery URL' });
   }
   return {
-    url: response.url, status: response.status, statusText: response.statusText, ok: response.ok,
-    redirected: response.redirected, responseType: response.type,
-    headers: new Headers(response.headers), policyName: validation.policyName,
-    body: response.body === null ? new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) {
+    url: response.url,
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    redirected: response.redirected,
+    responseType: response.type,
+    headers: new Headers(response.headers),
+    policyName: validation.policyName,
+    body: response.body === null ? new ReadableStream<Uint8Array<ArrayBuffer>>({
+      start(controller) {
       controller.close();
-    } }) : sanitizeBodyErrors({ body: response.body, signal }),
+    },
+    }) : sanitizeBodyErrors({ body: response.body, signal }),
   };
 }
 

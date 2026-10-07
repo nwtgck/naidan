@@ -227,9 +227,11 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
       return { kind: 'stream' as const };
     },
     async openFileStream() {
-      return new ReadableStream<Uint8Array>({ start(controller) {
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
         controller.close();
-      } });
+      },
+      });
     },
     async readFile({ path }) {
       const parentPath = splitPath(path).length <= 1 ? '/' : `/${splitPath(path).slice(0, -1).join('/')}`;
@@ -245,9 +247,11 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
     },
     startDirectoryArchive() {
       return {
-        stream: new ReadableStream<Uint8Array>({ start(controller) {
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
           controller.close();
-        } }),
+        },
+        }),
         result: Promise.resolve({
           status: 'completed' as const,
           blob: new Blob(),

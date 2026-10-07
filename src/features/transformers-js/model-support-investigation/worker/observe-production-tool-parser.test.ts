@@ -75,12 +75,21 @@ describe("observeProductionToolParser", () => {
     const result = observeProductionToolParser({
       strategy: 'qwen3_5',
       inputChunks: ['<tool_call><function=probe><parameter=text>{"city":"Tokyo"}</parameter><parameter=number_text>123</parameter><parameter=object>{"city":"Tokyo"}</parameter></function></tool_call>'],
-      tools: [{ type: 'function', function: { name: 'probe', description: 'Synthetic schema reconstruction control.', parameters: {
-        type: 'object', properties: { text: { type: 'string' }, number_text: { type: 'string' }, object: { type: 'object' } },
-      } } }],
+      tools: [{
+        type: 'function',
+        function: {
+        name: 'probe',
+        description: 'Synthetic schema reconstruction control.',
+        parameters: {
+        type: 'object',
+        properties: { text: { type: 'string' }, number_text: { type: 'string' }, object: { type: 'object' } },
+      },
+      },
+      }],
     });
     expect(result).toEqual(expect.objectContaining({
-      status: 'observed', recognized: true,
+      status: 'observed',
+      recognized: true,
       toolCalls: [{ name: 'probe', arguments: '{"text":"{\\"city\\":\\"Tokyo\\"}","number_text":"123","object":{"city":"Tokyo"}}' }],
     }));
   });

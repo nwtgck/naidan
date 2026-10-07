@@ -26,7 +26,9 @@ export function createOrdinaryDownloadTimingEvidenceFile({ snapshot, association
   association: OrdinaryDownloadTimingAssociation;
 }): Blob {
   const document = ordinaryDownloadTimingEvidenceSchema.parse({
-    format: 'ordinary-download-timing-evidence-v1', association, snapshot,
+    format: 'ordinary-download-timing-evidence-v1',
+    association,
+    snapshot,
   });
   const file = new Blob([JSON.stringify(document)], { type: 'application/json' });
   if (file.size > ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES) throw new Error('Retained Download timing exceeds its export byte budget');

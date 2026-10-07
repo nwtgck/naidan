@@ -28,14 +28,18 @@ describe('countLines', () => {
   });
 
   it('counts lines without splitting', () => {
-    expect(countLines({ text: `\
+    expect(countLines({
+      text: `\
 a
 b
-c` })).toBe(3);
-    expect(countLines({ text: `\
+c`,
+    })).toBe(3);
+    expect(countLines({
+      text: `\
 a\\r
 b\\r
-c` })).toBe(3);
+c`,
+    })).toBe(3);
   });
 });
 

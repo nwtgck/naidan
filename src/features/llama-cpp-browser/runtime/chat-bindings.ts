@@ -75,7 +75,9 @@ export function bindNativeChat<
       try {
         const templates = templateFor({ assertIdle, model });
         const images: { marker: string, blob: Blob }[] = [];
-        const messages = request.messages.map(message => ({ ...message, content: typeof message.content === 'string' ? message.content : message.content.map(part => {
+        const messages = request.messages.map(message => ({
+          ...message,
+          content: typeof message.content === 'string' ? message.content : message.content.map(part => {
           switch (part.type) {
           case 'text': return part;
           case 'image': {
@@ -86,7 +88,8 @@ export function bindNativeChat<
           }
           default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
           }
-        }) }));
+        }),
+        }));
         const inputs = new native.common_chat_templates_inputs();
         try {
           const messagesJson = native.common_json.parse(JSON.stringify(messages));
@@ -155,7 +158,11 @@ export function bindNativeChat<
         }
         const parserParams = parser;
         const chatParams: ChatParams = params;
-        return { params: chatParams, additionalStops, images, dispose,
+        return {
+          params: chatParams,
+          additionalStops,
+          images,
+          dispose,
           parse({ text, partial }: { text: string, partial: boolean }): Omit<GenerationResult, 'finishReason'> {
             assertIdle();
             const message = native.common_chat_parse(text, partial, parserParams);
@@ -190,7 +197,7 @@ export function bindNativeChat<
         if (error instanceof WebAssembly.RuntimeError) throw error;
         throw new LlamaCppBrowserError({ code: isUnsupportedReasoningError({ error }) ? 'reasoning-unsupported' : 'template-unsupported' });
       }
-    }
+    },
   };
 }
 export type NativeChat = ReturnType<typeof bindNativeChat>;

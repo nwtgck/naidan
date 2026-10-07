@@ -21,9 +21,19 @@ const template = `\
 {{ '<|im_end|>\\n' }}
 {% endfor %}
 {% if add_generation_prompt %}{{ '<|im_start|>assistant\\n' }}{% endif %}`;
-const tools: NonNullable<GenerateInput['tools']> = [{ type: 'function', function: { name: 'lookup', description: 'Look up a city', parameters: {
-  type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false,
-} } }];
+const tools: NonNullable<GenerateInput['tools']> = [{
+  type: 'function',
+  function: {
+  name: 'lookup',
+  description: 'Look up a city',
+  parameters: {
+  type: 'object',
+  properties: { city: { type: 'string' } },
+  required: ['city'],
+  additionalProperties: false,
+},
+},
+}];
 // Emscripten requires Node 24 for memory64; CPU32 remains covered on older Node.
 const profiles: LlamaCppProfile[] = ['cpu-wasm32'];
 if (Number(process.versions.node.split('.')[0]) >= 24) profiles.push('cpu-wasm64');
@@ -54,9 +64,19 @@ describe.each(profiles)('native chat on %s', profile => {
   });
   describe('native Jinja and tool parser through the application runtime', () => {
     it('streams weather calls and ordinary content through native grammar and partial parsing', async () => {
-      const weatherTools: NonNullable<GenerateInput['tools']> = [{ type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: {
-        type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false,
-      } } }];
+      const weatherTools: NonNullable<GenerateInput['tools']> = [{
+        type: 'function',
+        function: {
+        name: 'get_weather',
+        description: 'Get weather',
+        parameters: {
+        type: 'object',
+        properties: { city: { type: 'string' } },
+        required: ['city'],
+        additionalProperties: false,
+      },
+      },
+      }];
       const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Get Tokyo weather' }], tools: weatherTools, reasoningEffort: undefined } });
       try {
         const api = core.api; const vocab = await api.llama_model_get_vocab(model);
@@ -135,10 +155,18 @@ describe.each(profiles)('native chat on %s', profile => {
         expect(chat.parse({ text: output + output, partial: false }).toolCalls).toHaveLength(2);
         expect(result.toolCalls[0]?.function.name).toBe('lookup');
         expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ city: 'Tokyo' });
-        const next = prepareChat({ core, model, request: { messages: [...messages,
+        const next = prepareChat({
+          core,
+          model,
+          request: {
+          messages: [...messages,
           { role: 'assistant', content: result.content, tool_calls: result.toolCalls.map(call => ({ ...call, id: 'call-1' })) },
           { role: 'tool', content: 'Sunny', tool_call_id: 'call-1', name: 'lookup' },
-        ], tools, reasoningEffort: 'none' } });
+        ],
+          tools,
+          reasoningEffort: 'none',
+        },
+        });
         try {
           expect(next.params.prompt).toContain(`\
 <tool_response>

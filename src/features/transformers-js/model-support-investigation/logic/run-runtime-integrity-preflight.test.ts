@@ -395,18 +395,38 @@ describe("runRuntimeIntegrityPreflight", () => {
       runtimeFetch,
       importRuntimeModule,
       runWasmControl: async () => ({
-        fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-        executionProvider: 'wasm', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'wasm',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
       }),
       runWebGpuControl: async () => ({
-        fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-        executionProvider: 'webgpu', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'webgpu',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
       }),
       inspectEnvironment: async () => ({
-        userAgent: "Browser/1", vendor: "Vendor", hardwareConcurrency: 8, deviceMemoryGiB: undefined, crossOriginIsolated: true,
+        userAgent: "Browser/1",
+        vendor: "Vendor",
+        hardwareConcurrency: 8,
+        deviceMemoryGiB: undefined,
+        crossOriginIsolated: true,
         webGpu: { availability: "available", adapterInfo: {}, features: [], limits: {}, error: undefined },
       }),
-      onEvent: vi.fn(), createRunId: () => "run-stale-manifest", now: () => "2026-08-06T00:00:00.000Z",
+      onEvent: vi.fn(),
+      createRunId: () => "run-stale-manifest",
+      now: () => "2026-08-06T00:00:00.000Z",
     });
 
     expect(run.status).toBe("failed");
@@ -470,18 +490,38 @@ describe("runRuntimeIntegrityPreflight", () => {
       runtimeFetch,
       importRuntimeModule,
       runWasmControl: async () => ({
-        fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-        executionProvider: 'wasm', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'wasm',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
       }),
       runWebGpuControl: async () => ({
-        fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-        executionProvider: 'webgpu', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'webgpu',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
       }),
       inspectEnvironment: async () => ({
-        userAgent: "Browser/1", vendor: "Vendor", hardwareConcurrency: 8, deviceMemoryGiB: undefined, crossOriginIsolated: true,
+        userAgent: "Browser/1",
+        vendor: "Vendor",
+        hardwareConcurrency: 8,
+        deviceMemoryGiB: undefined,
+        crossOriginIsolated: true,
         webGpu: { availability: "available", adapterInfo: {}, features: [], limits: {}, error: undefined },
       }),
-      onEvent: vi.fn(), createRunId: () => "run-tampered-manifest", now: () => "2026-08-06T00:00:00.000Z",
+      onEvent: vi.fn(),
+      createRunId: () => "run-tampered-manifest",
+      now: () => "2026-08-06T00:00:00.000Z",
     });
 
     expect(run.status).toBe("failed");
@@ -496,8 +536,15 @@ describe("runRuntimeIntegrityPreflight", () => {
 
   it("records a WASM fingerprint mismatch while preserving independent controls", async () => {
     const runWasmControl = vi.fn().mockResolvedValue({
-      fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-      executionProvider: 'wasm', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+      fixtureId: 'identity-float32-v1',
+      fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+      executionProvider: 'wasm',
+      status: 'passed',
+      inputName: 'x',
+      outputName: 'y',
+      inputValue: 7,
+      outputValue: 7,
+      error: undefined,
     });
     const run = await runRuntimeIntegrityPreflight({
       modelId: "org/model",
@@ -507,19 +554,34 @@ describe("runRuntimeIntegrityPreflight", () => {
       importRuntimeModule: vi.fn().mockResolvedValue(undefined),
       runWasmControl,
       runWebGpuControl: async () => ({
-        fixtureId: 'identity-float32-v1', fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
-        executionProvider: 'webgpu', status: 'passed', inputName: 'x', outputName: 'y', inputValue: 7, outputValue: 7, error: undefined,
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'webgpu',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
       }),
       inspectEnvironment: async () => ({
-        userAgent: "Browser/1", vendor: "Vendor", hardwareConcurrency: 8, deviceMemoryGiB: undefined, crossOriginIsolated: true,
+        userAgent: "Browser/1",
+        vendor: "Vendor",
+        hardwareConcurrency: 8,
+        deviceMemoryGiB: undefined,
+        crossOriginIsolated: true,
         webGpu: { availability: "available", adapterInfo: {}, features: [], limits: {}, error: undefined },
       }),
-      onEvent: vi.fn(), createRunId: () => "run-wasm-hash-mismatch", now: () => "2026-08-06T00:00:00.000Z",
+      onEvent: vi.fn(),
+      createRunId: () => "run-wasm-hash-mismatch",
+      now: () => "2026-08-06T00:00:00.000Z",
     });
 
     expect(run.status).toBe("failed");
     expect(run.runtimeAssetsPartial?.stageObservations).toContainEqual(expect.objectContaining({
-      stage: "wasm-fetch", status: "failed", error: expect.stringContaining("WASM fingerprint mismatch"),
+      stage: "wasm-fetch",
+      status: "failed",
+      error: expect.stringContaining("WASM fingerprint mismatch"),
     }));
     expect(run.runtimeAssetsPartial?.assetIdentity?.wasm.observedSha256).toBe(ASSETS.wasmSha256);
     expect(runWasmControl).toHaveBeenCalledOnce();

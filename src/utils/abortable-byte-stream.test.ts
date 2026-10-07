@@ -17,9 +17,12 @@ describe('abortable byte stream ownership', () => {
   it('releases a pending read and its source lock without waiting for the cancel hook', async () => {
     const cleanup = Promise.withResolvers<void>();
     const cancel = vi.fn(() => cleanup.promise);
-    const source = new ReadableStream<Uint8Array>({ pull() {
+    const source = new ReadableStream<Uint8Array>({
+      pull() {
       return new Promise(() => undefined);
-    }, cancel }, { highWaterMark: 0 });
+    },
+      cancel,
+    }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const reader = stream.getReader();
     const pending = reader.read();
@@ -37,15 +40,22 @@ describe('abortable byte stream ownership', () => {
   it('reports a destination error even when producer cleanup never finishes', async () => {
     const cleanup = Promise.withResolvers<void>();
     const cancel = vi.fn(() => cleanup.promise);
-    const source = new ReadableStream<Uint8Array>({ pull(controller) {
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
       controller.enqueue(new Uint8Array([1]));
-    }, cancel }, { highWaterMark: 0 });
+    },
+      cancel,
+    }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const failure = new Error('Disk full');
     try {
-      await expect(promptly({ operation: stream.pipeTo(new WritableStream({ write() {
+      await expect(promptly({
+        operation: stream.pipeTo(new WritableStream({
+        write() {
         throw failure;
-      } })) })).rejects.toBe(failure);
+      },
+      })),
+      })).rejects.toBe(failure);
       expect(source.locked).toBe(false);
       expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
     } finally {
@@ -57,14 +67,19 @@ describe('abortable byte stream ownership', () => {
     const cancel = vi.fn(async () => {
       throw new Error('Cleanup failed');
     });
-    const source = new ReadableStream<Uint8Array>({ pull(controller) {
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
       controller.enqueue(new Uint8Array([1]));
-    }, cancel }, { highWaterMark: 0 });
+    },
+      cancel,
+    }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const failure = new Error('Invalid output size');
-    await expect(stream.pipeTo(new WritableStream({ write() {
+    await expect(stream.pipeTo(new WritableStream({
+      write() {
       throw failure;
-    } }))).rejects.toBe(failure);
+    },
+    }))).rejects.toBe(failure);
     expect(source.locked).toBe(false);
     expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
   });
@@ -73,9 +88,13 @@ describe('abortable byte stream ownership', () => {
     const cancel = vi.fn();
     const source = new ReadableStream<Uint8Array>({ cancel }, { highWaterMark: 0 });
     const failure = new Error('Cancellation notification failed');
-    const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: () => {
+    const stream = createAbortableByteStream({
+      stream: source,
+      signal: new AbortController().signal,
+      onCancel: () => {
       throw failure;
-    } });
+    },
+    });
     await expect(stream.cancel('stop')).rejects.toBe(failure);
     expect(cancel).toHaveBeenCalledExactlyOnceWith('stop');
     expect(source.locked).toBe(false);
@@ -104,9 +123,12 @@ describe('abortable byte stream ownership', () => {
     const cancel = vi.fn();
     const notification = vi.fn();
     const abort = new AbortController();
-    const source = new ReadableStream<Uint8Array>({ start(controller) {
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
       controller.close();
-    }, cancel });
+    },
+      cancel,
+    });
     const stream = createAbortableByteStream({ stream: source, signal: abort.signal, onCancel: notification });
     expect(await new Response(stream).text()).toBe('');
     abort.abort();

@@ -22,10 +22,12 @@ import { createVerifiedImageModelFiles } from './verified-image-model-files';
 function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFile {
   const file = candidate.files.find(item => item.path === candidate.path)?.file;
   if (!file) throw new Error('The model file is missing');
-  return { location: candidate.hostSource
+  return {
+    location: candidate.hostSource
     ? { kind: 'host', directoryId: candidate.hostSource.directoryId, path: `${candidate.hostSource.repository}/${candidate.path}` }
     : { kind: 'opfs', path: `models/${candidate.repositoryId}/${candidate.path}` },
-  expected: { size: file.size, lastModified: file.lastModified } };
+  expected: { size: file.size, lastModified: file.lastModified },
+  };
 }
 function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerImageFile }): boolean {
   const { location, expected } = file;
@@ -44,8 +46,12 @@ function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: Model
   if (candidate.issue || !candidate.roles.includes(slot)) throw new Error('The model cannot serve the requested role');
   const main = candidate.files.find(file => file.path === candidate.path);
   if (!main) throw new Error('The model file is missing');
-  return { slot, file: main.file, path: candidate.path,
-    companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })).sort((left, right) => left.path.localeCompare(right.path)) };
+  return {
+    slot,
+    file: main.file,
+    path: candidate.path,
+    companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })).sort((left, right) => left.path.localeCompare(right.path)),
+  };
 }
 /** Existing files and explicit per-call selections only. Download, import,
  * model deletion, provider preference changes and provider history writes are
@@ -77,7 +83,11 @@ export function createReadOnlyResources({ directories }: { directories(): readon
     },
     async generateChat({ input, signal, onEvent, onProgress }) {
       signal = operationSignal({ signal });
-      const result = await chat.generate({ input, signal, onEvent, onProgress: ({ progress }) => {
+      const result = await chat.generate({
+        input,
+        signal,
+        onEvent,
+        onProgress: ({ progress }) => {
         let phase: 'computing' | 'loading' | 'decoding';
         const current = progress.phase;
         switch (current) {
@@ -87,7 +97,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
         }
         onProgress({ value: { phase, completed: progress.completed, total: progress.total } });
-      } });
+      },
+      });
       signal.throwIfAborted(); return result;
     },
     async listImageModels({ signal }) {
@@ -153,15 +164,30 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         if (!artifact) throw new Error('The local image profile is not available');
         profile = artifact.profile;
         stage = 'input'; reason = 'invalid-input';
-        const request = requestSchema.parse({ artifact, models, loras, debug: 'off', weightResidency: 'auto',
+        const request = requestSchema.parse({
+          artifact,
+          models,
+          loras,
+          debug: 'off',
+          weightResidency: 'auto',
           baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
           preview: input.preview,
           imageInputs: { initImage: input.imageInputs.initial, referenceImages: input.imageInputs.references, strength: input.imageInputs.strength },
-          parameters: { ...input.parameters, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32',
-            qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' },
+          parameters: {
+            ...input.parameters,
+            vaeTiling: true,
+            vaeTileSize: 32,
+            flashAttention: false,
+            bf16WeightType: 'f32',
+            qwenVaePolicy: 'bounded',
+            conditioningCacheSize: 0,
+            modelArguments: '',
+          },
         });
         stage = 'model-selection'; reason = 'model-selection-failed';
-        const preparedModels = await verifiedModels.prepare({ signal, files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
+        const preparedModels = await verifiedModels.prepare({
+          signal,
+          files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
           candidate.files.map(({ path, file, receipt }) => ({
             key: JSON.stringify({ location: selectedFile({ candidate }).location, member: path, publication: receipt?.source }),
             file,
@@ -174,7 +200,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
               default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
               }
             })(),
-          }))) });
+          }))),
+        });
         const retainedFile = ({ file }: { file: File }): File => {
           const retained = preparedModels.replacements.get(file);
           if (!retained) throw new Error('Model file was not verified');
@@ -189,9 +216,13 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         stage = 'runtime-init'; reason = 'runtime-unavailable';
         signal.throwIfAborted(); image ??= createImageEngineClient({ onReleased: () => verifiedModels.clear() });
         stage = 'worker'; reason = 'engine-failed';
-        const rawResult = await image.generate({ request, signal, onPreview: ({ frame }) => {
+        const rawResult = await image.generate({
+          request,
+          signal,
+          onPreview: ({ frame }) => {
           signal.throwIfAborted(); onPreview({ frame });
-        }, onProgress: ({ event }) => {
+        },
+          onProgress: ({ event }) => {
           signal.throwIfAborted();
           let phase: 'computing' | 'loading' | 'decoding' | 'encoding';
           const current = event.phase;
@@ -202,7 +233,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
           }
           onProgress({ value: { phase, completed: event.step, total: event.steps } });
-        }, onDiagnostic: ({ diagnostic }) => {
+        },
+          onDiagnostic: ({ diagnostic }) => {
           switch (diagnostic.event) {
           case 'start': case 'complete': case 'progress': stage = diagnostic.stage; break;
           case 'failed':
@@ -225,7 +257,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
           default: { const exhaustive: never = diagnostic.event; throw new Error(String(exhaustive)); }
           }
-        } });
+        },
+        });
         signal.throwIfAborted();
         stage = 'output-validation'; reason = 'invalid-output';
         const result = workerResultSchema.parse(rawResult);
@@ -239,9 +272,13 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         // Detailed native context stays on the provider. Exported context is
         // deliberately limited to the public error fields above.
         try {
-          console.error('[naidan-peer-rpc:image]', { ...failure.details,
-            message: sanitizeImageLog({ message: error instanceof Error ? error.message : String(error),
-              secrets: [input.parameters.prompt, input.parameters.negativePrompt] }) });
+          console.error('[naidan-peer-rpc:image]', {
+            ...failure.details,
+            message: sanitizeImageLog({
+              message: error instanceof Error ? error.message : String(error),
+              secrets: [input.parameters.prompt, input.parameters.negativePrompt],
+            }),
+          });
         } catch { /* Diagnostics must not replace the original failure. */ }
         throw failure;
       } finally {

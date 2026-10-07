@@ -25,8 +25,11 @@ const runtimePath = '/transformers/ort-wasm-simd-threaded.asyncify.mjs';
 describe('createDownloadedModelWorkerFetch', () => {
   it('decodes percent-encoded embedded bytes without interpreting them as a network URL', async () => {
     const guarded = createDownloadedModelWorkerFetch({
-      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
-      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
     });
     const response = await guarded(new URL('data:application/octet-stream,%00%FF%80%2C'));
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(0, 255, 128, 44));
@@ -35,8 +38,11 @@ describe('createDownloadedModelWorkerFetch', () => {
 
   it('preserves cancellation of embedded-data Requests', async () => {
     const guarded = createDownloadedModelWorkerFetch({
-      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
-      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
     });
     const controller = new AbortController();
     const reason = new Error('Fixture image read cancelled');
@@ -47,25 +53,33 @@ describe('createDownloadedModelWorkerFetch', () => {
 
   it('propagates malformed embedded-data errors without a fallback request', async () => {
     const guarded = createDownloadedModelWorkerFetch({
-      originalFetch: globalThis.fetch, workerLocationUrl: 'https://naidan.example/worker.js',
-      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
     });
     await expect(guarded('data:image/png;base64,***')).rejects.toThrow();
   });
 
   it('does not send a request to a forbidden same-origin redirect target', async () => {
     const received: string[] = [];
-    const server = await loopbackServer({ listener: (request, response) => {
+    const server = await loopbackServer({
+      listener: (request, response) => {
       received.push(request.url ?? '');
       if (request.url === runtimePath) {
         response.writeHead(302, { Location: '/forbidden-model' });
       }
       response.end('fixture');
-    } });
+    },
+    });
     try {
       const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch, workerLocationUrl: `${server.origin}/worker.js`,
-        environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+        originalFetch: globalThis.fetch,
+        workerLocationUrl: `${server.origin}/worker.js`,
+        environment: 'development',
+        userAgent: 'Chrome',
+        vendor: 'Google Inc.',
       });
       const outcome = await guarded(`${server.origin}${runtimePath}`).then(
         async response => {
@@ -82,20 +96,27 @@ describe('createDownloadedModelWorkerFetch', () => {
 
   it('does not follow a cross-origin loopback redirect even when the caller requests follow', async () => {
     const forbiddenRequests: string[] = [];
-    const forbidden = await loopbackServer({ listener: (request, response) => {
+    const forbidden = await loopbackServer({
+      listener: (request, response) => {
       forbiddenRequests.push(request.url ?? '');
       response.end('forbidden');
-    } });
+    },
+    });
     const received: string[] = [];
-    const allowed = await loopbackServer({ listener: (request, response) => {
+    const allowed = await loopbackServer({
+      listener: (request, response) => {
       received.push(request.url ?? '');
       response.writeHead(302, { Location: `${forbidden.origin}/model.onnx` });
       response.end();
-    } });
+    },
+    });
     try {
       const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch, workerLocationUrl: `${allowed.origin}/worker.js`,
-        environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+        originalFetch: globalThis.fetch,
+        workerLocationUrl: `${allowed.origin}/worker.js`,
+        environment: 'development',
+        userAgent: 'Chrome',
+        vendor: 'Google Inc.',
       });
       const outcome = await guarded(`${allowed.origin}${runtimePath}`, { redirect: 'follow' }).then(
         async response => {
@@ -114,14 +135,19 @@ describe('createDownloadedModelWorkerFetch', () => {
 
   it('does not dispatch an already aborted runtime Request', async () => {
     const received: string[] = [];
-    const server = await loopbackServer({ listener: (request, response) => {
+    const server = await loopbackServer({
+      listener: (request, response) => {
       received.push(request.url ?? '');
       response.end('runtime');
-    } });
+    },
+    });
     try {
       const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch, workerLocationUrl: `${server.origin}/worker.js`,
-        environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+        originalFetch: globalThis.fetch,
+        workerLocationUrl: `${server.origin}/worker.js`,
+        environment: 'development',
+        userAgent: 'Chrome',
+        vendor: 'Google Inc.',
       });
       const controller = new AbortController();
       const reason = new Error('fixture request cancelled before dispatch');
@@ -137,13 +163,20 @@ describe('createDownloadedModelWorkerFetch', () => {
   it('retains Request attributes and init overrides while enforcing redirect rejection', async () => {
     const originalFetch = vi.fn<typeof fetch>(async () => new Response('runtime'));
     const guarded = createDownloadedModelWorkerFetch({
-      originalFetch, workerLocationUrl: 'https://naidan.example/worker.js',
-      environment: 'development', userAgent: 'Chrome', vendor: 'Google Inc.',
+      originalFetch,
+      workerLocationUrl: 'https://naidan.example/worker.js',
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
     });
     const controller = new AbortController();
     const request = new Request(`https://naidan.example${runtimePath}`, {
-      method: 'GET', headers: { 'X-Fixture': 'request' }, credentials: 'omit',
-      cache: 'no-store', signal: controller.signal, redirect: 'follow',
+      method: 'GET',
+      headers: { 'X-Fixture': 'request' },
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: controller.signal,
+      redirect: 'follow',
     });
     await guarded(request, { headers: { 'X-Fixture': 'init' }, redirect: 'follow' });
     const [input, init] = originalFetch.mock.calls[0]!;

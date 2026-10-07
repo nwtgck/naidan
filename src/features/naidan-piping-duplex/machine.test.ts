@@ -97,8 +97,11 @@ it('partial overlap is rejected without losing the already accepted prefix', () 
 it('one invalid DATA entry rolls back a valid new OPEN and DATA entry in the same snapshot', () => {
   const b = new Machine({ role: 'responder' });
   const state = { id: 0, flags: 0, rxNext: 0n, rxLimit: RECEIVE_WINDOW, final: 0n };
-  const candidate: Snapshot = { ...emptySnapshot(), states: [state],
-    data: [{ id: 0, offset: 0n, bytes: new Uint8Array([8]) }, { id: 2, offset: 0n, bytes: new Uint8Array([9]) }] };
+  const candidate: Snapshot = {
+    ...emptySnapshot(),
+    states: [state],
+    data: [{ id: 0, offset: 0n, bytes: new Uint8Array([8]) }, { id: 2, offset: 0n, bytes: new Uint8Array([9]) }],
+  };
   expectRollback({ receiver: b, snapshot: candidate, message: 'not retained' });
   expect(b.takeIncoming()).toBeUndefined();
   b.accept({ snapshot: { ...candidate, data: candidate.data.slice(0, 1) } });

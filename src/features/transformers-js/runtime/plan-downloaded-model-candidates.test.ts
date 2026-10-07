@@ -13,7 +13,8 @@ describe('planDownloadedModelCandidates', () => {
   it('does not manufacture cache-miss evidence when no candidate can be planned', async () => {
     const match = vi.fn();
     const entries = await planDownloadedModelCandidates({
-      modelId: 'org/model', revision: REVISION,
+      modelId: 'org/model',
+      revision: REVISION,
       candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
       modelCache: { match },
       getModelFiles: async ({ candidate }) => {
@@ -40,9 +41,12 @@ describe('planDownloadedModelCandidates', () => {
     });
     const match = vi.fn();
     await expect(planDownloadedModelCandidates({
-      modelId: 'org/model', revision: REVISION,
+      modelId: 'org/model',
+      revision: REVISION,
       candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
-      modelCache: { match }, getModelFiles, getRuntimeFiles: async () => [],
+      modelCache: { match },
+      getModelFiles,
+      getRuntimeFiles: async () => [],
       workerLocationUrl: 'https://naidan.example/worker.js',
     })).rejects.toBe(globalFailure);
     expect(getModelFiles).toHaveBeenCalledOnce();

@@ -8,11 +8,20 @@ describe('Qwen3_5ToolCallParser', () => {
 
   beforeEach(() => {
     onText = vi.fn<({ text }: { text: string }) => void>();
-    parser = new Qwen3_5ToolCallParser({ onText, tools: [{ type: 'function', function: {
-      name: 'lookup', description: 'Synthetic typed XML control.', parameters: {
-        type: 'object', properties: { options: { type: 'object' }, items: { type: 'array' }, ['__proto__']: { type: 'object' } },
+    parser = new Qwen3_5ToolCallParser({
+      onText,
+      tools: [{
+      type: 'function',
+      function: {
+      name: 'lookup',
+      description: 'Synthetic typed XML control.',
+      parameters: {
+        type: 'object',
+        properties: { options: { type: 'object' }, items: { type: 'array' }, ['__proto__']: { type: 'object' } },
       },
-    } }] });
+    },
+    }],
+    });
   });
 
   it('parses a Qwen3.5 tool call with typed parameters', () => {
@@ -59,9 +68,17 @@ true
     { name: 'nested overflow cannot become null inside a container', schema: { type: 'object' }, raw: '{"value":1e999}', expected: '{"value":1e999}' },
     { name: 'mixed compositions do not choose a winning branch', schema: { anyOf: [{ type: 'object' }], oneOf: [{ type: 'string' }] }, raw: '{"a":1}', expected: '{"a":1}' },
   ])('$name', ({ schema, raw, expected }) => {
-    const typed = new Qwen3_5ToolCallParser({ onText, tools: [{ type: 'function', function: {
-      name: 'probe', description: 'Synthetic XML type control.', parameters: { type: 'object', properties: { value: schema } },
-    } }] });
+    const typed = new Qwen3_5ToolCallParser({
+      onText,
+      tools: [{
+      type: 'function',
+      function: {
+      name: 'probe',
+      description: 'Synthetic XML type control.',
+      parameters: { type: 'object', properties: { value: schema } },
+    },
+    }],
+    });
     typed.feed({ output: `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>` });
     typed.flush();
     const calls = typed.drainToolCalls();
@@ -87,16 +104,20 @@ true
   });
 
   it('handles a Qwen3.5 tool call split across tokens', () => {
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <tool_call>
 <function=shell_execute>
 <parameter=shell_script>
-` });
-    parser.feed({ output: `\
+`,
+    });
+    parser.feed({
+      output: `\
 pwd
 </parameter>
 </function>
-</tool_call>` });
+</tool_call>`,
+    });
 
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(1);
@@ -106,14 +127,16 @@ pwd
   it('preserves a JSON object parameter emitted by the native XML template grammar', () => {
     // The pinned native template uses tojson for mapping values. This is a
     // synthetic protocol control, not evidence that a model generated a tool.
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <tool_call>
 <function=lookup>
 <parameter=options>
 {"city": "Tokyo", "count": 2, "enabled": false}
 </parameter>
 </function>
-</tool_call>` });
+</tool_call>`,
+    });
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(1);
     expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ options: { city: 'Tokyo', count: 2, enabled: false } });
@@ -121,14 +144,16 @@ pwd
   });
 
   it('preserves a JSON array parameter emitted by the native XML template grammar', () => {
-    parser.feed({ output: `\
+    parser.feed({
+      output: `\
 <tool_call>
 <function=lookup>
 <parameter=items>
 ["12", 12, {"nested": [true, null]}]
 </parameter>
 </function>
-</tool_call>` });
+</tool_call>`,
+    });
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(1);
     expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ items: ['12', 12, { nested: [true, null] }] });
@@ -202,12 +227,14 @@ pwd
     });
 
     expect(parser.drainToolCalls()).toHaveLength(0);
-    expect(onText).toHaveBeenCalledWith({ text: `\
+    expect(onText).toHaveBeenCalledWith({
+      text: `\
 <tool_call>
 <function=shell_execute>
 <parameter=shell_script>
 pwd
 </parameter>
-</tool_call>` });
+</tool_call>`,
+    });
   });
 });

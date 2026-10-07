@@ -25,8 +25,12 @@ function endpoint() {
   const record: NaidanRpcConnection = {
     id: toNaidanRpcConnectionId({ raw: 'connection-lock-test' }),
     peerId: toNaidanRpcPeerId({ raw: encodePeerKey({ bytes: remote }) }),
-    autoConnect: 'disabled', localPublicKey: encodePeerKey({ bytes: local }), label: 'Remote',
-    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] }, allowedMethods: [], revision: 0,
+    autoConnect: 'disabled',
+    localPublicKey: encodePeerKey({ bytes: local }),
+    label: 'Remote',
+    transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.invalid', headers: [] },
+    allowedMethods: [],
+    revision: 0,
   };
   const released = Promise.withResolvers<void>();
   const retireResources = vi.fn(() => released.promise);
@@ -41,22 +45,30 @@ function endpoint() {
     signal.addEventListener('abort', abort, { once: true });
     return { ...pair.a, closed: closed.promise, peerIdentity: remote, confirmResponse: async () => {}, abort } satisfies RpcLink;
   });
-  const manager = new NaidanPeerManager({ dependencies: {
+  const manager = new NaidanPeerManager({
+    dependencies: {
     storage: { readIdentity: async () => undefined, list: async () => ({ access: registryAccess, connections: [record] }), remember: async () => registryAccess, update: async ({ connection }) => connection.revision, remove: async () => {} },
-    // Lock ownership is production code. Identity/native/transport/storage are
-    // deliberate fixtures: this is not a multiple-browser integration test.
+      // Lock ownership is production code. Identity/native/transport/storage are
+      // deliberate fixtures: this is not a multiple-browser integration test.
     identity: async () => ({ publicKey: local, privateKey: {} as CryptoKey }),
-    acquireOwner: acquireRpcOwner, open, retireResources, changed: () => {},
+    acquireOwner: acquireRpcOwner,
+    open,
+    retireResources,
+    changed: () => {},
     inference: {
-      inputBudget: createInferenceBudget({ capacity: 1024 }), deliveryBudget: createInferenceBudget({ capacity: 1024 }),
-      resources: { listChatModels: async () => [], listImageModels: async () => [],
+      inputBudget: createInferenceBudget({ capacity: 1024 }),
+      deliveryBudget: createInferenceBudget({ capacity: 1024 }),
+      resources: {
+        listChatModels: async () => [],
+        listImageModels: async () => [],
         generateChat: async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }),
         generateImage: async () => {
           throw new Error('Not used');
         },
       },
     },
-  } });
+  },
+  });
   cleanups.push(async () => {
     released.resolve(); for (const pair of links) pair.close();
     await manager.setEnabled({ enabled: false });

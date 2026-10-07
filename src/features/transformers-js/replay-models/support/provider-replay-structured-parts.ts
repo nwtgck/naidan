@@ -183,11 +183,14 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       } else if ([...assistant.parts.values()].some(item => item.index === index)) {
         throw new Error('Structured part index was reused');
       }
-      assistant.parts.set(partId, { index, value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'reasoning' | 'text' }>>()({
+      assistant.parts.set(partId, {
+        index,
+        value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'reasoning' | 'text' }>>()({
         type: partType,
         text,
         completeness,
-      }) });
+      }),
+      });
       break;
     }
     case 'part_call': {
@@ -199,11 +202,14 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       }
       callIds.set(toolCallId, callIds.size + 1);
       assistant.callIds.add(toolCallId);
-      assistant.parts.set(partId, { index, value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'tool_call' }>>()({
+      assistant.parts.set(partId, {
+        index,
+        value: exactObject<Extract<StructuredPartsExpectedPart, { type: 'tool_call' }>>()({
         type: 'tool_call',
         name: toolName,
         arguments: modelVisibleArguments,
-      }) });
+      }),
+      });
       break;
     }
     case 'generation_finished': {
@@ -297,17 +303,29 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
     case 'assistant_message': messageId = event.messageId; revisions.clear(); break;
     case 'part_text':
       if (event.messageId !== messageId) throw new Error('Legacy projection text outside its assistant');
-      revisions.set(event.partId, { index: event.index, part: exactObject<{
+      revisions.set(event.partId, {
+        index: event.index,
+        part: exactObject<{
         id: string; type: 'text' | 'reasoning'; text: string; completeness: 'complete' | 'partial';
-      }>()({ id: event.partId, type: event.partType, text: event.text, completeness: event.completeness }) });
+      }>()({ id: event.partId, type: event.partType, text: event.text, completeness: event.completeness }),
+      });
       break;
     case 'part_call':
       if (event.messageId !== messageId) throw new Error('Legacy projection call outside its assistant');
-      revisions.set(event.partId, { index: event.index, part: exactObject<{
+      revisions.set(event.partId, {
+        index: event.index,
+        part: exactObject<{
         id: string; type: 'tool_call'; toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } };
-      }>()({ id: event.partId, type: 'tool_call', toolCall: {
-        id: event.toolCallId, type: 'function', function: { name: event.toolName, arguments: event.modelVisibleArguments },
-      } }) });
+      }>()({
+        id: event.partId,
+        type: 'tool_call',
+        toolCall: {
+        id: event.toolCallId,
+        type: 'function',
+        function: { name: event.toolName, arguments: event.modelVisibleArguments },
+      },
+      }),
+      });
       break;
     case 'generation_finished': case 'generation_interrupted': case 'generation_error':
     case 'tool-started': case 'tool-output': case 'tool-exit': case 'tool-success': case 'tool-error':

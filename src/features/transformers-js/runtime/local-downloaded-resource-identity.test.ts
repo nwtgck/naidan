@@ -26,7 +26,10 @@ async function setup({ modelId }: { modelId: string }) {
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => fs.root } });
   vi.stubGlobal('fetch', forbiddenFetch);
   const operation = createRequiredDownloadedResourceOperation({
-    modelId, revision: undefined, requiredPaths: [requiredPath], workerLocationUrl,
+    modelId,
+    revision: undefined,
+    requiredPaths: [requiredPath],
+    workerLocationUrl,
     modelCache: createDownloadedModelReadOnlyCache({ modelId, revision: undefined }),
     cacheOnlyFetch: forbiddenFetch,
   });

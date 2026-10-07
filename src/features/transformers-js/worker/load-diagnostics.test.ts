@@ -53,9 +53,11 @@ it('does not invoke message accessors or allow classification and observer failu
   await expect(session({ observer: (event: unknown) => events.push(event), failure })()).rejects.toBe(failure);
   expect(getter).not.toHaveBeenCalled();
   expect(events.at(-1)).toMatchObject({ phase: 'session-rejected', errorCategory: 'unclassified' });
-  const inaccessible = new Proxy({}, { getOwnPropertyDescriptor() {
+  const inaccessible = new Proxy({}, {
+    getOwnPropertyDescriptor() {
     throw new Error('Diagnostic proxy');
-  } });
+  },
+  });
   await expect(session({ observer: (event: unknown) => events.push(event), failure: inaccessible })()).rejects.toBe(inaccessible);
   expect(events.at(-1)).toMatchObject({ errorCategory: 'unclassified' });
   await expect(session({ observer: (event: unknown) => events.push(event), failure: "previous call to 'initWasm()' failed" })()).rejects.toBe("previous call to 'initWasm()' failed");
@@ -84,9 +86,14 @@ it('keeps legacy category absence unobserved and drops an invalid optional class
 function setup() {
   const ledger = createLoadDiagnosticLedger({ owner });
   const packets: LoadDiagnosticPacket[] = [];
-  const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'public-repository', sink: ({ packet }) => {
+  const operation = createLoadDiagnosticOperation({
+    owner,
+    loadOrdinal: 1,
+    resourceNames: 'public-repository',
+    sink: ({ packet }) => {
     packets.push(packet); ledger.observe({ packet });
-  } });
+  },
+  });
   return { ledger, operation, packets };
 }
 
@@ -188,11 +195,16 @@ it('omits local artifact names even when they use otherwise safe characters', ()
 it.each(['throw', 'reject'] as const)('reports a recovered %s transport failure in the next delivered packet', async mode => {
   const ledger = createLoadDiagnosticLedger({ owner });
   let deliveries = 0;
-  const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'public-repository', sink: ({ packet }) => {
+  const operation = createLoadDiagnosticOperation({
+    owner,
+    loadOrdinal: 1,
+    resourceNames: 'public-repository',
+    sink: ({ packet }) => {
     if (++deliveries > 1) return ledger.observe({ packet });
     if (mode === 'throw') throw new Error('Sink failure');
     return Promise.reject(new Error('Sink failure'));
-  } });
+  },
+  });
   operation.emit({ kind: 'load-start', details: {} });
   await Promise.resolve();
   operation.emit({ kind: 'load-failed', details: {} });
@@ -201,10 +213,15 @@ it.each(['throw', 'reject'] as const)('reports a recovered %s transport failure 
 
 it('does not throw or reject Load for synchronous or asynchronous diagnostic sink failures', async () => {
   for (const mode of ['throw', 'reject'] as const) {
-    const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'public-repository', sink: () => {
+    const operation = createLoadDiagnosticOperation({
+      owner,
+      loadOrdinal: 1,
+      resourceNames: 'public-repository',
+      sink: () => {
       if (mode === 'throw') throw new Error('Sink failed');
       return Promise.reject(new Error('Sink rejected'));
-    } });
+    },
+    });
     expect(() => operation.emit({ kind: 'load-start', details: {} })).not.toThrow();
     await Promise.resolve();
   }

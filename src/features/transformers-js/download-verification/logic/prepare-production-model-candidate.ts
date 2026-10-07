@@ -147,7 +147,9 @@ export async function prepareProductionModelCandidate({
     // compatibility check, never a quiet-time completeness certificate or an
     // authority to add Registry-only artifacts to the transfer set.
     const urls = [...plannedPaths].map(path => exactRevisionModelArtifactUrl({
-      modelId: normalizedModelId, revision, path,
+      modelId: normalizedModelId,
+      revision,
+      path,
     }));
     // Publish the existing transfer set before starting any GET. Display code
     // cannot add paths or turn an observation failure into a transfer failure.
@@ -204,7 +206,9 @@ export async function prepareProductionModelCandidate({
     return { status: 'failed', error: serializedError({ error }), prefetch: undefined };
   } finally {
     try {
-      await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: ({ outcome }) => {
+      await disposeWithDownloadTiming({
+        dispose: () => client.dispose(),
+        onOutcome: ({ outcome }) => {
         cleanupOutcome = outcome;
         switch (outcome) {
         case 'completed': break;
@@ -214,9 +218,11 @@ export async function prepareProductionModelCandidate({
           throw new Error(`Unhandled disposal outcome: ${exhaustive}`);
         }
         }
-      } });
+      },
+      });
     } finally {
-      observeDownloadSafely({ observe: () => {
+      observeDownloadSafely({
+        observe: () => {
         const hostRoundtripMs = clock.elapsed({ start: rpcStarted, end: rpcSettled });
         const hostFinalizationMs = clock.elapsed({ start: rpcSettled, end: clock.read() });
         const files: DownloadPrefetchTiming['files'] = [];
@@ -239,12 +245,26 @@ export async function prepareProductionModelCandidate({
           })();
           files.push({ path, outcome: file.status, bytes, timing: file.timing });
         }
-        publishDownloadTiming({ callback: onTiming, observation: {
-          kind: 'prefetch', version: 1, revision, candidate, clockId: clock.clockId,
+        publishDownloadTiming({
+          callback: onTiming,
+          observation: {
+          kind: 'prefetch',
+          version: 1,
+          revision,
+          candidate,
+          clockId: clock.clockId,
           timingStatus: hostRoundtripMs === undefined || hostFinalizationMs === undefined ? 'unavailable' : 'measured',
-          hostRoundtripMs, hostFinalizationMs, cleanupOutcome, hostSettlement, source: observedResult?.timing, files, droppedFiles,
-        } });
-      } });
+          hostRoundtripMs,
+          hostFinalizationMs,
+          cleanupOutcome,
+          hostSettlement,
+          source: observedResult?.timing,
+          files,
+          droppedFiles,
+        },
+        });
+      },
+      });
     }
   }
 }

@@ -1088,8 +1088,7 @@ function resolveSortOptions({
       ignoreLeadingBlanks: parsed.optionValues.ignoreLeadingBlanks === true,
       dictionaryOrder: parsed.optionValues.dictionaryOrder === true,
       ignoreNonprinting: parsed.optionValues.ignoreNonprinting === true,
-      checkMode:
-        parsed.optionValues.checkMode === 'silent'
+      checkMode: parsed.optionValues.checkMode === 'silent'
           ? 'silent'
           : parsed.optionValues.checkMode === 'strict'
             ? 'strict'

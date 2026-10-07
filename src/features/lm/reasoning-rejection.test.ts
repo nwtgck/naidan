@@ -9,22 +9,31 @@ describe('positive reasoning rejection classification', () => {
     'Cannot disable thinking for this model',
     'Thinking is not supported by this template',
   ])('classifies an explicit template rejection: %s', message => {
-    expect(() => renderThinkingTemplate({ offRequested: true, render: () => {
+    expect(() => renderThinkingTemplate({
+      offRequested: true,
+      render: () => {
       throw new Error(message);
-    } })).toThrow(UnsupportedReasoningError);
+    },
+    })).toThrow(UnsupportedReasoningError);
   });
   it('does not classify a generic template failure or a failure without an off request', () => {
     for (const offRequested of [true, false]) {
       const error = new Error('Unsupported system role');
-      expect(() => renderThinkingTemplate({ offRequested, render: () => {
+      expect(() => renderThinkingTemplate({
+        offRequested,
+        render: () => {
         throw error;
-      } })).toThrow(error);
+      },
+      })).toThrow(error);
     }
     const error = new Error('Thinking is not supported');
     try {
-      renderThinkingTemplate({ offRequested: false, render: () => {
+      renderThinkingTemplate({
+        offRequested: false,
+        render: () => {
         throw error;
-      } });
+      },
+      });
     } catch (caught) {
       expect(caught).toBe(error);
       expect(isUnsupportedReasoningError({ error: caught })).toBe(false);
@@ -33,9 +42,12 @@ describe('positive reasoning rejection classification', () => {
   it('preserves native traps, even with misleading error text', () => {
     const trap = new WebAssembly.RuntimeError('Thinking is not supported');
     try {
-      renderThinkingTemplate({ offRequested: true, render: () => {
+      renderThinkingTemplate({
+        offRequested: true,
+        render: () => {
         throw trap;
-      } });
+      },
+      });
     } catch (error) {
       expect(error).toBe(trap);
       expect(isUnsupportedReasoningError({ error })).toBe(false);
@@ -49,12 +61,26 @@ describe('positive reasoning rejection classification', () => {
     expect(isUnsupportedReasoningError({ error: reconstructed })).toBe(true);
   });
   it.each(['invalid_value', 'invalid_enum_value', 'invalid_type'])('recognizes a structured %s identifying the reasoning parameter', code => {
-    expect(isReasoningErrorEnvelope({ value: { error: {
-      code, param: 'reasoning_effort', message: "Expected one of 'low', 'medium', 'high'.",
-    } }, parameter: 'reasoning_effort' })).toBe(true);
-    expect(isReasoningErrorEnvelope({ value: { error: {
-      code, param: 'model', message: 'Invalid model.',
-    } }, parameter: 'reasoning_effort' })).toBe(false);
+    expect(isReasoningErrorEnvelope({
+      value: {
+      error: {
+      code,
+      param: 'reasoning_effort',
+      message: "Expected one of 'low', 'medium', 'high'.",
+    },
+    },
+      parameter: 'reasoning_effort',
+    })).toBe(true);
+    expect(isReasoningErrorEnvelope({
+      value: {
+      error: {
+      code,
+      param: 'model',
+      message: 'Invalid model.',
+    },
+    },
+      parameter: 'reasoning_effort',
+    })).toBe(false);
   });
   it.each([null, 'error', {}, { choices: [{ delta: { content: 'Title' } }] }])('ignores ordinary streaming data: %j', value => {
     expect(isReasoningErrorEnvelope({ value, parameter: 'reasoning_effort' })).toBe(false);

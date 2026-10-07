@@ -29,7 +29,8 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
   const saved = new Map<NaidanRpcConnection['id'], NaidanRpcConnection>();
   const access: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: toNaidanRpcRegistryId({ raw: 'http-registry-example' }), persistence: 'durable' };
   const store = {
-    readIdentity: vi.fn(async () => undefined), list: vi.fn(async () => ({ access, connections: [...saved.values()] })),
+    readIdentity: vi.fn(async () => undefined),
+    list: vi.fn(async () => ({ access, connections: [...saved.values()] })),
     remember: vi.fn(async ({ connection }: { connection: NaidanRpcConnection }) => {
       saved.set(connection.id, connection); return access;
     }),
@@ -43,14 +44,21 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
   const release = vi.fn();
   const inputBudget = createInferenceBudget({ capacity: 256 * 1024 * 1024 }), deliveryBudget = createInferenceBudget({ capacity: 128 * 1024 * 1024 });
   const observed = { connected: false };
-  const manager: NaidanPeerManager = new NaidanPeerManager({ dependencies: { storage: store, identity: async () => identity,
-    acquireOwner: async () => ({ release }), open: openPipingRpc, inference: { resources, inputBudget, deliveryBudget }, changed: () => {
+  const manager: NaidanPeerManager = new NaidanPeerManager({
+    dependencies: {
+    storage: store,
+    identity: async () => identity,
+    acquireOwner: async () => ({ release }),
+    open: openPipingRpc,
+    inference: { resources, inputBudget, deliveryBudget },
+    changed: () => {
       observed.connected ||= manager.list().some(entry => entry.phase === 'connected');
     },
     retireResources: async () => {
       await Promise.all([inputBudget.whenIdle(), deliveryBudget.whenIdle()]);
     },
-  } });
+  },
+  });
   return { manager, resources, store, release, answer, inputBudget, deliveryBudget, observed };
 }
 
@@ -82,19 +90,33 @@ it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects expli
     expect(b.resources.listChatModels).not.toHaveBeenCalled();
     await b.manager.updateAllowedMethods({ id: paired.bId, allowedMethods: ['listChatModels', 'generateChat', 'generateImage'] });
     relay.dropNextAcknowledgement();
-    const input = { model: 'models/test.gguf', messages: [{ role: 'user' as const, content: 'Private question.' }], temperature: 0.7, topP: 0.9,
-      maxTokens: 2048, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+    const input = {
+      model: 'models/test.gguf',
+      messages: [{ role: 'user' as const, content: 'Private question.' }],
+      temperature: 0.7,
+      topP: 0.9,
+      maxTokens: 2048,
+      presencePenalty: 0,
+      frequencyPenalty: 0,
+      stop: [],
+    };
     const chat = client.generateChat({ input: { model: input.model, ...prepareTranscript({ input }) }, on: { progress: undefined }, signal: lifetime.signal, timeoutMs: undefined });
     const output = await chat.result;
     const answer = await receiveEvents({ readable: output.events, onEvent: () => {}, signal: lifetime.signal });
     await chat.closed;
     expect(answer.content).toBe(b.answer); expect(b.resources.generateChat).toHaveBeenCalledOnce(); expect(relay.stats().dropped).toBe(1);
-    const job = startPeerImage({ client, input: {
+    const job = startPeerImage({
+      client,
+      input: {
       modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/test.safetensors' } } }, components: [], loras: [] },
       parameters: { prompt: 'Private image prompt.', negativePrompt: '', width: 128, height: 128, seed: '7', steps: 1, guidance: 1, sampler: 'auto', scheduler: 'auto', distilledGuidance: 1 },
       preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
       imageInputs: { initial: undefined, references: [], strength: 0.5 },
-    }, signal: lifetime.signal, onPreview: () => {}, onProgress: () => {} });
+    },
+      signal: lifetime.signal,
+      onPreview: () => {},
+      onProgress: () => {},
+    });
     const image = await job.result;
     expect(image.status).toBe('completed');
     if (image.status !== 'completed') throw new Error('Expected a confirmed image');

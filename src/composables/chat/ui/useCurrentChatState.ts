@@ -36,10 +36,13 @@ export function useCurrentChatState(): CurrentChatStateAdapter {
   if (scope) {
     const pane = useChatPaneState({ chatId: scope });
     return {
-      currentChat: pane.chat, currentChatGroup: pane.chatGroup,
+      currentChat: pane.chat,
+      currentChatGroup: pane.chatGroup,
       currentChatId: computed(() => pane.chat.value?.id),
-      activeMessages: pane.activeMessages, resolvedSettings: pane.resolvedSettings,
-      inheritedSettings: pane.inheritedSettings, chatGroups: pane.chatGroups,
+      activeMessages: pane.activeMessages,
+      resolvedSettings: pane.resolvedSettings,
+      inheritedSettings: pane.inheritedSettings,
+      chatGroups: pane.chatGroups,
       sidebarItems: computed(() => rootItems.value),
       ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { allMessages: pane.allMessages } }) || {}),
     };

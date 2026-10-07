@@ -16,8 +16,12 @@ const baseRun = {
   ],
   repository: { normalizedModelId: "org/model", requestedRevision: "main", resolvedRevision: "a".repeat(40) },
   runtimeTarget: {
-    normalizedModelId: "org/model", evidenceRevision: "a".repeat(40), loaderRevisionOption: null,
-    source: "repository", revisionIdentity: "exact-resolved-revision", pipelineTag: "text-generation",
+    normalizedModelId: "org/model",
+    evidenceRevision: "a".repeat(40),
+    loaderRevisionOption: null,
+    source: "repository",
+    revisionIdentity: "exact-resolved-revision",
+    pipelineTag: "text-generation",
   },
   templateBehavior: {
     cases: [{

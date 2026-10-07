@@ -49,7 +49,10 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
       metrics.unavailable({ method: 'mapAsync' }); return;
     }
     const map = buffer.mapAsync;
-    override({ target: buffer, key: 'mapAsync', value: function (this: GPUBuffer, ...args) {
+    override({
+      target: buffer,
+      key: 'mapAsync',
+      value: function (this: GPUBuffer, ...args) {
       const pending = map.apply(this, args);
       const run = metrics.current(); if (disposed || !run) return pending;
       const [mode, offset = 0, size] = args, info = bufferInfo({ buffer: this });
@@ -68,27 +71,39 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         if (!disposed && !run.closed) finish({ failed: true });
       });
       return pending;
-    } });
+    },
+    });
   }
   function observePass({ pass }: { pass: GPUComputePassEncoder }): void {
     const dispatch = pass.dispatchWorkgroups;
-    if (typeof dispatch === 'function') override({ target: pass, key: 'dispatchWorkgroups', value: function (this: GPUComputePassEncoder, ...args) {
+    if (typeof dispatch === 'function') override({
+      target: pass,
+      key: 'dispatchWorkgroups',
+      value: function (this: GPUComputePassEncoder, ...args) {
       const result = dispatch.apply(this, args), run = metrics.current();
       if (!disposed && run) run.counts.dispatches++;
       return result;
-    } });
+    },
+    });
     else metrics.unavailable({ method: 'dispatchWorkgroups' });
     const indirect = pass.dispatchWorkgroupsIndirect;
-    if (typeof indirect === 'function') override({ target: pass, key: 'dispatchWorkgroupsIndirect', value: function (this: GPUComputePassEncoder, ...args) {
+    if (typeof indirect === 'function') override({
+      target: pass,
+      key: 'dispatchWorkgroupsIndirect',
+      value: function (this: GPUComputePassEncoder, ...args) {
       const result = indirect.apply(this, args), run = metrics.current();
       if (!disposed && run) run.counts.indirectDispatches++;
       return result;
-    } });
+    },
+    });
     else metrics.unavailable({ method: 'dispatchWorkgroupsIndirect' });
   }
   function observeEncoder({ encoder }: { encoder: GPUCommandEncoder }): void {
     const copy = encoder.copyBufferToBuffer;
-    if (typeof copy === 'function') override({ target: encoder, key: 'copyBufferToBuffer', value: function (this: GPUCommandEncoder,
+    if (typeof copy === 'function') override({
+      target: encoder,
+      key: 'copyBufferToBuffer',
+      value: function (this: GPUCommandEncoder,
       ...args: [GPUBuffer, GPUBuffer, number?] | [GPUBuffer, number, GPUBuffer, number, number?]
     ) {
       const result: void = Reflect.apply(copy, this, args), run = metrics.current();
@@ -110,10 +125,14 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         } else run.counts.copyBytesUnknown++;
       }
       return result;
-    } });
+    },
+    });
     else metrics.unavailable({ method: 'copyBufferToBuffer' });
     const begin = encoder.beginComputePass;
-    if (typeof begin === 'function') override({ target: encoder, key: 'beginComputePass', value: function (this: GPUCommandEncoder, ...args) {
+    if (typeof begin === 'function') override({
+      target: encoder,
+      key: 'beginComputePass',
+      value: function (this: GPUCommandEncoder, ...args) {
       const pass = begin.apply(this, args), run = metrics.current();
       if (!disposed) {
         if (run) run.counts.computePasses++;
@@ -124,18 +143,21 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         }
       }
       return pass;
-    } });
+    },
+    });
     else metrics.unavailable({ method: 'beginComputePass' });
   }
   function observeDevice({ device, adapter }: { device: GPUDevice, adapter: GPUAdapter }): void {
     if (devices.has(device)) return;
     devices.add(device);
     const facts: ImageDiagnosticInput['fields'] = {
-      shaderF16: device.features.has('shader-f16'), maxBufferSize: device.limits.maxBufferSize,
+      shaderF16: device.features.has('shader-f16'),
+      maxBufferSize: device.limits.maxBufferSize,
       maxStorageBufferBindingSize: device.limits.maxStorageBufferBindingSize,
       maxComputeWorkgroupsPerDimension: device.limits.maxComputeWorkgroupsPerDimension,
       adapterTimestampQuery: adapter.features?.has('timestamp-query') ?? false,
-      deviceTimestampQuery: device.features.has('timestamp-query'), gpuTimestampsMeasured: false,
+      deviceTimestampQuery: device.features.has('timestamp-query'),
+      gpuTimestampsMeasured: false,
       subgroups: device.features.has('subgroups'),
     };
     // Do not fetch high-entropy adapter info or device IDs. Feature availability
@@ -156,7 +178,11 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
     }
     metrics.device({ fields: facts });
     const buffer = device.createBuffer;
-    override({ target: device, key: 'createBuffer', persistent: true, value: function (this: GPUDevice, ...args) {
+    override({
+      target: device,
+      key: 'createBuffer',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const result = buffer.apply(this, args), run = metrics.current();
       if (!disposed) {
         if (run) {
@@ -172,27 +198,42 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         }
       }
       return result;
-    } });
+    },
+    });
     const shader = device.createShaderModule;
-    override({ target: device, key: 'createShaderModule', persistent: true, value: function (this: GPUDevice, ...args) {
+    override({
+      target: device,
+      key: 'createShaderModule',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const run = disposed ? undefined : metrics.current(), start = run ? now() : 0;
       const result = shader.apply(this, args);
       if (!disposed && run) {
         run.counts.shaders++; run.counts.shaderHostMs += Math.max(0, now() - start);
       }
       return result;
-    } });
+    },
+    });
     const pipeline = device.createComputePipeline;
-    override({ target: device, key: 'createComputePipeline', persistent: true, value: function (this: GPUDevice, ...args) {
+    override({
+      target: device,
+      key: 'createComputePipeline',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const run = disposed ? undefined : metrics.current(), start = run ? now() : 0;
       const result = pipeline.apply(this, args);
       if (!disposed && run) {
         run.counts.pipelineSync++; run.counts.pipelineHostMs += Math.max(0, now() - start);
       }
       return result;
-    } });
+    },
+    });
     const asyncPipeline = device.createComputePipelineAsync;
-    if (typeof asyncPipeline === 'function') override({ target: device, key: 'createComputePipelineAsync', persistent: true, value: function (this: GPUDevice, ...args) {
+    if (typeof asyncPipeline === 'function') override({
+      target: device,
+      key: 'createComputePipelineAsync',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const run = disposed ? undefined : metrics.current(), start = run ? now() : 0;
       const pending = asyncPipeline.apply(this, args);
       if (!disposed && run) {
@@ -207,22 +248,37 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         });
       }
       return pending;
-    } });
+    },
+    });
     const upload = device.queue.writeBuffer;
-    override({ target: device.queue, key: 'writeBuffer', persistent: true, value: function (this: GPUQueue, ...args) {
+    override({
+      target: device.queue,
+      key: 'writeBuffer',
+      persistent: true,
+      value: function (this: GPUQueue, ...args) {
       const result = upload.apply(this, args);
       if (!disposed && metrics.current()) metrics.write({ bytes: uploadByteLength({ data: args[2], dataOffset: args[3], size: args[4] }), usage: bufferInfo({ buffer: args[0] })?.usage ?? 0 });
       return result;
-    } });
+    },
+    });
     const submit = device.queue.submit;
-    override({ target: device.queue, key: 'submit', persistent: true, value: function (this: GPUQueue, ...args) {
+    override({
+      target: device.queue,
+      key: 'submit',
+      persistent: true,
+      value: function (this: GPUQueue, ...args) {
       // Do NOT iterate commandBuffers: it can be a one-shot iterable.
       const result = submit.apply(this, args), run = metrics.current();
       if (!disposed && run) run.counts.submissions++;
       return result;
-    } });
+    },
+    });
     const done = device.queue.onSubmittedWorkDone;
-    override({ target: device.queue, key: 'onSubmittedWorkDone', persistent: true, value: function (this: GPUQueue, ...args) {
+    override({
+      target: device.queue,
+      key: 'onSubmittedWorkDone',
+      persistent: true,
+      value: function (this: GPUQueue, ...args) {
       const pending = done.apply(this, args), run = metrics.current();
       if (!disposed && run) {
         const finish = run.queue.start();
@@ -234,9 +290,14 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         });
       }
       return pending;
-    } });
+    },
+    });
     const encoder = device.createCommandEncoder;
-    if (typeof encoder === 'function') override({ target: device, key: 'createCommandEncoder', persistent: true, value: function (this: GPUDevice, ...args) {
+    if (typeof encoder === 'function') override({
+      target: device,
+      key: 'createCommandEncoder',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const result = encoder.apply(this, args), run = metrics.current();
       if (!disposed) {
         if (run) run.counts.encoders++;
@@ -247,26 +308,40 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
         }
       }
       return result;
-    } });
+    },
+    });
     else metrics.unavailable({ method: 'createCommandEncoder' });
     const pop = device.popErrorScope;
-    override({ target: device, key: 'popErrorScope', persistent: true, value: function (this: GPUDevice, ...args) {
+    override({
+      target: device,
+      key: 'popErrorScope',
+      persistent: true,
+      value: function (this: GPUDevice, ...args) {
       const pending = pop.apply(this, args);
       void pending.then(error => {
         if (error) report({ message: 'GPU error scope: ' + error.message, fields: { name: error.constructor.name } });
       }, () => undefined);
       return pending;
-    } });
+    },
+    });
   }
   if (typeof navigator !== 'undefined' && typeof navigator.gpu?.requestAdapter === 'function') {
     const gpu = navigator.gpu, request = gpu.requestAdapter;
-    override({ target: gpu, key: 'requestAdapter', persistent: true, value: async function (this: GPU, ...args) {
+    override({
+      target: gpu,
+      key: 'requestAdapter',
+      persistent: true,
+      value: async function (this: GPU, ...args) {
       report({ message: 'runtime adapter request', fields: {} });
       const adapter = await request.apply(this, args);
       if (adapter && !disposed && !adapters.has(adapter)) {
         adapters.add(adapter);
         const device = adapter.requestDevice;
-        override({ target: adapter, key: 'requestDevice', persistent: true, value: async function (this: GPUAdapter, ...input) {
+        override({
+          target: adapter,
+          key: 'requestDevice',
+          persistent: true,
+          value: async function (this: GPUAdapter, ...input) {
           const actual = await device.apply(this, input);
           try {
             if (!disposed) observeDevice({ device: actual, adapter });
@@ -274,10 +349,12 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
             report({ message: 'Some GPU diagnostics could not be installed', fields: {} });
           }
           return actual;
-        } });
+        },
+        });
       } else if (!adapter) report({ message: 'no GPU adapter', fields: {} });
       return adapter;
-    } });
+    },
+    });
   }
   return {
     beginRun({ runId }: { runId: number }): void {

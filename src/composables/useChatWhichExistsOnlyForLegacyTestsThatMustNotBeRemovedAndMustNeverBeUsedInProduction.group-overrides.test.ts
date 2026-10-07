@@ -29,7 +29,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
@@ -279,7 +280,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('merges LM parameters across all 3 levels (Chat > Group > Global)', async () => {
     // Global: temperature: 0.7
     const group: ChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'G',
+      items: [],
+      updatedAt: 0,
+      isCollapsed: false,
       lmParameters: { ...EMPTY_LM_PARAMETERS, topP: 0.5, temperature: 0.9, reasoning: { effort: undefined } }, // Overrides Global temp
     };
     const chat: Chat = reactive({
@@ -305,8 +310,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         messages: expect.any(Array),
         model: expect.any(String),
         parameters: expect.objectContaining({
-          temperature: 0.1,         // Chat wins
-          topP: 0.5,                // Group wins (not in chat)
+          temperature: 0.1, // Chat wins
+          topP: 0.5, // Group wins (not in chat)
           maxCompletionTokens: 100, // Chat wins
         }),
         signal: expect.any(AbortSignal),
@@ -316,7 +321,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('suppresses Global prompt when Group uses override behavior with empty content', async () => {
     const group: ChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'G',
+      items: [],
+      updatedAt: 0,
+      isCollapsed: false,
       systemPrompt: { content: '', behavior: 'override' },
     };
     const chat: Chat = reactive({
@@ -344,7 +353,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('updates resolved settings dynamically when chat is moved to a group', async () => {
     const group: ChatGroup = {
-      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }),
+      name: 'G',
+      items: [],
+      updatedAt: 0,
+      isCollapsed: false,
       modelId: 'group-model',
     };
     const chat: Chat = reactive({
@@ -352,7 +365,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       title: 'Chat 1',
       groupId: null, // Initially no group
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', parts: [], replies: { items: [] }, createdAt: 0, modelId: undefined, interruption: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
-      modelId: '', createdAt: 0, updatedAt: 0, debugEnabled: false,
+      modelId: '',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
     });
 
     chatStore.rootItems.value = [

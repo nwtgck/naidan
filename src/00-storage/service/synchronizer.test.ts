@@ -162,10 +162,12 @@ describe('StorageSynchronizer', () => {
       });
       window.dispatchEvent(storageEvent);
 
-      expect(listener).toHaveBeenCalledWith({ event: expect.objectContaining({
+      expect(listener).toHaveBeenCalledWith({
+        event: expect.objectContaining({
         type: 'chat_content',
         id: '456',
-      }) });
+      }),
+      });
     });
 
     it('should notify multiple subscribers', () => {
