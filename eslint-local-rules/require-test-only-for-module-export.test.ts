@@ -12,6 +12,8 @@ function createEslint({ fix }: { fix: boolean }): ESLint {
     fix,
     overrideConfig: {
       files: ['**/*.ts'],
+      // Test this rule's directive safety without ESLint removing unused directives.
+      linterOptions: { reportUnusedDisableDirectives: 'off' },
       languageOptions: {
         parser,
       },
@@ -309,6 +311,27 @@ export const TEST_ONLY = {
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('singleLine');
     expect(result.output).toBeUndefined();
+  });
+
+  it.each([
+    '// @ts-expect-error missing fixture reference',
+    '// @ts-ignore missing fixture reference',
+    '// eslint-disable-next-line no-undef',
+    '/* c8 ignore next */',
+  ])('does not expand the target of %s', async directive => {
+    const code = `${directive}\nexport const TEST_ONLY = {value: missing};\n`;
+    const result = await lint({ code, fix: true });
+    expect(result.output).toBeUndefined();
+    expect(result.messages.some(message => message.messageId === 'singleLine')).toBe(true);
+    expect(result.messages.every(message => message.fix === undefined)).toBe(true);
+  });
+
+  it('protects an export later in a counted coverage range', async () => {
+    const code = '/* c8 ignore next 3 */\nconst first = 1;\nexport const TEST_ONLY = {first};\n';
+    const result = await lint({ code, fix: true });
+    expect(result.output).toBeUndefined();
+    expect(result.messages.some(message => message.messageId === 'singleLine')).toBe(true);
+    expect(result.messages.every(message => message.fix === undefined)).toBe(true);
   });
 
   it('reports TEST_ONLY when it is not the final statement without moving it', async () => {

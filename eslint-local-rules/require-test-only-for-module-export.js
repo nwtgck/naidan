@@ -1,3 +1,5 @@
+import { getProtectedLines, intersectsProtectedLines } from './layout-directive-safety.js';
+
 // Keep TEST_ONLY multiline so newly added test-only exports naturally remain one per line.
 const requiredExportLines = [
   '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
@@ -208,8 +210,12 @@ function hasCommentInside({ sourceCode, objectExpression }) {
 }
 
 function buildMultilineObjectReplacement({ sourceCode, objectExpression }) {
+  // A directive immediately before TEST_ONLY can suppress errors on the
+  // original one-line export. Do not bypass object-layout's safety guard by
+  // expanding that line here instead. The multiline requirement still reports.
   if (
-    hasCommentInside({ sourceCode, objectExpression })
+    intersectsProtectedLines({ node: objectExpression, intervals: getProtectedLines({ sourceCode }) })
+    || hasCommentInside({ sourceCode, objectExpression })
     || objectExpression.properties.some((property) => (
       property.loc.start.line !== property.loc.end.line
     ))
