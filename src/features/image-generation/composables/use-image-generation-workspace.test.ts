@@ -83,6 +83,7 @@ async function publish({ store, publication, files }: Publication): Promise<void
   default: { const exhaustive: never = publication; throw new Error(String(exhaustive)); }
   }
 }
+
 beforeEach(async () => {
   vi.resetAllMocks(); rpcManager.get.mockResolvedValue({ reload: async () => {}, list: () => [] }); mocks.storage = 'opfs'; listener = undefined; chatChoices.value = [];
   createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
@@ -99,6 +100,7 @@ beforeEach(async () => {
   mocks.query.mockImplementation(async request => generationQueryResultSchema.parse(await worker.query({ request })));
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   for (const { wrapper, view } of views.splice(0)) {
     await view.flushDraft(); wrapper.unmount(); await flushPromises();
@@ -108,6 +110,7 @@ afterEach(async () => {
   }
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGenerationSessionId | undefined>> | undefined } = { requestedSessionId: undefined }) {
   const base = useImageGeneration(); const busy = ref(false), cancelled = ref(false);
   const native = vi.fn(async () => {}); const restored = vi.fn();
@@ -201,6 +204,7 @@ describe('Image Generation composition and lifetime', () => {
   it('does not create a session or metadata merely by opening the screen', async () => {
     const h = await ready(); expect(h.view.sessions.value).toEqual([]); expect(h.view.store.value).toBeUndefined(); expect(mocks.publish).not.toHaveBeenCalled();
   });
+
   it('creates a session at the first generation and saves every image under one immutable run', async () => {
     const h = await ready(); h.generation.parameters.value.prompt = '雨の夜景'; h.view.count.value = 3;
     await h.view.generate(); await flushPromises();
@@ -209,6 +213,7 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.view.tiles.value.map(tile => tile.seed).sort()).toEqual(['42', '43', '44']);
     expect(new Set(h.view.tiles.value.map(tile => tile.runId)).size).toBe(1);
   });
+
   it('keeps generation owned by A when viewing B and restores the untouched B draft afterwards', async () => {
     const h = await ready(); h.generation.parameters.value.prompt = 'session A'; h.view.count.value = 2;
     const a = await h.view.newSession({ preserveDraft: true }); expect(a).toBeDefined(); await h.view.flushDraft();
@@ -224,6 +229,7 @@ describe('Image Generation composition and lifetime', () => {
     const saved = selectImageGenerationAssets({ snapshot: await persistence.readImageGenerationSessionIndex({ store: h.view.store.value!, sessionId: a!.id }), query: { visibility: 'active' as const, text: '', tags: [], match: 'all', runId: undefined, cursor: undefined, limit: 40 } });
     expect(saved.items).toHaveLength(2);
   });
+
   it('restores the editor independently of a slow gallery query without showing another-session generation', async () => {
     const fixture = await ready(); fixture.generation.parameters.value.prompt = 'draft A';
     const a = await fixture.view.newSession({ preserveDraft: true }); await fixture.view.flushDraft();
@@ -245,6 +251,7 @@ describe('Image Generation composition and lifetime', () => {
     }
     expect(fixture.view.loading.value).toBe(false);
   });
+
   it('persists unfinished RPC locations and exact model editors per session across switching and remount', async () => {
     const h = await ready(); const location = h.generation.inferenceLocation!;
     location.setKind({ value: 'naidan_rpc' }); h.generation.parameters.value.prompt = 'Waiting for a peer';
@@ -268,6 +275,7 @@ describe('Image Generation composition and lifetime', () => {
     expect(reopened.generation.inferenceLocation!.editor.value.loras).toMatchObject([{ enabled: 'disabled', strength: 0.3 }]);
     expect(reopened.generation.parameters.value.prompt).toBe('Selected peer'); expect(reopened.native).not.toHaveBeenCalled();
   });
+
   it('retries failed image storage without additional inference or moving it to the selected session', async () => {
     const h = await ready(); let fail = true;
     mocks.publish.mockImplementation(async (value: Publication) => {
@@ -283,6 +291,7 @@ describe('Image Generation composition and lifetime', () => {
     const saved = selectImageGenerationAssets({ snapshot: await persistence.readImageGenerationSessionIndex({ store: h.view.store.value!, sessionId: origin }), query: { visibility: 'active' as const, text: '', tags: [], match: 'all', runId: undefined, cursor: undefined, limit: 40 } });
     expect(saved.items).toHaveLength(1);
   });
+
   it('preserves exact failed draft attempts before publishing newer edits', async () => {
     const h = await ready(); await h.view.newSession({ preserveDraft: true });
     let lose = true;
@@ -299,6 +308,7 @@ describe('Image Generation composition and lifetime', () => {
     const saved = await persistence.loadImageGenerationDraft({ store: h.view.store.value!, sessionId: h.view.selectedSessionId.value! });
     expect(saved?.request.parameters.prompt).toBe('newer draft'); expect(saved?.revision).toBeGreaterThan(0);
   });
+
   it('renames tag definitions without changing identities or image binaries', async () => {
     const h = await ready(); await h.view.generate(); await h.view.editTag({ tagId: undefined, name: '背景候補 🟦' });
     const tag = h.view.userTags.value[0]!; const tile = h.view.tiles.value[0]!;
@@ -310,6 +320,7 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.view.tiles.value[0]?.annotations?.tags).toHaveLength(2); expect(mocks.publish.mock.calls.length).toBe(calls);
     await h.view.editTag({ tagId: undefined, name: '@favorite' }); expect(h.view.failure.value).not.toBe('');
   });
+
   it('reuses the selected output seed rather than the first seed of its run', async () => {
     const h = await ready(); h.view.count.value = 2; await h.view.generate();
     const tile = h.view.tiles.value.find(value => value.seed === '43')!;
@@ -319,10 +330,12 @@ describe('Image Generation composition and lifetime', () => {
     await h.view.generate(); const latest = h.view.runState.value?.run;
     expect(latest?.sources).toEqual([{ role: 'settings', sessionId: tile.sessionId, assetId: tile.id }]);
   });
+
   it('keeps the requested temporary run count when OPFS is not selected', async () => {
     mocks.storage = 'memory'; const h = await ready(); h.view.count.value = 4;
     await h.view.generate(); expect(h.native).toHaveBeenCalledTimes(4); expect(mocks.publish).not.toHaveBeenCalled(); expect(h.view.sessions.value).toEqual([]);
   });
+
   it('does not retry an old save into a reset store', async () => {
     const h = await ready(); mocks.publish.mockImplementation(async (value: Publication) => {
       if (value.publication.type === 'asset') throw new Error('quota'); await publish(value);
@@ -334,7 +347,6 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.view.failure.value).toContain('original'); expect(mocks.publish.mock.calls.length).toBe(calls);
   });
 });
-
 
 describe('Image Generation component connections', () => {
   it('renders the existing editor, saves favorites from the gallery and opens selected-image details', async () => {
@@ -365,6 +377,7 @@ describe('Image Generation component connections', () => {
     }
     expect(useImageGenerationWorkspaceNavigation().active.value).toBeUndefined();
   });
+
   it('places New Session above session entries and delegates model and diagnostic navigation', async () => {
     const fixture = await ready();
     await fixture.view.newSession({ preserveDraft: false }); await flushPromises();
@@ -410,6 +423,7 @@ describe('Image Generation viewer integration', () => {
       gate.resolve(); surface.unmount();
     }
   });
+
   it('keeps its browsing order and current image when removing favorite excludes it from the gallery', async () => {
     const fixture = await ready(); fixture.view.count.value = 2; await fixture.view.generate();
     const favorite = { type: 'system', key: 'favorite' } as const;
@@ -438,6 +452,7 @@ describe('Image Generation viewer integration', () => {
       surface.unmount();
     }
   });
+
   it('closes on a session change or hidden workspace and ignores a pending record after closing', async () => {
     const fixture = await ready(); await fixture.view.generate(); const first = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
@@ -456,6 +471,7 @@ describe('Image Generation viewer integration', () => {
       surface.unmount();
     }
   });
+
   it('does not allow retargeting an asynchronous settings reuse into another session', async () => {
     const fixture = await ready(); await fixture.view.generate(); const first = fixture.view.tiles.value[0]!;
     const originalSession = fixture.view.selectedSessionId.value!;
@@ -506,6 +522,7 @@ describe('Image Generation live monitor', () => {
       gate.resolve(); await task; surface.unmount();
     }
   });
+
   it('keeps a failed publication visible and retries only saving', async () => {
     const fixture = await ready(); let fail = true;
     mocks.publish.mockImplementation(async (value: Publication) => {
@@ -532,6 +549,7 @@ describe('Image Generation existing chat panel', () => {
   function chat({ raw, title }: { raw: string, title: string }): Chat {
     return { id: toChatId({ raw }), title, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
   }
+
   it('opens a visible dialog with a chooser even without a chat and closes from its explicit button', async () => {
     const fixture = await ready();
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(fixture.view);
@@ -556,6 +574,7 @@ describe('Image Generation existing chat panel', () => {
       surface.unmount();
     }
   });
+
   it('reuses the selected ChatPane, revokes tools on hide or replacement, and remembers the selection on reopen', async () => {
     const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
     const a = chat({ raw: 'assistant-a', title: 'English prompt helper' }), b = chat({ raw: 'assistant-b', title: 'Other helper' });
@@ -625,6 +644,7 @@ describe('Image Generation curation and durable assistant choice', () => {
       surface.unmount();
     }
   });
+
   it('selects more than two images for bulk archive and restoration without deleting their files', async () => {
     const fixture = await ready(); fixture.view.count.value = 4; await fixture.view.generate();
     const original = [...fixture.view.tiles.value];
@@ -640,6 +660,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     fixture.view.visibility.value = 'active'; await fixture.view.refresh({ append: false });
     expect(fixture.view.tiles.value).toHaveLength(4); expect(mocks.remove).not.toHaveBeenCalled();
   });
+
   it('adds and removes the same named tag on every selected image', async () => {
     const fixture = await ready(); fixture.view.count.value = 3; await fixture.view.generate();
     await fixture.view.editTag({ tagId: undefined, name: '夜景の候補' });
@@ -651,6 +672,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     await fixture.view.curate({ items: [...fixture.view.tiles.value], action: { type: 'tag', tag: { type: 'user', tagId }, assignment: 'remove' } });
     expect(fixture.view.tiles.value.every(tile => tile.annotations?.tags.length === 0)).toBe(true);
   });
+
   it('deletes selected BinaryObjects and leaves unselected images available', async () => {
     const fixture = await ready(); fixture.view.count.value = 3; await fixture.view.generate();
     const [a, b, c] = fixture.view.tiles.value; if (!a || !b || !c) throw new Error('Missing test images.');
@@ -663,6 +685,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     expect(fixture.view.tiles.value.map(tile => tile.id)).toEqual([c.id]);
     expect(fixture.view.deletedAssetIds.value).toEqual(expect.arrayContaining([a.id, b.id]));
   });
+
   it('keeps deletion retryable and closes a viewer whose image is pending byte removal', async () => {
     const fixture = await ready(); await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     await fixture.view.inspect({ tile }); fixture.view.toggleSelection({ tile });
@@ -675,6 +698,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     expect(fixture.view.pendingDeletions.value).toEqual([]); expect(fixture.native).toHaveBeenCalledOnce();
     expect(await provider.getFile({ binaryObjectId: tile.binaryObjectId })).toBeNull();
   });
+
   it('confirms byte deletion, permits cancellation, and rejects confirmation after a session switch', async () => {
     const fixture = await ready(); await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationCurationActions, { props: { view: fixture.view, items: [tile] } });
@@ -691,6 +715,7 @@ describe('Image Generation curation and durable assistant choice', () => {
       surface.unmount();
     }
   });
+
   it('persists independent assistant selections per session and preserves them after reload', async () => {
     const fixture = await ready(); const chatA = toChatId({ raw: 'chat-aa' }), chatB = toChatId({ raw: 'chat-bb' });
     expect(await fixture.view.connectChat({ chatId: chatA })).toBe(true);
@@ -703,6 +728,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     await fixture.view.connectChat({ chatId: undefined }); await fixture.view.reload(); expect(fixture.view.currentSession.value?.assistantChatId).toBeUndefined();
     expect((await persistence.loadImageGenerationSession({ store: fixture.view.store.value!, sessionId: sessionA }))?.assistantChatId).toBe(chatA);
   });
+
   it('does not count a committed edit twice when its annotation readback fails', async () => {
     const fixture = await ready(); fixture.view.count.value = 2; await fixture.view.generate();
     const items = [...fixture.view.tiles.value];
@@ -713,6 +739,7 @@ describe('Image Generation curation and durable assistant choice', () => {
     fixture.view.visibility.value = 'archived'; await fixture.view.refresh({ append: false });
     expect(fixture.view.tiles.value).toHaveLength(2);
   });
+
   it('does not show an empty failed-run group after archiving all of its completed images', async () => {
     const fixture = await ready();
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration }] });
@@ -733,6 +760,7 @@ describe('Image Generation curation and durable assistant choice', () => {
       await view.flushDraft(); surface.unmount(); await flushPromises();
     }
   });
+
   it('renders recorded JSON with the existing highlighter and copies the exact selected prompt', async () => {
     const fixture = await ready(); fixture.generation.parameters.value.prompt = '日本語 prompt <script>not executable</script>';
     await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
@@ -770,6 +798,7 @@ describe('global experimental preferences and compact creation controls', () => 
     expect(reloaded.view.catalog.value?.preferences.experimentalNoticeDismissedAt).toBe(saved.preferences.experimentalNoticeDismissedAt);
     expect(reloaded.view.experimentalNoticeVisible.value).toBe(false);
   });
+
   it('does not hide the notice on failed persistence and permits an explicit retry', async () => {
     const fixture = await ready(); await fixture.view.generate();
     vi.spyOn(persistence, 'saveImageGenerationCatalog').mockRejectedValueOnce(new Error('disk full'));
@@ -779,6 +808,7 @@ describe('global experimental preferences and compact creation controls', () => 
     expect(await fixture.view.updatePreferences({ change: { type: 'dismiss-notice' } })).toBe(true);
     expect(fixture.view.experimentalNoticeVisible.value).toBe(false);
   });
+
   it('stores dock preferences in the experimental catalog and does not revert another tab tag edit', async () => {
     const fixture = await ready(); await fixture.view.generate();
     const other = await ready(); await other.view.editTag({ tagId: undefined, name: '別のタブの候補' });
@@ -788,6 +818,7 @@ describe('global experimental preferences and compact creation controls', () => 
     expect(reloaded.view.userTags.value.map(tag => tag.name)).toEqual(['別のタブの候補']);
     expect(reloaded.view.catalog.value?.preferences.experimentalNoticeDismissedAt).toBeUndefined();
   });
+
   it('copies full run prompts without opening a viewer or changing the draft, then exposes the same action in flat gallery cards', async () => {
     const fixture = await ready(); const prompt = `  日本語 <script>text only</script> ${'long '.repeat(600)}  `;
     fixture.generation.parameters.value.prompt = prompt; await fixture.view.generate();
@@ -808,6 +839,7 @@ describe('global experimental preferences and compact creation controls', () => 
       surface.unmount();
     }
   });
+
   it('keeps tag explanations behind a small explicit control and expands bulk tags in a separate toolbar row', async () => {
     const fixture = await ready(); fixture.view.count.value = 2; await fixture.view.generate();
     await fixture.view.editTag({ tagId: undefined, name: '候補' });
@@ -826,6 +858,7 @@ describe('global experimental preferences and compact creation controls', () => 
       surface.unmount();
     }
   });
+
   it('docks in normal layout without a focus trap and moves the same ChatPane into floating mode', async () => {
     const fixture = await ready(); const a: Chat = { id: toChatId({ raw: 'docked-chat-aa' }), title: 'Docked chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
     chatChoices.value = [a]; await fixture.view.connectChat({ chatId: a.id });
@@ -857,6 +890,7 @@ describe('global experimental preferences and compact creation controls', () => 
     }
     expect(getImageGenerationToolsForChat({ chatId: a.id })).toEqual([]);
   });
+
   it('recovers a persisted chat selection when the chat list arrives late', async () => {
     const fixture = await ready(); const a: Chat = { id: toChatId({ raw: 'late-chat-aa' }), title: 'Late chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
     await fixture.view.connectChat({ chatId: a.id });
@@ -885,6 +919,7 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     expect(missing.view.currentSession.value).toBeUndefined(); expect(missing.view.failure.value).toContain('unavailable');
     expect(missing.view.editor.draftDisabled.value).toBe(true);
   });
+
   it('removes a session and its metadata without deleting generated BinaryObjects', async () => {
     const fixture = await ready(); await fixture.view.generate();
     const sessionId = fixture.view.selectedSessionId.value!, image = fixture.view.tiles.value[0]!;
@@ -895,6 +930,7 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     expect(await provider.getFile({ binaryObjectId: image.binaryObjectId })).toBeTruthy();
     await fixture.view.reload(); expect(fixture.view.sessions.value).toEqual([]);
   });
+
   it('does not lose the current draft autosave when deleting a different session', async () => {
     const fixture = await ready();
     const removed = await fixture.view.newSession({ preserveDraft: true });
@@ -908,6 +944,7 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     expect(restored?.request.parameters.prompt).toBe('pending autosave survives unrelated deletion');
     expect(fixture.view.currentSession.value?.id).toBe(retained.id);
   });
+
   it('refuses to delete the executing session or outputs awaiting publication', async () => {
     const fixture = await ready(); const session = await fixture.view.newSession({ preserveDraft: true }); if (!session) throw new Error('No session.');
     const gate = Promise.withResolvers<void>(); fixture.native.mockReturnValueOnce(gate.promise);
@@ -922,6 +959,7 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     expect(await fixture.view.deleteSession({ sessionId: session.id })).toBe(false);
     await fixture.view.retrySave();
   });
+
   it('keeps a closed attached chat closed after remount even when its layout is docked', async () => {
     const fixture = await ready(); await fixture.view.connectChat({ chatId: toChatId({ raw: 'remembered-chat' }) });
     await fixture.view.updatePreferences({ change: { type: 'assistant-layout', layout: 'docked' } });
@@ -973,6 +1011,7 @@ describe('read-only translation controls', () => {
       surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
     }
   });
+
   it('cancels and discards late translation when the prompt, language, endpoint or session changes', async () => {
     const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
@@ -996,6 +1035,7 @@ describe('read-only translation controls', () => {
       surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
     }
   });
+
   it('persists workspace defaults and independent session model overrides without changing global connection settings', async () => {
     const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
     const { settings, availableModels } = useSettings(); const endpoint = settings.value.endpoint, modelId = settings.value.defaultModelId;
@@ -1020,6 +1060,7 @@ describe('read-only translation controls', () => {
       surface.unmount();
     }
   });
+
   it('hides disabled RPC choices in translation settings and preserves a saved RPC reference', async () => {
     const fixture = await ready();
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
@@ -1044,7 +1085,6 @@ describe('read-only translation controls', () => {
   });
 });
 
-
 it('retains a failed successful image after unmount and saves it from a new workspace without rerunning inference', async () => {
   const h = await ready();
   let fail = true;
@@ -1066,6 +1106,7 @@ it('retains a failed successful image after unmount and saves it from a new work
   expect(saved?.result.binaryObjectId).toBe(asset.result.binaryObjectId);
   expect(imagePendingRuns.list().some(entry => entry.id === before.id)).toBe(false);
 });
+
 it('retains only a failed terminal save across unmount and does not generate or duplicate assets on retry', async () => {
   const h = await ready();
   const realUpdate = persistence.updateImageGenerationRunExecution;
@@ -1087,6 +1128,7 @@ it('retains only a failed terminal save across unmount and does not generate or 
   expect(mocks.publish).toHaveBeenCalledTimes(writes); expect(h.native).toHaveBeenCalledOnce();
   expect(imagePendingRuns.list()).toEqual([]);
 });
+
 it('offers explicit temporary generation after storage opening fails without changing the editor or global storage', async () => {
   vi.spyOn(persistence, 'openImageGenerationStore').mockRejectedValue(new Error('Storage unavailable'));
   const h = open(); await flushPromises();
@@ -1111,6 +1153,7 @@ describe('accepted activity, compact presentation and retained translations', ()
     expect(fixture.native).toHaveBeenCalledOnce(); expect(fixture.view.sessions.value[0]?.id).toBe(first.id);
     expect(fixture.view.sessionUseFailure.value).toBe('');
   });
+
   it('persists compact display without disabling draft edits and lets the last quick choice win', async () => {
     const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
     const gate = Promise.withResolvers<void>(), originalSave = persistence.saveImageGenerationCatalog;
@@ -1125,6 +1168,7 @@ describe('accepted activity, compact presentation and retained translations', ()
     await fixture.view.setMonitorPresentation({ presentation: 'compact-progress' });
     await fixture.view.reload(); expect(fixture.view.monitorPresentation.value).toBe('compact-progress');
   });
+
   it('shows streamed text, retains the last success on failure and marks old source text without persisting it', async () => {
     const fixture = await ready(); await fixture.view.newSession({ preserveDraft: true });
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;

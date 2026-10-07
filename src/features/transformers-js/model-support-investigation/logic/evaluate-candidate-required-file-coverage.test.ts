@@ -122,5 +122,4 @@ describe("evaluateCandidateRequiredFileCoverage", () => {
       revisionProvenance: "unknown",
     });
   });
-
 });

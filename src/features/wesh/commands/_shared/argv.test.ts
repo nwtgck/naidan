@@ -134,8 +134,6 @@ describe('stopStandardArgvAtFirstEarlyExit', () => {
   });
 });
 
-
-
 describe('standardSemanticIssuePrecedesDiagnostic', () => {
   const semanticIssue = ({ parsed }: { parsed: ParsedStandardArgv }): string | undefined => {
     const occurrence = parsed.occurrences.find(value => value.kind === 'value' && value.key === 'value');
@@ -197,8 +195,6 @@ describe('standardSemanticIssuePrecedesDiagnostic', () => {
       .toBe(false);
   });
 });
-
-
 
 describe('findFirstStandardSemanticIssue', () => {
   const twoValueSpec: StandardArgvParserSpec = {

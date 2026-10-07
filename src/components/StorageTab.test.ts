@@ -270,6 +270,7 @@ describe('StorageTab.vue Tests', () => {
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
     }, 15_000);
+
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);

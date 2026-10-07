@@ -385,7 +385,6 @@ describe('streaming ZIP codec', () => {
     }
   });
 
-
   it('round-trips exact Unicode names and byte-split multibyte payloads through JSZip', async () => {
     const output = createTestWriteCaptureHandle();
     const centralDirectory = createTestWriteCaptureHandle();
@@ -584,7 +583,6 @@ describe('streaming ZIP codec', () => {
       await invalidLocalReader.close();
     }
   });
-
 
   it('rejects local-header name, compression, encryption, and data-range mismatches', async () => {
     const expectOpenFailure = async ({
@@ -805,7 +803,6 @@ describe('streaming ZIP codec', () => {
     await longOutput.handle.close();
     await longCentralDirectory.handle.close();
   });
-
 
   it('preserves Unix symbolic-link metadata from central-directory attributes', async () => {
     const archive = new JSZip();

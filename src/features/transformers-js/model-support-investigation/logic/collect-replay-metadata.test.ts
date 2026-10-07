@@ -16,6 +16,7 @@ const bytes = new TextEncoder().encode(metadata);
 const forbiddenFetch = vi.fn(() => {
   throw new Error('Unexpected external fetch');
 });
+
 afterEach(() => {
   expect(forbiddenFetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
@@ -42,6 +43,7 @@ describe('bounded replay metadata collection', () => {
     expect(classifyReplayMetadataAccess({ metadata: { private: false, gated: 'auto' } })).toBe('excluded-private-or-gated');
     for (const metadata of [undefined, {}, { private: false }, { private: 'false', gated: false }]) expect(classifyReplayMetadataAccess({ metadata })).toBe('unverified');
   });
+
   it('retains exact raw bytes and checkpoints completed sidecars without adding bytes to summary JSON', async () => {
     const transport = vi.fn<typeof fetch>(async () => new Response(bytes));
     const snapshots: InvestigationReplayMetadataSnapshot[] = [];
@@ -226,6 +228,7 @@ describe('replay metadata Evidence integration', () => {
     await expect(createBatchModelSupportEvidence({ batchId: 'budget', items: [{ target: modelId, status: 'passed', run, recovery, error: undefined, replayMetadata: [{ path: 'config.json', blob: large }] }] })).rejects.toThrow('byte budget');
     expect(read).not.toHaveBeenCalled();
   });
+
   it('exports and reexports raw bytes in single/batch Worker archives but never in run JSON', async () => {
     const snapshot = await collectReplayMetadata(options({ remoteFetch: async () => new Response(bytes) }));
     const { run, recovery } = createInitialInvestigationCheckpoint({ modelId, runId: 'replay-run', now: () => '2026-09-08T00:00:00.000Z' });

@@ -244,5 +244,4 @@ describe('wesh mktemp', () => {
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

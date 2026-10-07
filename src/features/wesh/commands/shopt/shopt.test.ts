@@ -174,5 +174,4 @@ printf 'query=%s\n' "$?"`,
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });

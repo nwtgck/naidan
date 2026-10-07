@@ -15,6 +15,7 @@ const REVISION = '0123456789abcdef0123456789abcdef01234567';
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 function client({ verifyDownloadedModelRevision }: {

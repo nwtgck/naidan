@@ -234,7 +234,6 @@ describe('Download Verification repository fixtures', () => {
     expect(gemmaObservation.source.note).toContain('not a declaration of the current Production route');
   });
 
-
   it('captures the LFM2.5-230M q4-only WebGPU artifact inventory without inventing q4f16 files', () => {
     const lfm230 = requireFixture({ fixtures: repositories, name: 'lfm2-5-230m' });
     expect(lfm230.source.kind).toBe('hugging-face-commit-page-public-facts');

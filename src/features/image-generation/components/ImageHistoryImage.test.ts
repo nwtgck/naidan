@@ -5,11 +5,13 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageHistoryImage from './ImageHistoryImage.vue';
 
 const views: VueWrapper[] = [];
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:${Math.random()}`);
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 });
+
 afterEach(() => {
   for (const view of views.splice(0)) view.unmount();
   vi.restoreAllMocks();

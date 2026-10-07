@@ -14,8 +14,6 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
-
-
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -128,6 +126,7 @@ function mountChatPane({
 
 describe('ChatPane Streaming DOM Test', () => {
   const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
+
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();

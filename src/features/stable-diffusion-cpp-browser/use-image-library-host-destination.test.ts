@@ -50,6 +50,7 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { locks: { request: async (_name: string, operation: () => Promise<void>) => operation() } });
   Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: vi.fn() });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
   for (const scope of scopes.splice(0)) scope.stop();

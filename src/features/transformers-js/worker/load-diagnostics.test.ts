@@ -72,6 +72,7 @@ it('does not invoke message accessors or allow classification and observer failu
 
 const owner = { runId: 'synthetic-load-diagnostics', workerEpoch: 1 };
 const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
+
 it('keeps legacy category absence unobserved and drops an invalid optional classification without losing the event', () => {
   const { ledger, operation } = setup();
   const observe = operation.beginCandidate({ device: 'wasm', dtype: 'q4', revision });
@@ -83,6 +84,7 @@ it('keeps legacy category absence unobserved and drops an invalid optional class
   expect(loadDiagnosticsSchema.safeParse(snapshot).success).toBe(true);
   expect(JSON.stringify(snapshot)).not.toContain('private message');
 });
+
 function setup() {
   const ledger = createLoadDiagnosticLedger({ owner });
   const packets: LoadDiagnosticPacket[] = [];

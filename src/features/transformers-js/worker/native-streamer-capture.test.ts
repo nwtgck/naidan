@@ -8,6 +8,7 @@ let runtime: Runtime;
 const forbiddenFetch = vi.fn(() => {
   throw new Error('External network forbidden');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', forbiddenFetch);
   const artifact = await getProductionTransformersArtifact();
@@ -22,6 +23,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   try {
     expect(forbiddenFetch).not.toHaveBeenCalled();

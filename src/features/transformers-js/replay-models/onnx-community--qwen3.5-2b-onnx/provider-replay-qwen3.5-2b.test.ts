@@ -965,6 +965,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
   }, 30_000);
+
   it('rejects changed generation parameters at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
     let capture: ProviderChatCapture | undefined;
@@ -1002,6 +1003,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
   }, 30_000);
+
   it('rejects a changed selected template at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
     const tokenizer = control.harness.observations.processors[0]!.tokenizer;
@@ -1044,6 +1046,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
     }
   }, 30_000);
+
   it('preserves the historical 13-ID first input through an explicit legacy serializer adapter', async () => {
     const source = firstQwenCapture.replay;
     expect(source.identity.resolvedRevision).toBe('b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb');
@@ -1151,6 +1154,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('rejects historical first-turn output at the repaired native input without a legacy adapter', async () => {
     {
       const control = await createCurrentQwenHistoricalOutputControl({
@@ -1195,6 +1199,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       }
     }
   }, 30_000);
+
   it('preserves the native default template and its independently recorded 17 tokens', async () => {
     const generate = vi.fn<ProviderReplayGenerate>(async () => {
       throw new Error('This native input test must not generate');
@@ -1218,6 +1223,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('passes the same native default input through public Provider before any token can be released', async () => {
     const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
     const stop = new Error('Qwen input captured; native inference intentionally not executed');
@@ -1277,6 +1283,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('delivers the historical 13-input prefix through the legacy serializer adapter before Provider settlement', async () => {
     expect(firstQwenCapture.replay.scenario.messages).toEqual(evidence.productionInput.messages);
     expect(firstQwenCapture.replay.modelReplay.sourceInputTokenIds).toEqual(evidence.productionInput.inputTokenIds);
@@ -1327,8 +1334,9 @@ describe('Qwen3.5 2B Provider / basic', () => {
       }
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const signal = new AbortController().signal;
@@ -1361,7 +1369,7 @@ describe('Qwen3.5 2B Provider / basic', () => {
 
 describe('Qwen3.5 2B Provider / system', () => {
   it('system: preserves instructions and delivers the recorded callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["system-user"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["system-user"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const messages: RecordedMessage[] = [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }];
@@ -1450,6 +1458,7 @@ Okay, the user is asking for a template for a user message.`,
       }
     }
   }, 30_000);
+
   it.each(inputEvidence.cases)('$caseId retains the recorded native default input through public Provider', async scenario => {
     expect(inputEvidence.modelId).toBe(evidence.identity.modelId);
     expect(inputEvidence.revision).toBe(evidence.identity.resolvedRevision);
@@ -1528,6 +1537,7 @@ Okay, the user is asking for a template for a user message.`,
       await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
     }
   }, 30_000);
+
   it('replays historical raw assistant-history through the legacy serializer adapter without inventing output KV', async () => {
     expect(continuitySelection.assistantMessage).toStrictEqual({ role: 'assistant', content: firstQwenCapture.replay.modelReplay.generatedText });
     expect(historyQwenCapture.replay.scenario.messages).toEqual([
@@ -1603,8 +1613,9 @@ Thinking Process:
       }
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const messages: RecordedMessage[] = [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }];
@@ -1799,8 +1810,9 @@ A separate synthetic Qwen conversation.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity","independent-next-input"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity", "independent-next-input"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     try {
       const firstSignal = new AbortController().signal;
@@ -1922,6 +1934,7 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       }
     }
   }, 30_000);
+
   it('rejects historical high output at the repaired native input without a legacy adapter', async () => {
     {
       const control = await createCurrentQwenHistoricalOutputControl({ capture: enabledQwenCapture, effort: 'high', expectedNativePrompt: recordedQwenUserPrompt + '<think>\n' });
@@ -1957,6 +1970,7 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       }
     }
   }, 30_000);
+
   it('checks the historical none evidence and rejects its obsolete injected prefix without manufacturing output', async () => {
     // The immutable current template was already checked above. This adapter
     // deliberately injects the old extra-newline serializer output only to
@@ -2037,6 +2051,7 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       }
     }
   }, 30_000);
+
   it('checks the historical high evidence and rejects its obsolete double-newline prefix without manufacturing output', async () => {
     // The current template ends its generation prefix after one newline. The
     // second newline here belongs only to the pinned obsolete serializer seam,
@@ -2084,8 +2099,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       }
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-none"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-none"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const signal = new AbortController().signal;
@@ -2114,8 +2130,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const signal = new AbortController().signal;
@@ -2144,8 +2161,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const signal = new AbortController().signal;
@@ -2174,8 +2192,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const signal = new AbortController().signal;
@@ -2336,6 +2355,7 @@ Use the weather tool for Tokyo.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('tool-result-continuation preserves argument types and result body through native mapping while retaining the raw string-argument failure', async () => {
     const scenario = toolInputEvidence.cases[1];
     const replay = await createQwenToolInputReplay();
@@ -2546,10 +2566,11 @@ Use the weather tool for Tokyo.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   async function runNaturalToolCase({ caseId, prompt, expectedText }: {
     caseId: 'natural-tool-minimal' | 'natural-tool-representative'; prompt: string; expectedText: string;
   }): Promise<void> {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: [caseId], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: [caseId], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const executions: { args: unknown; signal: AbortSignal | undefined }[] = [];
     const tools: Tool[] = [{
@@ -2608,6 +2629,7 @@ Use the weather tool for Tokyo.<|im_end|>
       expect(structuredClone(turn)).toEqual(beforeClose);
     }
   }
+
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     await runNaturalToolCase({
       caseId: 'natural-tool-minimal',
@@ -2619,11 +2641,13 @@ Here is the weather for Tokyo:
 *   **Condition:** Clear`,
     });
   }, 30_000);
+
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     await runNaturalToolCase({ caseId: 'natural-tool-representative', prompt: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.', expectedText: 'Based on the tool result, the weather in Tokyo is **20°C** with **clear** conditions.' });
   }, 30_000);
+
   it('tools: preserves structured caller history and the recorded response', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
     try {
       const messages: RecordedMessage[] = [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", content: "{\"temperatureC\":20,\"condition\":\"clear\"}", tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }) }];
@@ -2770,6 +2794,7 @@ describe('Qwen3.5 2B Provider / images', () => {
       expect(harness.observations.workers.every(worker => worker.terminated)).toBe(true);
     }
   }, 30_000);
+
   it.each(qwen2ImageCases)('$name has independently derived pixels, grid and complete native text input', async ({ imageUrl, rgba, rescaled }) => {
     const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
     const revision = 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb';
@@ -2895,6 +2920,7 @@ describe('Qwen3.5 2B Provider / images', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each(qwen2ImageCases)('$name reaches generation as actual image tensors, not serialized URL text', async ({ imageUrl, rgba, rescaled }) => {
     const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
     const revision = 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb';
@@ -3172,7 +3198,7 @@ Here is the weather for Tokyo:
 
 describe('Qwen3.5 2B Provider / sequences', () => {
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
-    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn","continuity"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     try {
       const firstSignal = new AbortController().signal;
@@ -3225,6 +3251,7 @@ describe('Qwen3.5 2B Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves twelve recorded text/tool requests and verifies the recorded image input without inventing image output', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     const recorded = parseCapturedFullReplay({ value: fullEvidenceJson });

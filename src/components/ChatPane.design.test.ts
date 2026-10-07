@@ -13,8 +13,6 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
 
-
-
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });

@@ -4,13 +4,16 @@ import { monitorRpcConnection } from './connection-health';
 import type { RpcResponseConfirmation } from './connection-health';
 
 const stops: AbortController[] = [];
+
 beforeEach(() => {
   vi.useFakeTimers(); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
 });
+
 afterEach(async () => {
   for (const stop of stops.splice(0)) stop.abort();
   await vi.advanceTimersByTimeAsync(0); vi.useRealTimers(); vi.restoreAllMocks();
 });
+
 function fixture() {
   const stop = new AbortController(); stops.push(stop);
   let idle: number | undefined = 0;
@@ -54,6 +57,7 @@ it('keeps an unstarted request unbounded and owns only one confirmation', async 
   expect(health.attempts).toHaveLength(1); expect(health.attempts[0]!.signal.aborted).toBe(false); expect(health.unresponsive).not.toHaveBeenCalled();
   health.stop.abort(); await health.task; expect(vi.getTimerCount()).toBe(0);
 });
+
 it('counts started idle windows, resets on success and retires after three consecutive misses', async () => {
   const health = fixture();
   health.attempts[0]!.start(); await vi.advanceTimersByTimeAsync(200);
@@ -67,6 +71,7 @@ it('counts started idle windows, resets on success and retires after three conse
   }
   await health.task; expect(health.unresponsive).toHaveBeenCalledExactlyOnceWith({ revision: 0 }); expect(vi.getTimerCount()).toBe(0);
 });
+
 it('does not count an active call, a completed intervening call, or native cleanup as an idle miss', async () => {
   const health = fixture(); health.attempts[0]!.start(); health.idle({ revision: undefined });
   await vi.advanceTimersByTimeAsync(200); expect(health.changed).toHaveBeenLastCalledWith({ state: 'responsive' });
@@ -76,6 +81,7 @@ it('does not count an active call, a completed intervening call, or native clean
   expect(health.unresponsive).not.toHaveBeenCalled(); expect(health.changed).toHaveBeenLastCalledWith({ state: 'responsive' });
   health.stop.abort(); await health.task;
 });
+
 it('cancels the old observation on hidden/freeze and resumes with a fresh request', async () => {
   const health = fixture(); health.attempts[0]!.start();
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange'));
@@ -88,12 +94,14 @@ it('cancels the old observation on hidden/freeze and resumes with a fresh reques
   document.dispatchEvent(new Event('resume')); await vi.advanceTimersByTimeAsync(0); expect(health.attempts).toHaveLength(3);
   health.stop.abort(); await health.task;
 });
+
 it('invalidates a delayed or clock-shifted timer instead of counting suspended time', async () => {
   const health = fixture(); health.attempts[0]!.start();
   vi.setSystemTime(Date.now() + 10000); await vi.advanceTimersByTimeAsync(200);
   expect(health.changed).toHaveBeenLastCalledWith({ state: 'responsive' }); expect(health.unresponsive).not.toHaveBeenCalled();
   health.stop.abort(); await health.task;
 });
+
 it('keeps monitoring if final retirement loses an idle generation race', async () => {
   const health = fixture(); health.unresponsive.mockReturnValueOnce('observe-again');
   for (let index = 0; index < 3; index++) {

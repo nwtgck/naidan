@@ -89,7 +89,6 @@ describe('native chat template lifetime', () => {
   });
 });
 
-
 describe('cached template failure ownership', () => {
   it('preserves a native trap rather than declaring the resident runtime reusable', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -138,7 +137,6 @@ describe('cached template failure ownership', () => {
     f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
   });
 });
-
 
 describe('native thinking preference rejection', () => {
   it('distinguishes rejected off from generic template failure without retiring the template', () => {

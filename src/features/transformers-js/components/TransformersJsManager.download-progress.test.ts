@@ -32,6 +32,7 @@ function deferred<T>() {
 }
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false);
@@ -42,6 +43,7 @@ beforeEach(async () => {
   preparation.resolve.mockResolvedValue({ normalizedModelId: 'fixture/model', requestedRevision: 'main', resolvedRevision: 'a'.repeat(40) });
   preparation.reuse.mockResolvedValue({ reused: false });
 });
+
 afterEach(() => {
   wrapper?.unmount();
   wrapper = undefined;
@@ -49,6 +51,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
 afterAll(async () => {
   await preparation.dispose();
 });

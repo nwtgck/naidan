@@ -170,6 +170,7 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     // outer manifest is a batch, not a single-run verifier input.
     expect(verifyInner).toHaveBeenCalledTimes(4);
   });
+
   beforeEach(() => {
     vi.stubGlobal('crypto', webcrypto);
     vi.stubGlobal('fetch', vi.fn(() => {
@@ -186,6 +187,7 @@ describe('native sidecars in generated Evidence ZIPs', () => {
       },
     });
   });
+
   afterEach(() => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(globalThis.Worker).not.toHaveBeenCalled();
@@ -1973,7 +1975,6 @@ SyntaxError: Unexpected token '<'
     expect(summary).toContain("Recovery journal: retained 1 of 7 events; 6 dropped by bounded telemetry policy");
   });
 
-
   it("exports partial runtime preflight observations without claiming a complete runtime", async () => {
     const run: ModelSupportInvestigationRun = {
       schemaVersion: 1,
@@ -2145,5 +2146,4 @@ SyntaxError: Unexpected token '<'
     expect(batchIndex.targets.every(target => target.evidencePath === undefined)).toBe(true);
     expect(archive.file("manifest.json")).not.toBeNull();
   });
-
 });

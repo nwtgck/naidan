@@ -7,12 +7,15 @@ import { createImageGenerationStorageHarness, generationSessionFixture, generati
 import * as service from './image-generation';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing catalog.');
@@ -23,6 +26,7 @@ async function setup() {
   await service.saveImageGenerationDraft({ store, draft, expectedRevision: undefined, writeInputs: async () => {} });
   return { store, session, catalog, draft };
 }
+
 describe('image generation session deletion', () => {
   it('removes session-owned metadata but keeps binary data, other sessions and a minimal tombstone', async () => {
     const h = await setup();
@@ -42,6 +46,7 @@ describe('image generation session deletion', () => {
     await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: 0 });
     expect(fs.writes.length).toBe(writes);
   });
+
   it('rejects a stale deletion before touching the session or files', async () => {
     const h = await setup();
     await service.saveImageGenerationSession({ store: h.store, session: { ...h.session, revision: 1, title: 'renamed' }, expectedRevision: 0 });
@@ -49,6 +54,7 @@ describe('image generation session deletion', () => {
     expect((await service.loadImageGenerationSession({ store: h.store, sessionId: h.session.id }))?.title).toBe('renamed');
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toBeTruthy();
   });
+
   it('keeps interrupted cleanup discoverable, rejects ordinary writes and permits retry after reload', async () => {
     const h = await setup();
     fs.faults.add(`remove:${root}/sessions/aa/session-aa/draft.json`);
@@ -62,6 +68,7 @@ describe('image generation session deletion', () => {
     await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: pending.revision });
     expect((await service.listImageGenerationSessions({ store: h.store })).items).toEqual([]);
   });
+
   it('does not republish a delayed run or reuse the deleted ID', async () => {
     const h = await setup();
     await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: 0 });
@@ -70,12 +77,14 @@ describe('image generation session deletion', () => {
     await expect(service.saveImageGenerationSession({ store: h.store, session: h.session, expectedRevision: undefined })).rejects.toThrow('deleted');
     expect(writeInputs).not.toHaveBeenCalled();
   });
+
   it('cannot traverse outside the session directory', async () => {
     const h = await setup();
     await expect(service.deleteImageGenerationSession({ store: h.store, sessionId: toImageGenerationSessionId({ raw: '../binary-objects' }), expectedRevision: 0 })).rejects.toThrow();
     expect((await service.listImageGenerationSessions({ store: h.store })).items).toHaveLength(1);
   });
 });
+
 describe('experimental translation and visibility persistence', () => {
   it('round-trips independent workspace and session overrides including private headers and open/closed visibility', async () => {
     const h = await setup();
@@ -90,6 +99,7 @@ describe('experimental translation and visibility persistence', () => {
     await service.saveImageGenerationSession({ store: h.store, session, expectedRevision: 0 });
     expect((await service.loadImageGenerationSession({ store: h.store, sessionId: session.id }))?.translation?.modelId).toBe('session-model');
   });
+
   it('defaults old visibility to closed rather than reopening a docked chat', async () => {
     const h = await setup();
     const encoded = imageGenerationCatalogToDto({ catalog: h.catalog });
@@ -97,6 +107,7 @@ describe('experimental translation and visibility persistence', () => {
     const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse(raw) });
     expect(decoded.preferences.assistantVisibility).toBe('closed'); expect(decoded.preferences.translation).toBeUndefined();
   });
+
   it('rejects unknown override fields instead of erasing them during a preference edit', async () => {
     const h = await setup();
     const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
@@ -124,6 +135,7 @@ describe('accepted session activity and translation parameters', () => {
     await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: updated.revision });
     await expect(service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id })).rejects.toThrow();
   });
+
   it('round trips explicit zero, empty stop and reasoning off while rejecting nested unknown data', async () => {
     const h = await setup(); const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
     const preferences = { ...dto.preferences, translation: { lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } } }, generationMonitorPresentation: 'compact-progress' };

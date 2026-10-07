@@ -713,6 +713,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
     });
+
     it('keeps the latest model list when overlapping requests finish out of order', async () => {
       let resolveFirst!: (models: string[]) => void;
       let resolveSecond!: (models: string[]) => void;

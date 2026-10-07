@@ -8,6 +8,7 @@ const id = toMessageId({ raw: 'm' });
 function text({ value }: { value: string }) {
   return { type: 'text' as const, text: value, completeness: 'complete' as const };
 }
+
 describe('remote chat request projection', () => {
   it('keeps reasoning separate and literal tags in text without updating the source', async () => {
     const message: ChatMessage = { id, role: 'assistant', parts: [{ type: 'reasoning', text: '  R\n', completeness: 'complete' }, text({ value: '<think>literal</think>' }), { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"value": 1} ' } } }] };
@@ -16,15 +17,18 @@ describe('remote chat request projection', () => {
     expect(value).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning_content: '  R\n', tool_call_id: undefined, tool_calls: [{ id: 'call', type: 'function', function: { name: 'f', arguments: ' {"value": 1} ' } }] }]);
     expect(JSON.stringify(message)).toBe(before);
   });
+
   it('does not silently regroup unrepresentable interleaved history', async () => {
     const m: ChatMessage = { id, role: 'assistant', parts: [text({ value: 'A' }), { type: 'reasoning', text: 'R', completeness: 'complete' }] };
     await expect(buildApiChatMessages({ messages: [m], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('cannot represent');
   });
+
   it('distinguishes missing assistant text from an explicitly empty text part', async () => {
     const messages: ChatMessage[] = [{ id, role: 'assistant', parts: [] }, { id, role: 'assistant', parts: [text({ value: '' })] }];
     const result = await buildApiChatMessages({ messages, readBinaryObject: undefined, signal: undefined });
     expect(result[0]?.content).toBeUndefined(); expect(result[1]?.content).toBe('');
   });
+
   it('resolves images and text attachments at the API boundary in source order', async () => {
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'image' }), originalName: 'image.png', mimeType: 'image/png', size: 1, uploadedAt: 2, status: 'persisted' as const };
     const m: ChatMessage = { id, role: 'user', parts: [text({ value: 'before' }), { type: 'attachment', attachment }, text({ value: 'after' })] };
@@ -33,15 +37,18 @@ describe('remote chat request projection', () => {
     expect(result?.content).toEqual([{ type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } }, { type: 'text', text: 'after' }]);
     expect(reader).toHaveBeenCalledExactlyOnceWith({ binaryObjectId: attachment.binaryObjectId, signal: undefined });
   });
+
   it('refuses missing attachments and unresolved executing tool results', async () => {
     const m: ChatMessage = { id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'executing' } }] };
     await expect(buildApiChatMessages({ messages: [m], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('executing');
   });
+
   it('reconstructs stored tool errors using the same format as live errors', async () => {
     const m: ChatMessage = { id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } } }] };
     const [result] = await buildApiChatMessages({ messages: [m], readBinaryObject: async () => new Blob(['説明']), signal: undefined });
     expect(result?.content).toBe('Error [invalid_arguments]: 説明'); expect(result?.tool_call_id).toBe('c');
   });
+
   it('captures mutable messages, tool schemas, and parameters before any async read', () => {
     const part = text({ value: 'A' }); const parameters = { ...EMPTY_LM_PARAMETERS, stop: ['stop'], reasoning: { effort: 'low' as const } };
     const schema = { type: 'object', properties: { value: { type: 'string' } } };
@@ -69,12 +76,14 @@ describe('persisted tool text decoding', () => {
       }],
     };
   }
+
   it('keeps the leading BOM as tool content instead of treating it as file framing', async () => {
     const inline = await buildApiChatMessages({ messages: [message({ bytesReference: false })], readBinaryObject: undefined, signal: undefined });
     const stored = await buildApiChatMessages({ messages: [message({ bytesReference: true })], readBinaryObject: async () => new Blob(['\uFEFF  結果🙂\r\n']), signal: undefined });
     expect(stored[0]?.content).toBe('\uFEFF  結果🙂\r\n');
     expect(stored).toEqual(inline);
   });
+
   it.each([
     { name: 'invalid leading byte', bytes: [0xff] },
     { name: 'truncated multibyte sequence', bytes: [0xe3, 0x81] },
@@ -85,10 +94,12 @@ describe('persisted tool text decoding', () => {
     await expect(buildApiChatMessages({ messages: [message({ bytesReference: true })], readBinaryObject, signal: undefined })).rejects.toThrow();
     expect(readBinaryObject).toHaveBeenCalledExactlyOnceWith({ binaryObjectId, signal: undefined });
   });
+
   it('accepts an explicitly encoded replacement character without substituting other bytes', async () => {
     const [stored] = await buildApiChatMessages({ messages: [message({ bytesReference: true })], readBinaryObject: async () => new Blob(['\uFFFD']), signal: undefined });
     expect(stored?.content).toBe('\uFFFD');
   });
+
   it('checks cancellation again after the asynchronous binary read', async () => {
     const controller = new AbortController();
     const pendingRead = Promise.withResolvers<ArrayBuffer>();

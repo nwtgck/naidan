@@ -45,8 +45,6 @@ describe('prepareProductionRuntimeArtifacts', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
-
-
   it('preserves prepared runtime artifacts when dedicated worker disposal reports a remote release failure', async () => {
     vi.mocked(createDownloadVerificationRuntimeArtifactPreparationWorkerClient).mockReturnValue({
       prepareModelRuntimeArtifacts: vi.fn(async (): Promise<TransformersJsRuntimeArtifactPreparationResult> => ({

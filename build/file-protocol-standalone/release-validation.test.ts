@@ -42,6 +42,7 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
       debugReportFile: '/tmp/naidan-standalone-output/debug.json',
     })).toThrow('debugReportFile must live outside');
   });
+
   it('uses parsed final HTML semantics when collecting release stylesheet files', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-release-html-'));
     const outputDirectory = path.join(root, 'dist');
@@ -123,5 +124,4 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
       sourceAudit: { mode: 'external', evidence: '   ' },
     })).toThrow('sourceAudit.evidence is required for external source audit');
   });
-
 });

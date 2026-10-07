@@ -31,9 +31,11 @@ async function open({ wrapper }: { wrapper: VueWrapper }) {
   await wrapper.get('[data-testid="image-model-picker-trigger"]').trigger('click'); await nextTick();
   return popup();
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   view?.unmount(); view = undefined; host?.remove(); host = undefined;
   vi.unstubAllGlobals();
@@ -49,6 +51,7 @@ it('makes clearing an optional checkpoint override an explicit built-in componen
   await wrapper.setProps({ required: true });
   expect((await open({ wrapper })).get('[data-value=""]').text()).not.toBe('Use built-in component');
 });
+
 it('shows structural evidence, and never emits a known-incompatible choice', async () => {
   const wrapper = create({ props: { label: 'Text encoder', required: true } });
   expect(wrapper.text()).toContain('width: 2560');
@@ -59,6 +62,7 @@ it('shows structural evidence, and never emits a known-incompatible choice', asy
   await menu.get('[data-value="wrong"]').trigger('click'); expect(wrapper.emitted('update:modelValue')).toBeUndefined();
   await menu.get('[data-value="unknown"]').trigger('click'); expect(wrapper.emitted('update:modelValue')).toEqual([['unknown']]);
 });
+
 it('keeps the current selection inspectable while filtering, and closes when disabled', async () => {
   const many = [...choices, ...Array.from({ length: 6 }, (_, i) => ({ ...choices[0]!, id: `extra-${i}` }))];
   const wrapper = create({ props: { choices: many, required: true } });
@@ -72,6 +76,7 @@ it('keeps the current selection inspectable while filtering, and closes when dis
   expect(wrapper.get('button').element.matches(':disabled')).toBe(true);
   await wrapper.get('button').trigger('click'); expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 });
+
 it('always offers search in compact mode and distinguishes duplicate filenames by their local paths', async () => {
   const wrapper = create({ props: { compact: true, choices: choices.map(choice => ({ ...choice, label: 'weights.gguf' })) } });
   expect(wrapper.get('[data-testid="image-model-picker-trigger"]').text()).toBe('weights.gguf');
@@ -84,6 +89,7 @@ it('always offers search in compact mode and distinguishes duplicate filenames b
   expect(menu.find('[data-value="unknown"]').exists()).toBe(true);
   expect(menu.find('[data-value="wrong"]').exists()).toBe(false);
 });
+
 it('supports keyboard navigation, skipping incompatible options and restoring trigger focus on selection', async () => {
   const wrapper = create({ props: {} });
   const trigger = wrapper.get('[data-testid="image-model-picker-trigger"]');
@@ -97,6 +103,7 @@ it('supports keyboard navigation, skipping incompatible options and restoring tr
   expect(wrapper.emitted('update:modelValue')).toEqual([['unknown']]);
   expect(trigger.attributes('aria-expanded')).toBe('false'); expect(document.activeElement).toBe(trigger.element);
 });
+
 it('ignores composition Enter, closes on Escape/Tab, and does not trap tab navigation', async () => {
   const wrapper = create({ props: {} });
   let menu = await open({ wrapper });
@@ -110,6 +117,7 @@ it('ignores composition Enter, closes on Escape/Tab, and does not trap tab navig
   menu.get('input').element.dispatchEvent(tab); await nextTick();
   expect(tab.defaultPrevented).toBe(false); expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull();
 });
+
 it('removes the teleported menu when its pane becomes inactive and never moves focus into the hidden pane', async () => {
   const wrapper = create({ props: {} }); await open({ wrapper });
   const outside = document.createElement('button'); document.body.append(outside); outside.focus();
@@ -118,6 +126,7 @@ it('removes the teleported menu when its pane becomes inactive and never moves f
   await wrapper.get('button').trigger('click'); expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull();
   outside.remove();
 });
+
 it('closes when the containing settings section is collapsed', async () => {
   const wrapper = create({ props: {} });
   const section = document.createElement('details'); section.open = true;
@@ -127,6 +136,7 @@ it('closes when the containing settings section is collapsed', async () => {
   expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull();
   if (host) document.body.append(host); section.remove();
 });
+
 it('closes on outside pointer/focus while keeping focus with the destination', async () => {
   const wrapper = create({ props: {} }); await open({ wrapper });
   document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); await nextTick();
@@ -136,6 +146,7 @@ it('closes on outside pointer/focus while keeping focus with the destination', a
   expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull(); expect(document.activeElement).toBe(outside);
   outside.remove();
 });
+
 it('bounds a large local candidate list to the viewport and cleans up its portal on unmount', async () => {
   const wrapper = create({ props: { choices: Array.from({ length: 250 }, (_, i) => ({ ...choices[0]!, id: `file-${i}`, label: `Model ${i}` })) } });
   const menu = await open({ wrapper });

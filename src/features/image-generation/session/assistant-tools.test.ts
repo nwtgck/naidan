@@ -70,6 +70,7 @@ describe('ephemeral Workspace tool protocol', () => {
     }));
     expect(h.commit).toHaveBeenCalledOnce();
   });
+
   it.each(['wrong revision', 'wrong chat', 'missing chat', 'unknown field', 'legacy protocol', 'detached', 'turn aborted'])('rejects %s without permission or mutation', async cause => {
     const h = harness();
     let args: unknown = h.args, approvalContext = h.context.approvalContext as Parameters<Tool['execute']>[0]['approvalContext'];
@@ -85,11 +86,13 @@ describe('ephemeral Workspace tool protocol', () => {
     expect(await h.write.execute({ ...h.context, approvalContext, args })).toMatchObject({ status: 'error' });
     expect(h.ensureApproval).not.toHaveBeenCalled(); expect(h.commit).not.toHaveBeenCalled();
   });
+
   it('denial remains a normal transcript error and does not retry the edit', async () => {
     const h = harness(); h.ensureApproval.mockResolvedValue({ status: 'denied' });
     expect(await h.write.execute({ ...h.context, args: h.args })).toMatchObject({ status: 'error', code: 'execution_failed' });
     expect(h.commit).not.toHaveBeenCalled(); expect(h.ensureApproval).toHaveBeenCalledOnce();
   });
+
   it('rejects a remembered grant after the context changed while awaiting approval', async () => {
     const h = harness(), permission = Promise.withResolvers<ApprovalEnsureResult>();
     h.ensureApproval.mockReturnValue(permission.promise);
@@ -98,6 +101,7 @@ describe('ephemeral Workspace tool protocol', () => {
     permission.resolve({ status: 'approved' });
     expect(await operation).toMatchObject({ status: 'error' }); expect(h.commit).not.toHaveBeenCalled();
   });
+
   it('disposes turn-local capabilities without revoking a newly created turn', async () => {
     const h = harness(), next = h.create();
     await h.write.dispose?.();
@@ -106,6 +110,7 @@ describe('ephemeral Workspace tool protocol', () => {
     h.binding.abort();
     expect(await next[0]!.execute({ ...h.context, args: {} })).toMatchObject({ status: 'error' });
   });
+
   it('registers only for the attached chat and cannot unregister a newer binding', () => {
     const h = harness();
     const detach = registerImageGenerationAssistant({ chatId: h.initial.chatId, create: h.create });

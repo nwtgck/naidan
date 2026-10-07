@@ -150,6 +150,7 @@ describe('Qwen prompt-owned reasoning delivery', () => {
 </think>
 
 `;
+
   it.each([
     { name: 'default native open prompt', effort: undefined, prompt: openPrompt, output: ['Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },
     { name: 'enabled native open prompt', effort: 'low', prompt: openPrompt, output: ['Reason', '</think>Answer'], expected: '<think>Reason</think>Answer' },

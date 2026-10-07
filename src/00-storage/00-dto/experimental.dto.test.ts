@@ -159,7 +159,6 @@ describe('optionalExperimentalFieldSchemaDto', () => {
   });
 });
 
-
 describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
   const schema = ExperimentalExperimentalTypeEndpointSchemaDto;
 

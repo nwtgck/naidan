@@ -164,6 +164,7 @@ describe('Native evidence references beyond the outer archive manifest', () => {
     if (height === 0) await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
     else await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: 'native-archive' });
   });
+
   it('accepts an exporter-produced native index with exactly its referenced tensor bytes', async () => {
     await expect(verifyGeneratedEvidenceArchive({ blob: await archive({ changeIndex: undefined, extraBinary: 'none' }) })).resolves.toEqual({
       runId: 'native-archive',

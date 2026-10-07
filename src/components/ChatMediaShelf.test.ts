@@ -60,6 +60,7 @@ beforeEach(async () => {
     disconnect() {}
   });
 });
+
 afterEach(() => {
   wrappers.splice(0).forEach(wrapper => wrapper.unmount());
   vi.restoreAllMocks(); vi.unstubAllGlobals();

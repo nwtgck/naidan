@@ -12,6 +12,7 @@ const marker = `${base}.tokenizer_config.json.complete`;
 beforeEach(() => {
   vi.stubGlobal('self', { location: { origin: 'http://localhost' } });
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 async function fixture() {

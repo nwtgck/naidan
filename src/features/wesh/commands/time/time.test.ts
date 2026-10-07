@@ -136,5 +136,4 @@ describe('wesh time', () => {
     expect(unknown.stderr.text).toContain('time: cannot run -x: No such file or directory');
     expect(unknown.result.exitCode).toBe(127);
   });
-
 });

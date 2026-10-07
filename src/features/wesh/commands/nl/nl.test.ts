@@ -311,7 +311,6 @@ c
     expect(zero.result.exitCode).toBe(0);
   });
 
-
   it('accepts leading C-locale whitespace in numeric options', async () => {
     const { result, stdout, stderr } = await execute({
       script: "nl -ba -w ' 2' -v '\t3' -i '\v2'",
@@ -702,6 +701,4 @@ b
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
-
 });

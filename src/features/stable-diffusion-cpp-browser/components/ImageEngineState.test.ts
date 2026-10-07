@@ -8,9 +8,11 @@ import type { ImageEngineStateView } from '@/features/image-generation/use-image
 import ImageEngineState from './ImageEngineState.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });

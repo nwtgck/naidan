@@ -7,6 +7,7 @@ import { useAutoTitleActivity } from './useAutoTitleActivity';
 beforeEach(() => {
   vi.useFakeTimers(); autoTitleScheduler.reset();
 });
+
 afterEach(() => {
   autoTitleScheduler.reset(); vi.useRealTimers();
 });

@@ -18,6 +18,7 @@ async function run({ records, messages }: { records: readonly unknown[], message
 
 describe('Ollama structured generation contract', () => {
   beforeEach(() => useGlobalEvents().clearEvents());
+
   it('separates structured thinking but leaves literal text tags unchanged', async () => {
     const { node, result } = await run({
       messages: [],
@@ -35,10 +36,12 @@ describe('Ollama structured generation contract', () => {
     }]);
     expect(result).toEqual({ type: 'finished', next: 'user' });
   });
+
   it('does not deduplicate identical consecutive thinking or text deltas', async () => {
     const { node } = await run({ messages: [], records: [{ message: { thinking: ' ' } }, { message: { thinking: ' ' } }, { message: { content: 'A' } }, { message: { content: 'A' }, done: true }] });
     expect(node.parts).toMatchObject([{ text: '  ' }, { text: 'AA' }]);
   });
+
   it('gives completed calls without server IDs distinct stable IDs and makes one request', async () => {
     const { node, result, fetcher } = await run({ messages: [], records: [{ message: { tool_calls: [{ function: { name: 'f', arguments: { n: 1 } } }, { function: { name: 'g', arguments: ' {"n": 2} ' } }] }, done: true }] });
     const calls = node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
@@ -46,20 +49,24 @@ describe('Ollama structured generation contract', () => {
     expect(calls.map(call => call.function.arguments)).toEqual(['{"n":1}', ' {"n": 2} ']);
     expect(result).toEqual({ type: 'finished', next: 'tool_results' }); expect(fetcher).toHaveBeenCalledOnce();
   });
+
   it('preserves an already completed call even when a later line fails', async () => {
     const { node, result } = await run({ messages: [], records: [{ message: { tool_calls: [{ id: 'c', function: { name: 'f', arguments: {} } }] } }, { message: { content: 1 } }] });
     expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { id: 'c' } }); expect(result.type).toBe('error');
   });
+
   it('treats a token limit as partial without appending a notice', async () => {
     const { node, result } = await run({ messages: [], records: [{ message: { content: 'unfinished' }, done: true, done_reason: 'length' }] });
     expect(node.parts[0]).toMatchObject({ text: 'unfinished', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
+
   it('does not declare EOF or an unrelated record a normal generation end', async () => {
     const eof = await run({ messages: [], records: [{ message: { content: 'A' } }] });
     expect(eof.result).toEqual({ type: 'interrupted', reason: 'unknown' }); expect(eof.node.parts[0]).toMatchObject({ completeness: 'partial' });
     const invalid = await run({ messages: [], records: [{ message: { content: 'A' } }, { unrelated: true }] });
     expect(invalid.result.type).toBe('error'); expect(invalid.node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
   });
+
   it('copies reasoning and tool names into the next request without changing the history', async () => {
     const messages: ChatMessage[] = [
       { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: '  R\n', completeness: 'complete' }, { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {"n": 1} ' } } }] },

@@ -84,7 +84,6 @@ const globalStubs = {
   },
 };
 
-
 beforeEach(() => {
   mockFetchModels.mockReset();
   mockFetchModels.mockResolvedValue([]);
@@ -268,7 +267,6 @@ describe('ConnectionTab Ollama management integration', () => {
     wrapper.unmount();
   });
 
-
   it('edits HTTP headers on an explicit title endpoint', async () => {
     const settings = createSettings({ endpointType: 'openai' });
     settings.titleGeneration = {
@@ -339,9 +337,7 @@ describe('ConnectionTab Ollama management integration', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });
-
 
 describe('Naidan RPC endpoint availability', () => {
   it('offers RPC for global chat and title only while the feature is enabled', async () => {
@@ -360,6 +356,7 @@ describe('Naidan RPC endpoint availability', () => {
       wrapper.unmount();
     }
   });
+
   it('preserves disabled saved RPC endpoints instead of silently selecting another provider', async () => {
     const settings = createSettings({ endpointType: 'naidan_rpc' });
     if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');

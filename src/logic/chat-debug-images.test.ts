@@ -9,6 +9,7 @@ const block = `\
 \`\`\`naidan_experimental_image
 {"binaryObjectId":"binary","displayWidth":20,"displayHeight":20}
 \`\`\``;
+
 it('inspects each text independently without reading reasoning or joining parts', () => {
   const value = message({
     parts: [
@@ -19,12 +20,14 @@ it('inspects each text independently without reading reasoning or joining parts'
   });
   expect(inspectDebugImages({ message: value })).toEqual({ images: [], errors: [] });
 });
+
 it('keeps repeated image occurrences distinct and leaves raw text untouched', () => {
   const value = message({ parts: [{ type: 'text', text: '<think>literal</think>' + block + block, completeness: 'partial' }] });
   const before = structuredClone(value); const result = inspectDebugImages({ message: value });
   expect(result.images.map(i => i.image.binaryObjectId)).toEqual(['binary', 'binary']);
   expect(new Set(result.images.map(i => i.key)).size).toBe(2); expect(value).toEqual(before);
 });
+
 it('reports malformed or invalid metadata without treating it as an image', () => {
   const value = message({
     parts: [{

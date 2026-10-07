@@ -35,6 +35,7 @@ async function tick(): Promise<void> {
   await new Promise<void>(resolve => setTimeout(resolve, 0));
 }
 const id = toHostModelDirectoryId({ raw: 'registration-1' });
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });

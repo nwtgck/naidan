@@ -88,9 +88,11 @@ const options: NaidanPipingDuplexOptions = {
   pacing: { minimumMs: 2, idleResendIntervalMs: 30, retryBaseMs: 10, retryMaximumMs: 50 },
 };
 const controllers = new Set<AbortController>();
+
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request in unit test'));
 });
+
 afterEach(() => {
   for (const controller of controllers) controller.abort(); controllers.clear(); vi.restoreAllMocks();
 });
@@ -240,7 +242,6 @@ it('different upper transport profiles are bound into authentication and cannot 
   stop.abort(); await Promise.allSettled([a.completion, b.completion]);
   expect(relay.occupied).toBe(0);
 });
-
 
 it('a successful POST without peer acceptance leaves the write pending', async () => {
   const { relay, stop } = setup();
@@ -511,6 +512,7 @@ it('the public pairing API uses a short number, waits for both approvals, and ke
   await Promise.all([left.closed, right.value.closed]); stop.abort(); await Promise.all([sessions.a.closed, sessions.b.closed]);
   expect(relay.occupied).toBe(0);
 });
+
 it('a pairing cancelled while waiting for user comparison never returns a usable late connection', async () => {
   const { relay, stop } = setup();
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });

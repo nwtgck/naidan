@@ -10,6 +10,7 @@ const definition = contract({
     run: procedure({ input: z.strictObject({}), result: z.number(), notifications: {} }),
   },
 });
+
 afterEach(() => vi.useRealTimers());
 
 function pendingTransport() {

@@ -6,6 +6,7 @@ import { parametersFixture } from './test-fixtures';
 import { scanImageRepositories } from './logic/model-candidates';
 import { imageModelRecipes } from './model-recipes';
 import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights';
+
 it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
   const preset = TEST_ONLY.presets[id], original = { ...parametersFixture(), prompt: 'private', negativePrompt: 'custom', seed: '123' };
   const settings = parametersSchema.parse({ ...original, ...preset.parameters });
@@ -13,17 +14,20 @@ it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'flux2-klein-4b', 'a
   expect(previewSettingsSchema.parse({ ...defaultPreviewSettings, enabled: false, ...preset.preview }).enabled).toBe(false);
   expect(preset.sources.every(source => /^https:\/\/(github.com|huggingface.co)\//.test(source.url))).toBe(true);
 });
+
 it('does not infer Turbo from a filename or from missing variant evidence', async () => {
   const file = ggufFixture({ name: 'Z-Image-Turbo.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   const result = await scanImageRepositories({ repositories: [{ id: 'user/Z-Image-Turbo', name: 'Turbo', files: [{ path: file.name, file }] }], signal: undefined });
   expect(result.candidates[0]).toMatchObject({ family: 'z-image', variant: 'unknown', turboHint: false });
   expect(recommendationForSelection({ model: result.candidates[0] })).toBeUndefined();
 });
+
 it.each(['Turbo', 'Base'])('uses %s metadata even for renamed files', async variant => {
   const file = ggufFixture({ name: 'nothing.data', tensors: zImageTensors, metadata: { 'general.finetune': variant }, extraBytes: 0 }).file;
   const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file }] }], signal: undefined });
   expect(recommendationForSelection({ model: result.candidates[0] })?.id).toBe(variant === 'Turbo' ? 'z-image-turbo' : 'z-image-base');
 });
+
 it('identifies Qwen from tensor structure independently of the filename', async () => {
   const file = ggufFixture({ name: 'renamed.data', tensors: qwenImageTensors, metadata: {}, extraBytes: 0 }).file;
   const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file }] }], signal: undefined });

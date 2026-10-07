@@ -2371,5 +2371,4 @@ word
     expect(execution.stderr.text).toContain("awk: -v:");
     expect(execution.result.exitCode).toBe(2);
   });
-
 });

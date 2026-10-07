@@ -64,7 +64,6 @@ describe('wesh unzip', () => {
     expect(execution.result.exitCode).toBe(9);
   });
 
-
   it.each([
     ['-q', true],
     ['-qq', true],
@@ -79,7 +78,6 @@ describe('wesh unzip', () => {
     expect(execution.result.exitCode).toBe(9);
   });
 
-
   it('does not apply quiet options after the archive operand to archive-open diagnostics', async () => {
     const execution = await execute({
       script: 'unzip -q missing.zip -qqd first -d second',
@@ -89,7 +87,6 @@ describe('wesh unzip', () => {
     expect(execution.stderr.text).toContain('cannot find or open missing.zip');
     expect(execution.result.exitCode).toBe(9);
   });
-
 
   it.each([
     ['archive.zip -d first -d second'],
@@ -252,7 +249,6 @@ describe('wesh unzip', () => {
     expect((await execute({ script: 'test -f out/entry.txt' })).result.exitCode).toBe(0);
   });
 
-
   it('searches exact, .zip, and .ZIP archive candidates in order', async () => {
     expect((await execute({
       script: "printf 'LOWER\\n' > marker.txt && zip -q archive.zip marker.txt && rm marker.txt",
@@ -320,7 +316,6 @@ describe('wesh unzip', () => {
     );
   });
 
-
   it('supports Info-ZIP negated member character classes for includes and excludes', async () => {
     const setup = await execute({
       script: "printf 'A\\n' > a.txt && printf 'B\\n' > b.txt && printf 'BANG\\n' > '!.txt' && zip -q archive.zip a.txt b.txt '!.txt' && rm a.txt b.txt '!.txt'",
@@ -358,7 +353,6 @@ BRACKET
 `);
     expect(execution.stderr.text).toBe('');
   });
-
 
   it('prompts for each default overwrite conflict and accepts yes or no', async () => {
     const setup = await execute({
@@ -431,5 +425,4 @@ renamed.txt
     );
     expect((await execute({ script: "test \"$(cat a.txt)\" = OLDA && test \"$(cat renamed.txt)\" = ZIPA" })).result.exitCode).toBe(0);
   });
-
 });

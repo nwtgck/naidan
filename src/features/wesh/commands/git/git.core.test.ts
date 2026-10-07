@@ -149,7 +149,6 @@ ce013625030ba8dba906f756967f9e9ca394464a
 `);
   });
 
-
   it('resolves a linked worktree gitfile through its common directory', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -180,7 +179,6 @@ git rev-parse --git-common-dir`,
 /main/.git
 `);
   });
-
 
   it('writes canonical commit reflogs and keeps config keys in one section', async () => {
     const { result, stdout, stderr } = await execute({
@@ -216,7 +214,6 @@ cat .git/logs/refs/heads/master`,
 `);
   });
 
-
   it('creates, lists, and safely deletes branches through ref and graph primitives', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -246,7 +243,6 @@ master
 Deleted branch topic (was 7cac307).
 `);
   });
-
 
   it('honors explicit-empty core.logallrefupdates and rejects a valueless override', async () => {
     await execute({
@@ -289,7 +285,6 @@ test -e /repo/.git/logs/refs/heads/always-log`,
     expect(missingValue.stderr.text).toContain("missing value for 'core.logallrefupdates'");
   });
 
-
   it('reads history and file contents from explicit revisions', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -331,7 +326,6 @@ Date:   Sun Feb 4 04:05:06 2001 +0000
 `);
   });
 
-
   it('shows a commit and its first-parent patch through the shared diff primitive', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -371,7 +365,6 @@ index ce01362..94954ab 100644
 `);
   });
 
-
   it('reads reflog history through the shared reflog primitive', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -403,7 +396,6 @@ ae11b21 master@{0}: commit: second
 ae11b21 refs/heads/master@{0}: commit: second
 `);
   });
-
 
   it('resolves shorthand remote-tracking reflog names to refs/remotes', async () => {
     const result = await execute({
@@ -581,7 +573,6 @@ cat .git/config`,
 \turl = /backup
 `);
   });
-
 
   it('renames the current branch while preserving reflog history and upstream config', async () => {
     const { result, stdout, stderr } = await execute({
@@ -875,6 +866,7 @@ git branch -d unmerged merged`,
   unmerged
 `);
   });
+
   it('preflights malformed config before read-only branch operations and option errors', async () => {
     const setup = await execute({
       script: `\
@@ -1426,5 +1418,4 @@ git branch '${invalidName}'`,
       expect(stderr.text).toBe(`fatal: invalid ref name: refs/heads/${invalidName}\n`);
     }
   });
-
 });

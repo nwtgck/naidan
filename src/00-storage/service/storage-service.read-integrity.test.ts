@@ -35,6 +35,7 @@ beforeEach(async () => {
   await service.init({ type: 'local' });
   locks.mockClear();
 });
+
 afterEach(() => {
   vi.restoreAllMocks();
 });

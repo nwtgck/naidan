@@ -103,6 +103,7 @@ function modernAssistant({ parts }: { parts: unknown[] }) {
 }
 
 beforeEach(() => vi.clearAllMocks());
+
 describe('parts archive boundaries', () => {
   it.each([
     { order: ['parent', 'fork'] },
@@ -226,6 +227,7 @@ describe('parts archive boundaries', () => {
     expect(a.createdAt).toBe(7); expect('timestamp' in a).toBe(false); expect('thinking' in a).toBe(false);
     expect(f.storage.restore).not.toHaveBeenCalled(); expect(f.storage.clearAll).not.toHaveBeenCalled();
   });
+
   it('keeps empty and repeated parts, partial state, time, and recorded error language', async () => {
     const a = modernAssistant({ parts: [{ type: 'reasoning', text: '' }, { type: 'text', text: '' }, { type: 'text', text: '  🙂\r\n', completeness: 'partial' }] });
     const original = chat({ root: { items: [a] } }); const before = JSON.stringify(original); const f = fixture();
@@ -233,6 +235,7 @@ describe('parts archive boundaries', () => {
     const content = await exportedContent({ zip: await readExport(await f.service.exportData({})) });
     expect(content.root.items).toEqual(original.root?.items); expect(JSON.stringify(original)).toBe(before);
   });
+
   it('filters current-thread binary references from text and success/error tool results', async () => {
     const root = { items: [modernAssistant({ parts: [{ type: 'text', text: marker({ id: 'image' }) }] })] };
     const content = chat({
@@ -263,6 +266,7 @@ describe('parts archive boundaries', () => {
     expect(Object.keys(zip.files).some(name => name.endsWith('/other-image.bin'))).toBe(false);
     const saved = await exportedContent({ zip }); expect(saved.root.items[0]!.replies.items).toHaveLength(1);
   });
+
   it('appends V2 with ordered parts, all binary reference forms, and no call re-execution', async () => {
     const parts = [
       { type: 'reasoning', text: marker({ id: 'image' }) },
@@ -305,6 +309,7 @@ describe('parts archive boundaries', () => {
     expect(tool.parts[1]).toMatchObject({ result: { error: { message: { id: binaries.find(b => b.name === 'error')!.id } } } });
     expect(imported.data.currentLeafId).toBe(tool.id); expect(f.storage.clearAll).not.toHaveBeenCalled();
   });
+
   it('remaps escaped top-level image keys while leaving nested metadata and invalid blocks alone', async () => {
     const raw = marker({ id: 'image' }).replace('"binaryObjectId"', '"binary\\u004fbjectId"') + `\n\`\`\`${IMAGE_BLOCK_LANG}\nnot-json\n\`\`\``;
     const zip = await archive({ content: chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: raw }] })] } }) }); addBinary({ zip, id: 'image' });
@@ -313,6 +318,7 @@ describe('parts archive boundaries', () => {
     if (imported?.type !== 'chat' || binary?.type !== 'binary_object') throw new Error('Missing restored chunks.');
     expect(imported.data.root?.items[0]?.parts?.[0]).toMatchObject({ text: raw.replace('"image"', JSON.stringify(binary.id)) });
   });
+
   for (const mode of ['replace', 'append'] as const) {
     it(`preflights corrupt V2 before ${mode} mutates storage`, async () => {
       const dto = chat({ root: { items: [modernAssistant({ parts: [] })] } });
@@ -321,6 +327,7 @@ describe('parts archive boundaries', () => {
       const f = fixture(); await expect(f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) })).rejects.toThrow(/chat content/);
       expect(f.storage.clearAll).not.toHaveBeenCalled(); expect(f.storage.updateSettings).not.toHaveBeenCalled(); expect(f.storage.restore).not.toHaveBeenCalled();
     });
+
     it(`restores valid V2 in ${mode} without interpreting a literal think block`, async () => {
       const dto = chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: '<think> literal </think>', completeness: 'partial' }] })] } });
       const zip = await archive({ content: dto }); const f = fixture();

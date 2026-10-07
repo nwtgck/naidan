@@ -13,6 +13,7 @@ function importedRepository(): LocalImageRepository {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return { id: 'user/imported', name: 'imported', files: [{ path: file.name, file }] };
 }
+
 it.each(['before inspection', 'during inspection'] as const)('publishes an import after independent saving finishes %s', async timing => {
   const blocked = ref(false), entries = [importedRepository()];
   const pending = Promise.withResolvers<LocalImageRepository[]>();
@@ -41,6 +42,7 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
     scope.stop();
   }
 });
+
 it('settles a cancelled import publication and permits a later import without stale publication', async () => {
   const blocked = ref(false), entries = [importedRepository()];
   const list = vi.fn(async () => entries);
@@ -64,6 +66,7 @@ it('settles a cancelled import publication and permits a later import without st
     scope.stop();
   }
 });
+
 it('refreshes successfully imported folders while preserving a later import error', async () => {
   const list = vi.fn(async () => []);
   const importRepo = vi.fn().mockResolvedValueOnce('user/first').mockRejectedValueOnce(new Error('second folder already exists'));

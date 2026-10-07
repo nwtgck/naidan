@@ -167,6 +167,7 @@ it('observes only an idle loaded session, never native callbacks, closed session
   await session.close(); expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' });
   expect(h.api.sd_ctx_get_runtime_info).toHaveBeenCalledOnce(); expect(h.api.sd_ctx_get_memory_info).toHaveBeenCalledOnce();
 });
+
 it('reserves the next run but waits for an in-flight idle observation before native generation', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
   const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
@@ -182,6 +183,7 @@ it('reserves the next run but waits for an in-flight idle observation before nat
   waiting.resolve(); await observation; await generation;
   expect(h.api.generate_image).toHaveBeenCalledTimes(2); await session.close();
 });
+
 it('keeps retryable observation failure separate from generation and forbids native cleanup after an observation trap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
   const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
@@ -208,6 +210,7 @@ it.each(['on', 'off', undefined] as const)('sets graph diagnostics from debug=%s
   expect(h.events.lastIndexOf('graph-diagnostics:0')).toBeLessThan(h.events.indexOf('free-images'));
   expect(onLog).toHaveBeenCalledWith({ message: 'native progress diagnostic', level: 1 });
 });
+
 it('opens a new graph diagnostic window per retained request and never toggles it from native callbacks', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const request = requestFixture(); request.sessionId = 'retained';
@@ -228,12 +231,14 @@ it('opens a new graph diagnostic window per retained request and never toggles i
   expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
   await session.close();
 });
+
 it.each(['load-failure', 'generation-failure'] as const)('disables graph diagnostics after a safely returned %s', async outcome => {
   const h = harness({ pointerBytes: 4, outcome, channels: 3 });
   const request = requestFixture(); request.debug = 'on';
   await expect(runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
   expect(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls).toEqual([[1], [0]]);
 });
+
 it('preserves the generation error and stops native cleanup if disabling diagnostics traps', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'generation-failure', channels: 3 });
   const request = requestFixture(); request.debug = 'on';
@@ -253,6 +258,7 @@ it.each(['f32', 'f16'] as const)('passes the explicit BF16 weight conversion to 
   const ctx = h.recordPointers.get('sd_ctx_params_t')!;
   expect(h.fields.get(`sd_ctx_params_t:${ctx}:webgpu_bf16_type`)).toBe(bf16WeightType === 'f32' ? 0 : 1);
 });
+
 it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths and clearing adapters with %i-byte pointers', async pointerBytes => {
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const request = requestFixture();
@@ -293,6 +299,7 @@ it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths an
   expect(h.events.indexOf('free-context')).toBeLessThan(h.events.indexOf('unmount'));
   expect(h.events.filter(event => event === 'unmount')).toHaveLength(3);
 });
+
 it('never inspects or mounts disabled unreadable adapters but still checks an enabled zero-strength adapter', async () => {
   const unavailable = new File([new Uint8Array(24)], 'unavailable.gguf');
   const read = vi.spyOn(unavailable, 'slice').mockImplementation(() => {
@@ -332,6 +339,7 @@ it('rejects an older artifact before mounting weights rather than ignoring BF16 
   expect(h.api.new_sd_ctx).not.toHaveBeenCalled();
   expect(h.api.generate_image).not.toHaveBeenCalled();
 });
+
 it.each([4, 8] as const)('uses public records and caller policy with %i-byte pointers; releases all native resources before files', async pointerBytes => {
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const request = requestFixture(); request.parameters.seed = '9223372036854775807'; request.parameters.sampler = 'heun'; request.parameters.scheduler = 'karras';
@@ -358,6 +366,7 @@ it.each([4, 8] as const)('uses public records and caller policy with %i-byte poi
   expect(h.events.indexOf('clear-log')).toBeLessThan(h.events.indexOf('remove-function'));
   expect(h.core.module.removeFunction).toHaveBeenCalledTimes(3);
 });
+
 it('uses upstream defaults and safely handles notification exceptions', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 4 });
   const result = await runImageGeneration({
@@ -372,6 +381,7 @@ it('uses upstream defaults and safely handles notification exceptions', async ()
   });
   expect(result.pixels[3]).toBe(71); expect(h.api.sd_get_default_sample_method).toHaveBeenCalledOnce(); expect(h.api.sd_get_default_scheduler).toHaveBeenCalledWith(200000n, 2);
 });
+
 it.each(['load-failure', 'generation-failure'] as const)('releases the context and mounts after %s', async outcome => {
   const h = harness({ pointerBytes: 4, outcome, channels: 3 });
   await expect(runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
@@ -379,6 +389,7 @@ it.each(['load-failure', 'generation-failure'] as const)('releases the context a
   expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(outcome === 'load-failure' ? 0 : 1);
   expect(h.api.free_sd_images).toHaveBeenCalledTimes(outcome === 'generation-failure' ? 1 : 0);
 });
+
 it('does not mount or initialize a native model when the selected file header is invalid', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
   h.reader.readAsArrayBuffer.mockReturnValue(new ArrayBuffer(24));
@@ -480,6 +491,7 @@ RuntimeError: memory access out of bounds
   expect(onProgress).not.toHaveBeenCalledWith({ event: { phase: 'sampling', step: 901, steps: 901 } });
   expect(onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 0, steps: 20 } });
 });
+
 it.each(['load', 'generation'] as const)('treats a rejection from %s as uncertain native state, without guessing a different profile', async stage => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const error = new Error('Rejected suspending native call');
@@ -502,6 +514,7 @@ it.each(['load', 'generation'] as const)('treats a rejection from %s as uncertai
     }),
   }));
 });
+
 it('also skips native cleanup if a short native boundary traps', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
   const error = new WebAssembly.RuntimeError('unreachable');
@@ -510,6 +523,7 @@ it('also skips native cleanup if a short native boundary traps', async () => {
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
   expect(h.api.generate_image).not.toHaveBeenCalled();
 });
+
 it('does not replace an ordinary generation failure when normal native teardown also fails', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'generation-failure', channels: 3 });
   let freesAtTrap = 0;
@@ -563,6 +577,7 @@ it.each([4, 8] as const)('retains one context and mounts across different prompt
   expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(1); expect(h.core.free).toHaveBeenCalledWith(ctxRecord);
   expect(h.events.filter(event => event === 'unmount')).toHaveLength(1);
 });
+
 it('rejects simultaneous generation/cleanup and cannot reuse a poisoned context', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const pending = Promise.withResolvers<number>(), started = Promise.withResolvers<void>();
@@ -576,6 +591,7 @@ it('rejects simultaneous generation/cleanup and cannot reuse a poisoned context'
   await expect(session.generate(args)).rejects.toThrow('failed'); await session.close();
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
 });
+
 it.each([4, 8] as const)('turns previews ON/OFF during native generation using only the reviewed scalar export (%i-byte pointers)', async pointerBytes => {
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const request = requestFixture(); request.runId = 5; request.preview.interval = 1;
@@ -604,6 +620,7 @@ it.each([4, 8] as const)('turns previews ON/OFF during native generation using o
   expect(onPreview.mock.calls[0]![0].capture.image.pixels[0]).toBe(71); // copy survived free_sd_images
   await session.close();
 });
+
 it('keeps raw preview control disabled after a native trap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'trap', channels: 3 }), session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
   await expect(session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
@@ -611,12 +628,14 @@ it('keeps raw preview control disabled after a native trap', async () => {
   expect(session.updatePreview({ control: { type: 'naidan-image-preview-control-v1', runId: 1, revision: 1, settings: { ...request.preview, enabled: true } } })).toBe(false);
   await session.close(); expect(h.previewWrites).toHaveLength(writes);
 });
+
 it.each([
   ['Qwen Image 2.1', 32, 'bounded', true, 16], ['Qwen Image 2.1', 64, 'native', true, 64],
   ['Qwen Image 2.1', 32, 'bounded', false, 32], ['Z-Image', 32, 'bounded', true, 32], ['Unknown', 64, 'bounded', true, 64],
 ] as const)('bounds VAE working tiles only for the exact native model and explicit policy: %s/%i/%s/%s', (modelVersion, requested, policy, enabled, expected) => {
   expect(effectiveVaeTile({ modelVersion, requested, policy, enabled })).toBe(expected);
 });
+
 it('does not automatically rerun intentional white output or change the user prompt, guidance, seed or dimensions', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 4 }), request = requestFixture();
   const original = vi.mocked(h.api.generate_image).getMockImplementation()!;
@@ -627,6 +646,7 @@ it('does not automatically rerun intentional white output or change the user pro
   expect(output.uniformOutput).toBe(true); expect(h.api.generate_image).toHaveBeenCalledTimes(1);
   expect(output.width).toBe(request.parameters.width); expect(output.height).toBe(request.parameters.height);
 });
+
 it('does not relabel detailed preview VAE tiles as denoising steps', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }), request = requestFixture();
   request.runId = 1; request.preview = { ...request.preview, mode: 'vae', enabled: true }; request.parameters.steps = 8;
@@ -701,6 +721,7 @@ it.each([4, 8] as const)('cooperatively cancels native sampling, cleans run memo
   expect('pixels' in next).toBe(true); expect(h.api.new_sd_ctx).toHaveBeenCalledTimes(1);
   await session.close(); expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(1);
 });
+
 it('waits for initialization to return and keeps the context when cancelled while loading', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const entered = Promise.withResolvers<void>(), load = Promise.withResolvers<bigint>();
@@ -718,6 +739,7 @@ it('waits for initialization to return and keeps the context when cancelled whil
   await session.generate({ request: { ...request, runId: 2 }, onProgress: vi.fn(), onLog: vi.fn() });
   expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
 });
+
 it('does not confuse a trap after a cancel request with successful cancellation', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }), session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
   const entered = Promise.withResolvers<void>(), native = Promise.withResolvers<number>();
@@ -795,6 +817,7 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
     vi.unstubAllGlobals();
   }
 });
+
 it('settles cancellation during input decode without entering native generation or leaking the bitmap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const bitmap = { width: 2, height: 1, close: vi.fn() };

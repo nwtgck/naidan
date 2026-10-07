@@ -121,6 +121,7 @@ describe('download investigation batch budget', () => {
       recovery: { ...checkpoint.recovery, status: 'completed' },
     })).toBeUndefined();
   });
+
   it('limits download-only scopes, not Full or Offline runtime investigation', () => {
     expect(isDownloadOnlyInvestigation({ configuration: configurationForPreset({ preset: 'download-focused' }) })).toBe(true);
     expect(isDownloadOnlyInvestigation({ configuration: configurationForPreset({ preset: 'full' }) })).toBe(false);

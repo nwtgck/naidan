@@ -201,7 +201,6 @@ STATUS
 `);
   });
 
-
   it('removes empty untracked directories with -d', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -289,7 +288,6 @@ STATUS
 `);
   });
 
-
   it('preflights repository config even for dry-run and before option errors', async () => {
     const execute = await createGitTestExecutor();
     const setup = await execute({
@@ -310,5 +308,4 @@ printf '\n[bad\n' >> /clean-malformed/.git/config`,
     expect(outside.result.exitCode).toBe(128);
     expect(outside.stderr.text).toContain('not a git repository');
   });
-
 });

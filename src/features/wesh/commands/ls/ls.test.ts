@@ -559,6 +559,7 @@ file.txt`);
     expect(stderr.text).toBe('ls: missing: No such file or directory\n');
     expect(result.exitCode).toBe(2);
   });
+
   it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
     await writeFile({ path: 'parent', data: 'file' });
 

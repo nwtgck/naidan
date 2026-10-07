@@ -26,6 +26,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
 }));
 let wrapper: VueWrapper | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks();
@@ -51,10 +52,12 @@ beforeEach(async () => {
   vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals();
   if (descriptor) Object.defineProperty(navigator, 'gpu', descriptor); else Reflect.deleteProperty(navigator, 'gpu');
 });
+
 async function open({ path }: { path: string }): Promise<Router> {
   // Use the actual file-router record so the alias declaration is exercised.
   const records = routes.filter(route => route.path === '/image-generation');
@@ -83,6 +86,7 @@ async function historyStep({ router, delta }: { router: Router, delta: number })
   });
   await flushPromises();
 }
+
 it('opens the diagnostics URL directly and preserves both forms when navigating through the sidebar', async () => {
   const router = await open({ path: '/image-generation/diagnostics' });
   const owner = wrapper!.getComponent(ImageGenerationLab).vm;
@@ -105,6 +109,7 @@ it('opens the diagnostics URL directly and preserves both forms when navigating 
   expect(owner.TEST_ONLY.parameters.value.prompt).toBe('ordinary prompt');
   expect(mocks.dispose).not.toHaveBeenCalled(); expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('preserves an active benchmark and its retained results across browser back and forward navigation', async () => {
   const pending = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValue(pending.promise);
   const router = await open({ path: '/image-generation' });

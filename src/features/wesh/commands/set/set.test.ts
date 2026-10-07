@@ -135,5 +135,4 @@ set | grep '^WESH_'`,
     expect(unicode.stderr.text).toBe('');
     expect(unicode.result.exitCode).toBe(0);
   });
-
 });

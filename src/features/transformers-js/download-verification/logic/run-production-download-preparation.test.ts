@@ -92,6 +92,7 @@ describe('runProductionDownloadPreparation', () => {
     expect(acceptDownloadedProductionCandidate).toHaveBeenCalledTimes(2);
     expect(events.filter(kind => kind !== 'sizes')).toEqual(['metadata', 'candidate', 'plan', 'file', 'prefetch-complete', 'acceptance', 'candidate', 'plan', 'file', 'prefetch-complete', 'acceptance']);
   });
+
   it('skips an unplannable candidate without transferring it and accepts the next valid plan', async () => {
     vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
       modelId: MODEL_ID,
@@ -397,5 +398,4 @@ describe('runProductionDownloadPreparation', () => {
       requiredModelPaths: ['onnx/runtime-q4.onnx'],
     }));
   });
-
 });

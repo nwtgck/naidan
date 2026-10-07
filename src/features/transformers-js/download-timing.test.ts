@@ -14,6 +14,7 @@ const observation: DownloadAcceptanceTiming = {
   hostSettlement: 'fulfilled',
   attemptCount: 1,
 };
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('retained Download timing', () => {

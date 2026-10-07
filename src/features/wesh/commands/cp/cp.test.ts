@@ -889,5 +889,4 @@ cat /root-dest.txt`,
     expect((await execute({ script: 'cat destination/child.txt' })).stdout.text).toBe('child');
     expect((await execute({ script: 'cat destination~' })).stdout.text).toBe('old');
   });
-
 });

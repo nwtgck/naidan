@@ -56,5 +56,4 @@ describe("createHostedTransformersModelFetch", () => {
     await expect(modelFetch("https://huggingface.co/org/model/resolve/main/config.json")).resolves.toBe(jsonResponse);
     await expect(modelFetch("https://naidan.example/docs.html")).resolves.toBe(htmlResponse);
   });
-
 });

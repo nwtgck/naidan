@@ -465,7 +465,6 @@ git ls-files`,
     expect(stderr.text).toBe("fatal: bad boolean config value 'invalid' for 'core.autocrlf'\n");
   });
 
-
   it('lets repository info attributes override tracked attributes', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -596,5 +595,4 @@ git ls-files`,
     expect(stdout.text).toBe('add-exit=128\n');
     expect(stderr.text).toBe('fatal: attribute macros are not supported yet: [attr]crlfish\n');
   });
-
 });

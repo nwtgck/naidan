@@ -54,7 +54,9 @@ function setup({ registerPending = false, firstInstall = false } = {}) {
   };
   return { old, next, reg, container, platform, states, controller, ready, activate, action, onError, onWarning, onOfflineReady };
 }
+
 beforeEach(() => vi.stubGlobal('MessageChannel', MessageChannel));
+
 afterEach(() => {
   disposers.splice(0).forEach(dispose => dispose());
   vi.useRealTimers(); vi.unstubAllGlobals();
@@ -71,6 +73,7 @@ describe('auditable two-path PWA update', () => {
     expect(f.old.postMessage.mock.calls[0]?.[0]).toEqual({ type: USE_NETWORK_MESSAGE });
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('waits for ACTUAL activation then reloads without controllerchange', async () => {
     const f = setup(); await flush(); f.ready();
     const action = f.action();
@@ -82,6 +85,7 @@ describe('auditable two-path PWA update', () => {
     f.activate(); await action;
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('rechecks readiness rather than following a stale preparing action', async () => {
     const f = setup(); await flush();
     const state = f.states.at(-1)!;
@@ -91,6 +95,7 @@ describe('auditable two-path PWA update', () => {
     f.activate(); await action;
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('only reloads when another tab has already activated the update', async () => {
     const f = setup(); await flush(); f.ready(); f.activate();
     await f.action();
@@ -98,11 +103,13 @@ describe('auditable two-path PWA update', () => {
     expect(f.next.postMessage).not.toHaveBeenCalled();
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('keeps a failed installer as an explicit network option, not a synthetic error', async () => {
     const f = setup(); await flush(); f.reg.installing = null; f.next.transition('redundant');
     expect(f.onWarning).toHaveBeenCalledOnce(); expect(f.onError).not.toHaveBeenCalled();
     await f.action(); expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('first offline preparation is not an application update', async () => {
     const f = setup({ firstInstall: true }); await flush();
     expect(f.states.at(-1)).toEqual({ kind: 'idle' });
@@ -110,6 +117,7 @@ describe('auditable two-path PWA update', () => {
     expect(f.onOfflineReady).toHaveBeenCalledOnce();
     expect(f.states.at(-1)).toEqual({ kind: 'idle' });
   });
+
   it('does not call the first installed worker an update before activation', async () => {
     const f = setup({ firstInstall: true }); await flush(); f.ready();
     expect(f.states.at(-1)).toEqual({ kind: 'idle' });
@@ -119,6 +127,7 @@ describe('auditable two-path PWA update', () => {
     expect(f.states.at(-1)).toEqual({ kind: 'idle' });
     expect(f.onOfflineReady).toHaveBeenCalledOnce();
   });
+
   it('waits for an update another tab has already moved to the active slot', async () => {
     const f = setup(); await flush(); f.ready();
     f.reg.waiting = null; f.reg.active = f.next.native(); f.next.transition('activating');
@@ -129,6 +138,7 @@ describe('auditable two-path PWA update', () => {
     f.activate(); await action;
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('retains the first active worker as baseline for a page initially without a controller', async () => {
     const f = setup({ firstInstall: true }); await flush(); f.activate();
     const later = new WorkerHandle(); later.state = 'activated';
@@ -139,12 +149,14 @@ describe('auditable two-path PWA update', () => {
     expect(later.postMessage).not.toHaveBeenCalled();
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('does not report a normally superseded installer as a preparation failure', async () => {
     const f = setup(); await flush();
     f.reg.installing = new WorkerHandle().native(); f.next.transition('redundant');
     expect(f.onWarning).not.toHaveBeenCalled();
     expect(f.states.at(-1)?.kind).toBe('preparing');
   });
+
   it('times out an unsupported/legacy network command without reloading', async () => {
     vi.useFakeTimers(); const f = setup(); await flush(); f.old.postMessage.mockImplementation(() => {});
     const rejected = expect(f.action()).rejects.toThrow('did not enable');
@@ -153,6 +165,7 @@ describe('auditable two-path PWA update', () => {
     expect(f.platform.reload).not.toHaveBeenCalled();
     expect(f.states.at(-1)?.kind).toBe('preparing');
   });
+
   it('bounds activation waits and keeps the prepared action retryable', async () => {
     vi.useFakeTimers(); const f = setup(); await flush(); f.ready();
     const rejected = expect(f.action()).rejects.toThrow('did not activate');
@@ -161,18 +174,21 @@ describe('auditable two-path PWA update', () => {
     const retry = f.action(); f.activate(); await retry;
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('rejects a replaced waiting worker without waiting for the timeout', async () => {
     const f = setup(); await flush(); f.ready();
     const rejected = expect(f.action()).rejects.toThrow('replaced');
     f.next.transition('redundant'); await rejected;
     expect(f.platform.reload).not.toHaveBeenCalled();
   });
+
   it('aborts an outstanding action on disposal and never reloads later', async () => {
     const f = setup(); await flush(); f.ready();
     const rejected = expect(f.action()).rejects.toThrow('stopped');
     f.controller.dispose(); await rejected; f.activate();
     expect(f.platform.reload).not.toHaveBeenCalled();
   });
+
   it('retains replacement updates that appear during a pending click', async () => {
     const f = setup(); await flush(); f.ready();
     const action = f.action();
@@ -188,6 +204,7 @@ describe('auditable two-path PWA update', () => {
     await again;
     expect(f.platform.reload).toHaveBeenCalledTimes(2);
   });
+
   it('retains observation and prepared updates after a register failure', async () => {
     const f = setup(); f.container.register.mockRejectedValue(new Error('registration offline'));
     await flush();
@@ -195,11 +212,13 @@ describe('auditable two-path PWA update', () => {
     f.ready(); const action = f.action(); f.activate(); await action;
     expect(f.platform.reload).toHaveBeenCalledOnce();
   });
+
   it('does not register after disposal while an existing registration is being read', async () => {
     const f = setup(); f.controller.dispose(); await flush();
     expect(f.container.register).not.toHaveBeenCalled();
     expect(f.states).toEqual([]);
   });
+
   it('disables early updating when the page has lost its controller but retains prepared updates', async () => {
     const f = setup(); await flush(); f.container.controller = null;
     f.container.dispatchEvent(new Event('controllerchange'));
@@ -208,6 +227,7 @@ describe('auditable two-path PWA update', () => {
     expect(f.platform.reload).toHaveBeenCalledOnce();
     expect(f.old.postMessage).not.toHaveBeenCalled();
   });
+
   it('never sends a network command to an unrelated scope controller', async () => {
     const f = setup(); await flush(); f.container.controller = new WorkerHandle().native();
     await expect(f.action()).rejects.toThrow('not controlled');

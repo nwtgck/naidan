@@ -12,6 +12,7 @@ function recovered() {
     output: { png: new Blob(['pixels']), width: 256, height: 256, reported: undefined },
   });
 }
+
 it('retains unconfirmed pixels after the original view unsubscribes', () => {
   const store = createImageRecoveryStore({ capacity: 100 }), listener = vi.fn();
   const unsubscribe = store.subscribe({ listener }); const reservation = store.reserve({ bytes: 50 }); unsubscribe();
@@ -21,6 +22,7 @@ it('retains unconfirmed pixels after the original view unsubscribes', () => {
   expect(store.list()[0]!.record.request.parameters.prompt).not.toBe('mutated');
   expect(store.list()[0]!.files).toHaveLength(1); expect(listener).not.toHaveBeenCalled();
 });
+
 it('reserves before inference, releases unused capacity and never evicts a recovery', () => {
   const store = createImageRecoveryStore({ capacity: 50 }), first = store.reserve({ bytes: 50 });
   expect(() => store.reserve({ bytes: 1 })).toThrow('Save or discard'); first.release(); first.release();
@@ -29,6 +31,7 @@ it('reserves before inference, releases unused capacity and never evicts a recov
   expect(() => store.reserve({ bytes: 1 })).toThrow(); remainder.release(); store.remove({ id }); store.remove({ id });
   expect(store.reserve({ bytes: 50 })).toBeDefined();
 });
+
 it('does not consume a reservation on invalid retention or retain twice', () => {
   const store = createImageRecoveryStore({ capacity: 50 }), reservation = store.reserve({ bytes: 50 }), value = recovered();
   expect(() => reservation.retain({ ...value, files: [], retry: undefined })).toThrow();
@@ -37,5 +40,6 @@ it('does not consume a reservation on invalid retention or retain twice', () => 
   reservation.release(); expect(store.list()).toHaveLength(1); store.remove({ id });
   expect(store.reserve({ bytes: 50 })).toBeDefined();
 });
+
 export const TEST_ONLY = {
 };

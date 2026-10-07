@@ -26,6 +26,7 @@ beforeEach(() => {
     return frames.length;
   });
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 async function paint(): Promise<void> {

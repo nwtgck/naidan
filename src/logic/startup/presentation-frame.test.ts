@@ -47,5 +47,4 @@ describe('waitForPresentationPaint', () => {
     callbacks.shift()?.(0);
     await rejected;
   });
-
 });

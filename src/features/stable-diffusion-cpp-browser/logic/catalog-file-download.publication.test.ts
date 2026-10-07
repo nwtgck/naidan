@@ -9,6 +9,7 @@ import type { ImageDownloadDestination } from './catalog-download';
 import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/download-worker/fetch-types';
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
+
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });

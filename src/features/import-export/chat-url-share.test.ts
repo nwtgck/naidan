@@ -115,7 +115,6 @@ describe('generateChatShareURL', () => {
   });
 });
 
-
 describe('parts sharing binary references', () => {
   it('shares generated images, tool success/error references and memory attachments from every branch', async () => {
     vi.clearAllMocks();

@@ -37,6 +37,7 @@ describe('LM Providers Reasoning', () => {
     fetchMock.mockReset();
     useGlobalEvents().clearEvents();
   });
+
   afterEach(() => useGlobalEvents().clearEvents());
 
   describe('OpenAIProvider reasoning', () => {

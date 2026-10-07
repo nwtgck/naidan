@@ -6,6 +6,7 @@ import { cloneLmParameters } from '@/utils/lm-parameters';
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import type { Attachment, ChatContent, MessageNode } from '@/01-models/types';
+
 describe('chat-tree utils', () => {
   describe('literal content and explicit reasoning', () => {
     it.each([
@@ -28,6 +29,7 @@ describe('chat-tree utils', () => {
       expect(node).toHaveProperty('interruption', undefined);
     });
   });
+
   describe('getChatBranchIterator', () => {
     it('should resolve a deeply nested current branch without recursion', () => {
       const depth = 10000;
@@ -64,6 +66,7 @@ describe('chat-tree utils', () => {
       expect(branch.at(-1)?.id).toBe(current.id);
     });
   });
+
   describe('createBranchFromMessages', () => {
     it('should create a chain of MessageNodes from a list of HistoryItems', () => {
       const messages: MessageNode[] = [
@@ -89,10 +92,12 @@ describe('chat-tree utils', () => {
       expect(nodes[2]!.parts[0]).toMatchObject({ type: 'text', text: 'How are you?', completeness: 'complete' });
       expect(nodes[2]!.replies.items.length).toBe(0);
     });
+
     it('should return empty array for empty input', () => {
       const nodes = createBranchFromMessages({ messages: [] });
       expect(nodes).toEqual([]);
     });
+
     it('should preserve thinking content for assistant', () => {
       const messages: MessageNode[] = [
         historyMessage({ role: 'assistant', content: 'I thought about it.', thinking: 'Inner thoughts', attachments: undefined, modelId: undefined }),
@@ -100,6 +105,7 @@ describe('chat-tree utils', () => {
       const nodes = createBranchFromMessages({ messages });
       expect(nodes[0]!.parts[0]).toMatchObject({ type: 'reasoning', text: 'Inner thoughts', completeness: 'complete' });
     });
+
     it('should preserve attachments for user', () => {
       const messages: MessageNode[] = [
         historyMessage({ role: 'user', content: 'Here is an image.', thinking: undefined, attachments: [{ id: toAttachmentId({ raw: '1' }), binaryObjectId: toBinaryObjectId({ raw: '1' }), status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }], modelId: undefined }),
@@ -107,6 +113,7 @@ describe('chat-tree utils', () => {
       const nodes = createBranchFromMessages({ messages });
       expect(nodes[0]!.parts[1]).toMatchObject({ type: 'attachment', attachment: { id: toAttachmentId({ raw: '1' }) } });
     });
+
     it('copies attachment metadata and parameter containers instead of retaining editor mutations', () => {
       const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'before', mimeType: 'image/png', size: 1, uploadedAt: 0, status: 'persisted' as const };
       const [user, assistant] = createBranchFromMessages({
@@ -120,6 +127,7 @@ describe('chat-tree utils', () => {
       expect(user?.lmParameters).not.toBe(assistant?.lmParameters);
       expect(user?.lmParameters?.reasoning).not.toBe(assistant?.lmParameters?.reasoning);
     });
+
     it('creates system messages without assistant-only or legacy fields', () => {
       const [system] = createBranchFromMessages({ messages: [historyMessage({ role: 'system', content: '  rules  ', thinking: undefined, attachments: undefined, modelId: undefined })] });
       expect(system).toMatchObject({ role: 'system', modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: '  rules  ' }] });
@@ -156,6 +164,7 @@ describe('full-part history preservation', () => {
     call.toolCall.function.arguments = 'edited';
     expect(JSON.stringify(assistant)).toBe(before);
   });
+
   it('copies a long selected path without recursively copying its branches', () => {
     const messages = Array.from({ length: 2500 }, () => historyMessage({ role: 'user', content: 'x', thinking: undefined, modelId: undefined, attachments: undefined }));
     for (let index = 0; index < messages.length - 1; index++) messages[index]!.replies.items.push(messages[index + 1]!);

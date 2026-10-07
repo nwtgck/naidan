@@ -29,6 +29,7 @@ function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
 function args() {
   return { input: input(), signal: new AbortController().signal, onEvent: () => {}, onProgress: () => {} };
 }
+
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); fixture.worker.canReuse.mockReturnValue(true);
   fixture.worker.generate.mockResolvedValue(result);
@@ -36,12 +37,15 @@ beforeEach(async () => {
   create = (await import('./resources-hosted')).createReadOnlyResources;
   service = (await import('@/features/llama-cpp-browser/index-hosted')).llamaCppBrowserService;
 });
+
 afterEach(() => service.release());
+
 it('does not create a native worker to dispose an unused resource owner', async () => {
   const resources = create({ directories: () => [] });
   await resources.dispose(); await resources.dispose();
   expect(fixture.create).not.toHaveBeenCalled();
 });
+
 it('releases the chat cache once when its resource owner retires', async () => {
   const resources = create({ directories: () => [] });
   await resources.generateChat(args());
@@ -50,6 +54,7 @@ it('releases the chat cache once when its resource owner retires', async () => {
   expect(fixture.worker.dispose).toHaveBeenCalledOnce();
   expect(service.getState()).toEqual({ status: 'idle' });
 });
+
 it('does not evict the cache that a later local generation took over', async () => {
   const resources = create({ directories: () => [] });
   await resources.generateChat(args());
@@ -59,12 +64,14 @@ it('does not evict the cache that a later local generation took over', async () 
   await service.generate({ input: input(), signal: undefined, onEvent: () => {} });
   expect(fixture.create).toHaveBeenCalledOnce();
 });
+
 it('distinguishes two resource owners using the same native worker', async () => {
   const a = create({ directories: () => [] }), b = create({ directories: () => [] });
   await a.generateChat(args()); await b.generateChat(args());
   await a.dispose(); expect(fixture.worker.dispose).not.toHaveBeenCalled();
   await b.dispose(); expect(fixture.worker.dispose).toHaveBeenCalledOnce();
 });
+
 it('does not acknowledge disposal before a cancelled chat physically retires', async () => {
   const resources = create({ directories: () => [] });
   const gate = Promise.withResolvers<typeof result>(); fixture.worker.generate.mockReturnValueOnce(gate.promise);
@@ -83,6 +90,7 @@ it('does not acknowledge disposal before a cancelled chat physically retires', a
   }
   expect(fixture.worker.dispose).toHaveBeenCalledOnce();
 });
+
 it('does not tear down a queued local call while retiring the previous owner', async () => {
   const resources = create({ directories: () => [] });
   const remote = Promise.withResolvers<typeof result>(), local = Promise.withResolvers<typeof result>();

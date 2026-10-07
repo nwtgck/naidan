@@ -17,6 +17,7 @@ function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
   return { debug, model: 'Model', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/' };
 }
 const releases: ReturnType<typeof vi.fn>[] = [];
+
 beforeEach(() => {
   releases.length = 0; host.load.mockReset(); host.loadAudio.mockReset(); let pointer = 100n;
   host.core = {
@@ -70,14 +71,16 @@ beforeEach(() => {
     return { pointer: BigInt(30 + releases.length), debug, release };
   });
 });
+
 beforeEach(() => {
   host.loadAudio.mockImplementation(host.load);
 });
+
 afterEach(async () => {
   await releaseSession({ releaseRuntime: true });
 });
-describe('resident projector debug changes', () => {
 
+describe('resident projector debug changes', () => {
   it('caches request-invariant native chat metadata and configures a wider logical prefill batch', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
@@ -99,6 +102,7 @@ describe('resident projector debug changes', () => {
     expect(core.setField).toHaveBeenCalledWith({ name: 'llama_context_params', pointer: expect.any(BigInt), field: 'n_batch', value: 512 });
     expect(core.setField).toHaveBeenCalledWith({ name: 'llama_context_params', pointer: expect.any(BigInt), field: 'n_ubatch', value: 128 });
   });
+
   it('falls back to the conservative logical prefill batch before shrinking the context', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.mocked(core.api.llama_init_from_model).mockResolvedValueOnce(0n).mockResolvedValueOnce(20n);
@@ -110,12 +114,14 @@ describe('resident projector debug changes', () => {
       .map(([args]) => args.value);
     expect(nBatchValues).toEqual([512, 128]);
   });
+
   it('uses the actual native batch capacity when it is smaller than requested', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.mocked(core.api.llama_n_batch).mockResolvedValue(64);
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(session.prefillBatchTokens).toBe(64);
   });
+
   it.each([0, -1, NaN, Infinity, 1.5])('rejects invalid native batch capacity %s before generation', async capacity => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.mocked(core.api.llama_n_batch).mockResolvedValue(capacity);
@@ -124,6 +130,7 @@ describe('resident projector debug changes', () => {
     expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
     expect(core.api.llama_backend_free).toHaveBeenCalledOnce();
   });
+
   it('preserves the conservative logical batch for audio contexts', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     await prepareAudioSession({
@@ -135,6 +142,7 @@ describe('resident projector debug changes', () => {
     });
     expect(vi.mocked(core.setField).mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([128]);
   });
+
   it('frees model weights even when releasing the cached native template throws', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
@@ -145,6 +153,7 @@ describe('resident projector debug changes', () => {
     expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n);
     expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
   });
+
   it.each([true, false])('uses the effective native sliding window when swa_full is %s', async fullRetention => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.spyOn(core, 'bytes').mockReturnValue(new Uint8Array(8).fill(fullRetention ? 1 : 0));
@@ -154,6 +163,7 @@ describe('resident projector debug changes', () => {
     if (fullRetention) expect(core.api.llama_model_n_swa).not.toHaveBeenCalled();
     else expect(core.api.llama_model_n_swa).toHaveBeenCalledExactlyOnceWith(session.model);
   });
+
   it.each(['release', 'cancel'] as const)('disposes an owned host checkpoint exactly once on %s', async operation => {
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     session.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
@@ -165,6 +175,7 @@ describe('resident projector debug changes', () => {
     await releaseSession({ releaseRuntime: true });
     expect(free.mock.calls.filter(([args]) => args.pointer === 999n)).toHaveLength(1);
   });
+
   it('recreates only the projector and preserves the LM context and text KV state', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     first.cache.tokens.push(1, 2, 3); first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
@@ -181,6 +192,7 @@ describe('resident projector debug changes', () => {
     expect(host.core?.api.llama_decode).toHaveBeenCalledOnce();
     expect(host.core?.api.llama_free).not.toHaveBeenCalled(); expect(host.core?.api.llama_model_free).not.toHaveBeenCalled();
   });
+
   it('can retry a failed projector replacement without discarding the resident LM or KV', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     first.cache.tokens.push(7); first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
@@ -191,6 +203,7 @@ describe('resident projector debug changes', () => {
     expect(retry.context).toBe(first.context); expect(retry.cache).toEqual({ tokens: [7], validity: 'valid', checkpoint: undefined, initialMemoryState: 'unknown' });
     expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce(); expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
   });
+
   it('does not replace the projector for an already cancelled request', async () => {
     const first = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
@@ -198,6 +211,7 @@ describe('resident projector debug changes', () => {
     const next = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     expect(next.projector).toBe(first.projector);
   });
+
   it('keeps a cleaned context available after a declined capability probe', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.mocked(core.api.llama_decode).mockResolvedValueOnce(2);
@@ -210,6 +224,7 @@ describe('resident projector debug changes', () => {
     expect(core.api.llama_synchronize).toHaveBeenCalledOnce();
     expect(core.api.llama_free).not.toHaveBeenCalled(); expect(core.api.llama_model_free).not.toHaveBeenCalled();
   });
+
   it('releases a new context whose native capability probe traps and can retry', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     vi.mocked(core.api.llama_decode).mockRejectedValueOnce(new WebAssembly.RuntimeError('fixture trap'));
@@ -237,6 +252,7 @@ describe('dedicated audio context configuration', () => {
     expect(host.load).toHaveBeenCalledOnce(); // The test's audio loader delegates to the common fixture.
     expect(core.api.llama_decode).not.toHaveBeenCalled(); expect(core.api.llama_memory_seq_rm).not.toHaveBeenCalled();
   });
+
   it('releases resident chat state before allocating an audio context and honors the explicit backend', async () => {
     const core = host.core!; await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
     await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 2048, audioBackend: 'profile', onProgress: () => {}, signal: undefined });
@@ -247,13 +263,13 @@ describe('dedicated audio context configuration', () => {
     expect(releases[0]).toHaveBeenCalledOnce(); expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'profile' }));
     expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
+
   it('rejects missing audio companions before native model allocation', async () => {
     host.directory!.projectorPath = undefined;
     await expect(prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 4096, audioBackend: 'cpu', onProgress: () => {}, signal: undefined })).rejects.toThrow('audio-model-unsupported');
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 });
-
 
 describe('preparing a conversation without generating one', () => {
   it('loads the real session from a minimal prepare request and reuses it on the first send', async () => {
@@ -277,6 +293,7 @@ describe('one-use synchronized initial memory proof', () => {
     expect(next.cache).toBe(first.cache); expect(next.cache.initialMemoryState).toBe('unknown');
     expect(host.core!.api.llama_memory_clear).toHaveBeenCalledTimes(2);
   });
+
   it('revokes the proof on cancellation during preparation', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
@@ -284,6 +301,7 @@ describe('one-use synchronized initial memory proof', () => {
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(next.cache.initialMemoryState).toBe('unknown');
   });
+
   it('revokes released state even if the next model reuses the same numeric pointers', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     await releaseSession({ releaseRuntime: false }); expect(first.cache.initialMemoryState).toBe('unknown');
@@ -291,6 +309,7 @@ describe('one-use synchronized initial memory proof', () => {
     expect(first.context).toBe(second.context); expect(first.cache).not.toBe(second.cache);
     expect(second.cache.initialMemoryState).toBe('probe-cleared');
   });
+
   it.each(['clear', 'synchronize', 'metadata'] as const)('does not publish a usable context after %s fails', async failure => {
     const api = host.core!.api;
     switch (failure) {
@@ -304,6 +323,7 @@ describe('one-use synchronized initial memory proof', () => {
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(next.cache.initialMemoryState).toBe('probe-cleared'); expect(api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
+
   it('never claims a clear for absent native memory or an audio context', async () => {
     vi.mocked(host.core!.api.llama_get_memory).mockResolvedValue(0n);
     const chat = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
@@ -312,7 +332,6 @@ describe('one-use synchronized initial memory proof', () => {
     expect(audio.cache.initialMemoryState).toBe('unknown'); expect(host.core!.api.llama_synchronize).not.toHaveBeenCalled();
   });
 });
-
 
 describe('on-demand generation companions', () => {
   it.each(['plain', 'text-parts', 'marker', 'tool-history', 'reasoning'] as const)('defers the companion for %s text input', async kind => {
@@ -518,9 +537,9 @@ describe('on-demand generation companions', () => {
   });
 });
 
-
 describe('model read-window ownership', () => {
   afterEach(() => vi.restoreAllMocks());
+
   it('shares a single cache across split-file mounts rather than allocating one per shard', async () => {
     const core = host.core!; const original = modelReadModule.createModelReadCache;
     const caches: ReturnType<typeof original>[] = [];
@@ -536,6 +555,7 @@ describe('model read-window ownership', () => {
     expect(core.api.llama_model_load_from_splits).toHaveBeenCalledOnce();
     expect(() => caches[0]!.wrap({ source: { size: 0, read: () => 0 } })).toThrow('disposed');
   });
+
   it('holds the read window until cancelled native loading settles and the reader is closed', async () => {
     const core = host.core!; const original = modelReadModule.createModelReadCache;
     const caches: ReturnType<typeof original>[] = [];
@@ -569,6 +589,7 @@ describe('model read-window ownership', () => {
 
 describe('cancelled model acquisition and complete shard cleanup', () => {
   afterEach(() => vi.restoreAllMocks());
+
   function shards() {
     const core = host.core!;
     core.bytes = ({ length }) => new Uint8Array(Number(length)).fill(1);
@@ -598,6 +619,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     });
     return { core, resources, events, mount };
   }
+
   it('does not open another shard or enter native loading after a pending acquisition is cancelled', async () => {
     const { core, resources, mount } = shards(); const first = resources[0]!;
     const pending = Promise.withResolvers<typeof first.access>(); first.open.mockReturnValueOnce(pending.promise);
@@ -612,6 +634,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     expect(core.api.llama_model_default_params).not.toHaveBeenCalled();
     expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
   });
+
   it('preserves acquisition rejection and does not close a handle that was never acquired', async () => {
     const { core, resources } = shards(); const error = new DOMException('fixture storage failure', 'NotAllowedError');
     resources[1]!.open.mockRejectedValueOnce(error);
@@ -619,6 +642,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     expect(resources[0]!.close).toHaveBeenCalledOnce(); expect(resources[1]!.close).not.toHaveBeenCalled();
     expect(resources[2]!.open).not.toHaveBeenCalled(); expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
   });
+
   it('does not start model loading when the initial loading progress callback cancels', async () => {
     const { core, resources } = shards(); const controller = new AbortController();
     await expect(prepareGenerationSession({
@@ -633,6 +657,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
       expect(item.close).toHaveBeenCalledOnce(); expect(item.remove).toHaveBeenCalledOnce();
     }
   });
+
   it.each(['cancel', 'throw'] as const)('does not allocate context parameters after progress %s', async failure => {
     const { core } = shards(); const allocRecord = vi.spyOn(core, 'allocRecord'); const controller = new AbortController();
     await expect(prepareGenerationSession({
@@ -647,6 +672,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     expect(allocRecord.mock.calls.some(([{ name }]) => name === 'llama_context_params')).toBe(false);
     expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
   });
+
   it.each([0, 1, 2])('attempts every independent close when shard %i fails', async failedIndex => {
     const { resources, events } = shards(); const failure = new Error('fixture close failure');
     resources[failedIndex]!.close.mockImplementationOnce(() => {
@@ -658,6 +684,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     await releaseSession({ releaseRuntime: false });
     for (const item of resources) expect(item.close).toHaveBeenCalledOnce();
   });
+
   it.each([0, 1, 2])('attempts every unmount and close when unmount %i fails', async failedIndex => {
     const { resources, events } = shards(); const failure = new Error('fixture unmount failure');
     resources[failedIndex]!.remove.mockImplementationOnce(() => {
@@ -669,6 +696,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
       expect(item.remove).toHaveBeenCalledOnce(); expect(item.close).toHaveBeenCalledOnce();
     }
   });
+
   it('keeps the first cleanup failure, including undefined, while draining all resources', async () => {
     const { resources } = shards();
     resources[2]!.remove.mockImplementationOnce(() => {

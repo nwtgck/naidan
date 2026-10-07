@@ -8,6 +8,7 @@ import ImagePendingHistory from './ImagePendingHistory.vue';
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), download: vi.fn(), url: vi.fn(), revoke: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/utils/stream-download', () => ({ downloadBlob: mocks.download }));
+
 beforeEach(async () => {
   vi.clearAllMocks(); mocks.confirm.mockResolvedValue(true); mocks.url.mockReturnValue('blob:pending');
   const OriginalURL = URL;
@@ -16,10 +17,12 @@ beforeEach(async () => {
   });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   for (const entry of pendingImageHistory.list()) pendingImageHistory.discard({ id: entry.record.id });
   vi.unstubAllGlobals();
 });
+
 async function pending() {
   const snapshot = snapshotImageGeneration({
     request: requestFixture(),
@@ -33,6 +36,7 @@ async function pending() {
   await expect(pendingImageHistory.retry({ id })).rejects.toThrow('quota');
   return { id, output, save };
 }
+
 it('remounts, previews and downloads retained pixels, then retries the same save', async () => {
   const value = await pending(); let wrapper = mount(ImagePendingHistory); await flushPromises();
   expect(wrapper.find('img').exists()).toBe(true);
@@ -44,6 +48,7 @@ it('remounts, previews and downloads retained pixels, then retries the same save
   expect(value.save).toHaveBeenCalledTimes(2); expect(value.save.mock.calls[1]![0]).toBe(value.save.mock.calls[0]![0]);
   expect(wrapper.find('[data-testid="image-pending-history"]').exists()).toBe(false); wrapper.unmount();
 });
+
 it('requires confirmation, disables mutation during saving and invalidates discarded retry handles', async () => {
   const value = await pending(); const wrapper = mount(ImagePendingHistory); await flushPromises();
   const gate = Promise.withResolvers<void>(); value.save.mockReturnValueOnce(gate.promise);

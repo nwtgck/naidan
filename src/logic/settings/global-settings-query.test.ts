@@ -16,7 +16,6 @@ type TestGlobalSettings = {
   defaultModelId: string,
 };
 
-
 describe('global settings query sync', () => {
   let router: Router;
   let dispose: (() => void) | undefined;

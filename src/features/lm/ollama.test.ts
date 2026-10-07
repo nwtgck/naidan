@@ -650,7 +650,6 @@ const EMPTY_LM_PARAMETERS = {
   reasoning: { effort: undefined },
 };
 
-
 describe('OllamaProvider runtime model management', () => {
   it('lists running models and maps optional API fields', async () => {
     const fetcher = vi.fn(async () => Response.json({

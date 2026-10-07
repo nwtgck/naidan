@@ -145,6 +145,7 @@ describe('development isolation through real Vite middleware', () => {
   let server: ViteDevServer | undefined;
   const http = createHttpServer();
   let base: string;
+
   beforeAll(async () => {
     root = await fixture();
     server = await createServer({
@@ -170,6 +171,7 @@ describe('development isolation through real Vite middleware', () => {
     if (address === null || typeof address === 'string') throw new Error('Missing fixture listener');
     base = `http://127.0.0.1:${address.port}`;
   });
+
   afterAll(async () => {
     try {
       http.closeAllConnections();
@@ -182,6 +184,7 @@ describe('development isolation through real Vite middleware', () => {
       }
     }
   });
+
   it.each([
     { url: '/worker.ts?worker_file&type=module', contentType: 'text/javascript', includes: [`import ${JSON.stringify(viteEnvUrl)}`, 'export const result = value'], excludes: [': number'] },
     { url: '/dependency.ts', contentType: 'text/javascript', includes: ['export const value = 7'], excludes: [': number'] },
@@ -192,12 +195,15 @@ describe('development isolation through real Vite middleware', () => {
   ])('preserves policy on 200 and conditional GET/HEAD 304: $url', async fixture => {
     await assertConditionalResponse({ base, ...fixture });
   });
+
   it('does not change non-GET responses or CORS preflight', async () => {
     await assertNonGet({ base });
   });
+
   it('preserves custom redirect and missing responses', async () => {
     await assertCustomResponses({ base });
   });
+
   it('covers the send 304 path after a timestamp bypasses the module URL cache', async () => {
     const initial = await fetch(base + '/dependency.ts');
     await initial.text();
@@ -212,6 +218,7 @@ describe('development isolation through real Vite middleware', () => {
     expect(conditional.headers.get('cross-origin-opener-policy')).toBe('same-origin');
     expect(conditional.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
   });
+
   it('keeps real 200 module bytes and cache headers identical to the unmodified server', async () => {
     const baseline = await createServer({
       root,
@@ -254,6 +261,7 @@ describe('preview isolation through the real Vite preview server', () => {
   let root: string;
   let server: PreviewServer | undefined;
   let base: string;
+
   beforeAll(async () => {
     root = await fixture();
     server = await preview({
@@ -272,6 +280,7 @@ describe('preview isolation through the real Vite preview server', () => {
     if (address === null || typeof address === 'string') throw new Error('Missing preview listener');
     base = `http://127.0.0.1:${address.port}`;
   });
+
   afterAll(async () => {
     try {
       if (server !== undefined && 'closeAllConnections' in server.httpServer) {
@@ -285,18 +294,22 @@ describe('preview isolation through the real Vite preview server', () => {
       }
     }
   });
+
   it.each([
     { url: '/worker.js', contentType: 'text/javascript', includes: ['export const value = 7'], excludes: [] },
     { url: '/index.html', contentType: 'text/html', includes: ['<title>preview fixture</title>'], excludes: [] },
   ])('preserves policy on static 200 and conditional GET/HEAD 304: $url', async fixture => {
     await assertConditionalResponse({ base, ...fixture });
   });
+
   it('does not change non-GET responses or CORS preflight', async () => {
     await assertNonGet({ base });
   });
+
   it('preserves custom redirect and missing responses', async () => {
     await assertCustomResponses({ base });
   });
+
   it('keeps real 200 static bytes and cache headers identical to the unmodified preview', async () => {
     const baseline = await preview({
       root,

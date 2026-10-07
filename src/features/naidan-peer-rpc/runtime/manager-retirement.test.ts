@@ -146,6 +146,7 @@ it('master OFF joins every link and resource before returning a retained cleanup
     resourceEnd.resolve(); await state.cleanup();
   }
 });
+
 it('publishes one disconnect barrier before synchronous cancellation observers reenter', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 1 });
   try {

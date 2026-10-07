@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createRunPerformance } from './run-performance';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { createImageTrace, createImageDiagnosticBuffer, imageDiagnosticSchema } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+
 it('uses only native sampling zero as the step start and records rounded preview time separately', () => {
   let time = 0; const emit = vi.fn(), checkpoint = vi.fn();
   const request = requestFixture(); request.parameters.steps = 8;
@@ -22,6 +23,7 @@ it('uses only native sampling zero as the step start and records rounded preview
   expect(summary).toMatchObject({ metric: 'run-wall', milliseconds: 190, conditioning: 30, sampling: 70, decoding: 20, encoding: 10, nativePreviewDecodeMs: 20, nativeFinalDecodeMs: 10 });
   for (const [entry] of emit.mock.calls) expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
 });
+
 it('does not leak prompt, model arguments, native labels or raw user-agent suffixes', () => {
   const emit = vi.fn(), request = requestFixture(); request.parameters.prompt = 'private text'; request.parameters.modelArguments = 'key=private';
   const meter = createRunPerformance({ enabled: true, request, emit, checkpoint: vi.fn(), now: () => 0 }); meter.settings();
@@ -31,6 +33,7 @@ it('does not leak prompt, model arguments, native labels or raw user-agent suffi
   const text = JSON.stringify(emit.mock.calls); expect(text).not.toContain('private'); expect(text).not.toContain('user_secret');
   expect(emit.mock.calls.at(-1)![0].fields.otherGraphStarts).toBe(1);
 });
+
 it('has no timing/parsing/logging work while disabled and emits no late measurements after close', () => {
   const now = vi.fn(() => 0), emit = vi.fn(), checkpoint = vi.fn();
   const disabled = createRunPerformance({ enabled: false, request: requestFixture(), now, emit, checkpoint });

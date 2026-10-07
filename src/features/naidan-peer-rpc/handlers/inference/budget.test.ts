@@ -12,6 +12,7 @@ it('joins every outstanding reservation without freeing capacity early', async (
   expect(() => budget.reserve({ bytes: 4 })).toThrow();
   second.release(); await pending; expect(budget.reserved).toBe(0); expect(idle).toBe(true);
 });
+
 it('a later reservation cycle does not reuse an already resolved idle promise', async () => {
   const budget = createInferenceBudget({ capacity: 8 });
   await budget.whenIdle(); const first = budget.reserve({ bytes: 8 });
@@ -22,6 +23,7 @@ it('a later reservation cycle does not reuse an already resolved idle promise', 
   });
   await Promise.resolve(); expect(ended).toBe(false); second.release(); await after;
 });
+
 it('zero-byte and rejected reservations do not create pending idle owners', async () => {
   const budget = createInferenceBudget({ capacity: 8 });
   expect(() => budget.reserve({ bytes: -1 })).toThrow();

@@ -624,5 +624,4 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     expect(await (await unknown.getFile()).text()).toBe('KEEP');
     expect(dir.entries.has('migration-state.json')).toBe(false);
   });
-
 });

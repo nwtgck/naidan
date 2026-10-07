@@ -493,6 +493,7 @@ beta
     expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(1);
   });
+
   it('accepts GNU long-name abbreviations without preserving synthetic long aliases', async () => {
     const abbreviated = await execute({
       script: "printf 'a\\n' | cat --show-a",
@@ -506,5 +507,4 @@ beta
     expect(synthetic.stderr.text).toContain("unrecognized option '--u'");
     expect(synthetic.result.exitCode).toBe(1);
   });
-
 });

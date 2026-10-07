@@ -21,6 +21,7 @@ function fixture() {
   const output: WorkerResult = { cancelled: true, modelResident: true };
   return { gate, raw, factory, a, b, args, output };
 }
+
 it('is lazy and prevents concurrent native work before it starts', async () => {
   const { a, b, factory, raw, args, gate, output } = fixture();
   expect(factory).not.toHaveBeenCalled();
@@ -29,6 +30,7 @@ it('is lazy and prevents concurrent native work before it starts', async () => {
   expect(raw.generate).toHaveBeenCalledTimes(1);
   gate.resolve(output); await pending; a.dispose(); b.dispose();
 });
+
 it('late cancel, preview and dispose cannot control a later owner', async () => {
   const { a, b, raw, args, gate, output } = fixture();
   const first = a.generate(args); gate.resolve(output); await first;
@@ -40,6 +42,7 @@ it('late cancel, preview and dispose cannot control a later owner', async () => 
   next.resolve(output); await second; b.dispose();
   expect(raw.dispose).toHaveBeenCalledTimes(1);
 });
+
 it('retains the reservation while a producer ignores an owner abort', async () => {
   const { a, b, raw, args, gate, output } = fixture();
   const pending = a.generate(args); a.dispose();
@@ -48,6 +51,7 @@ it('retains the reservation while a producer ignores an owner abort', async () =
   gate.resolve(output); await pending;
   await expect(b.generate(args)).resolves.toEqual(output); b.dispose();
 });
+
 it('never exposes an engine inspection to a different owner', async () => {
   const { a, b, raw, args, gate, output } = fixture();
   const pending = a.generate(args);
@@ -56,15 +60,18 @@ it('never exposes an engine inspection to a different owner', async () => {
   await expect(b.inspectEngine()).resolves.toEqual({ status: 'unavailable', reason: 'not-loaded' });
   expect(raw.inspectEngine).not.toHaveBeenCalled(); a.dispose(); b.dispose();
 });
+
 it('a disposed owner cannot restart even after the engine becomes idle', async () => {
   const { a, b, args, factory } = fixture(); a.dispose();
   await expect(a.generate(args)).rejects.toThrow(); expect(factory).not.toHaveBeenCalled(); b.dispose();
 });
+
 it('an already aborted request never acquires or creates an engine', async () => {
   const { a, b, args, factory } = fixture(); const stop = new AbortController(); stop.abort();
   await expect(a.generate({ ...args, signal: stop.signal })).rejects.toThrow();
   expect(factory).not.toHaveBeenCalled(); a.dispose(); b.dispose();
 });
+
 it('does not return inspection data after the native cache moved to another owner', async () => {
   const { a, b, raw, args, gate, output } = fixture();
   const first = a.generate(args); gate.resolve(output); await first;
@@ -77,6 +84,7 @@ it('does not return inspection data after the native cache moved to another owne
   await expect(pending).resolves.toEqual({ status: 'unavailable', reason: 'not-loaded' });
   a.dispose(); b.dispose();
 });
+
 it('ignores a released notification from a disposed native client after replacement', async () => {
   const { args, output } = fixture();
   const callbacks: Array<() => void> = [];
@@ -117,6 +125,7 @@ it('reserves a complete batch without allocating native resources and protects g
   await expect(a.generate(args)).rejects.toBeInstanceOf(ImageEngineBusyError);
   current.release(); a.dispose(); b.dispose();
 });
+
 it('keeps an aborted batch reserved until native retirement, then releases it', async () => {
   const { a, b, args, gate, output } = fixture(), stop = new AbortController();
   a.reserve!({ signal: stop.signal }); const pending = a.generate({ ...args, signal: stop.signal }); stop.abort();
@@ -124,6 +133,7 @@ it('keeps an aborted batch reserved until native retirement, then releases it', 
   gate.resolve(output); await pending;
   await expect(b.generate(args)).resolves.toEqual(output); a.dispose(); b.dispose();
 });
+
 it('drops a disposed idle owner reservation without touching another owner', async () => {
   const { a, b, args, gate, output } = fixture();
   a.reserve!({ signal: args.signal }); a.dispose();

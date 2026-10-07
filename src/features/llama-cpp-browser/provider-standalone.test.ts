@@ -7,6 +7,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModels: vi.fn<LlamaCppBrowserService['listModels']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
+
 beforeEach(async () => {
   vi.clearAllMocks(); await ensureAllStringsForTest({ locale: 'en' });
   service.listModels.mockResolvedValue([]);
@@ -25,6 +26,7 @@ describe('standalone llama.cpp generation facade', () => {
       fetcher.mockRestore();
     }
   });
+
   it('represents pre-cancellation as interruption without starting generation', async () => {
     const { result, text } = await collectChatGeneration({ items: new LlamaCppBrowserProvider().chat({ ...chatRequest(), signal: AbortSignal.abort() }), abortController: new AbortController() });
     expect(text).toBe('');expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });

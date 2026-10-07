@@ -10,6 +10,7 @@ import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-s
 
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
+
 it('packages the real image query workers and clients through the standalone SystemJS graph without inference modules', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-image-query-standalone-'));
   try {

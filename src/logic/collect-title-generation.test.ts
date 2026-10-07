@@ -31,6 +31,7 @@ function collect({ provider, endpoint, parameters, signal }: {
 }) {
   return collectTitleGeneration({ provider, endpoint, parameters, signal, messages, model: 'model' });
 }
+
 beforeEach(() => {
   fetcher.mockReset();
 });

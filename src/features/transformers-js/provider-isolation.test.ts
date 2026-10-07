@@ -32,6 +32,7 @@ beforeEach(() => {
     throw new Error('Provider isolation test forbids network access');
   }));
 });
+
 afterEach(() => {
   try {
     expect(globalThis.fetch).not.toHaveBeenCalled();

@@ -13,9 +13,11 @@ vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({
   getRpcManager: async () => ({ list: () => [], reload: async () => {}, bindClient: rpc.bind }),
 }));
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop(); vi.clearAllMocks();
 });
+
 function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPreference {
   return {
     connectionId: toNaidanRpcConnectionId({ raw: `connection-${name}` }),
@@ -72,11 +74,13 @@ function harness({ preferences }: { preferences: BrowserImageGenerationSettings 
 async function settle(): Promise<void> {
   await nextTick(); await Promise.resolve(); await nextTick();
 }
+
 it('restores the inferenceLocation and disabled adapters without saving, connecting or generating', async () => {
   const h = harness({ preferences: saved() }); await settle();
   expect(h.inferenceLocation.kind.value).toBe('naidan_rpc'); expect(h.inferenceLocation.editor.value.loras[0]?.enabled).toBe('disabled');
   expect(h.inferenceLocation.selection.value?.loras).toEqual([]); expect(h.update).not.toHaveBeenCalled(); expect(rpc.bind).not.toHaveBeenCalled();
 });
+
 it('persists explicit clearing while retaining concurrent settings and another peer editor', async () => {
   const h = harness({ preferences: saved() }); await settle();
   const two = preference({ name: 'two' });
@@ -88,6 +92,7 @@ it('persists explicit clearing while retaining concurrent settings and another p
   expect(actual?.remoteModelEditors?.find(item => item.connectionId === two.connectionId)).toEqual(two);
   const reopened = harness({ preferences: actual! }); await settle(); expect(reopened.inferenceLocation.editor.value.primary).toBeUndefined();
 });
+
 it('combines failed and newer edits without resetting the user inferenceLocation', async () => {
   const h = harness({ preferences: saved() }); await settle();
   h.update.mockRejectedValueOnce(new Error('disk full'));
@@ -96,6 +101,7 @@ it('combines failed and newer edits without resetting the user inferenceLocation
   h.inferenceLocation.changeLora({ index: 0, enabled: 'disabled', strength: 0.8 }); h.inferenceLocation.setKind({ value: 'local' }); await settle();
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ inferenceLocation: { kind: 'local' }, remoteModelEditors: [{ editor: { loras: [{ enabled: 'disabled', strength: 0.8 }] } }] });
 });
+
 it('discards queued edits when the settings provider changes while a write waits', async () => {
   const h = harness({ preferences: saved() }); await settle();
   const gate = Promise.withResolvers<void>();
@@ -109,6 +115,7 @@ it('discards queued edits when the settings provider changes while a write waits
   h.replaceStorage(); h.settings.value.experimental = { browserImageGeneration: { width: 1024 } }; gate.resolve(); await settle();
   expect(h.settings.value.experimental).toEqual({ browserImageGeneration: { width: 1024 } }); expect(h.update).toHaveBeenCalledOnce(); expect(h.failed).not.toHaveBeenCalled();
 });
+
 it('resumes new provider edits while an obsolete save still owns its cleanup', async () => {
   const h = harness({ preferences: saved() }); await settle();
   const gate = Promise.withResolvers<void>();
@@ -137,6 +144,7 @@ it('resumes new provider edits while an obsolete save still owns its cleanup', a
   expect(h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors).toHaveLength(1);
   expect(h.update).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
 });
+
 it('drains accepted edits after leaving the view when storage still belongs to it', async () => {
   const h = harness({ preferences: saved() }); await settle();
   const gate = Promise.withResolvers<void>();

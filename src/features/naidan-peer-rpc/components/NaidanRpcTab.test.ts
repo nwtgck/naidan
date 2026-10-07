@@ -56,15 +56,18 @@ function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcCo
     session: phase === 'connected' ? {} : undefined,
   };
 }
+
 beforeEach(() => {
   fixture.rows = []; vi.clearAllMocks(); fixture.reload.mockResolvedValue(undefined); fixture.connect.mockResolvedValue(undefined);
   fixture.confirm.mockResolvedValue(true);
   fixture.getPeerProvidedMethods.mockResolvedValue({ status: 'ready', methods: [] });
   fixture.prepareDisconnect.mockImplementation(({ id }: { id: Parameters<NaidanPeerManager['disconnect']>[0]['id'] }) => () => fixture.disconnect({ id }));
 });
+
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount(); fixture.listeners.clear();
 });
+
 it('opens the pairing form for an empty registry without pairing, connecting or remembering a peer', async () => {
   const wrapper = panel(); await flushPromises(); expect(wrapper.find('[data-testid="naidan-rpc-tab"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(true);
@@ -72,6 +75,7 @@ it('opens the pairing form for an empty registry without pairing, connecting or 
   expect(wrapper.get('[data-testid="rpc-start"]').element).toHaveProperty('disabled', true);
   expect(fixture.reload).toHaveBeenCalledOnce(); expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.remember).not.toHaveBeenCalled();
 });
+
 it('waits for the registry to load before opening the empty pairing form', async () => {
   const loading = Promise.withResolvers<void>();
   fixture.reload.mockReturnValueOnce(loading.promise);
@@ -81,6 +85,7 @@ it('waits for the registry to load before opening the empty pairing form', async
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(true);
   expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
 });
+
 it('does not treat a failed registry load as an empty registry', async () => {
   fixture.reload.mockRejectedValueOnce(new Error('Storage unavailable'));
   const wrapper = panel(); await flushPromises();
@@ -88,6 +93,7 @@ it('does not treat a failed registry load as an empty registry', async () => {
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(false);
   expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
 });
+
 it('preserves an open pairing form when the registry is refreshed', async () => {
   const wrapper = panel(); await flushPromises();
   await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
@@ -99,6 +105,7 @@ it('preserves an open pairing form when the registry is refreshed', async () => 
   expect(fixture.reload).toHaveBeenCalledTimes(2);
   expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
 });
+
 it('requires no display name or trust choice before first comparison, then offers remembering', async () => {
   fixture.pair.mockImplementation(async (args: Parameters<NaidanPeerManager['pair']>[0]) => {
     const approved = await args.verifyPeer({ comparison: new Uint8Array(32).map((_, i) => i), peerIdentity: new Uint8Array(32).fill(2), signal: new AbortController().signal });
@@ -114,6 +121,7 @@ it('requires no display name or trust choice before first comparison, then offer
   expect(fixture.pair.mock.calls[0]![0].code).toBe('家のPC 🔌');
   await wrapper.get('[data-testid="rpc-remember"]').trigger('click'); await flushPromises(); expect(fixture.remember).toHaveBeenCalledWith({ id, label: 'Peer 1234' });
 });
+
 it('keeps partial method grants when the panel opens and details are collapsed', async () => {
   const partial = row({ persistence: 'saved' }); partial.access.effective = ['generateChat'];
   fixture.rows = [partial]; const wrapper = panel(); await flushPromises();
@@ -123,6 +131,7 @@ it('keeps partial method grants when the panel opens and details are collapsed',
   expect(wrapper.get('[data-testid="rpc-method-listChatModels"]').element).toHaveProperty('checked', false);
   expect(fixture.updateAllowedMethods).not.toHaveBeenCalled();
 });
+
 it('toggles chat and image capabilities independently with concrete method lists', async () => {
   fixture.rows = [row({ persistence: 'saved' })]; const wrapper = panel(); await flushPromises();
   await wrapper.get('[data-testid="rpc-provide-chat"]').setValue(true);
@@ -137,6 +146,7 @@ it('toggles chat and image capabilities independently with concrete method lists
   if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateAllowedMethods).toHaveBeenLastCalledWith({ id, allowedMethods: ['listImageModels', 'generateImage'] });
   else expect(fixture.updateAllowedMethods).not.toHaveBeenCalled();
 });
+
 it('respects native provision availability when applying concrete methods', async () => {
   fixture.rows = [row()]; const wrapper = panel(); await flushPromises();
   await wrapper.get('[data-testid="rpc-method-listChatModels"]').setValue(true);
@@ -147,11 +157,13 @@ it('respects native provision availability when applying concrete methods', asyn
   if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateAllowedMethods).toHaveBeenCalledWith({ id, allowedMethods: ['listChatModels'] });
   else expect(fixture.updateAllowedMethods).not.toHaveBeenCalled();
 });
+
 it('masks header values and closing Settings does not disconnect an established peer', async () => {
   fixture.rows = [row({ persistence: 'saved' })]; const wrapper = panel(); await flushPromises();
   expect(wrapper.text()).not.toContain('private-token'); expect(wrapper.find('input[type="password"]').exists()).toBe(true);
   wrapper.unmount(); expect(fixture.disconnect).not.toHaveBeenCalled();
 });
+
 it('allows stopping while an explicit connection command is still pending', async () => {
   fixture.rows = [row({ persistence: 'saved', phase: 'disconnected' })]; const gate = Promise.withResolvers<void>(); fixture.connect.mockImplementation(() => {
     fixture.rows[0]!.phase = 'connecting'; for (const listener of fixture.listeners) listener(); return gate.promise;
@@ -197,6 +209,7 @@ it('rebinds all editable fields when the selected connection disappears', async 
   if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateAllowedMethods).toHaveBeenCalledWith({ id: replacement.connection.id, allowedMethods: [] });
   else expect(fixture.updateAllowedMethods).not.toHaveBeenCalled();
 });
+
 it('keeps edits for the same connection across unrelated state notifications', async () => {
   fixture.rows = [row({ persistence: 'saved', phase: 'disconnected' })];
   const wrapper = panel(); await flushPromises();
@@ -207,6 +220,7 @@ it('keeps edits for the same connection across unrelated state notifications', a
   expect(wrapper.get('[data-testid="rpc-name"]').element).toHaveProperty('value', 'Unsaved name');
   expect(wrapper.get('[data-testid="rpc-method-generateImage"]').element).toHaveProperty('checked', true);
 });
+
 it('does not replace a new pairing form with a surviving registered connection', async () => {
   fixture.rows = [row({ persistence: 'saved' })];
   const wrapper = panel(); await flushPromises();
@@ -219,6 +233,7 @@ it('does not replace a new pairing form with a surviving registered connection',
   expect(wrapper.get('[data-testid="rpc-code"]').element).toHaveProperty('value', '0042');
   expect(wrapper.get('[data-testid="rpc-server"]').element).toHaveProperty('value', 'https://new.example');
 });
+
 it('captures the session-specific stop command before awaiting confirmation', async () => {
   fixture.rows = [row({ persistence: 'saved' })];
   const confirmation = Promise.withResolvers<boolean>();
@@ -232,6 +247,7 @@ it('captures the session-specific stop command before awaiting confirmation', as
   confirmation.resolve(true); await flushPromises();
   expect(prepared).toHaveBeenCalledOnce(); expect(fixture.disconnect).not.toHaveBeenCalled();
 });
+
 it.each(['temporary', 'session'] as const)('keeps automatic connection visible but unavailable for a %s record', async variant => {
   const view = row({ persistence: variant === 'temporary' ? 'temporary' : 'saved' });
   if (variant === 'session') view.registryPersistence = 'session';
@@ -239,6 +255,7 @@ it.each(['temporary', 'session'] as const)('keeps automatic connection visible b
   expect(wrapper.get('[data-testid="rpc-auto-connect"]').element).toHaveProperty('disabled', true);
   expect(fixture.setAutoConnect).not.toHaveBeenCalled();
 });
+
 it('shows only committed automatic intent when saving it fails', async () => {
   fixture.rows = [row({ persistence: 'saved' })]; fixture.setAutoConnect.mockRejectedValueOnce(new Error('quota'));
   const wrapper = panel(); await flushPromises(); await wrapper.get('[data-testid="rpc-auto-connect"]').setValue(true); await flushPromises();

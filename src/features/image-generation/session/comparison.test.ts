@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { toImageGenerationSessionId } from '@/01-models/ids';
 import { generationAssetFixture, generationRunFixture } from '@/00-storage/service/image-generation/test-support';
 import { compareImageGenerationImages } from './comparison';
+
 it('compares each actual output seed rather than a shared base seed', () => {
   const run = generationRunFixture({ id: 'run-aa', sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), count: 2, seed: '9007199254740993' });
   const left = { run, asset: generationAssetFixture({ id: 'left-aa', run, index: 0 }) }, right = { run, asset: generationAssetFixture({ id: 'right-aa', run, index: 1 }) };
@@ -9,6 +10,7 @@ it('compares each actual output seed rather than a shared base seed', () => {
   expect(diff).toEqual([{ key: 'seed', left: '"9007199254740993"', right: '"9007199254740994"', same: false }]);
   expect(run.request.parameters.seed).toBe('9007199254740993');
 });
+
 it('includes model file identity, adapters, input files and runtime rather than a misleading parameter-only equality', () => {
   const run = generationRunFixture({ id: 'run-aa', sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), count: 1, seed: '42' });
   const left = { run, asset: generationAssetFixture({ id: 'asset-aa', run, index: 0 }) };

@@ -7,11 +7,13 @@ vi.mock('./capability-probes', () => ({ checkJspi: vi.fn(), checkStorage: vi.fn(
 vi.mock('@/features/file-protocol-standalone/embedded-binary', () => {
   throw new Error('Hosted probes must not import Brotli');
 });
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(checkJspi).mockResolvedValue(undefined); vi.mocked(checkStorage).mockResolvedValue(undefined);
   vi.mocked(gpuUnavailableReason).mockResolvedValue(undefined); vi.mocked(supportsMemory64).mockReturnValue(true);
 });
+
 describe('hosted runtime capability report', () => {
   it.each([
     { memory64: true, jspi: true, gpu: true, expected: 'webgpu-wasm64-jspi' },
@@ -27,6 +29,7 @@ describe('hosted runtime capability report', () => {
     expect(report.recommended).toBe(expected); expect(report.profiles).toHaveLength(5);
     expect(checkStorage).toHaveBeenCalledOnce();
   });
+
   it('reports storage failure independently from file-management state', async () => {
     vi.mocked(checkStorage).mockRejectedValue(new Error('private detail'));
     const report = await probeRuntimeProfiles();
@@ -34,6 +37,7 @@ describe('hosted runtime capability report', () => {
     expect(report.profiles.every(entry => entry.status === 'unavailable' && entry.reason === 'storage')).toBe(true);
     expect(JSON.stringify(report)).not.toContain('private detail');
   });
+
   it('rejects inconsistent or duplicate RPC reports', () => {
     expect(profileCapabilitiesSchema.safeParse({ recommended: 'cpu-wasm32', profiles: [] }).success).toBe(false);
     expect(profileCapabilitiesSchema.safeParse({ profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' }] }).success).toBe(false);

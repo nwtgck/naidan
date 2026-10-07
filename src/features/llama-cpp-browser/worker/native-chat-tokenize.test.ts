@@ -75,6 +75,7 @@ describe('chat text tokenization', () => {
     await expect(result).rejects.toThrow('trap');
     expect(allocations.size).toBe(0);
   });
+
   it('frees the encoded text if the first token buffer allocation traps', async () => {
     const { core, allocations, tryAlloc, free, llama_tokenize } = fixture();
     const error = new WebAssembly.RuntimeError('first token allocation trap');
@@ -85,6 +86,7 @@ describe('chat text tokenization', () => {
     expect(allocations.size).toBe(0); expect(free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
     expect(llama_tokenize).not.toHaveBeenCalled();
   });
+
   it('frees the text and first buffer if the resized token allocation traps', async () => {
     const { core, allocations, tryAlloc, llama_tokenize } = fixture();
     const original = tryAlloc.getMockImplementation()!;
@@ -95,6 +97,7 @@ describe('chat text tokenization', () => {
     await expect(tokenizeChatText({ core, vocab: 1n, text: 'x' })).rejects.toThrow('resized trap');
     expect(allocations.size).toBe(0); expect(llama_tokenize).toHaveBeenCalledOnce();
   });
+
   it('frees the text even when releasing the token buffer reports failure', async () => {
     const { core, allocations, free } = fixture(); const original = free.getMockImplementation()!;
     free.mockImplementationOnce(args => {
@@ -103,6 +106,7 @@ describe('chat text tokenization', () => {
     await expect(tokenizeChatText({ core, vocab: 1n, text: 'text' })).rejects.toThrow('token free failure');
     expect(allocations.size).toBe(0); expect(free).toHaveBeenLastCalledWith({ pointer: 100n });
   });
+
   it.each(['日本語😀', 'a\0b', '\ud800'])('encodes helper text only once with the exact native byte length: %j', async text => {
     const { core, allocations, llama_tokenize } = fixture();
     const expected = new TextEncoder().encode(text); const original = llama_tokenize.getMockImplementation()!;
@@ -131,9 +135,7 @@ describe('chat text tokenization', () => {
     expect(free.mock.calls).toEqual([[{ pointer: 101n }], [{ pointer: 100n }]]);
     expect(tryAlloc).toHaveBeenCalledOnce(); expect(llama_tokenize).toHaveBeenCalledOnce(); expect(allocations.size).toBe(0);
   });
-
 });
-
 
 describe('chat tokenization allocation failures', () => {
   it('releases the acquired text when the first speculative allocation throws', async () => {

@@ -6,6 +6,7 @@ import type { IFileExplorerWorker } from './types';
 import { createFileExplorerStreamClient } from './stream-client';
 
 const cleanups: Array<() => void> = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -79,6 +80,7 @@ describe('File Explorer stream client lifecycle', () => {
     client.disposeStreams();
     await rejected;
   });
+
   it('returns the same validated native snapshot without opening a byte stream', async () => {
     const { remote, client } = fixture();
     const file = new File(['data'], 'native');
@@ -112,5 +114,4 @@ describe('File Explorer stream client lifecycle', () => {
     await expect(client.prepareFileDownload({ path: '/later' })).rejects.toThrow();
     expect(remote.prepareFileDownload).toHaveBeenCalledOnce();
   });
-
 });

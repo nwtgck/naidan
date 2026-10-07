@@ -5,12 +5,15 @@ import { createProductionLoadIdentityTracker, productionLoadIdentitySchema } fro
 const fetch = vi.fn(() => {
   throw new Error('External network forbidden in load identity tests');
 });
+
 beforeEach(() => {
   vi.stubGlobal('fetch', fetch);
 });
+
 afterEach(() => {
   expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
 });
+
 function route() {
   return { cleanModelId: 'synthetic/model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'wasm', dtype: 'q4' } };
 }

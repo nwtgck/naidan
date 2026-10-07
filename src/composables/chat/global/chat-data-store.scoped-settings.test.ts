@@ -235,7 +235,6 @@ describe('chat data store scoped settings updates', () => {
     expect(store.getLiveChatById({ chatId: live.id })?.updatedAt).toBe(5001);
     now.mockRestore();
   });
-
 });
 
 describe('chat data store sidebar loading', () => {

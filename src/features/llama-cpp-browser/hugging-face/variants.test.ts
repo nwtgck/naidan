@@ -12,6 +12,7 @@ vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 const repository = 'owner/Model-GGUF'; const revision = 'a'.repeat(40);
 const projector = { path: 'mmproj-Q8_0.gguf', size: 128 };
 const selection = ({ quant }: { quant: string }): DownloadSelection => ({ repository, revision, files: [{ path: `Model-${quant}.gguf`, size: 128 }, projector] });
+
 beforeEach(() => {
   const root = memoryDirectory({ name: '' });
   vi.stubGlobal('navigator', {
@@ -21,7 +22,9 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 async function publish({ input }: { input: DownloadSelection }): Promise<void> {
   const writer = createDownloadWriter(); expect(await writer.begin({ selection: input })).toMatchObject({ status: 'ready' });
   for (let fileIndex = 0; fileIndex < input.files.length; fileIndex++) {
@@ -29,6 +32,7 @@ async function publish({ input }: { input: DownloadSelection }): Promise<void> {
   }
   await writer.finish();
 }
+
 describe('independent HF variants in one repository', () => {
   it('checks exact selected shards and projector locally and observes external file changes', async () => {
     const split: DownloadSelection = { repository, revision, files: [{ path: 'Model-Q4_K_M-00001-of-00002.gguf', size: 128 }, { path: 'Model-Q4_K_M-00002-of-00002.gguf', size: 128 }, projector] };
@@ -49,6 +53,7 @@ describe('independent HF variants in one repository', () => {
     await folder.removeEntry(split.files[1]!.path);
     expect(await installedSelection({ selection: { ...split, files: split.files.slice(0, 2) } })).toBeUndefined();
   });
+
   it('keeps Q4 available during Q8 download, cancels only owned files, and preserves Q4 identity after Q8 publication', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     const before = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
@@ -68,6 +73,7 @@ describe('independent HF variants in one repository', () => {
     expect((await listHuggingFaceModels()).map(model => model.name)).toEqual([`hf.co/${repository}:Q4_K_M`, `hf.co/${repository}:Q8_0`]);
     await expect(resolveRepositoryModel({ name: `hf.co/${repository}` })).rejects.toThrow('unsupported-input');
   });
+
   it('keeps a split model selector stable when a same-stem unsplit variant is added', async () => {
     const splitSelection: DownloadSelection = { repository, revision, files: [{ path: 'Model-Q4_K_M-00001-of-00002.gguf', size: 128 }, { path: 'Model-Q4_K_M-00002-of-00002.gguf', size: 128 }, projector] };
     await publish({ input: splitSelection });
@@ -77,6 +83,7 @@ describe('independent HF variants in one repository', () => {
     const after = await resolveRepositoryModel({ name: before.name }); expect(after.id).toBe(before.id); expect(after.files.map(file => file.path)).toEqual(before.files.map(file => file.path));
     expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` })).files).toHaveLength(2);
   });
+
   it('verifies shared files byte by byte without overwriting them and restarts verification after pause', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     const writer = createDownloadWriter(); await writer.begin({ selection: selection({ quant: 'Q8_0' }) });
@@ -90,6 +97,7 @@ describe('independent HF variants in one repository', () => {
     expect(await createDownloadWriter().begin({ selection: selection({ quant: 'Q8_0' }) })).toMatchObject({ journal: { bytes: [0, 0], complete: [false, false], reused: [false, true] } });
     expect((await listHuggingFaceModels())[0]?.name).toBe(`hf.co/${repository}:Q4_K_M`);
   });
+
   it('rejects another projector path before modifying the repository and uses a deterministic external projector preference', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     const conflict = await createDownloadWriter().begin({ selection: { ...selection({ quant: 'Q8_0' }), files: [{ path: 'Model-Q8_0.gguf', size: 128 }, { path: 'mmproj-F16.gguf', size: 128 }] } });
@@ -100,6 +108,7 @@ describe('independent HF variants in one repository', () => {
     const loaded = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
     expect(loaded.projectorPath).toBe('mmproj-Q8_0.gguf'); expect(loaded.files).toHaveLength(2);
   });
+
   it('deletes only the selected variant and follows the explicit shared-file choice even when another variant uses it', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) }); await publish({ input: selection({ quant: 'Q8_0' }) });
     const q4 = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
@@ -112,6 +121,7 @@ describe('independent HF variants in one repository', () => {
     const again = await prepareModelRemoval({ id: q4.id }); expect(await removeStoredModel({ plan: again.sharedPlan! })).toBe('deleted');
     expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q8_0` })).projectorPath).toBeUndefined();
   });
+
   it('derives distinct variant labels without removing vendor markers and keeps identities stable as files are added', () => {
     const paths = ['Model-Q4_K_M.gguf', 'Model-AWQ-Q4_K_M.gguf', 'Model-QAD-Q4_0.gguf', 'Model-Q4_0.gguf', 'Model-UD-Q4_K_XL-00001-of-00002.gguf', 'Model-UD-Q4_K_XL-00002-of-00002.gguf'];
     const models = groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }).models;

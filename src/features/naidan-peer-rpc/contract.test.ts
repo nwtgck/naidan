@@ -21,6 +21,7 @@ it('derives a closed method vocabulary with a single explicit image entry', () =
   expect(peerAllowedMethodsSchema.safeParse(['generateImage', 'generateImage']).success).toBe(false);
   for (const unknown of ['getProvidedMethods', '*', 'image', 'imageFromFiles', 'downloadModel', '__proto__', 'constructor']) expect(peerAllowedMethodsSchema.safeParse([unknown]).success).toBe(false);
 });
+
 it('advertises structural types from the contract while keeping grants closed', () => {
   const methods = describePeerMethods({ names: ['generateImage', 'listChatModels'] });
   expect(methods[0]).toMatchObject({ name: 'generateImage', result: { kind: 'object', properties: { image: { kind: 'byte-stream' }, events: { kind: 'stream' } } }, notifications: { progress: { type: 'object' } } });
@@ -30,20 +31,24 @@ it('advertises structural types from the contract while keeping grants closed', 
   expect(peerProvidedMethodsSchema.safeParse({ status: 'checking', methods }).success).toBe(false);
   expect(peerProvidedMethodsSchema.safeParse({ status: 'ready', methods: [future, future] }).success).toBe(false);
 });
+
 it.each(['../private', '/absolute', 'models//file', 'https://example.invalid/file', 'a/./b', 'a/%2e%2e/b', 'a\\b', 'a\0b'])('rejects unsafe model path %s', path => {
   expect(relativeModelPathSchema.safeParse(path).success).toBe(false);
 });
+
 it('accepts only local repository references, including a named quantization', () => {
   expect(chatModelReferenceSchema.safeParse('hf.co/example/model:Q4_K_M').success).toBe(true);
   expect(chatModelReferenceSchema.safeParse('hf.co/example/model:../Q4').success).toBe(false);
   expect(chatModelReferenceSchema.safeParse('user/local.gguf').success).toBe(true);
 });
+
 it('does not throw while validating a malformed or oversized seed', () => {
   const value = { prompt: 'tree', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 1, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 };
   expect(peerImageParametersSchema.safeParse(value).success).toBe(true);
   for (const seed of ['x', '', '-1', '9'.repeat(100), '9223372036854775808']) expect(peerImageParametersSchema.safeParse({ ...value, seed }).success).toBe(false);
   expect(peerImageParametersSchema.parse({ ...value, modelArguments: 'unknown=true' })).toEqual(value);
 });
+
 it('rejects duplicate component roles and requires explicit construction', () => {
   const file = { location: { kind: 'opfs', path: 'models/test/vae.gguf' } };
   expect(imageModelSelectionSchema.safeParse({ primary: { slot: 'diffusion', file }, components: [{ slot: 'vae', file }, { slot: 'vae', file }], loras: [] }).success).toBe(false);

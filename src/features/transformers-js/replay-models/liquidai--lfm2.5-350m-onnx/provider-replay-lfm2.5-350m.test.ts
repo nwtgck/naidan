@@ -208,6 +208,7 @@ describe('LFM2.5 350M Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('delivers the recorded first-turn stream exactly before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
     expect(evidence.identity).toEqual({
@@ -225,7 +226,7 @@ describe('LFM2.5 350M Provider / basic', () => {
       metadataCache: "all-fixture",
       // Only native model bodies/inference are substituted. Repository paths,
       // original tokenizer/config, offline loading and Production streaming are real.
-      artifacts: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"].map(path => ({ path, bytes: Uint8Array.of(1) })),
+      artifacts: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"].map(path => ({ path, bytes: Uint8Array.of(1) })),
       generate: async ({ options, tokenizer, runtime }) => {
         expect(tokenizer.decode(evidence.modelReplay.generatedTokenIds, { skip_special_tokens: false }))
           .toBe(evidence.modelReplay.generatedText);
@@ -276,18 +277,19 @@ describe('LFM2.5 350M Provider / basic', () => {
       // Native framing may split a chunk differently; the entire ordered text
       // must still equal the immutable recorded callback stream.
       expect(observed.parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('')).toBe(
-        ["Sure! ","Here’s ","an ","example ","of ","a ","**template** ","for ","a ","**user"].join(''),
+        ["Sure! ", "Here’s ", "an ", "example ", "of ", "a ", "**template** ", "for ", "a ", "**user"].join(''),
       );
       expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
     } finally {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -349,7 +351,7 @@ describe('LFM2.5 350M Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -499,6 +501,7 @@ describe('LFM2.5 350M Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("multi-turn-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
@@ -591,6 +594,7 @@ describe('LFM2.5 350M Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('preserves the captured follow-up prefix with explicitly supplied assistant history', async () => {
     const captures: ProviderChatCapture[] = [];
     expect(continuity.identity).toEqual(evidence.identity);
@@ -664,11 +668,12 @@ continuation:
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -866,11 +871,12 @@ A separate synthetic conversation.<|im_end|>
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity","independent-next-input"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity", "independent-next-input"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1037,7 +1043,7 @@ describe('LFM2.5 350M Provider / reasoning', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1092,11 +1098,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1151,11 +1158,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1210,11 +1218,12 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1462,6 +1471,7 @@ describe('LFM2.5 350M Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("tool-result-continuation preserves the call through verified content while retaining the original native-template input facts", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
@@ -1664,6 +1674,7 @@ describe('LFM2.5 350M Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('recognizes historical native tool delimiters and stops before its unrecorded continuation output', async () => {
     // This earlier source lacks the second invocation. Keep its refusal gate;
     // the content-tool recording below independently covers a complete reply.
@@ -1760,11 +1771,12 @@ describe('LFM2.5 350M Provider / tools', () => {
     }
     expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
+
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
       catalog: contentToolProviderReplayCatalog,
       caseIds: ["natural-tool-minimal"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1847,11 +1859,12 @@ describe('LFM2.5 350M Provider / tools', () => {
     }
     expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
+
   it('tools: executes the recorded representative Tokyo call once and continues with its result', async () => {
     const replay = await createProviderRequestReplay({
       catalog: contentToolProviderReplayCatalog,
       caseIds: ["natural-tool-representative"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1934,11 +1947,12 @@ describe('LFM2.5 350M Provider / tools', () => {
     }
     expect(structuredClone(turn), 'through awaited Worker disposal').toEqual(settled);
   }, 30_000);
+
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
       catalog: contentToolProviderReplayCatalog,
       caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -2015,7 +2029,7 @@ describe('LFM2.5 350M Provider / images', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2368,11 +2382,12 @@ describe('LFM2.5 350M Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2487,6 +2502,7 @@ User`]);
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {
     // This entire sequence belongs to the post-repair recording. Earlier
     // source cases remain pinned in providerReplayCatalog, never mixed here.
@@ -2509,7 +2525,7 @@ User`]);
       expectedLoadReceipt: undefined,
       evidence: fullEvidenceJson,
       imagePlatform: undefined,
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data"],
     });
   }, 30_000);
 });

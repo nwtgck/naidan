@@ -40,6 +40,7 @@ function modelFile({ name }: { name: string }): File {
 async function userFolder() {
   return (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true });
 }
+
 beforeEach(() => {
   vi.clearAllMocks(); TestWorker.instances = []; root = memoryDirectory({ name: '' });
   vi.stubGlobal('Worker', TestWorker);
@@ -47,6 +48,7 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   transport.remote = createWorkerApi();
 });
+
 afterEach(() => {
   llamaCppBrowserService.release(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -83,6 +85,7 @@ describe('local import cancellation through service and Worker boundaries', () =
       unsubscribe(); unsubscribeModels();
     }
   });
+
   it('keeps a second import queued until the cancelled copy has finished deleting its destination', async () => {
     const file = modelFile({ name: 'same.gguf' }); const controller = new AbortController();
     const user = await userFolder(); const rollback = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
@@ -113,6 +116,7 @@ describe('local import cancellation through service and Worker boundaries', () =
       rollback.resolve(); unsubscribe();
     }
   });
+
   it('retries an empty single-file placeholder left by the previous forced-termination implementation', async () => {
     const file = modelFile({ name: 'same.gguf' }); const user = await userFolder();
     const folder = await user.getDirectoryHandle('same-GGUF', { create: true });

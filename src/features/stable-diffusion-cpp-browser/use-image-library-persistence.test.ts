@@ -30,6 +30,7 @@ function library() {
     },
   }))!;
 }
+
 beforeEach(() => {
   root = new MemoryDirectory('root'); calls.fetch.mockReset();
   vi.stubGlobal('navigator', {
@@ -41,9 +42,11 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => {
   scopes.splice(0).forEach(scope => scope.stop()); vi.unstubAllGlobals();
 });
+
 async function serve({ layers, failLast }: { layers: number, failLast: boolean }): Promise<void> {
   const payloads = await Promise.all(files.map(file => qwenRecipeFixtureBytes({ file, layers })));
   calls.fetch.mockImplementation(async ({ request }: { request: { url: string } }): Promise<PrivacyFetchStreamResponse> => {
@@ -69,6 +72,7 @@ async function serve({ layers, failLast }: { layers: number, failLast: boolean }
     };
   });
 }
+
 it('downloads -> verifies -> publishes -> inventories -> selects the actual three pinned Qwen recipe paths, including the 36-layer encoder', async () => {
   await serve({ layers: 36, failLast: false });
   const view = library();
@@ -86,6 +90,7 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   expect(reopened.ready.value).toBe(true); expect(calls.fetch).not.toHaveBeenCalled();
   expect(reopened.selectedModels()!.map(model => model.sourceId)).toEqual(identities);
 });
+
 it('does not call a fully downloaded but structurally wrong encoder ready; a filename cannot bypass classification', async () => {
   await serve({ layers: 32, failLast: false });
   const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
@@ -93,6 +98,7 @@ it('does not call a fully downloaded but structurally wrong encoder ready; a fil
   expect(view.components.value.find(component => component.slot === 'lm')?.selected).toBe('');
   expect(view.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(2);
 });
+
 it('retains earlier complete files when the third download fails and reuses them on retry', async () => {
   await serve({ layers: 36, failLast: true });
   const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });

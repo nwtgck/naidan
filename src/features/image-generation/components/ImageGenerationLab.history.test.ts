@@ -59,6 +59,7 @@ async function migrate({ type }: { type: StorageType }): Promise<void> {
   listener?.({ event: { type: 'migration', timestamp: Date.now() } });
   await flushPromises();
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks(); mocks.getType.mockReturnValue('opfs');
@@ -69,6 +70,7 @@ beforeEach(async () => {
     };
   });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });

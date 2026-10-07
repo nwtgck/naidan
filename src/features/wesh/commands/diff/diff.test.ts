@@ -1458,8 +1458,6 @@ delta
     expect(separate.result.exitCode).toBe(1);
   });
 
-
-
   it('accepts explicit positive signs in numeric options', async () => {
     await writeFile({ path: 'plus-left.txt', data: 'alpha\n' });
     await writeFile({ path: 'plus-right.txt', data: 'beta\n' });
@@ -1558,5 +1556,4 @@ x y
       expect(execution.stdout.text).toBe(testCase.expected);
     }
   });
-
 });

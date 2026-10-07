@@ -3026,6 +3026,7 @@ describe('ChatPane Export Functionality', () => {
 
   // Mock browser APIs for file download
   const exported: Array<{ filename: string; text: string }> = [];
+
   beforeEach(() => {
     resetMocks();
     exported.length = 0;
@@ -3038,6 +3039,7 @@ describe('ChatPane Export Functionality', () => {
       exported.push({ filename, text: await new Response(await openStream()).text() });
     });
   });
+
   afterEach(() => {
     vi.restoreAllMocks();
     if (wrapper) {
@@ -4063,11 +4065,13 @@ describe('model-link composer visibility wiring', () => {
     document.body.innerHTML = '<div id="app"></div>';
     setupScrollToMock();
   });
+
   afterEach(() => {
     wrapper?.unmount(); wrapper = null;
     launchComposerOverride.value = undefined;
     document.body.innerHTML = '';
   });
+
   it('keeps the same input instance and draft while setup hides the composer and suggestions', async () => {
     wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
     await flushPromises();
@@ -4089,14 +4093,15 @@ describe('model-link composer visibility wiring', () => {
   });
 });
 
-
 describe('ordinary Chat missing browser model notice', () => {
   beforeEach(() => {
     resetMocks(); setupScrollToMock();
   });
+
   afterEach(() => {
     recoveryAvailability.value = 'available';
   });
+
   it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
     recoveryAvailability.value = 'checking';
@@ -4120,6 +4125,7 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(mockSendMessage).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
   it('also offers recovery for a nonempty conversation without hiding messages or input', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/original' };
     const node = createTextNode({ id: toMessageId({ raw: 'existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });

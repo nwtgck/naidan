@@ -6,16 +6,20 @@ import { parametersFixture } from '@/features/stable-diffusion-cpp-browser/test-
 import { applyImageRecommendedField, imageRecommendedHint } from '@/features/image-generation/recommended-fields';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 function openHint() {
   wrapper = mount(ImageRecommendedFieldHint, { attachTo: document.body, global: { stubs: { Teleport: true } }, props: { recommendation: recommendations.presets['z-image-turbo'], field: 'steps', current: 20, inputId: 'steps', context: 'A', disabled: false, busy: true } });
   return wrapper;
 }
+
 it('shows a gentle per-field action and rejects an open hint after the session changes', async () => {
   const view = openHint();
   expect(view.text()).toContain('8'); expect(view.find('[role="alert"]').exists()).toBe(false);
@@ -28,11 +32,13 @@ it('shows a gentle per-field action and rejects an open hint after the session c
   expect(view.emitted('apply')).toEqual([[{ field: 'steps', recommendationId: 'z-image-turbo', context: 'B' }]]);
   await view.setProps({ current: 8 }); expect(view.find('button').exists()).toBe(false);
 });
+
 it('accepts the entire recommended range, not just the representative preset', async () => {
   const view = openHint(); await view.setProps({ recommendation: recommendations.presets['anima-turbo-1.1'], current: 12 });
   expect(view.find('button').exists()).toBe(false);
   await view.setProps({ current: 13 }); expect(view.find('button').exists()).toBe(true);
 });
+
 it('changes only the requested field, keeping prompt, size and deliberate other deviations', () => {
   const parameters = { ...parametersFixture(), steps: 20, guidance: 7, prompt: 'mine', width: 1024 };
   const next = applyImageRecommendedField({ parameters, recommendation: recommendations.presets['z-image-turbo'], field: 'steps' });
@@ -57,7 +63,6 @@ it('moves keyboard focus into the hint and returns it on Escape or applying the 
   }
 });
 
-
 it.each(['width', 'height'] as const)('offers the browser %s starting size without changing the other dimension', async field => {
   const recommendation = recommendations.presets['z-image-turbo'];
   const parameters = { ...parametersFixture(), width: 1024, height: 768, steps: 20 };
@@ -70,7 +75,6 @@ it.each(['width', 'height'] as const)('offers the browser %s starting size witho
   await view.get('[data-testid="recommended-field-apply"]').trigger('click');
   expect(view.emitted('apply')).toEqual([[{ field, recommendationId: recommendation.id, context: 'A' }]]);
 });
-
 
 it('does not reopen a dismissed hint when the input first matches and then differs again', async () => {
   const view = openHint();

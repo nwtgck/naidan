@@ -10,6 +10,7 @@ import { imageLoraRequests } from './lora-form';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: mocks.get } }));
+
 afterEach(() => vi.unstubAllGlobals());
 
 it('offers an adapter-only OPFS import and markerless host files separately without selecting any adapter', async () => {

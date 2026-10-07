@@ -5,6 +5,7 @@ import { requestNetworkUpdate } from './worker-request';
 import { USE_NETWORK_MESSAGE } from './protocol';
 
 beforeEach(() => vi.stubGlobal('MessageChannel', MessageChannel));
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
 });

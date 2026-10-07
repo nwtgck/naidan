@@ -203,7 +203,6 @@ describe('AssistantProcessSequence — cursor slot placement', () => {
   });
 });
 
-
 it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle', async () => {
   await ensureAllStringsForTest({ locale: 'ja' });
   const tools = ['image_generation_get_context', 'image_generation_set_prompt'];

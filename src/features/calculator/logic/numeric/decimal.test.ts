@@ -55,7 +55,6 @@ describe('Decimal', () => {
     expect(compareDecimals({ left: signedDecimal({ literal: '999e10' }), right: signedDecimal({ literal: '1e13' }) })).toBe(-1);
   });
 
-
   it('compares huge scaled integer magnitudes without creating powers of ten', () => {
     const largeCoefficient = BigInt('9'.repeat(1024));
     expect(compareScaledIntegerMagnitudes({

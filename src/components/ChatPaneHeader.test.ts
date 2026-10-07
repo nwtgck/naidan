@@ -92,6 +92,7 @@ describe('ChatPaneHeader', () => {
     expect(wrapper.emitted('open-chat-inspector')).toEqual([[]]);
     expect(wrapper.emitted('toggle-debug')).toHaveLength(1);
   });
+
   it('renders chat identity badges and emits settings updates', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),
@@ -224,7 +225,6 @@ describe('ChatPaneHeader', () => {
     expect(wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').exists()).toBe(false);
   });
 });
-
 
 describe('compact attached-chat header', () => {
   it('keeps a single nonwrapping model label and a named settings control for long Japanese groups', async () => {

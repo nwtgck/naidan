@@ -48,6 +48,7 @@ describe('standalone package locale contract', () => {
       run: ({ documentValue }) => TEST_ONLY.resolveStandalonePackageLocaleFromDocument({ documentValue }),
     })).toThrow(/Unsupported standalone package locale/u);
   });
+
   it.each(UI_LOCALES)('accepts the supported %s locale from the Worker bootstrap global', (locale) => {
     expect(TEST_ONLY.resolveStandalonePackageLocaleFromWorkerGlobal({ value: locale })).toBe(locale);
   });
@@ -74,5 +75,4 @@ describe('standalone package locale contract', () => {
       else Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, previous);
     }
   });
-
 });

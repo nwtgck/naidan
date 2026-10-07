@@ -123,7 +123,6 @@ def
     expect(result.exitCode).toBe(0);
   });
 
-
   it('accepts leading C-locale whitespace in width operands', async () => {
     for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
       const execution = await execute({
@@ -188,7 +187,6 @@ def`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('preserves raw UTF-8 bytes when a fold boundary splits a character', async () => {
     const { result, stdout, stderr } = await execute({
@@ -347,5 +345,4 @@ c
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

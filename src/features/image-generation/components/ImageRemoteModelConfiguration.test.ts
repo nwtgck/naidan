@@ -11,12 +11,15 @@ import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components
 
 vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn() }));
 let wrapper: VueWrapper | undefined, scope: ReturnType<typeof effectScope> | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); scope?.stop();
 });
+
 function harness() {
   scope = effectScope();
   const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
@@ -33,12 +36,14 @@ function harness() {
   wrapper = mount(ImageRemoteModelConfiguration, { props: { inferenceLocation, disabled: false, active: true } });
   return { inferenceLocation, form, vae, lora, wrapper };
 }
+
 it('uses the normal component picker to select a remote VAE without creating local model Files', async () => {
   const h = harness();
   h.wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-component-vae')!.vm.$emit('update:modelValue', remoteImageFileKey({ file: h.vae }));
   await flushPromises();
   expect(h.inferenceLocation.editor.value.components).toEqual([{ slot: 'vae', file: h.vae }]); expect(h.form.files.value).toEqual({});
 });
+
 it('provides the same adapter enable, strength and remove operations for remote references', async () => {
   const h = harness();
   h.wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-lora-saved')!.vm.$emit('update:modelValue', remoteImageFileKey({ file: h.lora }));

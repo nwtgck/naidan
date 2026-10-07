@@ -241,6 +241,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-05T12:00:00Z'));
 });
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -364,6 +365,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("system-user-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
@@ -448,6 +450,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("multi-turn-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
@@ -533,6 +536,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('refuses the recorded answer when the public caller changes the input', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
@@ -571,6 +575,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -631,7 +636,7 @@ describe('GPT-OSS 20B Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -719,12 +724,13 @@ describe('GPT-OSS 20B Provider / history', () => {
       await replay.harness.close();
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -937,12 +943,13 @@ describe('GPT-OSS 20B Provider / independent', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","independent-next-input"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      caseIds: ["first-turn", "independent-next-input"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1125,12 +1132,13 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1172,12 +1180,13 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1219,12 +1228,13 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1266,12 +1276,13 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1457,6 +1468,7 @@ Let me know if you’d like more details or a forecast!`,
       mutations: 'verify',
     });
   }, 30_000);
+
   it("tools-generation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
@@ -1664,6 +1676,7 @@ type lookup_weather = (_: {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("tool-result-continuation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
@@ -1897,7 +1910,7 @@ describe('GPT-OSS 20B Provider / images', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2264,12 +2277,13 @@ Here’s the current weather in Tokyo:
       'structured-tool-history/1',
     ]);
   }, 30_000);
+
   it('sequences: refuses to turn interrupted reasoning into completed continuation history', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2353,6 +2367,7 @@ Here’s the current weather in Tokyo:
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves recorded calls and the independent image request without replaying invalid cached continuations', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));

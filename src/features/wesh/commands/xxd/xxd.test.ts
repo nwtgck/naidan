@@ -651,7 +651,6 @@ zz
     expect(result.exitCode).toBe(0);
   });
 
-
   it('writes a forward dump to an output file and truncates existing content', async () => {
     await writeFile({ path: 'input.bin', data: 'AB' });
     await writeFile({ path: 'dump.txt', data: 'stale trailing data' });
@@ -664,7 +663,6 @@ zz
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('does not truncate the output when the forward input cannot be opened', async () => {
     await writeFile({ path: 'dump.txt', data: 'preserve me' });
@@ -688,7 +686,6 @@ zz
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('does not create a reverse output when the input cannot be opened', async () => {
     const { result, stdout, stderr } = await execute({ script: 'xxd -r missing.hex output.bin' });

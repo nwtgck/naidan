@@ -671,7 +671,6 @@ git add -Au`,
     expect(stderr.text).toBe("fatal: options '-A' and '-u' cannot be used together\n");
   });
 
-
   it('defaults --detach without a revision to HEAD for checkout and switch', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -838,7 +837,6 @@ printf 'ok\n'`,
     expect(stdout.text).toBe('ok\n');
   });
 
-
   it('rejects --list with branch rename before changing refs', async () => {
     const execute = await createGitTestExecutor();
     const setup = await execute({
@@ -1001,7 +999,6 @@ git show --no-patch -- a`,
     expect(stderr.text).toContain('show pathspecs are not supported yet');
   });
 
-
   it('accepts Git-compatible signed and leading-whitespace max-count values', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1100,7 +1097,6 @@ git reflog -- HEAD`,
     expect(stderr.text).toContain('reflog pathspecs are not supported yet');
   });
 
-
   it('accepts attached values for existing long tag and reflog options', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1116,7 +1112,6 @@ git reflog --max-count=1`,
     expect(stdout.text).toContain('tag annotated\n');
     expect(stdout.text).toContain('HEAD@{0}: commit (initial): initial\n');
   });
-
 
   it('accepts unambiguous long-option prefixes for branch actions', async () => {
     const execute = await createGitTestExecutor();
@@ -1166,7 +1161,6 @@ git branch --show-current --list`,
     expect(stderr.text).toContain('usage: git branch');
   });
 
-
   it('lets branch --show-current ignore operands and list scope like Git', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1185,7 +1179,6 @@ master
 master
 `);
   });
-
 
   it('honors -- after remote subcommands before their operands', async () => {
     const execute = await createGitTestExecutor();
@@ -1207,7 +1200,6 @@ git remote`,
 /other
 `);
   });
-
 
   it('accepts unambiguous long-option prefixes for init and preserves ambiguity', async () => {
     const execute = await createGitTestExecutor();
@@ -1249,7 +1241,6 @@ printf 'ok\n'`,
     expect(stdout.text).toBe('ok\n');
   });
 
-
   it('uses last-option-wins for show stat versus no-patch and accepts clustered -s', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1271,7 +1262,6 @@ first=0
 second=1
 `);
   });
-
 
   it('accepts qualified config long-option prefixes through token-local argv-v2 analysis', async () => {
     const execute = await createGitTestExecutor();
@@ -1319,7 +1309,6 @@ two
     }
   });
 
-
   it('accepts clean long-option prefixes through token-local argv-v2 analysis', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -1358,5 +1347,4 @@ git clean ${option}`,
       expect(stderr.text, option).toContain('--no-interactive');
     }
   });
-
 });

@@ -248,7 +248,6 @@ git status --short`,
 `);
   });
 
-
   it('accepts a Linux-compatible unique long prefix for an implemented reset mode', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -294,5 +293,4 @@ HEAD is now at 7cac307 initial
 hello
 `);
   });
-
 });

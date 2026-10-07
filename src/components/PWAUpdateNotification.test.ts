@@ -12,11 +12,13 @@ vi.mock('@/composables/useLayout', () => ({
 }));
 const { setUpdateState, status } = usePWAUpdate();
 enableAutoUnmount(afterEach);
+
 beforeEach(async () => {
   sidebar.open = true;
   setUpdateState({ next: { kind: 'idle' } });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   setUpdateState({ next: { kind: 'idle' } }); vi.restoreAllMocks();
 });

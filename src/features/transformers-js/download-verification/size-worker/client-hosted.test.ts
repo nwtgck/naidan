@@ -15,6 +15,7 @@ function installSilentWorker() {
     start: async () => { /* An entry which never exposes its RPC. */ },
   }));
 }
+
 afterEach(() => {
   for (const worker of workers.splice(0)) worker.terminate();
   vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks();

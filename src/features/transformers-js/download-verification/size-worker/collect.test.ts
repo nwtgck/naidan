@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { collectDownloadSizes } from './collect';
 
 const request = { modelId: 'fixture/model', revision: 'a'.repeat(40), paths: ['onnx/a.onnx', 'onnx/b.onnx'] };
+
 afterEach(() => vi.useRealTimers());
 
 it('requests only frozen paths using the official form wire and matches file identities independently of response order', async () => {

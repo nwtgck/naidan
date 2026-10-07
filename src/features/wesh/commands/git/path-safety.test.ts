@@ -39,5 +39,4 @@ describe('wesh git repository pathname safety', () => {
       })).toThrow('invalid index pathname bytes');
     }
   });
-
 });

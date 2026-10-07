@@ -132,7 +132,6 @@ c
     expect(result.exitCode).toBe(0);
   });
 
-
   it('resolves output prefixes relative to the current working directory', async () => {
     await writeFile({
       path: 'work/input.txt',

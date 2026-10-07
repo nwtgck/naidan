@@ -81,6 +81,7 @@ async function readBytes({ blob }: { blob: Blob }): Promise<Uint8Array> {
     reader.onerror = reject; reader.readAsArrayBuffer(blob);
   });
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -101,11 +102,13 @@ beforeEach(async () => {
     observe() {} disconnect() {}
   });
 });
+
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   vi.clearAllTimers(); vi.useRealTimers();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
+
 it('opens and downloads an unsaved attachment through the real shelf, preview state, modal and action', async () => {
   const blob = png(); const original = message({ blob }); const { wrapper, preview } = mountOwner({ messages: [original], showMessage: false });
   await flushPromises(); await wrapper.get('[data-testid="media-preview-trigger"]').trigger('click'); await flushPromises();
@@ -125,12 +128,14 @@ it('opens and downloads an unsaved attachment through the real shelf, preview st
   await modal.get('[data-testid="preview-close-btn"]').trigger('click'); await flushPromises();
   expect(preview.state.value).toBeNull(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:memory-1');
 });
+
 it('downloads the original unsaved Blob from the shelf without a storage read', async () => {
   const blob = png(); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
   await flushPromises(); await wrapper.get('[data-testid="download-gen-image-button"]').trigger('click'); await flushPromises();
   expect(downloads).toHaveLength(1); expect(downloads[0]?.blob).toBe(blob); expect(downloads[0]?.name).toBe('local.png');
   expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
+
 it('downloads a metadata-enabled local copy without inventing a generation prompt for an attachment', async () => {
   const blob = png(); const before = await readBytes({ blob }); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
   await flushPromises(); await wrapper.get('[data-testid="download-gen-image-dropdown-toggle"]').trigger('click');
@@ -142,6 +147,7 @@ it('downloads a metadata-enabled local copy without inventing a generation promp
   expect(await readBytes({ blob })).toEqual(before);
   expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
+
 it('reads persisted media from storage and does not disable its delete action', async () => {
   const blob = png(); vi.mocked(storageService.getFile).mockResolvedValue(blob);
   const { wrapper } = mountOwner({ messages: [message({ blob: undefined })], showMessage: false });
@@ -152,6 +158,7 @@ it('reads persisted media from storage and does not disable its delete action', 
   await modal.get('[data-testid="preview-download-btn"]').trigger('click'); await flushPromises();
   expect(downloads[0]?.blob).toBe(blob);
 });
+
 it('opens an unsaved image directly from its message without asking storage for metadata', async () => {
   const blob = png(); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: true });
   await flushPromises();
@@ -160,6 +167,7 @@ it('opens an unsaved image directly from its message without asking storage for 
   expect(wrapper.getComponent(BinaryObjectPreviewModal).get('[data-testid="preview-filename"]').text()).toBe('local.png');
   expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
+
 it('snapshots preview metadata while keeping the exact local Blob reference', async () => {
   const { preview } = mountOwner({ messages: [], showMessage: false });
   const blob = png(); const item: BinaryObjectPreviewItem = { id: toBinaryObjectId({ raw: 'copy' }), name: 'original.png', size: blob.size, mimeType: blob.type, createdAt: 0, memoryBlob: blob };

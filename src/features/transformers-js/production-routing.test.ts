@@ -41,5 +41,4 @@ describe('Transformers.js production routing', () => {
       modelType: 'llama',
     })).toBe('tokenizer');
   });
-
 });

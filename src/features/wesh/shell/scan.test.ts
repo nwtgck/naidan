@@ -88,7 +88,6 @@ printf 1
     });
   });
 
-
   it('keeps comment eligibility across a removed backslash-newline', () => {
     const text = `$(printf x; \\
 # )) continued comment
@@ -106,7 +105,6 @@ printf y`,
       endIndex: text.indexOf('tail') - 1,
     });
   });
-
 
   it('does not treat a hash after a bare carriage return as a comment start', () => {
     const text = `$(: x\r# )tail`;
@@ -353,5 +351,4 @@ printf b)}tail`,
       expect(findBracedParameterEnd({ text, startIndex: 0 })).toBe(text.indexOf('tail') - 1);
     }
   });
-
 });

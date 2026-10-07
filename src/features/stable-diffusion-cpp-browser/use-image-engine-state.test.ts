@@ -23,12 +23,14 @@ function harness() {
     },
   };
 }
+
 it('does not inspect before opening or during closed lifecycle events, and never creates a missing client', async () => {
   const h = harness(); h.afterRun(); await h.view.refresh();
   expect(h.inspectEngine).not.toHaveBeenCalled();
   h.setClient({ value: undefined }); h.view.setOpened({ opened: true });
   expect(h.view.reason.value).toBe('not-loaded'); expect(h.inspectEngine).not.toHaveBeenCalled();
 });
+
 it('keeps the idle timestamp during generation and refreshes only after a visible completed run', async () => {
   const h = harness(); h.view.setOpened({ opened: true }); await Promise.resolve();
   expect(h.view.snapshot.value?.collectedAt).toBe(1700000000000);
@@ -37,6 +39,7 @@ it('keeps the idle timestamp during generation and refreshes only after a visibl
   h.progress.value = undefined; h.afterRun(); await Promise.resolve(); expect(h.inspectEngine).toHaveBeenCalledTimes(2);
   h.view.setOpened({ opened: false }); h.afterRun(); expect(h.inspectEngine).toHaveBeenCalledTimes(2);
 });
+
 it('drops reads completed after closing or releasing the model, and clears old model values', async () => {
   const h = harness(); const pending = Promise.withResolvers<ImageEngineInspection>(); h.inspectEngine.mockReturnValueOnce(pending.promise);
   h.view.setOpened({ opened: true }); h.view.setOpened({ opened: false });
@@ -45,6 +48,7 @@ it('drops reads completed after closing or releasing the model, and clears old m
   h.view.setOpened({ opened: true }); await Promise.resolve(); expect(h.view.snapshot.value).toBeDefined();
   h.invalidate(); expect(h.view.snapshot.value).toBeUndefined(); expect(h.view.reason.value).toBe('released');
 });
+
 it('recovers from observation errors and ignores obsolete responses from another client or disposed UI', async () => {
   const h = harness(); h.inspectEngine.mockRejectedValueOnce(new Error('Getter failed'));
   h.view.setOpened({ opened: true }); await Promise.resolve(); expect(h.view.status.value).toBe('failed');

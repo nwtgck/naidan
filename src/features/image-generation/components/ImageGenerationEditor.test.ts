@@ -11,9 +11,11 @@ import ImageModelConfiguration from '@/features/stable-diffusion-cpp-browser/com
 import { ExternalLinkIcon } from 'lucide-vue-next';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
@@ -76,7 +78,6 @@ it.each(['import', 'download'])('only locks conflicting model layout and preset 
   await preset.trigger('click');
   expect(view.applyRecommendedSettings).toHaveBeenCalledTimes(transfer === 'import' ? 1 : 2);
 });
-
 
 it('connects independent width and height hints without changing other draft fields', async () => {
   const view = useImageGeneration(); view.draftDisabled = computed(() => false);

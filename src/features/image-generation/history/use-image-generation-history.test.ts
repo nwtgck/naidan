@@ -44,6 +44,7 @@ function record({ label }: { label: string }): ImageGenerationRecord {
 }
 let storageType: StorageType;
 let listener: ChangeListener | undefined;
+
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); storageType = 'opfs';
   mocks.subscribe.mockImplementation(({ listener: next }: { listener: ChangeListener }) => {
@@ -187,6 +188,7 @@ describe('image history selection ownership', () => {
     await view.dispose();
   });
 });
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -215,6 +217,7 @@ describe('image history query ownership', () => {
     expect(mocks.query).toHaveBeenCalledTimes(calls);
     await view.dispose();
   });
+
   it('keeps page, count and images together while a failed page is retried', async () => {
     const first = { ...page({ label: 'first' }), total: 81 }, second = { ...page({ label: 'second' }), total: 80 };
     const pending = deferred<ImageGenerationHistoryPage>();
@@ -239,6 +242,7 @@ describe('image history query ownership', () => {
     expect(view.error.value).toBe('');
     await view.dispose();
   });
+
   it('resets a changed search to page one and ignores an older in-flight page', async () => {
     const first = { ...page({ label: 'first' }), total: 120 }, second = { ...page({ label: 'second' }), total: 120 };
     const pending = deferred<ImageGenerationHistoryPage>();
@@ -258,6 +262,7 @@ describe('image history query ownership', () => {
     expect(view.items.value[0]?.prompt).toBe('found');
     await view.dispose();
   });
+
   it('stays on the current page when refreshed after new images are added', async () => {
     const records = Array.from({ length: 85 }, (_, index) => page({ label: `image-${index}` }).items[0]!);
     mocks.query.mockImplementation(async ({ query }: { query: ImageGenerationHistoryQuery }) => ({
@@ -278,6 +283,7 @@ describe('image history query ownership', () => {
     expect(view.selected.value).toBe(selected);
     await view.dispose();
   });
+
   it('moves back to the last remaining page after a deletion without displaying an empty intermediate page', async () => {
     const first = { ...page({ label: 'first' }), total: 81 }, last = { ...page({ label: 'last' }), total: 81 };
     const previous = { ...page({ label: 'previous' }), total: 80 };
@@ -303,6 +309,7 @@ describe('image history query ownership', () => {
     expect(view.items.value).toEqual([]);
     await view.dispose();
   });
+
   it('keeps the displayed results and ignores a previous response during the next debounce', async () => {
     const initial = page({ label: 'initial' });
     const old = deferred<ImageGenerationHistoryPage>();
@@ -321,6 +328,7 @@ describe('image history query ownership', () => {
     expect(view.loading.value).toBe(false);
     await view.dispose();
   });
+
   it('invalidates pending reads and clears visible state when storage is replaced', async () => {
     const pending = deferred<ImageGenerationHistoryPage>();
     mocks.query.mockReturnValue(pending.promise);
@@ -332,6 +340,7 @@ describe('image history query ownership', () => {
     await view.reload(); expect(mocks.query).toHaveBeenCalledTimes(1);
     await view.dispose();
   });
+
   it('reports a query read failure instead of a successful empty result', async () => {
     mocks.query.mockRejectedValueOnce(new Error('Corrupt shard index'));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
@@ -340,6 +349,7 @@ describe('image history query ownership', () => {
     await view.reload(); expect(view.error.value).toBe(''); expect(view.items.value[0]?.prompt).toBe('retry');
     await view.dispose();
   });
+
   it('retains warnings with their displayed results until a new query replaces both', async () => {
     mocks.query.mockResolvedValueOnce({ ...page({ label: 'readable' }), warnings: [{ path: 'ab/incomplete-aB.json', message: 'Empty JSON' }], warningCount: 1 }).mockResolvedValueOnce(page({ label: 'new match' }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
@@ -355,6 +365,7 @@ describe('image history query ownership', () => {
     expect(view.warningCount.value).toBe(0); expect(view.warnings.value).toEqual([]);
     await view.dispose();
   });
+
   it('preserves the selected history when deletion fails', async () => {
     mocks.remove.mockRejectedValue(new Error('Cannot delete record'));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
@@ -362,6 +373,7 @@ describe('image history query ownership', () => {
     expect(mocks.query).not.toHaveBeenCalled();
     await view.dispose();
   });
+
   it.each(['succeeds', 'fails'] as const)('keeps a newer selection pending when the previous record is deleted and its read %s', async outcome => {
     const first = record({ label: 'first' }), second = record({ label: 'second' });
     const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
@@ -392,6 +404,7 @@ describe('image history query ownership', () => {
     expect(view.detailLoading.value).toBe(false);
     await view.dispose();
   });
+
   it('clears a deleted detail and keeps a completed newer selection when the list reload fails', async () => {
     const first = record({ label: 'first' }), second = record({ label: 'second' });
     mocks.load.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
@@ -409,6 +422,7 @@ describe('image history query ownership', () => {
     expect(view.error.value).toBe('List reload failed');
     await view.dispose();
   });
+
   it('preserves a newer pending selection if deleting the previous record fails', async () => {
     const first = record({ label: 'first' }), second = record({ label: 'second' });
     const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
@@ -427,6 +441,7 @@ describe('image history query ownership', () => {
     expect(mocks.query).not.toHaveBeenCalled();
     await view.dispose();
   });
+
   it('rejects a late read of the deleted record without clearing another displayed record', async () => {
     const first = record({ label: 'first' }), second = record({ label: 'second' });
     const deleting = deferred<void>(), selecting = deferred<ImageGenerationRecord>();
@@ -444,11 +459,13 @@ describe('image history query ownership', () => {
     expect(view.detailLoading.value).toBe(false);
     await view.dispose();
   });
+
   it('does not issue a delayed query after disposal', async () => {
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     view.setQuery({ text: 'cat' }); await view.dispose(); await vi.advanceTimersByTimeAsync(500);
     expect(mocks.query).not.toHaveBeenCalled();
   });
+
   it('debounces rapid typing and clearing without clearing the current images or selected detail', async () => {
     const initial = page({ label: 'initial' }), selected = record({ label: 'selected' });
     mocks.query.mockResolvedValueOnce(initial).mockResolvedValueOnce(page({ label: 'all images' }));
@@ -471,6 +488,7 @@ describe('image history query ownership', () => {
     expect(view.loading.value).toBe(false);
     await view.dispose();
   });
+
   it('blocks pagination during a replacement and after failure, then retries the query from the beginning', async () => {
     const initial = { ...page({ label: 'initial' }), total: 85 };
     const pending = deferred<ImageGenerationHistoryPage>();
@@ -497,6 +515,7 @@ describe('image history query ownership', () => {
     expect(view.error.value).toBe('');
     await view.dispose();
   });
+
   it('clears retained results and cancels debounce when storage becomes unavailable', async () => {
     mocks.query.mockResolvedValueOnce(page({ label: 'initial' }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
@@ -515,6 +534,7 @@ describe('image history query ownership', () => {
     expect(mocks.query).toHaveBeenCalledTimes(1);
     await view.dispose();
   });
+
   it('coalesces obsolete waiting searches behind one active Worker request', async () => {
     const first = deferred<ImageGenerationHistoryPage>();
     mocks.query.mockReturnValueOnce(first.promise).mockResolvedValue(page({ label: 'latest' }));

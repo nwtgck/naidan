@@ -584,7 +584,6 @@ describe('catalog standard argv parser', () => {
     expect(parsed.positionals).toEqual(['operand']);
   });
 
-
   it('supports unique-prefix long names and collapses equivalent aliases by definition', () => {
     const catalog = defineArgvCatalog<StandardArgvAction<never>>({
       nonExecutableLongOptions: [],
@@ -985,7 +984,6 @@ describe('catalog standard argv parser', () => {
     }]);
   });
 
-
   it('supports token-local short analysis without owning the caller argv cursor', () => {
     type Semantic =
       | { readonly kind: 'shell-option' }
@@ -1202,5 +1200,4 @@ describe('catalog standard argv parser', () => {
       value: { kind: 'unexpected-inline', rawValue: 'value' },
     });
   });
-
 });

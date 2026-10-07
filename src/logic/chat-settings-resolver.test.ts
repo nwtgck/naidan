@@ -291,7 +291,6 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       expect(result.endpoint).toEqual(normalEndpoint);
       expect(result.modelId).toBe('normal-model');
       expect(result.titleGeneration).toEqual({ endpoint: titleEndpoint, modelId: 'title-only-model', lmParameters: undefined });
-
     });
 
     it('resolves same_scope title reasoning from the same normal generation scope', () => {
@@ -406,7 +405,6 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         expect(result.titleGeneration.lmParameters?.reasoning.effort).toBe('low');
       }
     });
-
   });
 
   describe('Override Detection Helpers', () => {

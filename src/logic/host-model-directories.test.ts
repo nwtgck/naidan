@@ -6,10 +6,12 @@ import { toHostModelDirectoryId } from '@/01-models/ids';
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { delete: vi.fn() } }));
 const id = toHostModelDirectoryId({ raw: 'root-1' });
+
 beforeEach(() => {
   vi.mocked(hostModelHandles.delete).mockReset().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { locks: { request: async (_key: string, run: () => Promise<void>) => run() } });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });

@@ -138,5 +138,4 @@ describe("POSIX regular expression translation", () => {
       }).source).toBe(expected);
     }
   });
-
 });

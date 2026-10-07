@@ -21,6 +21,7 @@ function browser({ stream }: { stream: ReadableStream<string> }) {
   vi.stubGlobal('LanguageModel', { availability: vi.fn().mockResolvedValue('available'), create });
   return { create, destroy, promptStreaming };
 }
+
 afterEach(() => {
   RUNTIME.reset(); vi.unstubAllGlobals();
 });
@@ -44,6 +45,7 @@ describe('Prompt API parts and ownership', () => {
     expect(n.parts).toEqual([{ type: 'text', text: '<think>literal</think>    ', completeness: 'complete' }]);
     expect(b.destroy).toHaveBeenCalledOnce();
   });
+
   it('cancels an uncooperative pending browser read and keeps accepted text partial', async () => {
     const cancel = vi.fn(); const b = browser({
       stream: new ReadableStream({
@@ -67,6 +69,7 @@ describe('Prompt API parts and ownership', () => {
     expect(n.parts).toMatchObject([{ type: 'text', text: '途中', completeness: 'partial' }]);
     expect(cancel).toHaveBeenCalledOnce(); expect(b.destroy).toHaveBeenCalledOnce();
   });
+
   it('rejects an invalid browser chunk without losing earlier text', async () => {
     let i = 0;
     const b = browser({
@@ -80,6 +83,7 @@ describe('Prompt API parts and ownership', () => {
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
     expect(result.type).toBe('error'); expect(n.parts).toMatchObject([{ text: 'kept', completeness: 'partial' }]); expect(b.destroy).toHaveBeenCalledOnce();
   });
+
   it('does not acquire a session for a signal already aborted', async () => {
     const b = browser({
       stream: new ReadableStream({
@@ -92,6 +96,7 @@ describe('Prompt API parts and ownership', () => {
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
     expect(result).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();
   });
+
   it('destroys a late-created session if abort happened during creation', async () => {
     const session = Promise.withResolvers<{ destroy: () => void, promptStreaming: () => ReadableStream<string> }>();
     const destroy = vi.fn(); const promptStreaming = vi.fn();
@@ -102,6 +107,7 @@ describe('Prompt API parts and ownership', () => {
     expect(await task).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]);
     expect(promptStreaming).not.toHaveBeenCalled(); expect(destroy).toHaveBeenCalledOnce();
   });
+
   it('rejects unsupported reasoning before creating a browser session', async () => {
     const b = browser({
       stream: new ReadableStream({

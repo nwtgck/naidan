@@ -6,6 +6,7 @@ import * as peerKeys from '@/features/naidan-piping-duplex/peer-key';
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request in unit test'));
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 it('the public duplex facade has a functional name and keeps key-only access separate', () => {

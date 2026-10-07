@@ -9,9 +9,11 @@ import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 const recipe = imageModelRecipes[0]!;
 function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): LocalImageRepository {
   const name = file.path.split('/').at(-1)!;
@@ -54,6 +56,7 @@ function harness({ download, initial }: { download: ImageRecipeDownloader | unde
     },
   };
 }
+
 it('publishes downloaded inventory during an independent save without changing the editor', async () => {
   const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
   const h = harness({ initial: wanted, download: undefined });
@@ -148,6 +151,7 @@ it('does not fetch on construction, refresh, or explicit selection from local fi
   expect(h.library.selectedModels()?.map(model => model.path)).toEqual(files.map(file => file.path));
   expect(h.downloader).not.toHaveBeenCalled();
 });
+
 it('keeps identical repository files in OPFS and two linked roots distinct and checks the selected destination', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const opfs = files.map(file => repository({ file, user: false }));
@@ -173,6 +177,7 @@ it('keeps identical repository files in OPFS and two linked roots distinct and c
   h.library.hostDirectories.destination.value = 'opfs';
   expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(3);
 });
+
 it('downloads the requested quantization without replacing an existing model selection', async () => {
   const defaults = selectedRecipeFiles({ recipe, selections: {} });
   const choices = { diffusion: 'q8-0' }; const wanted = selectedRecipeFiles({ recipe, selections: choices });
@@ -189,6 +194,7 @@ it('downloads the requested quantization without replacing an existing model sel
   expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
   await h.library.refresh(); expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
 });
+
 it('keeps the desired recipe while directories arrive in separate actions; no conversion or merged repo is needed', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const h = harness({ initial: [], download: undefined });
@@ -200,6 +206,7 @@ it('keeps the desired recipe while directories arrive in separate actions; no co
   expect(h.library.selectedModels()).toHaveLength(3);
   expect(h.downloader).not.toHaveBeenCalled();
 });
+
 it('preserves a failure and still refreshes completed files instead of selecting an unintended complete recipe', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const h = harness({ initial: [], download: undefined });
@@ -211,6 +218,7 @@ it('preserves a failure and still refreshes completed files instead of selecting
   expect(h.library.downloadState.value).toBe('failed'); expect(h.library.failure.value).toContain('Second repository denied');
   expect(h.library.models.value).toHaveLength(1); expect(h.library.ready.value).toBe(false);
 });
+
 it('deduplicates active downloads and pauses without publishing a completion', async () => {
   const h = harness({
     initial: [],
@@ -224,6 +232,7 @@ it('deduplicates active downloads and pauses without publishing a completion', a
   h.library.cancelDownload(); await running;
   expect(h.library.downloadState.value).toBe('paused'); expect(h.library.downloading.value).toBe(false);
 });
+
 it('aborts a pending download on scope disposal and ignores late completion', async () => {
   let signal: AbortSignal | undefined;
   const h = harness({

@@ -12,6 +12,7 @@ beforeEach(() => {
   onError.mockReset();
   scheduler = createAutoTitleScheduler({ quietMs: 2500, now: () => Date.now(), onError });
 });
+
 afterEach(() => {
   scheduler.reset();
   vi.useRealTimers();

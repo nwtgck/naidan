@@ -29,6 +29,7 @@ beforeEach(() => {
     throw new Error('Service concurrency controls forbid network access');
   }));
 });
+
 afterEach(() => {
   expect(globalThis.fetch).not.toHaveBeenCalled();
   vi.restoreAllMocks();

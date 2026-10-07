@@ -8,11 +8,13 @@ import { ggufFixture, zImageTensors } from '@/features/stable-diffusion-cpp-brow
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 let root: MemoryDirectory;
+
 beforeEach(() => {
   root = new MemoryDirectory('root');
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
   vi.mocked(hostModelHandles.get).mockResolvedValue(root as unknown as HostModelDirectoryHandle);
 });
+
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });

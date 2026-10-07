@@ -82,6 +82,7 @@ beforeEach(() => {
   createObjectURL = vi.fn(() => 'blob:test');
   vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectURL);
 });
+
 afterEach(async () => {
   page.dispatchEvent(new Event('pagehide'));
   await Promise.all(lifetimes);
@@ -134,7 +135,6 @@ async function expectBufferedBytes({ bytes }: { bytes: number[] }): Promise<void
 // Treat a protocol acknowledgement as the capability check, not a build flag or
 // the existence of navigator.serviceWorker. No test enables/registers a dev SW.
 describe('download feature detection and fallback', () => {
-
   it('puts only a capability in the fragment, with no request query or referrer', async () => {
     await downloadReadableStream({ stream: smallStream(), filename: 'private-report.zip', size: 3, signal: undefined });
     const frame = navigate.mock.contexts[0] as unknown as { src: string, referrerPolicy: string };
@@ -777,7 +777,6 @@ describe('Blob download URL lifetime', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
-
 
 describe('native File snapshots and exact output lengths', () => {
   it.each([0, 3])('uses the same File for Content-Length and bytes (%i bytes)', async length => {

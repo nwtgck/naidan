@@ -130,7 +130,6 @@ describe('stopArgvAtFirstEarlyExit', () => {
     expect(parseStandardArgv({ args: ['--output', '--help'], catalog: helpCatalog, policy: prefixPolicy }).diagnostics).toEqual([]);
   });
 
-
   it('does not steal a token claimed by optional-following short forms', () => {
     const catalog = defineArgvCatalog<StandardArgvAction<'bash-option'>>({
       nonExecutableLongOptions: [],
@@ -160,7 +159,6 @@ describe('stopArgvAtFirstEarlyExit', () => {
       expect(parseStandardArgv({ args: [token, '--help'], catalog, policy: prefixPolicy }).diagnostics).toEqual([]);
     }
   });
-
 
   it('keeps scanning when a candidate is an option occurrence but does not enable its early-exit key', () => {
     const catalog = defineArgvCatalog<StandardArgvAction<never>>({
@@ -192,7 +190,6 @@ describe('stopArgvAtFirstEarlyExit', () => {
     })).toEqual(['--mode=false', '--help']);
   });
 
-
   it('does not infer a durable boundary from positional candidates under continue scanning', () => {
     for (const token of ['operand', '+mode', '-']) {
       const args = [token, '--help', '--bogus'];
@@ -207,7 +204,6 @@ describe('stopArgvAtFirstEarlyExit', () => {
       })).toEqual([token, '--help']);
     }
   });
-
 
   it('preserves an earlier diagnostic instead of promoting a later help token', () => {
     const args = ['--bogus', '--he'];

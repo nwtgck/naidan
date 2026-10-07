@@ -77,6 +77,7 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
     if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
   }
 }
+
 describe('llama.cpp runtime distribution boundary', () => {
   it('embeds both JSPI cores for standalone capability selection and keeps external runtime assets absent', async () => {
     const { output } = await bundleFeature({ standalone: true });
@@ -92,6 +93,7 @@ describe('llama.cpp runtime distribution boundary', () => {
     expect(modules.some(name => name.endsWith('worker/entry.ts'))).toBe(true);
     expect(Object.keys(output).some(name => name.includes('llama-cpp-browser-runtime') || name.endsWith('.wasm') || name.endsWith('.wasm.gz') || name.endsWith('.wasm.br'))).toBe(false);
   }, 90_000);
+
   it('bundles all five transformed hosted cores with lossless compressed Wasm assets', async () => {
     const { output, workerCores } = await bundleFeature({ standalone: false });
     expect(Object.keys(output).filter(name => name.startsWith('llama-cpp-browser-runtime/')).sort()).toEqual(

@@ -60,7 +60,6 @@ describe('wesh command', () => {
     expect(pathVerbose.result.exitCode).toBe(0);
   });
 
-
   it('classifies registered Wesh commands as builtins independently of PATH', async () => {
     const { result, stdout, stderr } = await execute({
       script: `PATH= command -v cat env du`,
@@ -166,5 +165,4 @@ V=1
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });

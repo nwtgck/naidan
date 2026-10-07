@@ -111,6 +111,7 @@ describe('privacyFetch standalone client', () => {
       && error.message.includes('network failed')
     ));
   });
+
   it('forwards caller headers in buffered requests', async () => {
     const response = new Response('{}');
     Object.defineProperty(response, 'url', { value: VALID_SEARCH_URL });
@@ -121,5 +122,4 @@ describe('privacyFetch standalone client', () => {
     expect(headers.get('accept')).toBe('application/json');
     expect(headers.get('x-test')).toBe('value');
   });
-
 });

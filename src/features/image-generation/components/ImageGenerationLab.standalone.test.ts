@@ -24,11 +24,13 @@ vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => {
 
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const worker = vi.fn(), fetch = vi.fn(), reader = vi.fn();
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.clearAllMocks();
   vi.stubGlobal('Worker', worker); vi.stubGlobal('fetch', fetch); vi.stubGlobal('FileReaderSync', reader);
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
 });

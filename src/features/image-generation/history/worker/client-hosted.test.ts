@@ -3,6 +3,7 @@ import { createImageHistoryClient } from './client-hosted';
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), workers: [] as EventTarget[], terminate: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => ({ query: mocks.query }), releaseWorkerRemote: () => mocks.release() }));
+
 beforeEach(() => {
   vi.resetAllMocks(); mocks.workers.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
@@ -14,7 +15,9 @@ beforeEach(() => {
     }
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 const query = { text: '', offset: 0, limit: 40 };
 const page = { items: [], total: 0, warnings: [], warningCount: 0 };
 

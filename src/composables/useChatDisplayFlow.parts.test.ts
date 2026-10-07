@@ -15,6 +15,7 @@ function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts
 function flatten({ items }: { items: ChatFlowItem[] }): Exclude<ChatFlowItem, { type: 'process_sequence' }>[] {
   return items.flatMap(item => item.type === 'process_sequence' ? flatten({ items: item.items }) : [item]);
 }
+
 describe('parts-based display flow', () => {
   it('shows draft-only calls and preserves logical gaps and parallel completion order', () => {
     const message = assistant({ parts: [{ type: 'text', text: 'Later text', completeness: 'partial' }], interruption: undefined });
@@ -96,17 +97,20 @@ describe('parts-based display flow', () => {
     ]);
     expect(new Set(items.map(p => p.type === 'message' ? p.key : p.id)).size).toBe(4);
   });
+
   it('does not animate stored partial reasoning after stopping', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: '途中', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: false });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(false);
     expect(message.parts[0]).toMatchObject({ completeness: 'partial', text: '途中' });
   });
+
   it('animates the native partial of the live generation', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: true });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(true);
   });
+
   it('keeps a later part key stable when an earlier empty part receives content', () => {
     const { chat, chatFlow } = createFlow({
       message: assistant({
@@ -125,6 +129,7 @@ describe('parts-based display flow', () => {
     const later = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     expect(later?.type === 'message' && later.key).toBe(prior?.type === 'message' && prior.key);
   });
+
   it('keeps reactive body identity when a late tool call is inserted before it', () => {
     const { chat, chatFlow } = createFlow({
       message: assistant({
@@ -147,12 +152,14 @@ describe('parts-based display flow', () => {
     expect(after?.type).toBe('message');
     expect(after?.type === 'message' && after.key).toBe(before?.type === 'message' && before.key);
   });
+
   it('keeps a stopped empty assistant visible without inventing body text', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信エラー' } });
     const { chatFlow } = createFlow({ message, processing: false });
     expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'content', partContent: '' });
     expect(message.parts).toEqual([]);
   });
+
   it('does not associate a stray tool result across a new user turn', () => {
     const callId = toToolCallId({ raw: 'same-id' });
     const a = assistant({ parts: [{ type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'old', arguments: '{}' } } }], interruption: undefined });

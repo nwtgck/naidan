@@ -492,6 +492,7 @@ describe("runModelLoadInvestigation", () => {
     expect(result.steps.find(step => step.id === "loading-investigation")?.detail)
       .toContain("loaded successfully, but deterministic generation input was unavailable");
   });
+
   it("retains structured model-load evidence when a candidate times out during generation", async () => {
     const candidatePlan = candidate("webgpu-q4f16");
     const onRunUpdate = vi.fn();
@@ -541,5 +542,4 @@ describe("runModelLoadInvestigation", () => {
       error: { name: "CandidateAttemptTimeoutError" },
     });
   });
-
 });

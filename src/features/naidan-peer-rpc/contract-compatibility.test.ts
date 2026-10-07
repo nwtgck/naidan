@@ -17,6 +17,7 @@ import {
 import { bytesSource, collectBytes } from './codecs/transfer';
 
 const stops: (() => void)[] = [];
+
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
 });

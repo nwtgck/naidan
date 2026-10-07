@@ -496,6 +496,7 @@ describe('Vite preload helper file-protocol compatibility', () => {
     expect(preloadSource.indexOf('dep = importMetaResolve(dep);'))
       .toBeLessThan(preloadSource.indexOf('const isCss = dep.endsWith(".css");'));
   });
+
   it('applies the compatibility transform to the installed Vite preload implementation', async () => {
     const plugin = createPlugin();
     const hook = plugin.transform;
@@ -548,7 +549,6 @@ export { preload as testPreload };
     const stylesheet = dom.window.document.querySelector('link[rel="stylesheet"]');
     expect(stylesheet?.getAttribute('crossorigin')).toBeNull();
   });
-
 
   it('skips non-file dependencies for the file-protocol UI runtime', async () => {
     const code = await transformFixture();
@@ -806,7 +806,6 @@ export { preload as testPreload };
     expect(events[0]?.type).toBe('vite:preloadError');
   });
 
-
   it('keeps file UI application-import failures observable after skipping dependency preloads', async () => {
     const code = await transformFixture();
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
@@ -899,5 +898,4 @@ export { preload as testPreload };
     expect(resolveCalls).toBe(0);
     expect(linkEvents.appendedLinks()).toBe(1);
   });
-
 });

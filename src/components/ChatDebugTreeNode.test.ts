@@ -25,6 +25,7 @@ function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
     parts: [{ type: 'attachment', attachment: status === 'memory' ? { ...common, status, blob: new Blob(['image'], { type: 'image/png' }) } : { ...common, status } }],
   };
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks();
   getFile.mockResolvedValue(new Blob(['image']));
@@ -32,9 +33,11 @@ beforeEach(async () => {
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
+
 afterEach(() => {
   wrappers.splice(0).forEach(w => w.unmount()); vi.restoreAllMocks();
 });
+
 it('renders raw body and reasoning in part order including explicit empty parts', async () => {
   const node: MessageNode = {
     id: toMessageId({ raw: 'a' }),
@@ -60,6 +63,7 @@ it('renders raw body and reasoning in part order including explicit empty parts'
   expect(navigator.clipboard.writeText).toHaveBeenCalledWith('<think>literal</think>  🙂\n');
   expect(node).toEqual(snapshot);
 });
+
 it('renders tool results without flattening them into body text', () => {
   const w = render({
     node: {
@@ -75,6 +79,7 @@ it('renders tool results without flattening them into body text', () => {
   expect(w.get('[data-testid="debug-part"][data-part-type="tool_result"]').text()).toContain('<think>result</think>');
   expect(w.find('[data-testid="copy-content-btn"]').exists()).toBe(false);
 });
+
 it('uses a memory Blob and releases the thumbnail when the part is removed', async () => {
   const node = user({ status: 'memory' }); const w = render({ node }); await flushPromises();
   expect(getFile).not.toHaveBeenCalled(); expect(URL.createObjectURL).toHaveBeenCalledWith(node.parts[0]?.type === 'attachment' && node.parts[0].attachment.status === 'memory' ? node.parts[0].attachment.blob : undefined);
@@ -82,6 +87,7 @@ it('uses a memory Blob and releases the thumbnail when the part is removed', asy
   await w.setProps({ node: { ...node, parts: [] } }); await flushPromises();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:debug');
 });
+
 it('does not publish thumbnails that arrive after removal or unmount', async () => {
   let resolve: (value: Blob) => void = () => {
     throw new Error('not started');

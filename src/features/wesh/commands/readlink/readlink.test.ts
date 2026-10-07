@@ -357,5 +357,4 @@ dir/file.txt
     expect(ambiguous.stderr.text).toContain("'--version'");
     expect(ambiguous.result.exitCode).not.toBe(0);
   });
-
 });

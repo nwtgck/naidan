@@ -8,9 +8,11 @@ import { FRAME_BYTES, TRANSFER_BYTES, VALUE_BYTES } from './primitives';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 
 const cleanups: (() => void)[] = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
+
 const definition = contract({ name: 'raw', methods: { get: procedure({ input: z.object({}), result: rpc.stream({ item: z.number() }), notifications: {} }) } });
 
 it('bounds public failure details and rejects details on successful completion', () => {
@@ -21,6 +23,7 @@ it('bounds public failure details and rejects details on successful completion',
   expect(frameSchema.safeParse({ ...frame, details: { nested: { unbounded: 'value' } } }).success).toBe(false);
   expect(frameSchema.safeParse({ ...frame, code: undefined }).success).toBe(false);
 });
+
 async function opened() {
   const transport = transportPair({ capacity: 1, fragmentBytes: 3 }), controller = new AbortController();
   const peer = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 1, maxCallTimeoutMs: 1000 }, signal: controller.signal });

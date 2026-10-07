@@ -67,6 +67,7 @@ function resource() {
 function generate({ input }: { input: PeerImageInput }) {
   return resource().generateImage({ input, signal: new AbortController().signal, onPreview: () => {}, onProgress: () => {} });
 }
+
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('window', { location: { href: 'https://local.example/' } });
@@ -74,17 +75,21 @@ beforeEach(() => {
   mocks.create.mockReturnValue({ generate: mocks.generate, dispose: mocks.dispose });
   mocks.generate.mockResolvedValue({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 it('reads catalogs without creating an engine or downloading anything', async () => {
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
   expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 }); expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('does not advertise a diffusion file as a complete implicit model configuration', async () => {
   mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'diffusion.gguf', roles: ['diffusion'] })] });
   expect((await resource().listImageModels({ signal: new AbortController().signal }))[0]?.selection).toBeUndefined();
 });
+
 it('honors explicit read-only model selection and bounds native-only policies', async () => {
   await generate({ input: request() });
   const actual: Request = mocks.generate.mock.calls[0]![0].request;
@@ -92,18 +97,21 @@ it('honors explicit read-only model selection and bounds native-only policies', 
   expect(actual.models[0]?.file.size).toBe(16); expect(actual.parameters.seed).toBe('42');
   expect(mocks.host).toHaveBeenCalledWith({ directories: [], signal: expect.any(AbortSignal) });
 });
+
 it('rejects a changed model before starting an engine', async () => {
   const input = request(); input.modelSelection.primary.file.expected!.size = 19;
   await expect(generate({ input })).rejects.toMatchObject({ code: 'HANDLER_FAILED', details: { stage: 'model-selection', reason: 'model-selection-failed' } });
   expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('changed') }));
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('cannot read an ungranted host directory or silently choose the owner preset', async () => {
   const input = request(); input.modelSelection.primary.file = { location: { kind: 'host', directoryId: 'not-granted', path: 'model.gguf' } };
   await expect(generate({ input })).rejects.toMatchObject({ details: { stage: 'model-selection' } });
   expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('permitted roots') }));
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('rejects unsupported sampler values rather than dropping a caller setting', async () => {
   const input = request(); input.parameters.sampler = 'unknown-sampler';
   await expect(generate({ input })).rejects.toThrow(); expect(mocks.create).not.toHaveBeenCalled();
@@ -220,6 +228,7 @@ it('disposes the cached image owner exactly once and rejects later calls', async
   await expect(resources.generateImage({ input: request(), signal, onProgress: () => {}, onPreview: () => {} })).rejects.toMatchObject({ name: 'AbortError' });
   expect(mocks.create).toHaveBeenCalledOnce();
 });
+
 it('does not create a native image owner when disposed during inventory loading', async () => {
   const resources = resource(), gate = Promise.withResolvers<{ candidates: ModelCandidate[] }>();
   mocks.scan.mockReturnValueOnce(gate.promise);
@@ -229,6 +238,7 @@ it('does not create a native image owner when disposed during inventory loading'
   resources.dispose(); gate.resolve({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] }); await rejected;
   expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
 });
+
 it('disposal cancels an in-flight native owner without pretending its result settled', async () => {
   const resources = resource(), gate = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(gate.promise);
   const call = resources.generateImage({ input: request(), signal: new AbortController().signal, onProgress: () => {}, onPreview: () => {} });
@@ -246,6 +256,7 @@ it('disposal cancels an in-flight native owner without pretending its result set
   gate.resolve({ png: new Blob([], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' }); await rejected; await closing;
   expect(retired).toBe(true); expect(mocks.dispose).toHaveBeenCalledOnce();
 });
+
 it('preserves a native disposal error rather than acknowledging a successful second disposal', async () => {
   const resources = resource();
   await resources.generateImage({ input: request(), signal: new AbortController().signal, onProgress: () => {}, onPreview: () => {} });

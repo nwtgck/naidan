@@ -17,6 +17,7 @@ const onDownloadPreferencesChange = vi.fn(({ preferences }: { preferences: Image
   downloadPreferences.value = { ...preferences };
 });
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   downloadPreferences.value = { format: 'png', metadata: 'omit' };
@@ -24,9 +25,11 @@ beforeEach(async () => {
   confirm.show.mockReset(); confirm.show.mockResolvedValue(false);
   vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:history-image'), revokeObjectURL: vi.fn() }));
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; onDownload.mockClear(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
+
 function fixture(): { view: ImageGenerationHistoryView, record: ImageGenerationRecord } {
   const form = createImageForm({ profile: 'webgpu-wasm64-jspi' });
   const record: ImageGenerationRecord = {
@@ -64,6 +67,7 @@ function fixture(): { view: ImageGenerationHistoryView, record: ImageGenerationR
   };
   return { view, record };
 }
+
 it('selects locally without altering the form and emits reuse or image actions only after an explicit click', async () => {
   const { view, record } = fixture();
   wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } });
@@ -85,6 +89,7 @@ it('selects locally without altering the form and emits reuse or image actions o
   expect(json.text()).toContain('A quiet garden');
   expect(json.findAll('span').length).toBeGreaterThan(0);
 });
+
 it('copies the exact full prompt from the compact read-only card and reports clipboard failure', async () => {
   const { view, record } = fixture();
   const prompt = `\
@@ -109,6 +114,7 @@ second line${'  '}
   await button.trigger('click'); await flushPromises();
   expect(card.get('[data-testid="image-history-copy-prompt-error"]').text()).toContain('Permission denied');
 });
+
 it('defaults exports to plain PNG and keeps deletion available beside independent scope details', async () => {
   const { view, record } = fixture(); view.selected.value = record;
   wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } }); await flushPromises();
@@ -194,6 +200,7 @@ it('shows final-image deletion errors even while its details remain closed', asy
   expect(wrapper.get('[data-testid="image-history-image-delete-help-toggle"]').attributes('aria-expanded')).toBe('false');
   expect(view.selected.value).toBe(record);
 });
+
 it('passes search and pagination to the owner, keeps unavailable actions disabled, and shows missing images without losing record details', async () => {
   const { view, record } = fixture(); view.selected.value = record; view.getImage = vi.fn(async () => undefined);
   wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } }); await flushPromises();
@@ -203,6 +210,7 @@ it('passes search and pagination to the owner, keeps unavailable actions disable
   await wrapper.get('[data-testid="image-history-next-page"]').trigger('click'); expect(view.goToPage).toHaveBeenCalledExactlyOnceWith({ page: 2 });
   view.available.value = false; await flushPromises(); expect(wrapper.get('[data-testid="image-history-search"]').element.matches(':disabled')).toBe(true);
 });
+
 it('keeps displayed thumbnails and selected actions stable while search status changes', async () => {
   const { view, record } = fixture();
   view.selected.value = record;
@@ -238,6 +246,7 @@ it('keeps displayed thumbnails and selected actions stable while search status c
   expect(wrapper.get('[data-testid="image-history-next-page"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.text()).toContain('Could not read the requested search');
 });
+
 it('replaces a bounded page of cards and exposes first, previous, next and last page controls', async () => {
   const { view } = fixture();
   const source = view.items.value[0]!;
@@ -278,6 +287,7 @@ it('replaces a bounded page of cards and exposes first, previous, next and last 
   expect(wrapper.find('[data-testid="image-history-pagination"]').exists()).toBe(true);
   for (const button of wrapper.findAll('[data-testid="image-history-pagination"] button')) expect(button.element.matches(':disabled')).toBe(true);
 });
+
 it('releases image URLs and discards a stale async image load when its record changes', async () => {
   const pending = Promise.withResolvers<Blob | undefined>(); const getImage = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(new Blob(['new']));
   wrapper = mount(ImageHistoryImage, { props: { binaryObjectId: toBinaryObjectId({ raw: 'old' }), width: 512, height: 512, alt: 'old', getImage } });
@@ -285,6 +295,7 @@ it('releases image URLs and discards a stale async image load when its record ch
   pending.resolve(new Blob(['old'])); await flushPromises(); expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   wrapper.unmount(); wrapper = undefined; expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:history-image');
 });
+
 it('loads history thumbnails only while visible and releases their URL when they leave the viewport', async () => {
   let visibility: IntersectionObserverCallback | undefined;
   const disconnect = vi.fn();

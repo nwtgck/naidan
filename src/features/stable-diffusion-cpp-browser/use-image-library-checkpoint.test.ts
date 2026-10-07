@@ -8,9 +8,11 @@ import type { LocalImageRepository } from './logic/repository-store';
 import { safetensorsFixture, sdCheckpointTensors, sdVaeTensors, fluxVaeTensors } from './test-utils/weights';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 const recipe = imageModelRecipes.find(recipe => recipe.id === 'sdxl-base-1.0')!;
 // Synthetic headers exercise composition and original-file ownership, not real
 // trained-weight compatibility or browser inference quality.

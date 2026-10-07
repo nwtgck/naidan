@@ -8,6 +8,7 @@ function fixture(): { chat: Chat, node: AssistantMessageNode } {
   const chat: Chat = { id: toChatId({ raw: 'chat' }), title: null, root: { items: [node] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
   return { chat, node };
 }
+
 describe('volatile assistant diagnostics', () => {
   it('keeps drafts outside stored chat data and protects a replacement owner from old cleanup', () => {
     const state = createChatVolatileState(); const { chat, node } = fixture();
@@ -23,6 +24,7 @@ describe('volatile assistant diagnostics', () => {
     state.setToolCallDrafts({ chatId: chat.id, messageId: node.id, owner: newOwner, drafts: [] });
     expect(state.getToolCallDrafts({ chatId: chat.id, messageId: node.id })).toEqual([]);
   });
+
   it('retains UI errors without writing them into a reloaded message or interruption', () => {
     const state = createChatVolatileState(); const { chat, node } = fixture(); const before = JSON.stringify(chat);
     state.setVolatileAssistantError({ chatId: chat.id, messageId: node.id, error: '保存できませんでした' });
@@ -30,6 +32,7 @@ describe('volatile assistant diagnostics', () => {
     expect(state.getVolatileAssistantError({ chatId: chat.id, messageId: node.id })).toBe('保存できませんでした');
     expect(JSON.stringify(chat)).toBe(before); expect(Object.hasOwn(node, 'error')).toBe(false);
   });
+
   it('removes diagnostics for deleted messages and explicitly cleared errors', () => {
     const state = createChatVolatileState(); const { chat, node } = fixture();
     state.setVolatileAssistantError({ chatId: chat.id, messageId: node.id, error: 'old' });

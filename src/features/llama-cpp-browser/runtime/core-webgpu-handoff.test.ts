@@ -14,6 +14,7 @@ vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
     functions: [],
   },
 }));
+
 afterEach(() => {
   vi.resetAllMocks(); vi.unstubAllGlobals();
 });

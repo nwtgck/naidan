@@ -287,5 +287,4 @@ rmdir: removing directory, 'one'
     expect(execution.stdout.text).toBe("rmdir: removing directory, ''\n");
     expect(execution.stderr.text).toContain("failed to remove ''");
   });
-
 });

@@ -16,11 +16,13 @@ async function model({ root, path }: { root: MemoryDirectory, path: string[] }):
   const file = await directory.getFileHandle('image.gguf', { create: true });
   vi.spyOn(file, 'getFile').mockResolvedValue(ggufFixture({ name: 'image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file);
 }
+
 beforeEach(async () => {
   host = new MemoryDirectory('host'); opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(host as unknown as HostModelDirectoryHandle);
   await model({ root: host, path: ['owner', 'repo'] });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
@@ -79,6 +81,7 @@ it('only reads the published OPFS repository and does not revisit linked roots',
   expect(result.issues).toEqual([]);
   expect(oldFile.getFile).not.toHaveBeenCalled(); expect(hostModelHandles.get).not.toHaveBeenCalled();
 });
+
 it('rejects a host selector rather than silently treating it as an empty OPFS scan', async () => {
   await expect(createInventoryWorker().inspect(undefined, vi.fn(), directories, ['host/linked/owner/repo'])).rejects.toThrow('Only OPFS');
 });

@@ -116,6 +116,7 @@ describe('bounded Production Provider investigation', () => {
     expect(result.summary.progressCallbackFailures).toBe(0);
     expect(client.generateMessage).toHaveBeenCalledTimes(12);
   });
+
   it('publishes every immediate phase boundary without waiting for the sampling timer', async () => {
     const { investigation, onProgress } = fixture({ plan: 'first-only' });
     await investigation.run();
@@ -123,6 +124,7 @@ describe('bounded Production Provider investigation', () => {
     expect(onProgress.mock.calls[0]?.[0].progress.provider.settledRequests).toBe(0);
     expect(onProgress.mock.calls.at(-1)?.[0].progress.provider.settledRequests).toBe(1);
   });
+
   it('collects once, starts disposal before sealing and retains only sealed evidence', async () => {
     const { investigation, client, take } = fixture({ plan: 'first-only' });
     const realSeal = nativeEvidence.createProductionProviderNativeEvidence;

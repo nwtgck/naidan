@@ -186,6 +186,7 @@ describe('useChatLifecycle', () => {
     expect(created).not.toBeNull();
     expect(mockEnsureChatWorkspaceMounted).not.toHaveBeenCalled();
   });
+
   it('creates a grouped assistant chat without replacing the selected regular chat or group', async () => {
     const existing: Chat = { id: existingChatId, title: 'Main chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
     const group: ChatGroup = { id: groupId, name: 'Images', isCollapsed: false, updatedAt: 1, items: [] };
@@ -198,10 +199,10 @@ describe('useChatLifecycle', () => {
     expect(mockRegisterLiveInstance).toHaveBeenCalledOnce(); expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
     expect(mockCreatingChat.value).toBe(false);
   });
+
   it('releases the creation gate on failure while preserving main-chat navigation', async () => {
     mockUpdateChatContent.mockRejectedValueOnce(new Error('save failure'));
     await expect(useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined })).rejects.toThrow('save failure');
     expect(mockCreatingChat.value).toBe(false); expect(mockSetCurrentChatId).not.toHaveBeenCalled();
   });
-
 });

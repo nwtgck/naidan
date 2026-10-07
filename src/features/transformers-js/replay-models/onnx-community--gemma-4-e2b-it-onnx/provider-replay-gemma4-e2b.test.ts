@@ -443,6 +443,7 @@ describe('Gemma4 E2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('delivers the recorded first-turn prefix through the actual processor and streamer before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -514,11 +515,12 @@ describe('Gemma4 E2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -564,7 +566,7 @@ describe('Gemma4 E2B Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -691,6 +693,7 @@ describe('Gemma4 E2B Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('preserves the separate 16-token continuation capture without inferring why native generation stopped', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -784,11 +787,12 @@ describe('Gemma4 E2B Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -989,11 +993,12 @@ A separate synthetic Gemma conversation.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity","independent-next-input"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity", "independent-next-input"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1172,11 +1177,12 @@ Template probe user message.<turn|>
       expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1215,11 +1221,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1258,11 +1265,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1301,11 +1309,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1594,6 +1603,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
+
   it('retains structured tool-call and result association instead of flattening them into ordinary conversation text', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -1751,6 +1761,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('executes a native-format synthetic tool call once and supplies its structured result to the next real processor input', async () => {
     const executedArgs: unknown[] = [];
     const templateMessages = [{ role: 'user', content: 'Use the synthetic weather tool for Tokyo.' }];
@@ -1852,6 +1863,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('interrupts an unfinished second native tool call without executing the earlier complete call', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = {
@@ -1905,6 +1917,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each([
     { label: 'explicit null accepted by the registered tool schema', payload: 'value:null', settlement: 'rejected' as const },
     { label: 'an unsafe bare argument key accepted by the registered tool schema', payload: 'params:{unsafe:key:1}', settlement: 'rejected' as const },
@@ -1968,6 +1981,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('reports an unknown native tool name without executing a registered tool and continues with the actual error result input', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = {
@@ -2044,6 +2058,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('rejects a lossy tool result after its one actual execution and before the next native inference', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Synthetic result<|"|>delimiter' }));
     const tool: Tool = {
@@ -2103,6 +2118,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each([
     {
       caseId: 'natural-tool-minimal' as const,
@@ -2203,11 +2219,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       await replay.close();
     }
   }, 30_000);
+
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2507,6 +2524,7 @@ Use the quoted value.
       await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
     }
   }, 30_000);
+
   it.each([
     { name: 'first real pixel', index: 0 },
     { name: 'last real pixel', index: 2304 * 768 - 1 },
@@ -2599,6 +2617,7 @@ describe('Gemma4 E2B Provider / images', () => {
       }
     }
   }, 30_000);
+
   it('changes every real pixel for a synthetic white image while retaining zero padding and the same geometry', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -2661,12 +2680,13 @@ describe('Gemma4 E2B Provider / images', () => {
       }
     }
   }, 30_000);
+
   it('images: preserves recorded pixels and processor tensors before delivering recorded callbacks', async () => {
     const platform = createProviderReplayTestImagePlatform();
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: {
         platform,
         allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='],
@@ -2975,11 +2995,12 @@ describe('Gemma4 E2B Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -3052,6 +3073,7 @@ describe('Gemma4 E2B Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves thirteen requests including natural tools and actual image processor tensors in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     expect(fullEvidenceJson.modelId).toBe('onnx-community/gemma-4-E2B-it-ONNX');

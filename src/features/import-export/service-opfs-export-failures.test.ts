@@ -81,6 +81,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

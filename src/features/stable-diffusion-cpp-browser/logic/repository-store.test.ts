@@ -4,6 +4,7 @@ import { importImageRepository, listImageRepositories } from './repository-store
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
 let root: MemoryDirectory;
 const lock = vi.fn();
+
 beforeEach(() => {
   root = new MemoryDirectory('root'); lock.mockReset();
   vi.stubGlobal('navigator', {
@@ -15,9 +16,11 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
 const input = (): { name: string, files: { path: string, file: File }[] } => ({
   name: 'モデル repo',
   files: [
@@ -26,6 +29,7 @@ const input = (): { name: string, files: { path: string, file: File }[] } => ({
     { path: 'diffusion/weights.gguf', file: new File(['unverified bytes'], 'weights.gguf') },
   ],
 });
+
 it('streams the working tree into models/user without filtering metadata or altering paths', async () => {
   const source = input(); for (const { file } of source.files) vi.spyOn(file, 'arrayBuffer').mockRejectedValue(new Error('Whole-file copy forbidden'));
   const progress = vi.fn();
@@ -37,19 +41,23 @@ it('streams the working tree into models/user without filtering metadata or alte
   expect(await repositories[0]!.files.find(entry => entry.path === 'README.md')!.file.text()).toBe('model description');
   expect(progress).toHaveBeenCalled();
 });
+
 it('never overwrites an existing repository', async () => {
   await importImageRepository({ input: input(), signal: undefined, onProgress() {} });
   await expect(importImageRepository({ input: input(), signal: undefined, onProgress() {} })).rejects.toThrow('already exists');
   expect((await listImageRepositories({ signal: undefined }))).toHaveLength(1);
 });
+
 it.each(['../escape.gguf', '/absolute.gguf', 'a/../b', 'x\\y', '.llama-cpp-import-pending', '.git/config'])('rejects unsafe paths before writing %s', async path => {
   await expect(importImageRepository({ input: { name: 'repo', files: [{ path, file: new File(['bytes'], 'f') }] }, signal: undefined, onProgress() {} })).rejects.toThrow();
   expect(root.children.size).toBe(0);
 });
+
 it('rejects file/directory collisions before writing', async () => {
   await expect(importImageRepository({ input: { name: 'repo', files: ['a', 'a/b'].map(path => ({ path, file: new File(['x'], 'f') })) }, signal: undefined, onProgress() {} })).rejects.toThrow('collision');
   expect(root.children.size).toBe(0);
 });
+
 it('cancels an in-flight stream, rolls back owned files, and never publishes a partial repository', async () => {
   const controller = new AbortController();
   await expect(importImageRepository({
@@ -62,6 +70,7 @@ it('cancels an in-flight stream, rolls back owned files, and never publishes a p
   expect(await listImageRepositories({ signal: undefined })).toEqual([]);
   const user = await (await root.getDirectoryHandle('models')).getDirectoryHandle('user'); expect(user.children.size).toBe(0);
 });
+
 it('retains foreign files and keeps the pending marker after an interrupted import', async () => {
   const controller = new AbortController();
   await expect(importImageRepository({
@@ -78,6 +87,7 @@ it('retains foreign files and keeps the pending marker after an interrupted impo
   expect(repo.children.has('foreign')).toBe(true); expect(repo.children.has('.llama-cpp-import-pending')).toBe(true);
   expect(await listImageRepositories({ signal: undefined })).toEqual([]);
 });
+
 it('does not read from the network when enumerating existing cached HF repositories', async () => {
   const network = vi.fn(); vi.stubGlobal('fetch', network);
   let folder = root;

@@ -29,6 +29,7 @@ function setup() {
   const output = { png: new Blob(['pixels'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false };
   return { request, snapshot, execution, client, native, gate, args, output, onModelResident };
 }
+
 it('preparing is lazy and accepted parameters cannot change underneath the job', async () => {
   const { request, execution, native, gate, args, output, client } = setup();
   expect(client).not.toHaveBeenCalled();
@@ -38,12 +39,14 @@ it('preparing is lazy and accepted parameters cannot change underneath the job',
   expect(sent.parameters.prompt).toBe('a small tree'); expect(sent.parameters.seed).toBe('43'); expect(sent.models).toHaveLength(1);
   gate.resolve(output); await expect(job.result).resolves.toEqual({ status: 'completed', output });
 });
+
 it('rejects overlapping starts without allocating a second native job', async () => {
   const { execution, gate, args, output, native } = setup();
   const first = execution.start(args);
   expect(() => execution.start(args)).toThrow('already running');
   expect(native.generate).toHaveBeenCalledTimes(1); gate.resolve(output); await first.result;
 });
+
 it('a completed job handle cannot cancel or change a later image in the same plan', async () => {
   const { execution, gate, args, output, native, request } = setup();
   const first = execution.start(args); gate.resolve(output); await first.result;
@@ -54,20 +57,24 @@ it('a completed job handle cannot cancel or change a later image in the same pla
   second.cancel(); expect(native.cancel).toHaveBeenCalledTimes(1);
   next.resolve({ cancelled: true, modelResident: true }); await expect(second.result).resolves.toEqual({ status: 'cancelled' });
 });
+
 it('does not create a native client for an already aborted job', async () => {
   const { execution, args, client } = setup(); const stop = new AbortController(); stop.abort();
   await expect(execution.start({ ...args, signal: stop.signal }).result).resolves.toEqual({ status: 'cancelled' });
   expect(client).not.toHaveBeenCalled();
 });
+
 it('reports native errors through the same execution result without exposing a worker to the view', async () => {
   const { execution, args, gate } = setup(); const job = execution.start(args);
   gate.reject(new Error('test failure')); await expect(job.result).resolves.toEqual({ status: 'failed', message: 'test failure' });
 });
+
 it('retained-model bookkeeping remains in the local adapter', async () => {
   const { execution, args, gate, onModelResident } = setup(); const job = execution.start(args);
   gate.resolve({ cancelled: true, modelResident: false }); await job.result;
   expect(onModelResident).toHaveBeenCalledWith({ resident: false });
 });
+
 it('isolates editable snapshot metadata without copying image bytes', () => {
   const { execution, snapshot } = setup();
   snapshot.request.parameters.prompt = 'changed'; snapshot.request.models.length = 0;
@@ -92,6 +99,7 @@ it('preserves generated pixels when retained-model presentation throws', async (
   const job = execution.start(args); gate.resolve(output);
   await expect(job.result).resolves.toEqual({ status: 'completed', output });
 });
+
 it('ignores late progress from an earlier image after a later image starts', async () => {
   const { execution, args, native, gate, output } = setup();
   const progress = vi.fn(), nextProgress = vi.fn();

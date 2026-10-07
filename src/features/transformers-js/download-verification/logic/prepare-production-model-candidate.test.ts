@@ -171,6 +171,7 @@ describe('prepareProductionModelCandidate', () => {
     expect(actual).toEqual({ status: 'ready', prefetch: expectedResult });
     expect(dispose).toHaveBeenCalledOnce();
   });
+
   it('refuses to turn an observation into a complete plan when no selector plan was supplied', async () => {
     await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE }))
       .resolves.toMatchObject({ status: 'failed', error: { name: 'MissingProductionResourcePlan' } });

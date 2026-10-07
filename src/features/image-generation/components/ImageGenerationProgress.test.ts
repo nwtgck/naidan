@@ -4,13 +4,16 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImageGenerationProgress from './ImageGenerationProgress.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.useRealTimers();
 });
+
 function openProgress() {
   wrapper = mount(ImageGenerationProgress, { props: { busy: true, supported: true, active: true, stopping: false, progress: undefined, width: 512, height: 512, image: undefined } });
   return wrapper;

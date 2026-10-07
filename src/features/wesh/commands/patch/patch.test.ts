@@ -1862,7 +1862,6 @@ Hunk #2 FAILED at 1.
     expect(stderr.text).toBe('');
   });
 
-
   it('creates an exact-match backup when -b is specified', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
 

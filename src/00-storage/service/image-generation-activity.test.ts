@@ -7,12 +7,15 @@ import * as service from './image-generation';
 
 const root = '/naidan-storage/experimental/image-generation';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness();
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing catalog');
@@ -46,6 +49,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(sessions[0]!.activityOrder).toBeGreaterThan(sessions[1]!.activityOrder!);
     expect((await journal()).pending).toEqual([]);
   });
+
   it('replays accepted runs using only persisted bytes, not page retry objects', async () => {
     const { store, a } = await setup();
     const { run, writeInputs } = await accept({ store, session: a, id: 'run-aa', time: 0 });
@@ -57,6 +61,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(writeInputs).toHaveBeenCalledTimes(1);
     expect((await service.loadImageGenerationRun({ store, sessionId: a.id, runId: run.id }))?.execution.type).toBe('queued');
   });
+
   it('keeps an old retry behind later use, even with a much newer timestamp', async () => {
     const { store, a, b } = await setup();
     const first = await accept({ store, session: a, id: 'run-aa', time: 1_000_000 });
@@ -67,6 +72,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
     expect((await journal()).sequence).toBe(sequence);
   });
+
   it('reports one failed activity write without blocking another accepted session', async () => {
     const { store, a, b } = await setup();
     await accept({ store, session: a, id: 'run-aa', time: 20 });
@@ -79,6 +85,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
     expect((await journal()).pending).toEqual([]);
   });
+
   it('recovers a published run after the run-index acknowledgement fails', async () => {
     const { store, a } = await setup();
     const run = generationRunFixture({ id: 'run-aa', sessionId: a.id, count: 1, seed: '42' });
@@ -92,6 +99,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await journal()).sequence).toBe(sequence);
     expect((await service.loadImageGenerationRun({ store, sessionId: a.id, runId: run.id }))?.acceptedOrder).toBe(saved?.acceptedOrder);
   });
+
   it('does not reserve or reorder when input publication fails', async () => {
     const { store, a } = await setup();
     const before = await journal();
@@ -106,6 +114,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(await journal()).toEqual(before);
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
   });
+
   it('cleans an unaccepted reservation after canonical run publication fails', async () => {
     const { store, a } = await setup();
     const run = generationRunFixture({ id: 'run-aa', sessionId: a.id, count: 1, seed: '42' });
@@ -114,6 +123,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await journal()).pending).toEqual([]);
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
   });
+
   it('repairs dirty session indexes without advancing order on an identical save retry', async () => {
     const { store, a } = await setup();
     const next = { ...a, revision: a.revision + 1, title: 'new title', updatedAt: 0 };
@@ -126,6 +136,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await journal()).sequence).toBe(sequence);
     expect(await order({ store })).toEqual(['session-aa', 'session-bb']);
   });
+
   it('does not revive a deleted session from durable pending activity', async () => {
     const { store, a } = await setup();
     await accept({ store, session: a, id: 'run-aa', time: 2 });
@@ -134,6 +145,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await journal()).pending).toEqual([]);
     expect(await service.loadImageGenerationSession({ store, sessionId: a.id })).toBeUndefined();
   });
+
   it('preserves later metadata edits and their position while replaying an older run', async () => {
     const { store, a, b } = await setup();
     await accept({ store, session: a, id: 'run-aa', time: 100 });
@@ -143,6 +155,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     const latest = await service.loadImageGenerationSession({ store, sessionId: a.id });
     expect(latest).toMatchObject({ title: 'renamed', activityOrder: renamed.activityOrder });
   });
+
   it('keeps legacy timestamp order without creating a journal on read-only listing', async () => {
     const { store, a, b } = await setup();
     for (const session of [a, b]) {
@@ -160,6 +173,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(fresh.activityOrder).toBe(1);
     expect(await order({ store })).toEqual(['session-cc', 'session-aa', 'session-bb']);
   });
+
   it.each(['{broken', '{"version":2,"future":true}'])('does not replace an unreadable activity clock: %s', async text => {
     const { store, a } = await setup();
     const file = await fs.file({ path: `${root}/session-activity.json` }); file.text = text;
@@ -169,11 +183,13 @@ describe('durable, wall-clock-independent image session activity', () => {
     await expect(service.saveImageGenerationSession({ store, session: { ...a, revision: a.revision + 1, title: 'edit' }, expectedRevision: a.revision })).rejects.toThrow();
     expect(file.text).toBe(text);
   });
+
   it('fails closed rather than restarting a deleted clock in an ordered store', async () => {
     const { store, a } = await setup();
     await (await fs.directory({ path: root })).removeEntry('session-activity.json');
     await expect(service.saveImageGenerationSession({ store, session: { ...a, revision: 1, title: 'edit' }, expectedRevision: 0 })).rejects.toThrow('clock is missing');
   });
+
   it('refuses clock exhaustion without rounding orders or publishing a run', async () => {
     const { store, a } = await setup();
     const file = await fs.file({ path: `${root}/session-activity.json` });
@@ -184,6 +200,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(file.text).toBe(before);
     expect(await service.loadImageGenerationRun({ store, sessionId: a.id, runId: run.id })).toBeUndefined();
   });
+
   it('does not repeat a metadata update when only clearing the durable receipt failed', async () => {
     const { store, a } = await setup();
     await accept({ store, session: a, id: 'run-aa', time: 20 });
@@ -197,6 +214,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(second.items.find(session => session.id === a.id)).toEqual(accepted);
     expect((await journal()).pending).toEqual([]);
   });
+
   it('does not publish a run when reserving durable order fails', async () => {
     const { store, a } = await setup();
     const before = await journal();
@@ -207,6 +225,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(await journal()).toEqual(before);
     expect(await order({ store })).toEqual(['session-bb', 'session-aa']);
   });
+
   it('cleans an interrupted, unpublished receipt without moving any session', async () => {
     const { store, a } = await setup();
     const before = await journal();
@@ -220,6 +239,7 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await journal()).pending).toEqual([]);
     expect((await journal()).sequence).toBe(before.sequence + 1);
   });
+
   it('rejects duplicate or mismatching order metadata without destroying unknown receipts', async () => {
     const { store, a } = await setup();
     await accept({ store, session: a, id: 'run-aa', time: 20 });
@@ -239,5 +259,4 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect((await service.listImageGenerationSessions({ store })).warningCount).toBe(1);
     expect(file.text).toBe(mismatching);
   });
-
 });

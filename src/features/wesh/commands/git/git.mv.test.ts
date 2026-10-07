@@ -178,7 +178,6 @@ Changes to be committed:
 `);
   });
 
-
   it('keeps an unstaged worktree modification on an exact staged rename', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -195,7 +194,6 @@ RM a -> b
 2 RM N... 100644 100644 100644 5626abf0f72e58d7a153368ba57db4c673c0e171 5626abf0f72e58d7a153368ba57db4c673c0e171 R100 b\ta
 `);
   });
-
 
   it('uses destination-then-source NUL records for rename porcelain output', async () => {
     const { result, stdout, stderr } = await execute({
@@ -214,7 +212,6 @@ git status --porcelain=v2 -z`,
     );
   });
 
-
   it('keeps an untracked file that reappears at the source path visible beside a rename', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -230,7 +227,6 @@ R  a -> b
 ?? a
 `);
   });
-
 
   it('supports verbose short and unique-prefix long options through argv-v2', async () => {
     const short = await execute({
@@ -286,5 +282,4 @@ printf '\n[bad\n' >> .git/config`,
     expect(result.result.exitCode).toBe(128);
     expect(result.stderr.text).toContain('not a git repository');
   });
-
 });

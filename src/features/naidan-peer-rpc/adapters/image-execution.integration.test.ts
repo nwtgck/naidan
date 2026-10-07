@@ -98,6 +98,7 @@ async function setup() {
     },
   };
 }
+
 it('uses a real manager, typed caller and handler once per explicit image without listing models', async () => {
   const fixture = await setup();
   try {
@@ -111,6 +112,7 @@ it('uses a real manager, typed caller and handler once per explicit image withou
     await fixture.close();
   }
 });
+
 it('does not retry a denied generation or retarget a disconnected accepted plan', async () => {
   const fixture = await setup();
   try {

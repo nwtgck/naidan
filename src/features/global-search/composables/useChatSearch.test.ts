@@ -34,7 +34,6 @@ async function createComposable() {
   return useChatSearch({ sidebarItems });
 }
 
-
 describe('useChatSearch Composable', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -686,6 +685,4 @@ describe('useChatSearch Composable', () => {
       expect(mockCreateGlobalSearchWorkerClient).toHaveBeenLastCalledWith({ storageType: 'local' });
     });
   });
-
-
 });

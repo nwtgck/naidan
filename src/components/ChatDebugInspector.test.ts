@@ -678,6 +678,7 @@ not-json
     expect(ids).toContain('obj-1');
     expect(ids).not.toContain('obj-2');
   });
+
   it('keeps unsaved attachment bytes when opening its preview without persisted metadata', async () => {
     const blob = new Blob(['local'], { type: 'image/png' });
     const attachment: Attachment = {
@@ -711,5 +712,4 @@ not-json
     expect(storageService.getBinaryObject).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-
 });

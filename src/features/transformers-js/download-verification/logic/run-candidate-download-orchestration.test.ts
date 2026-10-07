@@ -57,7 +57,6 @@ function failedAcceptance({ candidate, message }: { candidate: TransformersJsPro
   };
 }
 
-
 describe('runCandidateDownloadOrchestration', () => {
   it('downloads q4f16, falls through after runtime rejection, then accepts q4', async () => {
     const events: string[] = [];
@@ -117,7 +116,6 @@ describe('runCandidateDownloadOrchestration', () => {
     });
     expect(acceptCandidate).not.toHaveBeenCalled();
   });
-
 
   it('stops when cache-only acceptance exposes a missing downloaded artifact', async () => {
     const prepareCandidate = vi.fn(async () => ready());

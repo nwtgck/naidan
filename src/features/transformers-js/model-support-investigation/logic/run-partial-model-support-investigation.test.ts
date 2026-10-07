@@ -92,9 +92,7 @@ function downloadEvidence({ repository, runId = 'run-1' }: {
   };
 }
 
-
 describe('runPartialModelSupportInvestigation', () => {
-
   it.each([false, true])('collects the same replay evidence in short and Full scopes and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
     const repository = {
       requestedModelId: 'org/model',

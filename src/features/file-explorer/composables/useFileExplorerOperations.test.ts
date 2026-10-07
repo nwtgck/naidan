@@ -240,7 +240,6 @@ describe('useFileExplorerOperations', () => {
     const options = vi.mocked(downloadStream).mock.calls[0]![0];
     await options.openStream();
     expect(client.openFileStream).toHaveBeenCalledWith({ path: entry.path });
-
   });
 
   it('sends a native snapshot to downloadFile instead of a listing-sized stream', async () => {
@@ -276,5 +275,4 @@ describe('useFileExplorerOperations', () => {
     expect(downloadStream).not.toHaveBeenCalled();
     expect(mockAddToast).not.toHaveBeenCalled();
   });
-
 });

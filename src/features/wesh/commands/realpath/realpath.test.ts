@@ -307,5 +307,4 @@ describe('wesh realpath', () => {
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

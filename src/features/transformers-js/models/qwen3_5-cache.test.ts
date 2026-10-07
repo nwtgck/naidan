@@ -7,6 +7,7 @@ let runtime: typeof import('@huggingface/transformers');
 const fetch = vi.fn(() => {
   throw new Error('External network forbidden in Qwen cache tests');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', fetch);
   const artifact = await getProductionTransformersArtifact();
@@ -18,6 +19,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
 });

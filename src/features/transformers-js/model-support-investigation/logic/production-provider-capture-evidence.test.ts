@@ -575,7 +575,6 @@ describe('versioned parts observation evidence', () => {
   });
 });
 
-
 describe('fixed continuity does not omit unexpected tool history', () => {
   const plans: ProductionProviderCapturePlan[] = ['first-continuity-independent', 'generation-continuity-v2'];
   for (const plan of plans) {

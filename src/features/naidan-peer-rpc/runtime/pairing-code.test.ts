@@ -7,6 +7,7 @@ it('allows names, spaces, symbols and Unicode while normalizing surrounding whit
   expect(normalizeRpcPairingCode({ code: '0' })).toBe('0');
   expect(isValidRpcPairingCode({ code: 'a'.repeat(RPC_PAIRING_CODE_MAX_LENGTH) })).toBe(true);
 });
+
 it.each(['', '   ', `\
 line
 break`, 'a\u0000b', '\ud800', 'a'.repeat(RPC_PAIRING_CODE_MAX_LENGTH + 1)])('rejects invalid meeting input %j before opening a session', code => {

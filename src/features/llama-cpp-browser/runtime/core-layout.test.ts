@@ -7,6 +7,7 @@ import { attachCore, createCore, type Core, type CoreModule } from './core';
 
 describe('module-local native ABI layouts', () => {
   let core: Core;
+
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({
@@ -19,6 +20,7 @@ describe('module-local native ABI layouts', () => {
       },
     });
   });
+
   afterEach(() => vi.restoreAllMocks());
 
   function instrument({ overrides }: { overrides: Record<string, unknown> }) {
@@ -40,6 +42,7 @@ describe('module-local native ABI layouts', () => {
     });
     return { module, counts };
   }
+
   it('queries each used layout once but writes each actual record and value', () => {
     const { module, counts } = instrument({ overrides: {} });
     const bound = attachCore({ module, callMode: 'direct' });
@@ -67,6 +70,7 @@ describe('module-local native ABI layouts', () => {
       bound.free({ pointer: a }); bound.free({ pointer: b });
     }
   });
+
   it('reads the current heap after replacement, without caching a DataView or tensor address', () => {
     let heap = core.module.HEAPU8;
     const { module: source } = instrument({ overrides: {} });
@@ -92,6 +96,7 @@ describe('module-local native ABI layouts', () => {
       bound.free({ pointer });
     }
   });
+
   it('does not share layouts between module attachments or pointer widths', () => {
     const { module, counts } = instrument({ overrides: {} });
     const first = attachCore({ module, callMode: 'direct' });
@@ -113,6 +118,7 @@ describe('module-local native ABI layouts', () => {
     expect(wide.recordSize({ name: 'llama_batch' })).toBe(128);
     expect(first.fieldLayout({ name: 'llama_batch', field: 'token' })).toBe(layout);
   });
+
   it.each(['direct', 'asyncify'] as const)('checks serialization even on warm layout hits in %s mode', async callMode => {
     const gate = Promise.withResolvers<bigint>();
     const { module } = instrument({
@@ -139,6 +145,7 @@ describe('module-local native ABI layouts', () => {
     }
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' }).kind).toBe('pointer');
   });
+
   it.each(['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record'])('does not memoize a failed %s query', exportName => {
     const original = Reflect.get(core.module, exportName);
     if (typeof original !== 'function') throw new Error('Missing native export');
@@ -152,6 +159,7 @@ describe('module-local native ABI layouts', () => {
     expect(read).toThrow(failure);
     const valid = read(); expect(read()).toEqual(valid); expect(stub).toHaveBeenCalledTimes(2);
   });
+
   it.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe offsets or sizes before caching: %s', invalid => {
     for (const exportName of ['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record']) {
       const original = Reflect.get(core.module, exportName);
@@ -163,6 +171,7 @@ describe('module-local native ABI layouts', () => {
       expect(read).toThrow('Unsafe memory index'); expect(read).not.toThrow(); expect(stub).toHaveBeenCalledTimes(2);
     }
   });
+
   it('rejects unknown schema names and still validates each write on cache hits', () => {
     const { module, counts } = instrument({ overrides: {} });
     const bound = attachCore({ module, callMode: 'direct' });

@@ -25,7 +25,9 @@ describe('GPT-OSS model Load allocation boundaries', () => {
   beforeAll(async () => {
     await getProductionTransformersArtifact();
   }, 60000);
+
   afterEach(() => vi.unstubAllGlobals());
+
   it('preserves the selected successful browser size set without claiming main cache byte identity', () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.modelId).toBe(modelId);
@@ -35,6 +37,7 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     expect(evidence.success.successfulAllocationBytes).toBe(12624046638);
     expect(evidence.success.returnedReadBufferBytes).toBe(12624046638);
   });
+
   it.each(resources)('refuses real $bytes bytes for $path before allocation (all other weights explicitly tiny)', async target => {
     // One real-size target per run permits correct early-stop/serial readers.
     // No large allocation succeeds, and this is not a full-capacity Load test.
@@ -77,6 +80,7 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       }
     }
   }, 60000);
+
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
     const evidence = modelLoadAllocationEvidenceSchema.parse(evidenceJson);
     expect(evidence.missingCache).toMatchObject({ fileCount: 0, load: 'rejected-before-candidate', weightReads: 0, ortEntries: 0, modelDownloads: 0 });
@@ -105,6 +109,7 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       download.mockRestore(); await h.close();
     }
   }, 60000);
+
   it('copies all eight explicitly tiny bodies once and enters the spied session only after every required read', async () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -173,6 +178,7 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       await h.close();
     }
   }, 60000);
+
   it('propagates a partial tiny core read error and isolates a fresh Load', async () => {
     const secondPull = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -245,6 +251,7 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       await next.close();
     }
   }, 60000);
+
   it('cancels a partial tiny core, drains its late source completion, and isolates a fresh Load', async () => {
     const secondPull = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();

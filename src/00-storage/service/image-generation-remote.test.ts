@@ -22,6 +22,7 @@ function remote() {
   for (const key of ['vaeTiling', 'vaeTileSize', 'flashAttention', 'bf16WeightType', 'qwenVaePolicy', 'conditioningCacheSize', 'modelArguments'] as const) delete run.request.parameters[key];
   return run;
 }
+
 it('roundtrips remote provenance without claiming local files or native settings', () => {
   const run = remote(); const dto = imageGenerationRequestToDto({ request: reactive(run.request) });
   expect(() => structuredClone(dto)).not.toThrow();
@@ -29,6 +30,7 @@ it('roundtrips remote provenance without claiming local files or native settings
   expect(dto.models).toEqual([]); expect(dto.parameters).not.toHaveProperty('modelArguments');
   expect(ExperimentalImageGenerationRunSchemaDto.parse({ ...run, request: dto }).request).toEqual(dto);
 });
+
 it('preserves unknown recovery facts while retaining a valid image asset', () => {
   const run = remote();
   const record: ImageGenerationRecord = {
@@ -53,14 +55,17 @@ it('preserves unknown recovery facts while retaining a valid image asset', () =>
   expect(dto.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined });
   expect(ExperimentalImageGenerationSchemaDto.safeParse({ ...dto, result: { ...dto.result, confirmation: 'confirmed' } }).success).toBe(false);
 });
+
 it('rejects malformed connection provenance rather than mapping it to the local provider', () => {
   const run = remote();
   expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, profile: 'unknown-provider' } as never } })).toThrow();
   expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, peerId: 'wrong' } as never } })).toThrow();
 });
+
 it('keeps old local history requests readable without adding a remote tag', () => {
   const run = generationRunFixture({ id: 'run-example', sessionId: toImageGenerationSessionId({ raw: 'session-example' }), count: 1, seed: '42' });
   expect(imageGenerationRequestToDomain({ request: imageGenerationRequestToDto({ request: run.request }) })).toEqual(run.request);
 });
+
 export const TEST_ONLY = {
 };

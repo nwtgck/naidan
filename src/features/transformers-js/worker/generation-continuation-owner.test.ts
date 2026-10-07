@@ -7,6 +7,7 @@ describe('internal generation continuation owner RPC value', () => {
     expect(generationContinuationOwnerSchema.parse(owner)).toBe(owner);
     expect(generationContinuationOwnerSchema.parse(undefined)).toBeUndefined();
   });
+
   it.each([null, 1, true, [], {}, '', 'user-supplied-chat-id', 'x'.repeat(1024)])('rejects malformed owner %#', owner => {
     expect(generationContinuationOwnerSchema.safeParse(owner).success).toBe(false);
   });

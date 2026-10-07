@@ -124,6 +124,7 @@ describe('completeDownloadVerificationRuntimeEvidence', () => {
     expect(result.runtimeCompletion?.runtimeTiming?.observations).toHaveLength(1);
     expect(safetyMocks.runProductionDownloadPreparation).not.toHaveBeenCalled();
   });
+
   it('reuses an accepted exact Production cache without any download preparation capability', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),

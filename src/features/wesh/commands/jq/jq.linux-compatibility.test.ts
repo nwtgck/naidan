@@ -4354,7 +4354,6 @@ true
     }
   });
 
-
   it("supports jq common unary math builtins", async () => {
     const execution = await execute({
       filter: '[(null|not),(false|not),(0|not),(nan|isfinite),(infinite|isfinite),(1|isfinite),(0.5|asin),(0.5|acos),(1|atan),(1|asinh),(2|acosh),(0.5|atanh),(1|sin),(1|cos),(1|tan),(1|sinh),(1|cosh),(1|tanh),(1|exp),(3|exp2),(3|exp10),(1|expm1),(1|log1p),(8|cbrt),(-1.9|trunc),(-1.9|fabs),(infinite|exp),(infinite|sin)]',
@@ -4415,7 +4414,6 @@ true
       expect(outcome.result.exitCode).toBe(0);
     }
   });
-
 
   it("supports jq IEEE floating-point helper builtins", async () => {
     const execution = await execute({
@@ -5485,6 +5483,7 @@ first
       expect(outcome.result.exitCode).toBe(0);
     }
   });
+
   it("advances ignore-empty matching and rejects unsafe backtracking", async () => {
     const ignoreEmpty = await execute({
       filter: String.raw`[test("a*";"n"), match("a*";"n").string]`,
@@ -6232,7 +6231,6 @@ jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.
     expect(result.exitCode).toBe(0);
   });
 
-
   it("propagates input metadata through selector, range, path, and error generators", async () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -6363,7 +6361,6 @@ jq -nc 'try error(inputs) catch [., input_filename, input_line_number]' first.js
     expect(invalid.stderr.text).toContain('date "2000x" does not match format "%Y"');
     expect(invalid.result.exitCode).toBe(5);
   });
-
 
   it("converts and formats local timezone datetime values", async () => {
     const converted = await execute({
@@ -6596,7 +6593,6 @@ jq: error: boom
     expect(output.slice(2)).toEqual(["number", true, 8]);
   });
 
-
   it("preserves jq decimal source representations until arithmetic computes a value", async () => {
     const topLevelInput = await execute({
       filter: ".",
@@ -6676,7 +6672,6 @@ jq: error: boom
     }
   });
 
-
   it("evaluates single-argument builtin streams once per argument output", async () => {
     const finite = await execute({
       filter: String.raw`([1,3,5] | bsearch((3e0,4e0))), ("abc" | startswith(("a","z"))), ("a,b-c" | split((",","-")))`,
@@ -6700,7 +6695,6 @@ false
       expect(outcome.result.exitCode).toBe(0);
     }
   });
-
 
   it("reuses combinations count filters through range semantics", async () => {
     const finite = await execute({
@@ -6751,7 +6745,6 @@ false
     expect(lateFailure.result.exitCode).toBe(5);
   });
 
-
   it("preserves regex pattern, flags, and replacement stream ordering", async () => {
     const outcome = await execute({
       filter: String.raw`[
@@ -6788,5 +6781,4 @@ false
     expect(replacementFailure.stderr.text).toContain("replacement-late");
     expect(replacementFailure.result.exitCode).toBe(5);
   });
-
 });

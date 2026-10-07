@@ -77,7 +77,6 @@ describe('git file replacement transactions', () => {
     expect(await pathExists({ files, path: '/repo/.git/logs/refs/heads/topic' })).toBe(false);
   });
 
-
   it('rolls a symbolic HEAD update and both reflogs back when HEAD reflog replacement fails', async () => {
     const files = createFiles();
     const repository = await prepareRepository({ files });
@@ -135,7 +134,6 @@ describe('git file replacement transactions', () => {
     expect(await pathExists({ files, path: '/repo/.git/logs/HEAD' })).toBe(false);
   });
 
-
   it('rolls a ref rename and its reflogs back when moving the reflog fails', async () => {
     const files = createFiles();
     const repository = await prepareRepository({ files });
@@ -165,7 +163,6 @@ describe('git file replacement transactions', () => {
     expect(await readFileText({ files, path: oldLogPath })).toBe(oldLog);
     expect(await pathExists({ files, path: '/repo/.git/logs/refs/heads/new' })).toBe(false);
   });
-
 
   it('restores a loose ref when packed-refs removal fails', async () => {
     const files = createFiles();

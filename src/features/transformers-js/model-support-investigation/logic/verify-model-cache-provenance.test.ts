@@ -214,7 +214,6 @@ describe('verifyModelCacheProvenance', () => {
     );
   });
 
-
   it('falls back from unsupported HEAD to a one-byte Range transport probe without retaining the body', async () => {
     const bytes = Uint8Array.from({ length: 100 }, (_, index) => index);
     let transportBodyCancelled = false;

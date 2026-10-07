@@ -16,9 +16,11 @@ vi.mock('@/00-storage/service', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
   },
 }));
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 describe('message-local llama.cpp preparation status', () => {
   const message: MessageNode = {
     id: toMessageId({ raw: 'preparing-message' }),
@@ -30,6 +32,7 @@ describe('message-local llama.cpp preparation status', () => {
     lmParameters: undefined,
     replies: { items: [] },
   };
+
   it('mounts preparation UI only inside the generating message and removes it after completion', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {
@@ -46,6 +49,7 @@ describe('message-local llama.cpp preparation status', () => {
     expect(wrapper.findComponent(LlamaCppBrowserLoadingIndicator).exists()).toBe(false);
     wrapper.unmount();
   });
+
   it('does not mount listeners in historic messages, other providers, or non-tail pieces', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {
@@ -63,6 +67,7 @@ describe('message-local llama.cpp preparation status', () => {
     expect(wrapper.findComponent(LlamaCppBrowserLoadingIndicator).exists()).toBe(false);
     wrapper.unmount();
   });
+
   it('delegates waiting and preparation to one status owner without duplicate waiters', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {

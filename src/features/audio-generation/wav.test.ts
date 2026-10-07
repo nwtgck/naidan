@@ -8,6 +8,7 @@ describe('native audio output validation', () => {
     backing.set(expected.wav, 7);
     expect(() => validateAudioWav({ ...expected, wav: backing.subarray(7, 7 + expected.wav.length) })).not.toThrow();
   });
+
   it('permits padded extra chunks rather than assuming a 44-byte header', () => {
     const expected = audioResult(); const wav = new Uint8Array(expected.wav.length + 10);
     wav.set(expected.wav.subarray(0, 12)); wav.set(new TextEncoder().encode('JUNK'), 12);
@@ -15,10 +16,12 @@ describe('native audio output validation', () => {
     wav.set(expected.wav.subarray(12), 22); view.setUint32(4, wav.length - 8, true);
     expect(() => validateAudioWav({ ...expected, wav })).not.toThrow();
   });
+
   it.each([0, 4, 8, 16, 20, 22, 24, 28, 32, 34, 36, 40])('rejects corrupt container or PCM metadata at %i', offset => {
     const result = audioResult(); result.wav[offset] = 255;
     expect(() => validateAudioWav(result)).toThrow();
   });
+
   it('rejects sample-count mismatches, a short container and trailing data', () => {
     const result = audioResult();
     expect(() => validateAudioWav({ ...result, samples: result.samples + 1 })).toThrow();

@@ -5,6 +5,7 @@ import type { BenchmarkRun } from '@/features/stable-diffusion-cpp-browser/bench
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 
 let wrapper: VueWrapper<InstanceType<typeof ImageBenchmarkResult>> | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   let sequence = 0;
@@ -13,9 +14,11 @@ beforeEach(async () => {
     static override revokeObjectURL = vi.fn();
   });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
 });
+
 function runFixture({ image }: { image: BenchmarkRun['record']['image']['status'] }): BenchmarkRun {
   return {
     record: {
@@ -39,6 +42,7 @@ async function toggle({ open }: { open: boolean }): Promise<void> {
   details.element.open = open;
   await details.trigger('toggle');
 }
+
 it('lazily displays the retained PNG without copying it and releases URLs on close, replacement and unmount', async () => {
   const run = runFixture({ image: 'retained' });
   wrapper = mount(ImageBenchmarkResult, { props: { runId: run.record.id, png: run.png, imageStatus: run.record.image.status } });
@@ -56,6 +60,7 @@ it('lazily displays the retained PNG without copying it and releases URLs on clo
   wrapper.unmount(); wrapper = undefined;
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:benchmark-3');
 });
+
 it.each([
   ['not-requested', 'not retained for this run'],
   ['budget-exceeded', 'memory limit was reached'],
@@ -66,6 +71,7 @@ it.each([
   expect(wrapper.get('[data-testid="benchmark-result-image-unavailable"]').text()).toContain(text);
   expect(wrapper.find('img').exists()).toBe(false); expect(URL.createObjectURL).not.toHaveBeenCalled();
 });
+
 it('updates already-open details when a running measurement produces its final PNG', async () => {
   wrapper = mount(ImageBenchmarkResult, { props: { runId: 'm001-r001', png: undefined, imageStatus: 'no-output' } });
   await toggle({ open: true });

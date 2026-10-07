@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { existingUserModelDirectory } from './model-directory';
 
 afterEach(() => vi.unstubAllGlobals());
+
 it('never asks to create either model directory', async () => {
   const user = {}, models = { getDirectoryHandle: vi.fn(async () => user) };
   const root = { getDirectoryHandle: vi.fn(async () => models) };
@@ -11,6 +12,7 @@ it('never asks to create either model directory', async () => {
   expect(root.getDirectoryHandle.mock.calls).toEqual([['models']]);
   expect(models.getDirectoryHandle.mock.calls).toEqual([['user']]);
 });
+
 it('represents a missing directory without creating one', async () => {
   const lookup = vi.fn(async () => {
     throw new DOMException('missing', 'NotFoundError');
@@ -19,6 +21,7 @@ it('represents a missing directory without creating one', async () => {
   expect(await existingUserModelDirectory()).toBeUndefined();
   expect(lookup).toHaveBeenCalledTimes(1);
 });
+
 it('does not hide storage failures as an empty model tree', async () => {
   vi.stubGlobal('navigator', {
     storage: {

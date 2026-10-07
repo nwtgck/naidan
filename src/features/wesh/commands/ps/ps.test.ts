@@ -611,5 +611,4 @@ ps -e -o pid,stat,args`,
       expect(rejected.result.exitCode).toBe(1);
     }
   });
-
 });

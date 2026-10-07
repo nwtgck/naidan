@@ -75,6 +75,7 @@ describe('pinned standalone native artifacts', () => {
     expect(transformed).toContain('Browser core requires supplied wasmBinary');
     expect(() => transformBrowserCore({ source: source + '\n', id: coreId, profile: 'webgpu-wasm64-jspi' })).toThrow('Unreviewed');
   });
+
   it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
@@ -82,6 +83,7 @@ describe('pinned standalone native artifacts', () => {
     expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
     expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
   });
+
   it('registers both reviewed JSPI binaries and core imports for standalone capability selection', () => {
     const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
     expect(embeddedBinaries.map(binary => binary.virtualId)).toEqual([
@@ -96,6 +98,7 @@ describe('pinned standalone native artifacts', () => {
       expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
     }
   });
+
   it('keeps complete native legal comments without copying implementation bodies', () => {
     const source = `\
 /* Copyright Fixture. Permission is hereby granted. */
@@ -109,6 +112,7 @@ int unrelated;`;
     expect(notices).not.toContain('native_code');
     expect(() => TEST_ONLY.embeddedNotices({ source: 'int x;' })).toThrow('Missing');
   });
+
   it.each([false, 'oxc'] as const)('validates and packages the real two-Worker graph with minify=%s in every locale ZIP', async minify => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-package-'));
     try {

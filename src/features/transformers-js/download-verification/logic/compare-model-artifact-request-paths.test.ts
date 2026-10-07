@@ -49,6 +49,7 @@ describe('compareModelArtifactRequestPaths', () => {
       unexpectedPaths: ['onnx/vision.onnx'],
     });
   });
+
   it('does not declare parity when the observer itself failed', () => {
     const failedObservation = observation({ paths: ['onnx/model.onnx'] });
     failedObservation.status = 'failed';
@@ -65,5 +66,4 @@ describe('compareModelArtifactRequestPaths', () => {
       unexpectedPaths: [],
     });
   });
-
 });

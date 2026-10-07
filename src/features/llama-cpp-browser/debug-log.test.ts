@@ -4,6 +4,7 @@ import { diagnosticSchema, logDiagnostic, logFailure, logNativeDiagnostic, logOp
 import { errorCode, LlamaCppBrowserError } from './types';
 
 afterEach(() => vi.restoreAllMocks());
+
 describe('private browser diagnostics', () => {
   it('reports a handled dispatch split as information, not a device failure', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -19,11 +20,13 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
   });
+
   it('logs safe technical fields with the common prefix', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' });
   });
+
   it('forwards cache counts and native state without exposing either token sequence', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
@@ -50,6 +53,7 @@ describe('private browser diagnostics', () => {
       unsubscribe();
     }
   });
+
   it('rejects private cache fields and invalid native cache metadata', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'cache-reuse' as const, cachedTokens: 2, cachedTokenIds: [65, 66], prompt: 'private prompt' };
@@ -62,6 +66,7 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'cache-reuse', cacheComparison: 'private prompt' } });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('forwards checkpoint cost and effective window without forwarding stored state', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
@@ -80,12 +85,14 @@ describe('private browser diagnostics', () => {
       unsubscribe();
     }
   });
+
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'failed' as const, prompt: 'private prompt', fileName: 'private.gguf', tokenIds: [1, 2], grammarText: 'private grammar', schema: { description: 'private schema' }, logits: [123] };
     logDiagnostic({ diagnostic: extra });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it.each([
     { error: new TypeError('private prompt'), kind: 'type-error' },
     { error: new WebAssembly.RuntimeError('private native path'), kind: 'wasm-trap' },
@@ -98,6 +105,7 @@ describe('private browser diagnostics', () => {
     const output = JSON.stringify(debug.mock.calls);
     expect(output).not.toContain('private'); expect(output).not.toContain('123456');
   });
+
   it('explains stream failures using fixed text instead of caller messages', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content' } });
@@ -112,12 +120,14 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: untrusted });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('rejects grammar text passed in place of a diagnostic boolean', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // @ts-expect-error Exercise the runtime boundary for an invalid known field.
     logDiagnostic({ diagnostic: { event: 'failed', grammar: 'private grammar' } });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('rejects unknown stage and reason strings', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // Exercise the runtime boundary even if a caller bypasses its TypeScript type.
@@ -126,6 +136,7 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: extra });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('does not forward original exception text or stack into errors', () => {
     expect(errorCode({ error: new Error('private-file.gguf: private prompt') })).toBe('runtime-error');
     expect(errorCode({ error: new LlamaCppBrowserError({ code: 'context-full' }) })).toBe('context-full');
@@ -156,6 +167,7 @@ describe('native operation diagnostics', () => {
       acknowledge(); unsubscribeCurrent(); await operation;
     }
   });
+
   it.each([
     { message: 'lcb_clip: bf16-f32 tensors=81 source_bytes=3000000 destination_bytes=6000000', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 81, nativeSourceBytes: 3000000, nativeDestinationBytes: 6000000, nativeBackend: 'WebGPU' } },
     { message: 'lcb_clip: bf16-f32 tensors=0 source_bytes=0 destination_bytes=0', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 0, nativeSourceBytes: 0, nativeDestinationBytes: 0, nativeBackend: 'WebGPU' } },
@@ -190,6 +202,7 @@ describe('native operation diagnostics', () => {
     }
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([expected]);
   });
+
   it.each([
     'private encoding image slice...', 'encoding image slice... private', 'encoding private slice...',
     `\
@@ -213,6 +226,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('suppresses native technical information outside debug mode', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener: () => {} });
@@ -224,6 +238,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('awaits the host checkpoint before entering a potentially non-returning operation', async () => {
     let acknowledge: () => void = () => {}; const delivered = new Promise<void>(resolve => {
       acknowledge = resolve;
@@ -240,6 +255,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('does not let a failed diagnostic acknowledgement abort inference', async () => {
     const unsubscribe = subscribeDiagnostics({
       debug: 'on',
@@ -253,6 +269,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('keeps only known native failure categories and discards all stderr text', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logNativeDiagnostic({ message: 'private prompt, model.gguf, image bytes' });
@@ -268,7 +285,6 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
   });
 });
-
 
 describe('projector diagnostic boundaries', () => {
   it.each([
@@ -321,7 +337,6 @@ describe('bounded progress delivery diagnostics', () => {
   });
 });
 
-
 describe('bounded model read diagnostics', () => {
   const fileReads = {
     target: 'model' as const,
@@ -338,11 +353,13 @@ describe('bounded model read diagnostics', () => {
     allocationFallbacks: 0,
     sourceReadMs: 12,
   };
+
   it('publishes count-only snapshots for model and projector loads', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     for (const target of ['model', 'projector'] as const) logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(['model', 'projector'].map(target => ({ event: 'file-read-performance', fileReads: { ...fileReads, target } })));
   });
+
   it.each([
     { peakBufferBytes: 65537 }, { sourceReadMs: NaN }, { sourceReadMs: -1 }, { hits: -1 },
     { allocationFallbacks: 2 }, { fileName: 'private model.gguf' }, { bytes: [1, 2, 3] }, { source: { path: 'private' } },

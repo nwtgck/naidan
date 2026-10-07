@@ -139,7 +139,6 @@ describe('useFileExplorerPreview', () => {
     };
   });
 
-
   it('does not acquire the highlight worker until text highlighting is needed', async () => {
     const controller = useFileExplorerPreview({ client });
     expect(acquireSharedHighlightWorkerClientLeaseMock).not.toHaveBeenCalled();
@@ -222,7 +221,6 @@ describe('useFileExplorerPreview', () => {
     clearPreview();
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:fake-url');
   });
-
 
   it('ignores a stale media response after a newer preview is loaded', async () => {
     let resolveFirstPreview: ((response: FileExplorerReadPreviewResponse) => void) | undefined;

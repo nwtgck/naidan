@@ -6,6 +6,7 @@ import { planStoredModelRemoval, removeStoredModel } from './model-store';
 import { createDownloadWriter } from '@/features/llama-cpp-browser/hugging-face/writer';
 import { repositoryFolder, listPendingDownloads, listHuggingFaceModels } from '@/features/llama-cpp-browser/hugging-face/storage';
 const selection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
+
 beforeEach(() => {
   const root = memoryDirectory({ name: '' });
   vi.stubGlobal('navigator', {
@@ -15,10 +16,13 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 async function writeFile({ folder, name, value }: { folder: FileSystemDirectoryHandle, name: string, value: string }): Promise<void> {
   const writer = await (await folder.getFileHandle(name, { create: true })).createWritable(); await writer.write(value); await writer.close();
 }
+
 describe('confirmed model deletion plans', () => {
   it('previews GGUF files, rejects their additions and modifications, and preserves unrelated files', async () => {
     const root = await userModelDirectory(); const folder = await root.getDirectoryHandle('model', { create: true });
@@ -36,6 +40,7 @@ describe('confirmed model deletion plans', () => {
     expect(await removeStoredModel({ plan: await planStoredModelRemoval({ id: 'user/model' }) })).toBe('deleted');
     expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['README.md']);
   });
+
   it('does not sweep up a file added while approved files are being removed', async () => {
     const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
@@ -47,6 +52,7 @@ describe('confirmed model deletion plans', () => {
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['nested/new.txt']);
   });
+
   it('preserves a file replacing an empty directory after the initial scan', async () => {
     const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
     await folder.getDirectoryHandle('empty', { create: true }); await writeFile({ folder, name: 'model.gguf', value: 'model' });
@@ -60,6 +66,7 @@ describe('confirmed model deletion plans', () => {
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect((await (await folder.getFileHandle('empty')).getFile()).size).toBe(22);
   });
+
   it('keeps newly added sibling files and rejects forged paths', async () => {
     const root = await navigator.storage.getDirectory();
     const folder = await (await (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true })).getDirectoryHandle('model-GGUF', { create: true });
@@ -73,6 +80,7 @@ describe('confirmed model deletion plans', () => {
     expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['extra.gguf', 'model.gguf']);
     expect((await folder.getDirectoryHandle('unrelated-empty')).kind).toBe('directory');
   });
+
   it('removes an HF partial download and permits a fresh download despite remaining ancestors', async () => {
     await createDownloadWriter().begin({ selection });
     const plan = await planStoredModelRemoval({ id: 'hf.co/owner/repo' });
@@ -82,6 +90,7 @@ describe('confirmed model deletion plans', () => {
     expect(await createDownloadWriter().begin({ selection })).toMatchObject({ status: 'ready' });
     expect((await listPendingDownloads())[0]?.selection).toEqual(selection);
   });
+
   it('stops on a late modification without deleting the modified file', async () => {
     const folder = await repositoryFolder({ repository: selection.repository, create: true });
     await writeFile({ folder, name: 'a', value: 'a' }); await writeFile({ folder, name: 'b', value: 'b' });

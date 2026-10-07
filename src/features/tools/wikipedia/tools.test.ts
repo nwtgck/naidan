@@ -225,5 +225,4 @@ describe('WikipediaGetPageTool', () => {
     }]);
     expect(result).toEqual({ status: 'success', content: 'markdown' });
   });
-
 });

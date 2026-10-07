@@ -14,6 +14,7 @@ import { StreamSession } from '@/features/naidan-piping-duplex/session';
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request in unit test'));
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 function mailbox(): NaidanPipingHandshakeChannel {
@@ -244,7 +245,6 @@ it('a failed encryption burns its record number rather than reusing its nonce', 
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
   keys.a.dispose(); keys.b.dispose();
 });
-
 
 it('authenticated protocol violations reject the runner lifetime instead of looking like a clean stop', async () => {
   const keys = await pair({ identities: undefined, binding: undefined });

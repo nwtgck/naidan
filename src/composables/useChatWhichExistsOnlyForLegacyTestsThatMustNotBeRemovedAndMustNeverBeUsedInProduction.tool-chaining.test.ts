@@ -106,7 +106,6 @@ vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   }),
 }));
 
-
 describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Tool Chaining', () => {
   const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
   const {
@@ -453,5 +452,4 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     if (result?.status !== 'success') throw new Error('Expected a successful Tool Result.');
     expect(result.content.type).toBe('binary_object');
   });
-
 });

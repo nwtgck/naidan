@@ -6,9 +6,11 @@ import type { HostModelDirectoriesView, HostModelDirectoryChoice } from '@/featu
 import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount();
   wrapper = undefined;

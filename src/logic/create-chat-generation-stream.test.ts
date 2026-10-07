@@ -13,6 +13,7 @@ async function collect({ items, controller }: { items: ReturnType<LmProvider['ch
   const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, abortController: controller, onChange: () => {} });
   return { node, result };
 }
+
 describe('generation stream producer bridge', () => {
   it('starts lazily and keeps literal tags, whitespace, repeated deltas and channel changes', async () => {
     const run = vi.fn(async ({ writer }: Parameters<Parameters<typeof createChatGenerationStream>[0]['run']>[0]) => {
@@ -33,6 +34,7 @@ describe('generation stream producer bridge', () => {
     expect(result).toEqual({ type: 'finished', next: 'user' });
     expect(() => items[Symbol.asyncIterator]()).toThrow('once');
   });
+
   it('retains received text and closes partial on upstream failure', async () => {
     const fault = new Error('connection lost'); const controller = new AbortController();
     const { node, result } = await collect({
@@ -47,6 +49,7 @@ describe('generation stream producer bridge', () => {
     expect(node.parts[0]).toMatchObject({ text: 'partial', completeness: 'partial' });
     expect(result).toEqual({ type: 'error', error: fault });
   });
+
   it('does not publish drafts and preserves their position before a later completed call', async () => {
     const controller = new AbortController();
     const published: { partId: string, index: number }[] = [];
@@ -69,6 +72,7 @@ describe('generation stream producer bridge', () => {
     expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ toolCall: { function: { arguments: ' {} ' } } });
     expect(result.type).toBe('interrupted');
   });
+
   it('wakes an aborted pending network operation, draining its accepted content', async () => {
     const controller = new AbortController(); const started = Promise.withResolvers<void>();
     const items = createChatGenerationStream({
@@ -83,6 +87,7 @@ describe('generation stream producer bridge', () => {
     const { node, result } = await pending;
     expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
   });
+
   it('can discard unread bounded queues without leaving the producer waiting', async () => {
     const cancelled = vi.fn();
     const items = createChatGenerationStream({

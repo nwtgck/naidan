@@ -21,7 +21,6 @@ describe('package locale HTML metadata', () => {
     }
   });
 
-
   it('is visible to a head script at parser execution time', () => {
     const html = '<!doctype html><html><head><meta charset="utf-8"><script>globalThis.__PACKAGE_META_SEEN__ = document.querySelector(\'meta[name="naidan-package-locale"]\')?.content;</script></head><body></body></html>';
     const result = insertPackageLocaleMetadata({ html, locale: 'ja' });

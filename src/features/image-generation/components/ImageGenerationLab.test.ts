@@ -25,6 +25,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
 }));
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks(); mocks.inspect.mockResolvedValue({ candidates: [], issues: [] }); vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
@@ -34,15 +35,18 @@ beforeEach(async () => {
     static override createObjectURL = vi.fn(() => `blob:test-image-${++url}`); static override revokeObjectURL = vi.fn();
   });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
   if (descriptor) Object.defineProperty(navigator, 'gpu', descriptor); else Reflect.deleteProperty(navigator, 'gpu');
 });
+
 it('opens without inference workers or model reads', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.get('h1').text()).toBe('Image generation entirely in your browser');
   expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
 });
+
 it('defaults to F32 and retains weights while BF16 conversion is edited for the next request', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob(['PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
   wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -64,6 +68,7 @@ it('defaults to F32 and retains weights while BF16 conversion is edited for the 
   expect(mocks.generate).toHaveBeenCalledTimes(2);
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
 });
+
 it('snapshots LoRA files and strength, excludes disabled adapters, and clears selections when the base model changes', async () => {
   const first = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
   mocks.generate.mockReturnValueOnce(first.promise);
@@ -89,6 +94,7 @@ it('snapshots LoRA files and strength, excludes disabled adapters, and clears se
   await view.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[2]![0].request.loras).toEqual([]);
 });
+
 it('rejects an invalid active LoRA strength before creating a client', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
   const view = wrapper.vm.TEST_ONLY;
@@ -97,6 +103,7 @@ it('rejects an invalid active LoRA strength before creating a client', async () 
   await view.generate({ submission: undefined });
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('clears ordinary LoRA selections when choosing another model from the library', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -107,11 +114,13 @@ it('clears ordinary LoRA selections when choosing another model from the library
   library.chooseMain({ id: next!.id });
   expect(wrapper.vm.TEST_ONLY.loras.value).toEqual([]);
 });
+
 it('shows unavailable controls rather than initializing another backend', async () => {
   Reflect.deleteProperty(navigator, 'gpu'); wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.get('[data-testid="image-generate"]').attributes('disabled')).toBeDefined();
   expect(wrapper.get('[data-testid="image-unavailable"]').text()).toContain('WebGPU'); expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('uses independent requests, saves a temporary result, and revokes it on unmount', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
   wrapper = mount(ImageGenerationLab);
@@ -142,6 +151,7 @@ it('keeps an optional empty budget in advanced settings and the catalog outside 
   expect(wrapper.get('[data-testid="image-model-catalog"]').element.closest('fieldset')).toBeNull();
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('forwards an explicit budget and unsets it when the number input is cleared', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
   wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -155,6 +165,7 @@ it('forwards an explicit budget and unsets it when the number input is cleared',
   await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
   expect(mocks.generate.mock.calls[1]?.[0]?.request.gpuBudgetMiB).toBeUndefined();
 });
+
 it('keeps copy/save diagnostics usable while a native request is indefinitely pending', async () => {
   const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
   const writeText = vi.fn(async (_text: string) => undefined);
@@ -228,6 +239,7 @@ it('retains one client over six results, supports explicit release, and does not
   wrapper.unmount(); wrapper = undefined;
   expect(mocks.dispose).toHaveBeenCalledTimes(1); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(6);
 });
+
 it('keeps live preview ON/OFF and interval/size controls usable while sampling, and OFF still works with an empty interval', async () => {
   const finish = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
   mocks.generate.mockReturnValueOnce(finish.promise);
@@ -247,6 +259,7 @@ it('keeps live preview ON/OFF and interval/size controls usable while sampling, 
   expect(mocks.updatePreview).toHaveBeenLastCalledWith({ settings: { enabled: false, interval: 1, startStep: 3, maxEdge: 128, mode: 'vae' } });
   finish.resolve({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' }); await task;
 });
+
 it('keeps snapshot URLs valid when the live image changes, bounds history, and revokes every owner on unmount', async () => {
   const finish = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string }>();
   mocks.generate.mockReturnValueOnce(finish.promise);
@@ -271,6 +284,7 @@ it('keeps snapshot URLs valid when the live image changes, bounds history, and r
   const revoked = vi.mocked(URL.revokeObjectURL).mock.calls.map(call => call[0]).sort();
   expect(revoked).toEqual(created);
 });
+
 it('leaves explicit generation parameters untouched and releases after success when retention is disabled', async () => {
   mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'Qwen Image 2.1' });
   wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -375,7 +389,7 @@ it('shows the debug toggle only for generation and locks it while generating', a
 
 function benchmarkInventory(): ModelInventory {
   return {
-    candidates: ['one','two'].map(name => {
+    candidates: ['one', 'two'].map(name => {
       const file = ggufFile();
       return {
         id: `user/${name}`,
@@ -396,6 +410,7 @@ function benchmarkInventory(): ModelInventory {
     issues: [],
   };
 }
+
 it('uses saved adapters explicitly in normal generation and independently in one diagnostics target', async () => {
   const inventory = benchmarkInventory(), file = new File(['adapter fixture'], 'style.safetensors');
   inventory.candidates.push({
@@ -438,12 +453,13 @@ it('uses saved adapters explicitly in normal generation and independently in one
   expect(mocks.generate.mock.calls.slice(1).map(([{ request }]) => request.loras.map((item: { strength: number }) => item.strength))).toEqual([[0.25], []]);
   expect(view.loras.value[0]?.strength).toBe(1); expect(request.loras[0].strength).toBe(1);
 });
+
 it('opens benchmark lazily, selects every complete local model and preserves deselection across refresh', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.find('[data-testid="image-benchmark"]').exists()).toBe(false);
   await wrapper.get('[data-testid="image-tab-measure"]').trigger('click'); await flushPromises();
   expect(wrapper.findAll('[data-testid="benchmark-target"]')).toHaveLength(2);
-  expect(wrapper.vm.TEST_ONLY.benchmark.selected.value).toEqual(['user/one','user/two']);
+  expect(wrapper.vm.TEST_ONLY.benchmark.selected.value).toEqual(['user/one', 'user/two']);
   expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
   await wrapper.get('[data-testid="benchmark-select-none"]').trigger('click');
   window.dispatchEvent(new Event('focus')); await flushPromises();
@@ -451,6 +467,7 @@ it('opens benchmark lazily, selects every complete local model and preserves des
   await wrapper.get('[data-testid="benchmark-select-all"]').trigger('click');
   expect(wrapper.vm.TEST_ONLY.benchmark.selected.value).toHaveLength(2);
 });
+
 it('defaults to two fresh runs with retained PNGs and clears opened result images with a new measurement', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
@@ -471,6 +488,7 @@ it('defaults to two fresh runs with retained PNGs and clears opened result image
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-image-1');
   expect(wrapper.find('[data-testid="benchmark-result-image"]').exists()).toBe(false);
 });
+
 function componentInventory(): ModelInventory {
   const candidates: ModelInventory['candidates'] = ['one', 'two'].map(name => ({
     id: `user/${name}`,
@@ -507,6 +525,7 @@ function componentInventory(): ModelInventory {
   }
   return { candidates, issues: [] };
 }
+
 it('keeps diagnostics LoRA selections independent per model and records the frozen requested settings', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG']), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
@@ -531,6 +550,7 @@ it('keeps diagnostics LoRA selections independent per model and records the froz
   expect(manifest.models[0]!.request.loras).toEqual([{ file: { path: file.name, bytes: file.size, lastModified: file.lastModified }, strength: 0.5 }]);
   expect(manifest.models[1]!.request).not.toHaveProperty('loras');
 });
+
 it('shows editable companion selections per target and snapshots their exact identities into requests and exports', async () => {
   mocks.inspect.mockResolvedValue(componentInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['PNG'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
@@ -561,6 +581,7 @@ it('shows editable companion selections per target and snapshots their exact ide
   expect(manifest.models[0]!.request.models.find(model => model.slot === 'vae')!.localCandidateId).toBe('user/vae-b');
   expect(manifest.models[1]!.request.models.find(model => model.slot === 'vae')!.localCandidateId).toBe('user/vae-a');
 });
+
 it('locks normal generation during a frozen multi-model run, reuses per model, and retains results across tabs', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   const first = Promise.withResolvers<unknown>(); let calls = 0;
@@ -592,6 +613,7 @@ it('locks normal generation during a frozen multi-model run, reuses per model, a
   expect(wrapper.get('[data-testid="benchmark-download"]').element.matches(':disabled')).toBe(false);
   expect(wrapper.get('[data-testid="benchmark-start"]').element.matches(':disabled')).toBe(true);
 });
+
 it('materializes only the edited per-model field and keeps all other shared changes inherited', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
@@ -605,6 +627,7 @@ it('materializes only the edited per-model field and keeps all other shared chan
   await row.get('[data-testid="override-steps"]').setValue(false);
   expect(b.effective({ target }).steps).toBe(10);
 });
+
 it('uses shared or per-model BF16 conversion in diagnostics without changing the normal form', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
@@ -624,6 +647,7 @@ it('uses shared or per-model BF16 conversion in diagnostics without changing the
   expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe('f32');
   expect(bench.common.value.prompt).toContain('A fluffy cat curled up asleep');
 });
+
 it('applies compact resolution presets to common settings or both per-model dimensions while retaining manual input', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
   const normalSize = { width: wrapper.vm.TEST_ONLY.parameters.value.width, height: wrapper.vm.TEST_ONLY.parameters.value.height };
@@ -647,6 +671,7 @@ it('applies compact resolution presets to common settings or both per-model dime
   expect(target.get('[data-testid="benchmark-resolution-1024"]').attributes('aria-pressed')).toBe('true');
   expect(wrapper.vm.TEST_ONLY.parameters.value).toMatchObject(normalSize);
 });
+
 it('releases the benchmark worker on unmount and does not launch the remaining queue', async () => {
   const native = Promise.withResolvers<unknown>();
   mocks.inspect.mockResolvedValue(benchmarkInventory()); mocks.generate.mockReturnValue(native.promise);
@@ -664,6 +689,7 @@ it('releases the benchmark worker on unmount and does not launch the remaining q
   }
   expect(mocks.dispose).toHaveBeenCalledTimes(1);
 });
+
 it('supports keyboard tabs and never hides a running benchmark by destroying its owner', async () => {
   wrapper = mount(ImageGenerationLab); await flushPromises();
   await wrapper.get('[data-testid="image-tab-generate"]').trigger('keydown', { key: 'End' });
@@ -673,6 +699,7 @@ it('supports keyboard tabs and never hides a running benchmark by destroying its
   expect(wrapper.get('[data-testid="image-tab-generate"]').attributes('aria-selected')).toBe('true');
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('does not start a benchmark while ordinary generation is active or change its settings', async () => {
   const hold = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(hold.promise);
   mocks.inspect.mockResolvedValue(benchmarkInventory()); wrapper = mount(ImageGenerationLab); await flushPromises();
@@ -683,6 +710,7 @@ it('does not start a benchmark while ordinary generation is active or change its
   expect(normal.parameters.value.prompt).toBe('normal prompt');
   hold.resolve({ cancelled: true, modelResident: true }); await task;
 });
+
 it('releases the normally retained model before benchmark execution, then leaves the normal gallery intact', async () => {
   mocks.inspect.mockResolvedValue(benchmarkInventory());
   mocks.generate.mockImplementation(async ({ request }) => ({ png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture' }));
@@ -701,6 +729,7 @@ it('releases the normally retained model before benchmark execution, then leaves
   expect(wrapper.vm.TEST_ONLY.results.value).toHaveLength(1);
   expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(false);
 });
+
 it('loads the Japanese benchmark interface using the registered message catalog', async () => {
   await ensureAllStringsForTest({ locale: 'ja' }); mocks.inspect.mockResolvedValue(benchmarkInventory());
   wrapper = mount(ImageGenerationLab); await flushPromises(); await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
@@ -766,6 +795,7 @@ it('preserves ordinary inputs and an active run when visiting model management a
   expect(mocks.generate).toHaveBeenCalledTimes(1);
   pending.resolve({ cancelled: true, modelResident: true }); await task;
 });
+
 it('shows a local preparation path and disables generation until a model is selected', async () => {
   mocks.inspect.mockResolvedValue({ candidates: [], issues: [] }); wrapper = mount(ImageGenerationLab); await flushPromises();
   expect(wrapper.get('[data-testid="image-prepare-model-help"]').text()).toContain('Choose a saved model');
@@ -774,6 +804,7 @@ it('shows a local preparation path and disables generation until a model is sele
   expect(wrapper.vm.TEST_ONLY.activeTab.value).toBe('models');
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('keeps local scan progress and cancellation beside model management', async () => {
   const pending = Promise.withResolvers<ModelInventory>();
   mocks.inspect.mockReturnValueOnce(pending.promise);

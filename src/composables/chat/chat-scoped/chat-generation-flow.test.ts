@@ -33,7 +33,6 @@ describe('chat generation model resolution', () => {
   });
 });
 
-
 it('never replaces an explicit local file identity with a different listed model', () => {
   expect(resolveGenerationModel({ endpointType: 'llama_cpp_browser', assistantModelId: undefined, resolvedModelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf', availableModels: ['user/other-GGUF'] })).toBe('hf.co/owner/Model:Model-Q4_K_M.gguf');
 });

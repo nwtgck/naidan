@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted', () => ({
   createDownloadVerificationCandidateAcceptanceWorkerClient: mocks.create,
 }));
+
 afterEach(() => vi.clearAllMocks());
 
 const REVISION = 'a'.repeat(40);
@@ -128,6 +129,7 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       pending.resolve({ device: 'webgpu', dtype: 'q4' });
     }
   });
+
   it.each(['user', 'deadline'])('disposes the active worker after %s cancellation without trying the next candidate or forwarding late progress', async cancellation => {
     const controller = new AbortController();
     const pending = Promise.withResolvers<ModelLoadResult>();

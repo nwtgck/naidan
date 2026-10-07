@@ -17,6 +17,7 @@ function generation() {
   const snapshot = snapshotImageGeneration({ request: requestFixture(), createdAt: 1, sourceCommit: 'a'.repeat(40), locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }) });
   return finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false }, previews: [], elapsedMs: 1 });
 }
+
 beforeEach(() => {
   images.clear(); mocks.commit.mockReset().mockImplementation(async ({ writeImages }: { writeImages: () => Promise<void> }) => writeImages());
   vi.stubGlobal('navigator', { locks: { request: async (_name: string, callback: () => Promise<unknown>) => callback() } });
@@ -30,6 +31,7 @@ beforeEach(() => {
     images.set(idToRaw({ id: binaryObjectId }), { blob, name });
   });
 });
+
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -51,11 +53,13 @@ describe('image history public storage operation', () => {
     expect(images.size).toBe(1);
     expect(mocks.commit.mock.calls[0]?.[0].record.request.parameters.prompt).toBe('a small tree');
   });
+
   it('rejects memory/local storage without writing any image bytes', async () => {
     const service = new StorageService(); await service.init({ type: 'memory' });
     await expect(service.saveImageGeneration(generation())).rejects.toThrow('requires OPFS');
     expect(mocks.commit).not.toHaveBeenCalled(); expect(images.size).toBe(0);
   });
+
   it('refuses a missing reference and permits immutable identical retries', async () => {
     const service = new StorageService(); await service.init({ type: 'opfs' });
     const source = generation();
@@ -66,6 +70,7 @@ describe('image history public storage operation', () => {
     await expect(service.saveImageGeneration({ record: source.record, files: [{ ...file, blob: new Blob(['other'], { type: 'image/png' }) }] })).rejects.toThrow('immutable');
     expect(await images.get(idToRaw({ id: file.binaryObjectId }))?.blob.text()).toBe('final');
   });
+
   it('does not overwrite an existing binary whose body cannot be read', async () => {
     const service = new StorageService(); await service.init({ type: 'opfs' });
     const source = generation(); await service.saveImageGeneration(source);
@@ -73,6 +78,7 @@ describe('image history public storage operation', () => {
     await expect(service.saveImageGeneration(source)).rejects.toThrow('missing or unreadable');
     expect(OPFSStorageProvider.prototype.saveFile).toHaveBeenCalledTimes(1);
   });
+
   it('rejects duplicate and unreferenced input files before writing them', async () => {
     const service = new StorageService(); await service.init({ type: 'opfs' });
     const source = generation();
@@ -83,7 +89,6 @@ describe('image history public storage operation', () => {
     expect(images.size).toBe(0);
   });
 });
-
 
 it('pins the direct save writer before a provider change, including every retry', async () => {
   const service = new StorageService(); await service.init({ type: 'opfs' });

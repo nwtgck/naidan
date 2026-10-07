@@ -83,6 +83,7 @@ Original assistant body.<|im_end|>
 // Independent expectations for parsed metadata; these do not certify original response bytes.
 describe('parsed metadata candidate requests', () => {
   afterEach(cleanupParsedMetadataRequests);
+
   it.each(['q4f16', 'q4'] as const)('replays unmodified config at %s through the expected Production AutoClass', async dtype => {
     await assertParsedMetadataModelRequest({
       fixture: parsedMetadataFixtureSchema.parse(parsedMetadata),

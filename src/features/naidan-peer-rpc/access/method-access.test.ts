@@ -3,6 +3,7 @@ import { createMethodAccess } from './method-access';
 import type { NaidanPeerControlledMethodName } from '@/features/naidan-peer-rpc/contract';
 
 type Names = readonly NaidanPeerControlledMethodName[];
+
 it('advances metadata revisions without installing authority or confirming unsaved restrictions', async () => {
   const persist = vi.fn().mockRejectedValueOnce(new Error('quota')).mockResolvedValueOnce(4), apply = vi.fn();
   const controller = createMethodAccess({ initial: ['generateChat'], stored: ['generateChat'], revision: 1, persist, apply, changed: () => {} });
@@ -13,11 +14,13 @@ it('advances metadata revisions without installing authority or confirming unsav
   await controller.update({ allowedMethods: [] }); expect(persist).toHaveBeenLastCalledWith({ allowedMethods: [], expectedRevision: 3 });
   expect(() => controller.adoptStoredRevision({ revision: 2 })).toThrow('revision');
 });
+
 function temporary({ initial }: { initial: Names }) {
   const applied: Names[] = [];
   const controller = createMethodAccess({ initial, stored: initial, revision: 0, persist: undefined, apply: ({ allowedMethods }) => applied.push(allowedMethods), changed: () => {} });
   return { controller, applied };
 }
+
 it('derives valid names without a wildcard or group authority', async () => {
   const { controller, applied } = temporary({ initial: [] });
   const requested: NaidanPeerControlledMethodName[] = ['listChatModels'];
@@ -25,12 +28,14 @@ it('derives valid names without a wildcard or group authority', async () => {
   expect(controller.state().effective).toEqual(['listChatModels']); expect(applied.at(-1)).toEqual(['listChatModels']);
   expect(Object.isFrozen(controller.state().effective)).toBe(true);
 });
+
 it('allows an ephemeral session to grant methods without persisting trust', async () => {
   const { controller } = temporary({ initial: [] });
   await controller.update({ allowedMethods: ['generateImage'] });
   expect(controller.state()).toMatchObject({ effective: ['generateImage'], persistence: 'temporary' });
   controller.close(); expect(controller.state().effective).toEqual([]);
 });
+
 it('applies the intersection immediately and retains restrictions when persistence fails', async () => {
   const gate = Promise.withResolvers<number>();
   const apply = vi.fn();
@@ -41,6 +46,7 @@ it('applies the intersection immediately and retains restrictions when persisten
   expect(controller.state()).toMatchObject({ effective: [], saved: ['generateChat'], persistence: 'failed' });
   expect(apply).not.toHaveBeenCalledWith({ allowedMethods: ['generateImage'] });
 });
+
 it('a later revocation wins over an earlier save completion', async () => {
   const first = Promise.withResolvers<number>(), second = Promise.withResolvers<number>();
   const persist = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
@@ -52,6 +58,7 @@ it('a later revocation wins over an earlier save completion', async () => {
   await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(2)); expect(persist.mock.calls[1]?.[0].expectedRevision).toBe(5);
   second.resolve(6); await revoking; expect(controller.state()).toMatchObject({ revision: 6, effective: [], saved: [], persistence: 'saved' });
 });
+
 it('does not regrant after the owner or session is closed during a save', async () => {
   const gate = Promise.withResolvers<number>(); const persist = vi.fn(() => gate.promise), apply = vi.fn();
   const controller = createMethodAccess({ initial: [], stored: [], revision: 0, persist, apply, changed: () => {} });
@@ -60,6 +67,7 @@ it('does not regrant after the owner or session is closed during a save', async 
   expect(controller.state().effective).toEqual([]); expect(apply).not.toHaveBeenCalledWith({ allowedMethods: ['generateImage'] });
   await expect(controller.update({ allowedMethods: [] })).rejects.toThrow('closed');
 });
+
 it('does not stop an unchanged allowed method during a mixed edit', async () => {
   const gate = Promise.withResolvers<number>(); const apply = vi.fn();
   const controller = createMethodAccess({ initial: ['listChatModels', 'generateChat'], stored: ['listChatModels', 'generateChat'], revision: 0, persist: () => gate.promise, apply, changed: () => {} });
@@ -67,6 +75,7 @@ it('does not stop an unchanged allowed method during a mixed edit', async () => 
   expect(apply).toHaveBeenLastCalledWith({ allowedMethods: ['generateChat'] });
   gate.resolve(1); await task; expect(controller.state().effective).toEqual(['generateChat', 'generateImage']);
 });
+
 it('fails closed on a storage revision mismatch and supports an explicit retry', async () => {
   const persist = vi.fn().mockResolvedValueOnce(20).mockResolvedValueOnce(1);
   const controller = createMethodAccess({ initial: [], stored: [], revision: 0, persist, apply: () => {}, changed: () => {} });
@@ -74,6 +83,7 @@ it('fails closed on a storage revision mismatch and supports an explicit retry',
   expect(controller.state().effective).toEqual([]);
   await controller.update({ allowedMethods: ['generateChat'] }); expect(controller.state().effective).toEqual(['generateChat']);
 });
+
 it('ignores observational exceptions without rolling back revocations', async () => {
   const controller = createMethodAccess({
     initial: ['generateChat'],

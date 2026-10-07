@@ -130,6 +130,7 @@ describe('experimental image history storage', () => {
     }
     expect(getDirectory).not.toHaveBeenCalled();
   });
+
   it('uses a lowercase suffix shard and preserves a requested random seed and all request details', async () => {
     const original = record({ id: 'example-aB', prompt: '\uFEFF cat \n', createdAt: 1 });
     const writeImages = vi.fn().mockResolvedValue(undefined);
@@ -141,6 +142,7 @@ describe('experimental image history storage', () => {
     expect(page.items[0]?.prompt).toBe(original.request.parameters.prompt);
     expect(page.items[0]?.previewCount).toBe(1);
   });
+
   it('recovers an indexed save that failed after the immutable record was committed', async () => {
     const original = record({ id: 'example-aB', prompt: 'cat', createdAt: 1 });
     failures.add('index.json');
@@ -150,6 +152,7 @@ describe('experimental image history storage', () => {
     expect(page.items.map(item => item.id)).toEqual([original.id]);
     expect((await shard()).children.has('index.json')).toBe(true);
   });
+
   it('keeps a corrupt index unchanged and does not write images or a new record', async () => {
     const first = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: first, writeImages: async () => {} });
@@ -166,6 +169,7 @@ describe('experimental image history storage', () => {
     await expect(deleteImageGenerationRecord({ storageType: 'opfs', id: first.id })).rejects.toThrow();
     expect(directory.children.has('first-aB.json')).toBe(true);
   });
+
   it.each(['record', 'index'] as const)('reads intact history without changing a zero-byte %s left by abrupt termination', async interrupted => {
     const first = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: first, writeImages: async () => {} });
@@ -186,6 +190,7 @@ describe('experimental image history storage', () => {
     await expect(saveImageGenerationRecord({ storageType: 'opfs', record: record({ id: 'second-aB', prompt: 'dog', createdAt: 2 }), writeImages })).rejects.toThrow();
     expect(writeImages).not.toHaveBeenCalled();
   });
+
   it('rejects different contents for an existing ID but permits identical retries', async () => {
     const first = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: first, writeImages: async () => {} });
@@ -193,6 +198,7 @@ describe('experimental image history storage', () => {
     await saveImageGenerationRecord({ storageType: 'opfs', record: first, writeImages: async () => {} });
     expect((await queryImageGenerationHistory({ storageType: 'opfs', query })).total).toBe(1);
   });
+
   it('reads known fields from extended records without rewriting their original JSON during query, load or retry', async () => {
     const original = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
@@ -212,18 +218,21 @@ describe('experimental image history storage', () => {
     file.text = JSON.stringify({ ...extended, request: { ...extended.request, parameters: { ...extended.request.parameters, steps: 'invalid known field' } } });
     await expect(loadImageGenerationRecord({ storageType: 'opfs', id: original.id })).rejects.toThrow();
   });
+
   it('serializes concurrent saves in the same shard without dropping entries', async () => {
     await Promise.all(['first-aB', 'second-aB', 'third-aB'].map((id, createdAt) => saveImageGenerationRecord({ storageType: 'opfs', record: record({ id, prompt: 'cat', createdAt }), writeImages: async () => {} })));
     const page = await queryImageGenerationHistory({ storageType: 'opfs', query: { text: 'cat model', offset: 1, limit: 1 } });
     expect(page.total).toBe(3);
     expect(page.items.map(item => item.id)).toEqual([toImageGenerationId({ raw: 'second-aB' })]);
   });
+
   it('does not hide failures after acquiring a record handle', async () => {
     const original = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
     (await (await shard()).getFileHandle('first-aB.json')).readError = new DOMException('Storage disappeared', 'NotFoundError');
     await expect(loadImageGenerationRecord({ storageType: 'opfs', id: original.id })).rejects.toThrow('Storage disappeared');
   });
+
   it('fails deletion visibly and recovers an index when metadata deletion completed first', async () => {
     const original = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
@@ -237,7 +246,6 @@ describe('experimental image history storage', () => {
   });
 });
 
-
 it('never republishes a deleted record, including an absent record with a pending save', async () => {
   const original = record({ id: 'pending-aB', prompt: 'cat', createdAt: 1 });
   const writeImages = vi.fn();
@@ -245,6 +253,7 @@ it('never republishes a deleted record, including an absent record with a pendin
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('deleted');
   expect(writeImages).not.toHaveBeenCalled();
 });
+
 it('rejects a lost-acknowledgement retry after deleting its saved record', async () => {
   const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
   await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
@@ -253,6 +262,7 @@ it('rejects a lost-acknowledgement retry after deleting its saved record', async
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('deleted');
   expect(writeImages).not.toHaveBeenCalled();
 });
+
 it('does not recreate a removed or replaced captured history store', async () => {
   const expectedDirectory = await captureImageGenerationHistoryTarget({ storageType: 'opfs' });
   const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
@@ -262,6 +272,7 @@ it('does not recreate a removed or replaced captured history store', async () =>
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages, expectedDirectory })).rejects.toThrow('changed or was removed');
   expect(root.children.size).toBe(0); expect(writeImages).not.toHaveBeenCalled();
 });
+
 it('does not republish an input deleted through the workspace deletion boundary', async () => {
   const original = record({ id: 'saved-aB', prompt: 'cat', createdAt: 1 });
   const { imageGenerationRoot } = await import('./image-generation/context');

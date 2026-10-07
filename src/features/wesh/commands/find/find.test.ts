@@ -199,8 +199,6 @@ src/readme.md
     expect(result.exitCode).toBe(0);
   });
 
-
-
   it('accepts a leading option terminator after traversal options', async () => {
     await writeFile({ path: 'tree/file.txt', data: 'value\n' });
 
@@ -1285,7 +1283,6 @@ find: 'definitely-missing-find-command': No such file or directory
     }
   });
 
-
   it('runs -execdir from each matched parent directory', async () => {
     await writeFile({ path: 'root/one/a.txt', data: 'a\n' });
     await writeFile({ path: 'root/two/b.txt', data: 'b\n' });
@@ -1389,7 +1386,6 @@ find: 'definitely-missing-find-command': No such file or directory
     }
   });
 
-
   it('evaluates both sides of the comma operator and returns the right result', async () => {
     await writeFile({ path: 'src/a.txt', data: 'a\n' });
     await writeFile({ path: 'src/b.log', data: 'b\n' });
@@ -1405,7 +1401,6 @@ src/b.log
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('matches symbolic-link targets with -lname and -ilname', async () => {
     await writeFile({ path: 'links/Target.TXT', data: '' });
@@ -1444,7 +1439,6 @@ src/b.log
     expect(execution.stdout.text).toBe('/a+\n');
   });
 
-
   it.each(['ed', 'grep'])('uses GNU basic operators for the %s regex type', async (regexType) => {
     await writeFile({ path: '/a+', data: '' });
     await writeFile({ path: '/aa', data: '' });
@@ -1456,7 +1450,6 @@ src/b.log
     expect(execution.stderr.text).toBe('');
     expect(execution.stdout.text).toBe('/aa\n');
   });
-
 
   it('distinguishes GNU, POSIX AWK, and historical AWK regex escapes', async () => {
     for (const name of ['www', 'word', 'aa', 'a1']) {
@@ -1491,7 +1484,6 @@ regex-root/a1
     }
   });
 
-
   it('does not leak JavaScript escaped-letter semantics into GNU find regex types', async () => {
     await writeFile({ path: 'escape-root/dfn', data: '' });
     await writeFile({ path: 'escape-root/123', data: '' });
@@ -1519,7 +1511,6 @@ regex-root/a1
     expect(result.stdout.text).toBe('bracket-root/www\n');
     expect(result.stderr.text).toBe('');
   });
-
 
   it('evaluates a 20,000-predicate implicit conjunction without using the host call stack', async () => {
     const parsed = TEST_ONLY.tokenizeFindExpression({
@@ -1555,7 +1546,6 @@ regex-root/a1
       exitCode: 0,
     });
   });
-
 
   it('parses and evaluates 20,000 nested expression groups without using the host call stack', async () => {
     const parsed = TEST_ONLY.tokenizeFindExpression({
@@ -1618,5 +1608,4 @@ regex-root/a1
       exitCode: 0,
     });
   });
-
 });

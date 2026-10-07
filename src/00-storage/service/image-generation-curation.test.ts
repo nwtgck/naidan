@@ -8,10 +8,13 @@ import { createImageGenerationStorageHarness, generationAssetFixture, generation
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 const annotationsPath = `${root}/sessions/aa/session-aa/annotations/00/asset-00.json`;
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 async function ready({ count, finish }: { count: number, finish: boolean }) {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing test catalog.');
@@ -27,6 +30,7 @@ async function ready({ count, finish }: { count: number, finish: boolean }) {
   const asset = assets[0]!;
   return { store, catalog, session, run, assets, asset, key: { store, sessionId: session.id, assetId: asset.id } };
 }
+
 describe('image archive and global tag identity', () => {
   it('archives without changing any image bytes, request, or assigned tags, and restores it', async () => {
     const h = await ready({ count: 1, finish: true });
@@ -42,6 +46,7 @@ describe('image archive and global tag identity', () => {
     const exported = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
     expect(exported.binaryObjectIds).toContain(h.asset.result.binaryObjectId);
   });
+
   it('resolves all 64 outputs of a run rather than only one gallery page', async () => {
     const h = await ready({ count: 64, finish: true });
     const items = await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id });
@@ -49,12 +54,14 @@ describe('image archive and global tag identity', () => {
     for (const item of items) await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: item.id, expectedRevision: item.annotations.revision, state: 'archived' });
     expect((await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id })).every(item => item.annotations.state === 'archived')).toBe(true);
   });
+
   it('detects concurrent annotation changes instead of overwriting them', async () => {
     const h = await ready({ count: 1, finish: true });
     await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 1, tags: [{ type: 'system', key: 'favorite' }] });
     await expect(setImageGenerationAssetState({ ...h.key, expectedRevision: 0, state: 'archived' })).rejects.toThrow('conflict');
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('active');
   });
+
   it('rebuilds the archive index after a canonical write outlives its acknowledgement', async () => {
     const h = await ready({ count: 1, finish: true });
     fs.faults.add(`close:${root}/sessions/aa/session-aa/annotations/00/index.json`);
@@ -64,6 +71,7 @@ describe('image archive and global tag identity', () => {
     await setImageGenerationAssetState({ ...h.key, expectedRevision: 0, state: 'archived' });
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.revision).toBe(1);
   });
+
   it('shares one Unicode tag ID across sessions and renames only the global catalog', async () => {
     const h = await ready({ count: 1, finish: true });
     const other = generationSessionFixture({ id: 'session-bb' });
@@ -85,6 +93,7 @@ describe('image archive and global tag identity', () => {
     await expect(service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 })).rejects.toThrow();
   });
 });
+
 describe('permanent output deletion', () => {
   it('removes the output and saved previews only and forbids restoring a deleted asset', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
@@ -97,6 +106,7 @@ describe('permanent output deletion', () => {
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
     expect(removeBinary).toHaveBeenCalledTimes(2);
   });
+
   it('will not delete when the run is active or the annotation revision is stale', async () => {
     const h = await ready({ count: 1, finish: false }), removeBinary = vi.fn();
     await expect(deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary })).rejects.toThrow('Wait');
@@ -106,6 +116,7 @@ describe('permanent output deletion', () => {
     await expect(deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary })).rejects.toThrow('conflict');
     expect(removeBinary).not.toHaveBeenCalled();
   });
+
   it('persists pending deletion before removing bytes and retries after a partial failure', async () => {
     const h = await ready({ count: 1, finish: true });
     const removeBinary = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('disk failure')).mockResolvedValue(undefined);
@@ -116,6 +127,7 @@ describe('permanent output deletion', () => {
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('deleted');
     expect(removeBinary).toHaveBeenCalledTimes(4);
   });
+
   it('does not remove bytes if writing the deletion marker fails', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
     fs.faults.add(`open:${root}/deleted-binaries/00/binary-asset-00.json`);
@@ -126,6 +138,7 @@ describe('permanent output deletion', () => {
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
     expect(removeBinary).toHaveBeenCalledTimes(2);
   });
+
   it('does not resurrect deleted output bytes through a stale publication or new input', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
@@ -138,6 +151,7 @@ describe('permanent output deletion', () => {
     await expect(service.createImageGenerationRun({ store: h.store, run, writeInputs: write })).rejects.toThrow('permanently deleted');
     expect(write).not.toHaveBeenCalled();
   });
+
   it('exports deletion facts instead of trying to export removed bytes', async () => {
     const h = await ready({ count: 2, finish: true });
     await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: h.assets[1]!.id, expectedRevision: 0, state: 'archived' });
@@ -149,6 +163,7 @@ describe('permanent output deletion', () => {
     expect(snapshot.binaryObjectIds).toContain(h.run.request.imageInputs.initImage?.binaryObjectId);
     expect(snapshot.metadata.map(file => file.path)).toContain(`deleted-binaries/${idToRaw({ id: h.asset.result.binaryObjectId })}.json`);
   });
+
   it('retries the final metadata write without resurrecting files', async () => {
     const h = await ready({ count: 1, finish: true });
     const removeBinary = vi.fn(async () => {

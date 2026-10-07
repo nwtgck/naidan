@@ -6,6 +6,7 @@ import LlamaCppBrowserModelLaunchPrivacy from './LlamaCppBrowserModelLaunchPriva
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 describe('browser model privacy disclosure', () => {
   it('uses a native, initially collapsed disclosure rather than hover-only text', () => {
     const wrapper = mount(LlamaCppBrowserModelLaunchPrivacy);
@@ -21,6 +22,7 @@ describe('browser model privacy disclosure', () => {
     expect(explanation.text()).toContain('Tools and other model connections');
     wrapper.unmount();
   });
+
   it('closes on Escape and returns focus to the disclosure control', async () => {
     const wrapper = mount(LlamaCppBrowserModelLaunchPrivacy, { attachTo: document.body });
     const details = wrapper.get('details').element;
@@ -30,6 +32,7 @@ describe('browser model privacy disclosure', () => {
     expect(document.activeElement).toBe(wrapper.get('summary').element);
     wrapper.unmount();
   });
+
   it('does not reuse a controls id between disclosures in split views', () => {
     const first = mount(LlamaCppBrowserModelLaunchPrivacy);
     const second = mount({ components: { LlamaCppBrowserModelLaunchPrivacy }, template: '<div><LlamaCppBrowserModelLaunchPrivacy /><LlamaCppBrowserModelLaunchPrivacy /></div>' });

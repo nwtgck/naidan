@@ -57,6 +57,7 @@ describe('CustomDialog.vue', () => {
     expect(wrapper.get('[data-testid="dialog-details-items"]').text()).toContain('<b>notes</b>');
     expect(wrapper.find('[data-testid="dialog-details-items"] b').exists()).toBe(false);
   });
+
   it('applies danger variant to confirm button', async () => {
     await wrapper.setProps({ confirmButtonVariant: 'danger' });
     const confirmButton = wrapper.find('button[data-testid="dialog-confirm-button"]');

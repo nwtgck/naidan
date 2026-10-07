@@ -31,6 +31,7 @@ class TestWorker extends EventTarget {
 }
 let worker: TestWorker;
 const selection = { repository: 'example/model', revision: 'a'.repeat(40), files: [{ path: 'model-Q4_K_M.gguf', size: 128 }] };
+
 beforeEach(() => {
   vi.clearAllMocks(); calls.pause = undefined; calls.append = undefined; worker = new TestWorker(); calls.factory.mockResolvedValue(worker); calls.release.mockResolvedValue(undefined);
   const root = memoryDirectory({ name: '' });
@@ -56,9 +57,11 @@ beforeEach(() => {
     }),
   }));
 });
+
 afterEach(() => {
   vi.useRealTimers(); vi.unstubAllGlobals();
 });
+
 describe('standalone browser model downloads', () => {
   it('allows cooperative cancellation a grace period before abandoning a stuck append', async () => {
     vi.useFakeTimers();
@@ -76,6 +79,7 @@ describe('standalone browser model downloads', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
     expect(await listHuggingFaceModels()).toEqual([]);
   });
+
   it('downloads through the shared fetch boundary and the standalone writer factory', async () => {
     const onProgress = vi.fn();
     await downloadRepository({ selection, signal: new AbortController().signal, onProgress });
@@ -84,6 +88,7 @@ describe('standalone browser model downloads', () => {
     expect((await listHuggingFaceModels())[0]?.name).toBe('hf.co/example/model:Q4_K_M');
     expect(worker.terminate).toHaveBeenCalledOnce(); expect(calls.release).toHaveBeenCalledOnce();
   });
+
   it('allows explicit deletion of a verified standalone download', async () => {
     await downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
     const folder = await repositoryFolder({ repository: selection.repository, create: false });
@@ -91,6 +96,7 @@ describe('standalone browser model downloads', () => {
     await expect(cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/example/model', files } })).resolves.toBe('deleted');
     expect(await listHuggingFaceModels()).toEqual([]);
   });
+
   it('rejects cancellation before startup settles and cleans up a late writer without fetching', async () => {
     const startup = Promise.withResolvers<Worker>(); const entered = Promise.withResolvers<void>();
     calls.factory.mockImplementation(() => {
@@ -115,12 +121,14 @@ describe('standalone browser model downloads', () => {
     }
     expect(privacyFetchStream).not.toHaveBeenCalled();
   });
+
   it('does not create a writer for an already cancelled download', async () => {
     const controller = new AbortController(); controller.abort();
     await expect(downloadRepository({ selection, signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
     expect(calls.factory).not.toHaveBeenCalled();
     expect(privacyFetchStream).not.toHaveBeenCalled();
   });
+
   it('handles a late bootstrap rejection after cancellation without downloading', async () => {
     const startup = Promise.withResolvers<Worker>(); const entered = Promise.withResolvers<void>();
     calls.factory.mockImplementation(() => {
@@ -135,6 +143,7 @@ describe('standalone browser model downloads', () => {
     expect(privacyFetchStream).not.toHaveBeenCalled();
     expect(calls.release).not.toHaveBeenCalled();
   });
+
   it('preserves storage unavailability and retires the writer before any fetch', async () => {
     vi.stubGlobal('navigator', {
       storage: {
@@ -148,6 +157,7 @@ describe('standalone browser model downloads', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
     expect(privacyFetchStream).not.toHaveBeenCalled();
   });
+
   it('terminates after bounded pause cleanup even when a writer becomes unresponsive', async () => {
     vi.useFakeTimers();
     const entered = Promise.withResolvers<void>();

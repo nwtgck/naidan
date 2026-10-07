@@ -31,8 +31,6 @@ describe('resolveGenerationBudget', () => {
     }).maxNewTokens).toBe(22_256);
   });
 
-
-
   it('does not double-count a cached prefix when full decoder-only input_ids include that prefix', () => {
     expect(resolveGenerationBudget({
       modelConfig: { max_position_embeddings: 32_768, is_encoder_decoder: false },

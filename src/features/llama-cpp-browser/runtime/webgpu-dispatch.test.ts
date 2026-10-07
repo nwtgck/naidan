@@ -105,6 +105,7 @@ describe('logical dispatch partition', () => {
     }
     expect(next).toBe(count);
   });
+
   it('covers all three axes exactly once with a small test-device limit', () => {
     const chunks = TEST_ONLY.planDispatch({ grid: [9, 7, 5], limit: 4 });
     const seen = new Set<string>();
@@ -117,12 +118,15 @@ describe('logical dispatch partition', () => {
     }
     expect(seen.size).toBe(9 * 7 * 5);
   });
+
   it('handles zero work without manufacturing a nonempty dispatch', () => {
     expect(TEST_ONLY.planDispatch({ grid: [116100, 0, 1], limit: 65535 })).toEqual([]);
   });
+
   it.each([NaN, Infinity, -1, 1.5, 0x100000000])('rejects invalid count %s', count => {
     expect(() => TEST_ONLY.planDispatch({ grid: [count, 1, 1], limit: 65535 })).toThrow('count');
   });
+
   it('bounds the number of host-side specializations instead of truncating work', () => {
     expect(() => TEST_ONLY.planDispatch({ grid: [65535 * (TEST_ONLY.maxChunks + 1), 1, 1], limit: 65535 })).toThrow('too many chunks');
   });
@@ -137,6 +141,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.shaderDescriptors).toEqual([{ code: source }]); expect(f.pipelineDescriptors.size).toBe(1);
     expect(f.reports).toEqual([]);
   });
+
   it('splits the reported 116100 count into 65535 + 50565 and fixes the second origin on GPU', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source });
     p.pass.dispatchWorkgroups(116100, 1, 1);
@@ -150,6 +155,7 @@ describe('scoped WebGPU compatibility facade', () => {
     p.pass.dispatchWorkgroups(20);
     expect(f.draws[2]!.pipeline).toBe(p.pipeline); expect(f.draws[2]!.group).toBe(p.group);
   });
+
   it('keeps image tensor data on the original GPU buffer and caches variants across shapes', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source });
     p.pass.dispatchWorkgroups(116100); const variants = f.pipelineDescriptors.size;
@@ -158,6 +164,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws[3]!.pipeline).toBe(f.draws[1]!.pipeline);
     expect(f.draws[3]!.group).toBe(f.draws[1]!.group); expect(f.reports).toHaveLength(1);
   });
+
   it('snapshots dynamic offsets before the native heap view is reused', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source });
     const offsets = new Uint32Array([0, 256, 512, 768]);
@@ -165,6 +172,7 @@ describe('scoped WebGPU compatibility facade', () => {
     p.pass.dispatchWorkgroups(116100);
     expect(f.draws.map(draw => draw.offsets)).toEqual([[256, 512], [256, 512]]);
   });
+
   it('preserves the three-argument iterable form of setBindGroup and copies descriptor values', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source });
     const offsets = [256]; p.pass.setBindGroup(0, p.group, offsets); offsets[0] = 0;
@@ -173,6 +181,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws[1]!.offsets).toEqual([256]);
     expect(f.groupDescriptors.get(f.draws[1]!.group!)!.entries).toHaveLength(1);
   });
+
   it('preserves num_workgroups instead of exposing the smaller physical chunk grid', () => {
     const f = fixture({ limit: 4 });
     const p = f.prepare({ code: source.replace('@builtin(local_invocation_id)', '@builtin(num_workgroups)') });
@@ -182,11 +191,13 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws[0]!.pipeline).not.toBe(p.pipeline);
     p.pass.dispatchWorkgroups(2, 1, 1); expect(f.draws[2]!.pipeline).toBe(p.pipeline);
   });
+
   it('uses device limits rather than a hardcoded 65535 or an inflated requested limit', () => {
     const f = fixture({ limit: 131072 }); const p = f.prepare({ code: source });
     p.pass.dispatchWorkgroups(116100);
     expect(f.draws).toHaveLength(1); expect(f.pipelineDescriptors.size).toBe(1);
   });
+
   it('rejects unknown oversized shader syntax before encoding any of the operation', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source.replace('workgroup_size(64)', 'workgroup_size(32 * 2)') });
     p.pass.dispatchWorkgroups(10);
@@ -194,12 +205,14 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws).toHaveLength(1);
     p.pass.dispatchWorkgroups(11); expect(f.draws[1]!.pipeline).toBe(p.pipeline);
   });
+
   it('rejects untracked pipelines before issuing an overflowing native request', () => {
     const f = fixture({ limit: 65535 }); const p = f.prepare({ code: source });
     p.pass.setPipeline({} as GPUComputePipeline);
     expect(() => p.pass.dispatchWorkgroups(116100)).toThrow('Untracked WebGPU pipeline');
     expect(f.draws).toHaveLength(0);
   });
+
   it('rejects untracked bind groups before issuing the first chunk', () => {
     const f = fixture({ limit: 4 }); const p = f.prepare({ code: source });
     const group = f.raw.createBindGroup({ layout: p.pipeline.getBindGroupLayout(0), entries: [] });
@@ -207,6 +220,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(() => p.pass.dispatchWorkgroups(7)).toThrow('Untracked WebGPU bind group');
     expect(f.draws).toHaveLength(0);
   });
+
   it('forwards genuine device creation errors instead of silently selecting a CPU backend', async () => {
     const failure = new Error('device creation failure');
     const adapter = {
@@ -219,6 +233,7 @@ describe('scoped WebGPU compatibility facade', () => {
     const selected = await wrapped.gpu.requestAdapter();
     await expect(selected!.requestDevice()).rejects.toBe(failure);
   });
+
   it('does not let a diagnostic callback failure change GPU work', () => {
     const f = fixture({ limit: 4 });
     const device = TEST_ONLY.wrapDevice({
@@ -232,6 +247,7 @@ describe('scoped WebGPU compatibility facade', () => {
     const pass = device.createCommandEncoder().beginComputePass(); pass.setPipeline(pipeline);
     expect(() => pass.dispatchWorkgroups(7)).not.toThrow(); expect(f.draws).toHaveLength(2);
   });
+
   it('tracks asynchronous pipeline creation too', async () => {
     const f = fixture({ limit: 4 });
     const module = f.device.createShaderModule({ code: source });
@@ -239,6 +255,7 @@ describe('scoped WebGPU compatibility facade', () => {
     const pass = f.device.createCommandEncoder().beginComputePass(); pass.setPipeline(pipeline); pass.dispatchWorkgroups(7);
     expect(f.draws).toHaveLength(2);
   });
+
   it('retains native this receivers, event setters, and unwrapped return values', () => {
     const target = {
       value: 3,
@@ -252,6 +269,7 @@ describe('scoped WebGPU compatibility facade', () => {
     const f = fixture({ limit: 65535 }); expect(f.device.queue).toBe(f.raw.queue);
     f.device.destroy(); expect(f.raw.destroy).toHaveBeenCalledOnce();
   });
+
   it('isolates different devices and their resources', () => {
     const a = fixture({ limit: 4 }); const b = fixture({ limit: 8 });
     const p = a.prepare({ code: source }); const q = b.prepare({ code: source });
@@ -259,6 +277,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(a.draws).toHaveLength(2); expect(b.draws).toHaveLength(1);
     expect(b.shaderDescriptors).toHaveLength(1);
   });
+
   it('bounds the pipeline cache while retaining every chunk and the original numeric constants', () => {
     const f = fixture({ limit: 4 }); const p = f.prepare({ code: source });
     p.pass.dispatchWorkgroups(4 * (TEST_ONLY.maxVariants + 2));
@@ -273,6 +292,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws.at(-1)!.constants.naidan_dispatch_offset_x).toBe(4);
     expect(f.draws.at(-1)!.pipeline).not.toBe(f.draws[1]!.pipeline); // oldest variant was evicted
   });
+
   it('keeps the logical grid on every chunk even when that is the only nonlocal builtin', () => {
     const f = fixture({ limit: 4 });
     const p = f.prepare({ code: source.replace('workgroup_id', 'num_workgroups') });
@@ -283,6 +303,7 @@ describe('scoped WebGPU compatibility facade', () => {
       expect(draw.constants).not.toHaveProperty('naidan_dispatch_offset_x');
     }
   });
+
   it('does not alias offsets and descriptors mutated during asynchronous pipeline creation', async () => {
     const f = fixture({ limit: 4 });
     const shader = f.device.createShaderModule({ code: source });
@@ -294,6 +315,7 @@ describe('scoped WebGPU compatibility facade', () => {
     pass.dispatchWorkgroups(7);
     expect(f.draws[1]!.constants.original).toBe(1);
   });
+
   it('restores the real pipeline before indirect and ordinary dispatches', () => {
     const f = fixture({ limit: 4 }); const p = f.prepare({ code: source });
     p.pass.dispatchWorkgroups(7);
@@ -302,6 +324,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(f.draws.at(-1)!.pipeline).toBe(p.pipeline);
     expect(p.pass.end()).toBeUndefined();
   });
+
   it('is lazy, leaves globals alone, and forwards adapter/device options and limits unchanged', async () => {
     const f = fixture({ limit: 65535 });
     const requestDevice = vi.fn(async (_descriptor: GPUDeviceDescriptor | undefined) => f.raw as unknown as GPUDevice);
@@ -319,6 +342,7 @@ describe('scoped WebGPU compatibility facade', () => {
     expect(requestAdapter).toHaveBeenCalledWith(options); expect(requestDevice).toHaveBeenCalledWith(descriptor);
     expect(device.limits).toBe(f.raw.limits);
   });
+
   it('preserves missing WebGPU and unavailable adapters, rather than changing profiles', async () => {
     expect(createCoreWebGpuNavigator({ navigator: undefined, report() {} })).toBeUndefined();
     const gpu = { requestAdapter: async () => null } as unknown as GPU;

@@ -5,6 +5,7 @@ import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnos
 import { createProjectorTrace } from './projector-trace';
 
 afterEach(() => vi.restoreAllMocks());
+
 describe('synchronous projector tensor tracing', () => {
   it.each([4, 8] as const)('reads only metadata with %i-byte pointers and does not confuse pooling modes with op names', pointerBytes => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -41,7 +42,6 @@ describe('synchronous projector tensor tracing', () => {
     }
   });
 });
-
 
 describe('projector input tensor metadata', () => {
   it.each([4, 8] as const)('distinguishes BF16 inputs from F32 outputs with %i-byte pointers', pointerBytes => {

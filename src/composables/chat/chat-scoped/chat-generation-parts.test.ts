@@ -95,6 +95,7 @@ describe('chat generation flow with message parts', () => {
     vi.clearAllMocks(); state.active.clear(); state.autoTitle = false; state.tools = [];
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
   });
+
   it('shows draft updates without history persistence and clears them after cancellation', async () => {
     const fixture = createChat();
     const visible = Promise.withResolvers<void>();
@@ -130,6 +131,7 @@ describe('chat generation flow with message parts', () => {
     expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' });
     state.drafts.mockReset();
   });
+
   it.each([true, false])('preserves the chat debug preference through tool rounds (%s)', async enabled => {
     const fixture = createChat(); fixture.chat.debugEnabled = enabled;
     const preferences: Array<'on' | 'off' | undefined> = [];
@@ -153,6 +155,7 @@ describe('chat generation flow with message parts', () => {
     await run(fixture);
     expect(preferences).toEqual([enabled ? 'on' : 'off', enabled ? 'on' : 'off']);
   });
+
   it('consumes structured reasoning and literal tags into the reserved new assistant', async () => {
     const fixture = createChat();
     state.provider = {
@@ -174,6 +177,7 @@ describe('chat generation flow with message parts', () => {
     expect(state.save).toHaveBeenCalled(); expect(state.active.size).toBe(0); expect(fixture.assistant.interruption).toBeUndefined();
     expect(toRaw(fixture.chat.root.items[0]!.replies.items[0]!)).toBe(toRaw(fixture.assistant));
   });
+
   it('executes calls through the shared runner and creates a new assistant after its tool node', async () => {
     const fixture = createChat(); const observed: readonly string[][] = []; const inputs = [...observed];
     const execute = vi.fn(async ({ args }: { args: unknown }) => ({ status: 'success' as const, content: JSON.stringify(args) }));
@@ -204,6 +208,7 @@ describe('chat generation flow with message parts', () => {
     expect(answer.id).not.toBe(fixture.assistant.id); expect(fixture.chat.currentLeafId).toBe(answer.id);
     expect(fixture.assistant.parts[0]).toMatchObject({ toolCall: { function: { arguments: ' {} ' } } });
   });
+
   it('records cancellation and does not close an open literal tag or append Aborted', async () => {
     const fixture = createChat();
     state.provider = {
@@ -221,6 +226,7 @@ describe('chat generation flow with message parts', () => {
     expect(fixture.assistant.parts[0]).toMatchObject({ text: '<think>途中', completeness: 'partial' });
     expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' }); expect(state.active.size).toBe(0);
   });
+
   it('retains received content and records the model failure without changing the text', async () => {
     const fixture = createChat();
     state.provider = {
@@ -236,6 +242,7 @@ describe('chat generation flow with message parts', () => {
     expect(getMessageText({ message: fixture.assistant })).toBe('prefix'); expect(fixture.assistant.interruption).toEqual({ type: 'error', message: '通信失敗' });
     expect(state.setError).toHaveBeenCalledWith({ chatId: fixture.chat.id, messageId: fixture.assistant.id, error: '通信失敗' });
   });
+
   it('does not reclassify a successful answer as a model error when automatic title fails', async () => {
     const fixture = createChat(); state.autoTitle = true; state.title.mockRejectedValue(new Error('title failed'));
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -264,6 +271,7 @@ describe('chat generation ownership and failure boundaries', () => {
     vi.clearAllMocks(); state.active.clear(); state.tools = []; state.autoTitle = false;
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
   });
+
   it('does not open an existing partial assistant as a new generation', async () => {
     const fixture = createChat(); fixture.assistant.parts = [{ type: 'text', text: 'old', completeness: 'partial' }];
     fixture.assistant.interruption = { type: 'cancelled' };
@@ -271,6 +279,7 @@ describe('chat generation ownership and failure boundaries', () => {
     await expect(run(fixture)).rejects.toThrow(/cannot be resumed/);
     expect(JSON.stringify(fixture.assistant)).toBe(before); expect(state.active.size).toBe(0);
   });
+
   it('keeps a successful answer in memory and skips reload metadata when persistence fails', async () => {
     const fixture = createChat(); const failure = new Error('disk unavailable');
     state.save.mockResolvedValueOnce(undefined).mockRejectedValue(failure);
@@ -292,6 +301,7 @@ describe('chat generation ownership and failure boundaries', () => {
       consoleError.mockRestore();
     }
   });
+
   it('keeps an observed tool success when stop is requested inside tool execution', async () => {
     const fixture = createChat();
     const dispose = vi.fn();
@@ -319,7 +329,6 @@ describe('chat generation ownership and failure boundaries', () => {
     expect(chat).toHaveBeenCalledOnce(); expect(tool.replies.items).toEqual([]); expect(dispose).toHaveBeenCalledOnce();
   });
 });
-
 
 function createToolRetryFixture({ results }: { results: ToolExecutionResult[] }): {
   chat: Chat;

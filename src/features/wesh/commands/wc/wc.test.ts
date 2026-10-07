@@ -374,6 +374,7 @@ second
     expect(stderr.text).toBe('wc: dir: Is a directory\n');
     expect(result.exitCode).toBe(1);
   });
+
   it('counts bytes as characters in the C locale', async () => {
     const cLocale = await execute({
       script: 'LC_ALL=C wc -m',
@@ -555,7 +556,6 @@ second
     expect(splitIncompleteSequence.result.exitCode).toBe(0);
   });
 
-
   it('uses GNU field width when stdin is one of multiple operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: `printf 'alpha\nbeta\ngamma\n' | wc -l - -`,
@@ -678,5 +678,4 @@ yy
     expect(emptyList.result.exitCode).toBe(0);
     expect(ambiguous.result.exitCode).toBe(1);
   });
-
 });

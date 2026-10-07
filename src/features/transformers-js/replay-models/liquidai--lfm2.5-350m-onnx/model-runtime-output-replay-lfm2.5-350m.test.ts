@@ -17,9 +17,11 @@ import type * as Tjs from '@huggingface/transformers';
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = "LiquidAI/LFM2.5-350M-ONNX";
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
+
 function assistant(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
 }
@@ -137,6 +139,7 @@ Next<|im_end|>
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
   }, 20_000);
+
   it('records an admitted native tool frame and reuses the same original history route after storage', async () => {
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const native = harness.runtime as unknown as typeof Tjs;
@@ -240,5 +243,4 @@ tool reply<|im_end|>
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
   }, 20_000);
-
 });

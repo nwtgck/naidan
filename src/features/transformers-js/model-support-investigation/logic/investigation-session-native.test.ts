@@ -131,6 +131,7 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => {
   expect(fetch).not.toHaveBeenCalled();
   expect(navigator.storage.getDirectory).not.toHaveBeenCalled();

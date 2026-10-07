@@ -325,6 +325,7 @@ describe('Sidebar DND Improvements', () => {
 
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
+
   it('exposes sidebar scroll helper for selected chat handling', async () => {
     vi.useRealTimers();
     mockChatStore.chats.value = [{ id: 'chat-scroll-test', title: 'Test', updatedAt: Date.now() }];

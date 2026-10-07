@@ -36,6 +36,7 @@ describe("createModelSupportInvestigationEvidenceWorker", () => {
       recovery: undefined,
     });
   });
+
   it("builds Download Verification Evidence from the clone-safe request", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "download-evidence.zip" };
     mocks.createDownloadVerificationEvidence.mockResolvedValue(archive);
@@ -72,5 +73,4 @@ describe("createModelSupportInvestigationEvidenceWorker", () => {
       }],
     });
   });
-
 });

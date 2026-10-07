@@ -7,6 +7,7 @@ import contract from './upstream-resource-contract.json';
 
 type Runtime = typeof import('@huggingface/transformers');
 const cleanup: Array<() => void> = [];
+
 afterEach(() => {
   for (const close of cleanup.splice(0).reverse()) close();
   vi.doUnmock('@huggingface/transformers');

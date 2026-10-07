@@ -4,6 +4,7 @@ import { observeImageGpu } from './gpu-diagnostics';
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 function harness() {
   const buffer = { object: 'native buffer' };
   const pipeline = { object: 'native pipeline' };
@@ -27,6 +28,7 @@ function harness() {
   const emit = vi.fn(); const observation = observeImageGpu({ emit, debug: 'on' });
   return { gpu, adapter, device, original, emit, observation, buffer, pipeline, done, pop };
 }
+
 it('observes only runtime-requested native objects and does not change GPU arguments or object identities', async () => {
   const h = harness();
   expect(h.original.request).not.toHaveBeenCalled(); expect(h.original.device).not.toHaveBeenCalled();
@@ -52,6 +54,7 @@ it('observes only runtime-requested native objects and does not change GPU argum
   expect(h.gpu.requestAdapter).toBe(h.original.request); expect(h.adapter.requestDevice).toBe(h.original.device);
   expect(h.device.createBuffer).toBe(h.original.buffer); expect(h.device.queue.submit).toBe(h.original.submit);
 });
+
 it('does not replace a native exception with a diagnostic failure', async () => {
   const h = harness(); const nativeError = new Error('native allocation rejected');
   h.original.buffer.mockImplementation(() => {
@@ -64,12 +67,14 @@ it('does not replace a native exception with a diagnostic failure', async () => 
   expect(() => h.device.createBuffer()).toThrow(nativeError);
   h.observation.dispose();
 });
+
 it('does not install late callbacks or observers after disposal', async () => {
   const h = harness(); const pending = h.gpu.requestAdapter(); h.observation.dispose(); await pending;
   expect(h.adapter.requestDevice).toBe(h.original.device);
   const count = h.emit.mock.calls.length; await h.adapter.requestDevice();
   expect(h.emit).toHaveBeenCalledTimes(count);
 });
+
 it('does nothing when the platform has no usable GPU entry point', () => {
   vi.stubGlobal('navigator', { gpu: {} }); const emit = vi.fn();
   expect(() => observeImageGpu({ emit, debug: 'on' }).dispose()).not.toThrow(); expect(emit).not.toHaveBeenCalled();
@@ -138,6 +143,7 @@ it('counts caller bytes and physical dispatches without adding device work or ch
   observer.dispose(); expect(actual.createCommandEncoder).toBe(createEncoder);
   pass.dispatchWorkgroups(1); expect(dispatch).toHaveBeenCalledTimes(2);
 });
+
 it('does not attribute a late queue completion to the next retained run', async () => {
   const h = harness(); h.observation.beginRun({ runId: 1 });
   const gate = Promise.withResolvers<void>(); h.original.done.mockReturnValueOnce(gate.promise);
@@ -168,6 +174,7 @@ it('counts observed readback ranges and settlements without an additional map or
   expect(fields.find(f => f.metric === 'gpu-wait' && f.kind === 'map' && f.scope === 'run-total')).toMatchObject({ started: 1, settled: 1, pending: 0, wallSumMs: 9, wallUnionMs: 9 });
   expect(h.original.done).not.toHaveBeenCalled(); observation.dispose();
 });
+
 it('reports missing coverage rather than changing an immutable GPU method', async () => {
   const h = harness(); const original = h.device.queue.writeBuffer;
   Object.defineProperty(h.device.queue, 'writeBuffer', { value: original, configurable: false, writable: false });
@@ -178,6 +185,7 @@ it('reports missing coverage rather than changing an immutable GPU method', asyn
   expect(h.emit.mock.calls.some(([event]) => event.fields.metric === 'gpu-observation-end' && event.fields.unavailableMethods.includes('writeBuffer'))).toBe(true);
   h.observation.dispose();
 });
+
 it('does not re-read a creation descriptor and never replaces a native result with invalid metadata', async () => {
   const h = harness(); h.observation.beginRun({ runId: 1 });
   let reads = 0;
@@ -204,6 +212,7 @@ it('does not re-read a creation descriptor and never replaces a native result wi
   expect(h.emit.mock.calls.some(([event]) => event.fields.metric === 'gpu-observation-end' && event.fields.unavailableMethods.includes('buffer-metadata'))).toBe(true);
   h.observation.dispose();
 });
+
 it('keeps diagnostic counters inactive with debug OFF even when lifecycle hooks run', async () => {
   const h = harness(); h.observation.dispose(); h.emit.mockClear();
   const clock = vi.fn(() => 0), observation = observeImageGpu({ emit: h.emit, debug: 'off', now: clock });

@@ -13,6 +13,7 @@ function deferred() {
 function update({ phase, completed }: { phase: NumericProgress['phase'], completed: number }): NumericProgress {
   return { phase, completed, total: 10000 };
 }
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('bounded text progress delivery', () => {
@@ -46,6 +47,7 @@ describe('bounded text progress delivery', () => {
       peakPending: 1,
     });
   });
+
   it.each(['prefill-first', 'generating-first'] as const)('does not replay old-phase pending progress when %s settles', async order => {
     const prefill = deferred(); const generating = deferred(); const last = deferred();
     const seen: string[] = [];
@@ -82,6 +84,7 @@ describe('bounded text progress delivery', () => {
       peakPending: 1,
     });
   });
+
   it('keeps the queued snapshot independent of a reused caller object', async () => {
     const blocked = deferred(); const seen: NumericProgress[] = [];
     const queue = createProgressQueue({
@@ -96,6 +99,7 @@ describe('bounded text progress delivery', () => {
     blocked.resolve(); await queue.finish();
     expect(seen.map(item => item.completed)).toEqual([1, 20]); expect(seen[1]!.total).toBe(10000);
   });
+
   it('does not let a callback change its in-flight ownership key', async () => {
     const queue = createProgressQueue({
       signal: new AbortController().signal,
@@ -106,6 +110,7 @@ describe('bounded text progress delivery', () => {
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) });
     await queue.finish(); expect(queue.counters.settled).toBe(1);
   });
+
   it.each(['send', 'finish', 'ack'] as const)('discards unsent progress on cancellation observed by %s', async observation => {
     const blocked = deferred(); const controller = new AbortController(); const deliver = vi.fn(() => blocked.promise);
     const queue = createProgressQueue({ signal: controller.signal, deliver });
@@ -121,11 +126,13 @@ describe('bounded text progress delivery', () => {
     blocked.resolve(); await queue.finish();
     expect(deliver).toHaveBeenCalledOnce(); expect(queue.counters.discarded).toBe(observation === 'send' ? 2 : 1);
   });
+
   it('does not start a callback for an already cancelled request', async () => {
     const deliver = vi.fn(); const queue = createProgressQueue({ signal: AbortSignal.abort(), deliver });
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) }); await queue.finish();
     expect(deliver).not.toHaveBeenCalled(); expect(queue.counters).toMatchObject({ received: 1, sent: 0, discarded: 1 });
   });
+
   it.each(['sync', 'async', 'thenable'] as const)('sanitizes %s callback failure and consumes all rejection paths', async kind => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const queue = createProgressQueue({
@@ -150,6 +157,7 @@ describe('bounded text progress delivery', () => {
     expect(queue.counters).toMatchObject({ received: 2, sent: 1, settled: 1, discarded: 1, callbackFailures: 1 });
     expect(JSON.stringify(log.mock.calls)).not.toContain('private callback payload');
   });
+
   it('drains the other phase before reporting a rejected callback', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const prefill = deferred(); const generating = deferred();
@@ -167,6 +175,7 @@ describe('bounded text progress delivery', () => {
     generating.resolve(); expect(await finishing).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
     expect(queue.counters).toMatchObject({ sent: 2, settled: 2, discarded: 1 });
   });
+
   it('publishes ownership before reentrant synchronous delivery', async () => {
     const first = deferred(); const seen: number[] = [];
     const queue = createProgressQueue({
@@ -185,6 +194,7 @@ describe('bounded text progress delivery', () => {
     expect(seen).toEqual([1]); first.resolve(); await queue.finish(); expect(seen).toEqual([1, 3]);
     expect(queue.counters.peakInFlight).toBe(1);
   });
+
   it('ignores late sends after finish starts while draining previously accepted progress', async () => {
     const blocked = deferred(); const seen: number[] = [];
     const queue = createProgressQueue({
@@ -201,6 +211,7 @@ describe('bounded text progress delivery', () => {
     queue.send({ progress: update({ phase: 'generating', completed: 4 }) }); await queue.finish();
     expect(seen).toEqual([1, 2]); expect(queue.counters).toEqual(counters);
   });
+
   it('needs neither timer scheduling nor a performance clock', async () => {
     const timeout = vi.spyOn(globalThis, 'setTimeout'); const clock = vi.spyOn(performance, 'now');
     const queue = createProgressQueue({ signal: new AbortController().signal, deliver: () => {} });

@@ -84,6 +84,7 @@ function collectionFixture({ capture }: { capture: Native }): ProductionProvider
     }],
   };
 }
+
 it('refuses nested revision-selection accessors without executing them during evidence admission', async () => {
   const native = collectionFixture({ capture: nativeFixture() });
   const lifetime = native.epochs[0]!.lifetime;
@@ -149,6 +150,7 @@ function completedSummary(): ProductionProviderInvestigationResult['summary'] {
     progressCallbackFailures: 0,
   };
 }
+
 beforeEach(() => {
   vi.stubGlobal('crypto', webcrypto);
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -162,6 +164,7 @@ beforeEach(() => {
     },
   });
 });
+
 afterEach(() => {
   expect(globalThis.fetch).not.toHaveBeenCalled();
   expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
@@ -190,6 +193,7 @@ describe('native capture post-run export', () => {
     const malformed = { ...evidence, json: evidence.json.replace('missing-webgpu-entrypoint', 'arbitrary private text') };
     await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence: malformed, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).rejects.toThrow();
   });
+
   it.each(['runId', 'workerEpoch'] as const)('rejects a diagnostic owner with a foreign %s', async field => {
     const native = collectionFixture({ capture: nativeFixture() });
     const lifetime = native.epochs[0]!.lifetime;
@@ -295,6 +299,7 @@ describe('native capture post-run export', () => {
     event.values[event.values.length - 1] = field;
     await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence: { ...sidecar, json: JSON.stringify(encoded) }, provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).rejects.toThrow();
   });
+
   it('exports validated image size metadata without refusing its whole epoch', async () => {
     const capture = nativeFixture();
     const input = capture.events.find(event => event.kind === 'inputs');
@@ -309,6 +314,7 @@ describe('native capture post-run export', () => {
     expect(JSON.stringify(JSON.parse(sidecar.json))).toContain('"status":"image-sizes","values":[[1,1],[2,3]]');
     await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence: structuredClone(sidecar), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).resolves.toEqual(sidecar);
   });
+
   it('classifies entered native records with missing Load and invocation settings as partial', async () => {
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture: nativeFixture() }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(sidecar.summary).toEqual({

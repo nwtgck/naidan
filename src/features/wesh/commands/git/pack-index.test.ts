@@ -68,6 +68,7 @@ describe('wesh git pack index parser', () => {
 
     expect(() => parsePackIndex({ bytes })).toThrow('pack index checksum mismatch');
   });
+
   it('parses original version 1 indexes into the same object-id and offset model', () => {
     const index = parsePackIndex({ bytes: fixedPackIndexV1() });
 
@@ -77,5 +78,4 @@ describe('wesh git pack index parser', () => {
     ]);
     expect(index.packChecksum).toBe('1111111111111111111111111111111111111111');
   });
-
 });

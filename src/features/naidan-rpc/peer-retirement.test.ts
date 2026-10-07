@@ -23,6 +23,7 @@ function idleIncoming() {
     },
   };
 }
+
 it('retirement joins a pending stream open and aborts its late duplex before returning', async () => {
   const opening = Promise.withResolvers<NaidanRpcDuplex>(), transportClosed = Promise.withResolvers<void>();
   const open = vi.fn(async () => opening.promise);
@@ -42,6 +43,7 @@ it('retirement joins a pending stream open and aborts its late duplex before ret
   await retired; await rejected;
   expect(endedBeforeOpen).toBe(false); expect(aborted).toHaveBeenCalledOnce(); expect(ended).toBe(true);
 });
+
 it('retirement includes the incoming iterator owner, including a late incoming duplex', async () => {
   const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>(), returned = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
   const abort = vi.fn();
@@ -136,6 +138,7 @@ it('a failed iterator cleanup is reported only after a late outgoing duplex is r
   expect(settledBeforeOpen).toBe(false); expect(abort).toHaveBeenCalledOnce();
   await expect(peer.retire()).rejects.toBe(failure);
 });
+
 it('reports a synchronous iterator return failure through retirement without dropping it', async () => {
   const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
   const failure = new Error('Synchronous return failure');

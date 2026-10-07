@@ -46,6 +46,7 @@ function readyInventory() {
     signal: undefined,
   });
 }
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks();
@@ -61,6 +62,7 @@ beforeEach(async () => {
     static override revokeObjectURL = vi.fn();
   });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
 });

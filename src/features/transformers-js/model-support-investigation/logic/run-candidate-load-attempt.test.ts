@@ -555,6 +555,7 @@ describe("runCandidateLoadAttempt", () => {
     expect(generateMinimumToken).toHaveBeenCalledTimes(2);
     expect(disposeInput).toHaveBeenCalledTimes(2);
   });
+
   it("aborts input-strategy fallback when a failed strategy input cannot be disposed", async () => {
     const model = { id: "model" };
     const firstInput = { strategy: "chat-template-tensor-dict" };
@@ -710,5 +711,4 @@ describe("runCandidateLoadAttempt", () => {
       ["tool-protocol-probe", "passed"],
     ]));
   });
-
 });

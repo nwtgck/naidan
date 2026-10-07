@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CacheAcceptanceTimeoutError, withCacheAcceptanceDeadline } from './cache-acceptance-deadline';
 
 afterEach(() => vi.useRealTimers());
+
 describe('cache acceptance deadline', () => {
   it('aborts the Worker owner on expiry and returns even when a remote never settles', async () => {
     vi.useFakeTimers();
