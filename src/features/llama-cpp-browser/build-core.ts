@@ -8,7 +8,7 @@ import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 379e14ecb217a3856437afdecb9c363213d620b3.
+// Reviewed browser variant artifact commit: e21ab5e036cdd3d81b509459f1979b05885d407a.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': '66934d8af20b38746be1560a20813380e7a05a724989f43ea3c31d1f71ed77b4',
@@ -21,8 +21,8 @@ const coreHashes = {
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'b10378c05f81148750198799ac26368ae25147964ba4fd348460693eac5dc2dd' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'a70047b40120541c6ffae0875288919486365718f54c21c98529746c997cc116' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '5cfbb41f0a8aaa2e1914f431b9d532768a5610d4110ed78662d09aef35208e38' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '85e38766a768fe7491e39f83dd12c3e307cf02bed1a21e22b91a8933d7b9d93b' },
 } as const;
 
 /** Version-bound adapter for the browser variant, which has no upstream version guards. */
