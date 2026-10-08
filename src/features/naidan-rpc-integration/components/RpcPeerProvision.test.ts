@@ -32,6 +32,7 @@ function registration({ id, phase }: { id: string, phase: RpcRegistrationView['p
     phase,
     desiredConnection: phase === 'disconnected' ? 'disconnected' : 'connected',
     recoveryStatus: 'ready',
+    health: undefined,
     persistence: 'saved',
     registryPersistence: 'durable',
     access: { effective: [], desired: [], saved: [], revision: 0, persistence: 'saved' },

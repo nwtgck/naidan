@@ -320,3 +320,14 @@ it('disconnect initiates the returned lease shutdown synchronously and reserves 
   const stopping = state.owner.disconnect(); expect(retire).toHaveBeenCalledOnce(); expect(reentered).toBe(stopping);
   gate.resolve(); await stopping;
 });
+
+it('an authenticated replacement joins the old lease before reopening without failure backoff', async () => {
+  const state = fixture(); state.classify.mockReturnValue('replace');
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  const old = connection({ value: 1, held: true }); state.openings[0]!.result.resolve(old.lease); await first;
+  old.ended.resolve({ error: 'authenticated replacement' }); await old.stopped.promise;
+  expect(state.factory).toHaveBeenCalledOnce(); expect(state.timers).toHaveLength(0);
+  old.closed.resolve(); await flush(); expect(state.factory).toHaveBeenCalledTimes(2); expect(state.timers).toHaveLength(0);
+  const next = connection({ value: 2 }); state.openings[1]!.result.resolve(next.lease); await flush();
+  expect(state.owner.value).toBe(2); await state.owner.disconnect();
+});

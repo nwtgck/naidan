@@ -17,7 +17,7 @@ export const maintenanceClock: MaintenanceClock = {
     const timer = setTimeout(callback, milliseconds); return () => clearTimeout(timer);
   },
 };
-export type MaintenanceFailure = 'retry' | 'blocked' | 'retirement-failed';
+export type MaintenanceFailure = 'retry' | 'replace' | 'blocked' | 'retirement-failed';
 export type MaintenancePhase = 'idle' | 'opening' | 'connected' | 'retiring' | 'backoff' | 'blocked';
 type Block = Readonly<{ kind: 'terminal' | 'retirement'; error: unknown }>;
 type Request<Value> = { generation: number; result: ReturnType<typeof deferred<Value>>; settled: boolean };
@@ -236,7 +236,7 @@ export class ConnectionMaintenance<Value> {
     try {
       const decision = this.classify({ error, source });
       switch (decision) {
-      case 'retry': case 'blocked': case 'retirement-failed': return decision;
+      case 'retry': case 'replace': case 'blocked': case 'retirement-failed': return decision;
       default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
       }
     } catch (failure) {
@@ -294,6 +294,7 @@ export class ConnectionMaintenance<Value> {
       switch (decision) {
       case 'blocked': this.blockState = Object.freeze({ kind: 'terminal', error: outcome?.error }); this.status = 'blocked'; break;
       case 'retry': this.scheduleRetry(); break;
+      case 'replace': this.start(); break;
       case undefined: this.start(); break;
       default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
       }

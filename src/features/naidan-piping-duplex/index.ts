@@ -1,3 +1,5 @@
+export { NaidanPipingPeerEndpoint } from './peer-endpoint';
+export type { NaidanPipingPeerCandidate, NaidanPipingPeerSession, NaidanPipingPeerHealth } from './peer-session';
 export type { NaidanPipingConnectionEnd, NaidanPipingConnectionEndKind } from '@/features/naidan-piping-duplex/lifetime';
 export { HandshakeResponseUnconfirmedError, ResponseUnconfirmedError, RecordExhaustedError, PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 export type { NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';

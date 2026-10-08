@@ -1017,3 +1017,373 @@ it.each([
   expect(storage.remember).not.toHaveBeenCalled();
   expect(manager.list()).toEqual([]);
 });
+
+it('connecting on a saved OFF to ON transition does not wait for the remote peer', async () => {
+  const { manager, dependencies } = automaticFixture(), opened = Promise.withResolvers<void>();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'disabled' });
+  const original = vi.mocked(dependencies.open).getMockImplementation()!;
+  vi.mocked(dependencies.open).mockImplementationOnce(async args => {
+    await opened.promise; return original(args);
+  });
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  expect(manager.list()[0]).toMatchObject({ phase: 'connecting', desiredConnection: 'connected' });
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  opened.resolve(); await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]?.phase).toBe('connected');
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  expect(dependencies.open).toHaveBeenCalledOnce();
+});
+
+it('preserves a manually stopped page until a new OFF to ON transition', async () => {
+  const { manager, dependencies } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  await manager.disconnect({ id: record.id });
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await manager.revalidate(); manager.wakeDesiredConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'disabled' });
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledTimes(2);
+  expect(manager.list()[0]?.phase).toBe('connected');
+});
+
+it.each(['disconnect', 'feature-off-on'] as const)('a newer %s overrides an ON preference save still in flight', async action => {
+  const { manager, storage, dependencies } = automaticFixture(), saved = Promise.withResolvers<void>();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'disabled' });
+  const original = vi.mocked(storage.update).getMockImplementation()!;
+  vi.mocked(storage.update).mockImplementationOnce(async args => {
+    await saved.promise; return original(args);
+  });
+  const enabling = manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await vi.advanceTimersByTimeAsync(0);
+  const stopped = action === 'disconnect' ? manager.disconnect({ id: record.id }) : manager.setEnabled({ enabled: false });
+  const restarted = action === 'feature-off-on' ? manager.setEnabled({ enabled: true }) : Promise.resolve();
+  saved.resolve(); await enabling; await stopped; await restarted;
+  await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(60000);
+  expect(manager.list()[0]).toMatchObject({ desiredConnection: 'disconnected', registration: { connectOnStartup: 'enabled' } });
+  expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it('enabling startup while already backing off preserves the current retry deadline', async () => {
+  const { manager, dependencies, links } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'disabled' });
+  await manager.connect({ id: record.id }); links[0]!.close(); await vi.advanceTimersByTimeAsync(0);
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await vi.advanceTimersByTimeAsync(999); expect(dependencies.open).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1); expect(dependencies.open).toHaveBeenCalledTimes(2);
+});
+
+it('does not connect before the ON preference is saved', async () => {
+  const { manager, storage, dependencies } = automaticFixture(), saved = Promise.withResolvers<void>();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  await manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'disabled' });
+  const original = vi.mocked(storage.update).getMockImplementation()!;
+  vi.mocked(storage.update).mockImplementationOnce(async args => {
+    await saved.promise; return original(args);
+  });
+  const enabling = manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' });
+  await vi.advanceTimersByTimeAsync(60000); expect(dependencies.open).not.toHaveBeenCalled();
+  saved.resolve(); await enabling; await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  expect(manager.list()[0]?.access.effective).toEqual([]);
+});
+
+it('does not connect or save startup ON without the current page owner', async () => {
+  const { manager, dependencies, storage } = fixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  vi.mocked(dependencies.acquireOwner).mockRejectedValueOnce(new RpcOwnerBusyError());
+  await expect(manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' })).rejects.toBeInstanceOf(RpcOwnerBusyError);
+  expect(storage.update).not.toHaveBeenCalled(); expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it('does not save startup ON or connect while RPC is disabled', async () => {
+  const { manager, storage, dependencies } = fixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.setEnabled({ enabled: false });
+  await expect(manager.setConnectOnStartup({ id: record.id, connectOnStartup: 'enabled' })).rejects.toThrow('Naidan RPC is disabled');
+  expect(storage.update).not.toHaveBeenCalled(); expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it.each(['startup-first', 'ui-first'] as const)('startup waits for the latest published registry when reads finish %s', async order => {
+  const { manager, storage, dependencies } = automaticFixture();
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), second = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  const enabled = snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] });
+  vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  await manager.setEnabled({ enabled: true });
+  const starting = manager.startAutomaticConnections(), reloading = manager.reload();
+  if (order === 'startup-first') {
+    first.resolve(enabled); await vi.advanceTimersByTimeAsync(0);
+    expect(manager.list()).toEqual([]); expect(dependencies.open).not.toHaveBeenCalled();
+    second.resolve(enabled);
+  } else {
+    second.resolve(enabled); await reloading; first.resolve(enabled);
+  }
+  await starting; await reloading; await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  expect(manager.list()[0]).toMatchObject({ phase: 'connected', desiredConnection: 'connected' });
+  await manager.startAutomaticConnections(); expect(dependencies.open).toHaveBeenCalledOnce();
+});
+
+it('a newer empty registry suppresses the stale startup snapshot', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), second = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  await manager.setEnabled({ enabled: true });
+  const starting = manager.startAutomaticConnections(), reloading = manager.reload();
+  first.resolve(snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] }));
+  second.resolve(snapshot({ registrations: [] })); await starting; await reloading; await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()).toEqual([]); expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it('a failed latest registry read is not treated as successful startup readiness', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), second = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  await manager.setEnabled({ enabled: true });
+  const starting = manager.startAutomaticConnections(), reloading = manager.reload();
+  const rejectedStartup = expect(starting).rejects.toThrow('registry unavailable');
+  const rejectedReload = expect(reloading).rejects.toThrow('registry unavailable');
+  first.resolve(snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] }));
+  second.reject(new Error('registry unavailable')); await rejectedStartup; await rejectedReload;
+  expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it.each(['disconnect', 'feature-off'] as const)('startup readiness preserves a newer %s while following the UI read', async action => {
+  const { manager, storage, dependencies } = automaticFixture();
+  const first = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), second = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  vi.mocked(storage.list).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  await manager.setEnabled({ enabled: true });
+  const starting = manager.startAutomaticConnections(), reloading = manager.reload();
+  first.resolve(snapshot({ registrations: [] })); await vi.advanceTimersByTimeAsync(0);
+  if (action === 'disconnect') await manager.disconnect({ id: record.id });
+  else await manager.setEnabled({ enabled: false });
+  second.resolve(snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] }));
+  await reloading; await starting; await vi.advanceTimersByTimeAsync(60000);
+  expect(manager.list()[0]?.desiredConnection).toBe('disconnected'); expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it('startup obtains a fresh registry after a concurrent saved mutation invalidates its read', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  const old = Promise.withResolvers<NaidanRpcRegistrySnapshot>(), saved = Promise.withResolvers<void>();
+  vi.mocked(storage.list).mockReturnValueOnce(old.promise);
+  const original = vi.mocked(storage.update).getMockImplementation()!;
+  vi.mocked(storage.update).mockImplementationOnce(async args => {
+    await saved.promise; return original(args);
+  });
+  const starting = manager.startAutomaticConnections(), renaming = manager.rename({ id: record.id, label: 'Current name' });
+  await vi.advanceTimersByTimeAsync(0);
+  old.resolve(snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).not.toHaveBeenCalled(); expect(storage.list).toHaveBeenCalledTimes(2);
+  saved.resolve(); await renaming; await starting; await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]).toMatchObject({ phase: 'connected', registration: { label: 'Current name', revision: 1 } });
+  expect(dependencies.open).toHaveBeenCalledOnce();
+});
+
+it('a published newer registry starts connections without waiting for the discarded read to finish', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  const stalled = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  vi.mocked(storage.list).mockReturnValueOnce(stalled.promise);
+  await manager.setEnabled({ enabled: true });
+  const starting = manager.startAutomaticConnections(); await manager.reload();
+  await starting; await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  stalled.resolve(snapshot({ registrations: [] })); await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]?.phase).toBe('connected');
+});
+
+it('stopping startup releases its readiness wait even if the registry read never settles', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  vi.mocked(storage.list).mockReturnValueOnce(new Promise(() => {}));
+  await manager.setEnabled({ enabled: true }); const starting = manager.startAutomaticConnections();
+  manager.stopAutomaticConnections(); await starting;
+  expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+it('normal startup adopts one catalogue read before the independent connection revalidation', async () => {
+  const { manager, storage, dependencies } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  expect(dependencies.open).toHaveBeenCalledOnce();
+  expect(storage.list).toHaveBeenCalledTimes(2);
+});
+
+it.each(['empty', 'disabled'] as const)('startup does not seed a retained row absent from the latest %s startup policy', async policy => {
+  const { manager, storage, dependencies } = automaticFixture();
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  vi.mocked(storage.list).mockResolvedValue(snapshot({ registrations: policy === 'empty' ? [] : [record] }));
+  await manager.startAutomaticConnections(); await vi.advanceTimersByTimeAsync(0);
+  expect(manager.list()[0]?.desiredConnection).toBe('disconnected');
+  expect(dependencies.acquireOwner).not.toHaveBeenCalled(); expect(dependencies.open).not.toHaveBeenCalled();
+});
+
+function persistentFixture() {
+  const state = fixture();
+  const physicals: ReturnType<typeof Promise.withResolvers<void>>[] = [];
+  const logicals: { end: ReturnType<typeof Promise.withResolvers<{ error: unknown }>>; abort: ReturnType<typeof vi.fn>; health: (state: 'healthy' | 'checking') => void }[] = [];
+  const owners: import('./persistent-link').RpcPersistentOwner[] = [];
+  vi.mocked(state.storage.readIdentity).mockResolvedValue({ privateKey: {} as CryptoKey, publicKey: record.localPublicKey });
+  vi.mocked(state.dependencies.open).mockImplementation(async () => {
+    const physical = Promise.withResolvers<void>(); physicals.push(physical);
+    let usable = true, current: ReturnType<typeof transportPair> | undefined;
+    const owner: import('./persistent-link').RpcPersistentOwner = {
+      get usable() {
+        return usable;
+      },
+      waitingForPeer: false,
+      adopt: vi.fn(),
+      resume: vi.fn(async () => {}),
+      next: vi.fn(async () => makeLink()),
+      stop: vi.fn(async () => {
+        usable = false; current?.close(); await physical.promise;
+      }),
+    };
+    owners.push(owner);
+    function makeLink(): RpcLink {
+      const pair = transportPair({ capacity: 8, fragmentBytes: 256 }); state.links.push(pair); current = pair;
+      const end = Promise.withResolvers<{ error: unknown }>(), abort = vi.fn(() => pair.close());
+      let health: import('./persistent-link').RpcLinkHealth = { state: 'healthy' };
+      const listeners = new Set<({ health }: { health: import('./persistent-link').RpcLinkHealth }) => void>();
+      logicals.push({
+        end,
+        abort,
+        health: value => {
+          health = { state: value }; for (const listener of listeners) listener({ health });
+        },
+      });
+      return {
+        ...pair.a,
+        ended: end.promise,
+        peerIdentity: remote,
+        abort,
+        persistent: {
+          owner,
+          get health() {
+            return health;
+          },
+          subscribeHealth: ({ listener }) => {
+            listeners.add(listener); listener({ health }); return () => {
+              listeners.delete(listener);
+            };
+          },
+        },
+      };
+    }
+    return makeLink();
+  });
+  cleanups.unshift(async () => {
+    for (const physical of physicals) physical.resolve();
+  });
+  return { ...state, physicals, logicals, owners };
+}
+
+it('keeps one physical endpoint across authenticated replacement and exposes only current-session health', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  expect(state.owners[0]!.adopt).toHaveBeenCalledOnce();
+  state.logicals[0]!.health('checking'); expect(state.manager.list()[0]?.health?.state).toBe('checking');
+  const { RpcConnectionReplacedError } = await import('./persistent-link');
+  state.logicals[0]!.end.resolve({ error: new RpcConnectionReplacedError() });
+  await vi.waitFor(() => expect(state.owners[0]!.next).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(state.manager.list()[0]?.phase).toBe('connected'));
+  expect(state.dependencies.open).toHaveBeenCalledOnce(); expect(state.owners[0]!.stop).not.toHaveBeenCalled();
+  expect(state.logicals[0]!.abort).toHaveBeenCalledOnce();
+  state.logicals[0]!.health('checking'); expect(state.manager.list()[0]?.health?.state).toBe('healthy');
+  expect(state.resources.generateChat).not.toHaveBeenCalled();
+  state.physicals[0]!.resolve(); await state.manager.disconnect({ id: record.id });
+});
+
+it('manual stop and rapid reconnect join physical endpoint retirement before creating another owner', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  const firstStop = state.manager.disconnect({ id: record.id });
+  let stopped = false; void firstStop.then(() => {
+    stopped = true;
+  });
+  const next = state.manager.connect({ id: record.id });
+  await vi.waitFor(() => expect(state.owners[0]!.stop).toHaveBeenCalledOnce());
+  expect(state.owners[0]!.stop).toHaveBeenCalledWith({ reason: 'RPC connection owner stopped', notice: 'notify-peer' });
+  expect(stopped).toBe(false); expect(state.dependencies.open).toHaveBeenCalledOnce();
+  state.physicals[0]!.resolve(); await firstStop; await next;
+  expect(state.dependencies.open).toHaveBeenCalledTimes(2);
+  state.physicals[1]!.resolve(); await state.manager.disconnect({ id: record.id });
+});
+
+it('global OFF retains the origin owner until the persistent endpoint physically closes', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  const stopping = state.manager.setEnabled({ enabled: false });
+  await vi.waitFor(() => expect(state.owners[0]!.stop).toHaveBeenCalledOnce());
+  expect(state.release).not.toHaveBeenCalled();
+  state.physicals[0]!.resolve(); await stopping; expect(state.release).toHaveBeenCalledOnce();
+});
+
+it('registry deletion during retry backoff retains the row until its idle physical owner retires', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  state.logicals[0]!.end.resolve({ error: new ResponseUnconfirmedError() });
+  await vi.waitFor(() => expect(state.manager.list()[0]?.phase).toBe('disconnected'));
+  expect(state.owners[0]!.stop).not.toHaveBeenCalled();
+  vi.mocked(state.storage.list).mockResolvedValue(snapshot({ registrations: [] }));
+  await state.manager.revalidate();
+  await vi.waitFor(() => expect(state.owners[0]!.stop).toHaveBeenCalledOnce());
+  expect(state.owners[0]!.stop).toHaveBeenCalledWith({ reason: 'RPC connection owner stopped', notice: 'abort' });
+  expect(state.manager.list()).toHaveLength(1);
+  state.physicals[0]!.resolve(); await vi.waitFor(() => expect(state.manager.list()).toHaveLength(0));
+});
+
+it('stopping automatic connections also retires a physical owner retained during backoff', async () => {
+  const state = persistentFixture();
+  vi.mocked(state.storage.list).mockResolvedValue(snapshot({ registrations: [{ ...record, connectOnStartup: 'enabled' }] }));
+  await state.manager.setEnabled({ enabled: true }); await state.manager.startAutomaticConnections();
+  await vi.waitFor(() => expect(state.manager.list()[0]?.phase).toBe('connected'));
+  state.logicals[0]!.end.resolve({ error: new ResponseUnconfirmedError() });
+  await vi.waitFor(() => expect(state.manager.list()[0]?.phase).toBe('disconnected'));
+  state.manager.stopAutomaticConnections();
+  await vi.waitFor(() => expect(state.owners[0]!.stop).toHaveBeenCalledOnce());
+  expect(state.manager.list()[0]?.desiredConnection).toBe('disconnected');
+  state.physicals[0]!.resolve();
+});
+
+it('explicit Connect resumes a peer-closed wait using its existing endpoint', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  const owner = state.owners[0]!, next = Promise.withResolvers<RpcLink>();
+  const originalNext = vi.mocked(owner.next).getMockImplementation(); if (!originalNext) throw new Error('Missing owner opener');
+  vi.mocked(owner.next).mockImplementation(() => next.promise);
+  Object.defineProperty(owner, 'waitingForPeer', { value: true, configurable: true });
+  vi.mocked(owner.resume).mockImplementation(async () => {
+    Object.defineProperty(owner, 'waitingForPeer', { value: false, configurable: true });
+    next.resolve(await originalNext({ signal: new AbortController().signal }));
+  });
+  const { RpcPeerClosedError } = await import('./persistent-link');
+  state.logicals[0]!.end.resolve({ error: new RpcPeerClosedError() });
+  // The peer-close transport owns its bounded ACK drain; the manager must not abort it.
+  await Promise.resolve(); await Promise.resolve();
+  expect(state.logicals[0]!.abort).not.toHaveBeenCalled();
+  state.links[0]!.close();
+  await vi.waitFor(() => expect(owner.next).toHaveBeenCalledOnce());
+  expect(state.manager.list()[0]?.recoveryStatus).toBe('waiting-peer');
+  await state.manager.connect({ id: record.id });
+  expect(owner.resume).toHaveBeenCalledOnce(); expect(state.dependencies.open).toHaveBeenCalledOnce();
+  expect(state.manager.list()[0]?.phase).toBe('connected');
+  state.physicals[0]!.resolve(); await state.manager.disconnect({ id: record.id });
+});
+
+it('a later manual stop wins an explicit resume awaiting its old close window', async () => {
+  const state = persistentFixture();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  const owner = state.owners[0]!, resumed = Promise.withResolvers<void>();
+  Object.defineProperty(owner, 'waitingForPeer', { value: true, configurable: true });
+  vi.mocked(owner.resume).mockImplementation(() => resumed.promise);
+  const connecting = state.manager.connect({ id: record.id }), rejected = expect(connecting).rejects.toThrow('superseded');
+  const stopped = state.manager.disconnect({ id: record.id });
+  state.physicals[0]!.resolve(); resumed.resolve(); await stopped; await rejected;
+  expect(state.manager.list()[0]?.desiredConnection).toBe('disconnected'); expect(state.dependencies.open).toHaveBeenCalledOnce();
+});

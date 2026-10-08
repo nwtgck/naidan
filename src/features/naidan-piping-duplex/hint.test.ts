@@ -18,7 +18,7 @@ it.each(['retired', 'failed'] as const)('a compatible offer cancels the sole hin
   const room = new Uint8Array(32).fill(4), owner = new Uint8Array(16).fill(5), stop = new AbortController();
   const offerRoute = await rendezvousRoute({ room, kind: 'offer', attempts: [] });
   const bad = encodeDiscovery({ kind: 'offer', attemptI: new Uint8Array(32).fill(1), publicData: new Uint8Array() });
-  new DataView(bad.buffer).setUint32(9, 0x80000002, true);
+  new DataView(bad.buffer).setUint32(9, 0x80000003, true);
   const good = encodeDiscovery({ kind: 'offer', attemptI: new Uint8Array(32).fill(2), publicData: new Uint8Array([9]) });
   const canceled = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), replyEntered = Promise.withResolvers<Uint8Array>();
   let receives = 0, posts = 0, active = 0; const cleanup = new Error('Hint retirement unconfirmed');
@@ -149,7 +149,7 @@ it('a failed optional hint POST cannot poison later compatible discovery', async
   const stop = new AbortController(), room = new Uint8Array(32), owner = new Uint8Array(16).fill(5);
   const offerRoute = await rendezvousRoute({ room, kind: 'offer', attempts: [] });
   const bad = encodeDiscovery({ kind: 'offer', attemptI: new Uint8Array(32).fill(1), publicData: new Uint8Array() });
-  new DataView(bad.buffer).setUint32(9, 0x80000002, true);
+  new DataView(bad.buffer).setUint32(9, 0x80000003, true);
   const good = encodeDiscovery({ kind: 'offer', attemptI: new Uint8Array(32).fill(2), publicData: new Uint8Array() });
   let reads = 0, hints = 0; const reply = Promise.withResolvers<Uint8Array>();
   const endpoint: FiniteTransport = {

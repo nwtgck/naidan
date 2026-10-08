@@ -231,7 +231,34 @@ it('AEAD associated data contains the complete selected header, kind and record 
   if (!(aad instanceof Uint8Array)) throw new Error('Expected owned record associated data');
   expect(aad.slice(-22)).toEqual(capsule.slice(0, 22));
   const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
-  const wrong = capsule.slice(); new DataView(wrong.buffer).setUint32(9, 0x80000002, true);
+  const wrong = capsule.slice(); new DataView(wrong.buffer).setUint32(9, 0x80000003, true);
   expect(await rx.accept({ capsule: wrong, apply: () => undefined })).toBe('unauthenticated'); expect(decrypt).not.toHaveBeenCalled();
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
+});
+
+it('fits the maximum current snapshot plus all lifecycle controls inside one peer envelope', async () => {
+  const { encodePeerEnvelope, decodePeerEnvelope } = await import('./peer-envelope');
+  const { tx, rx } = await codecs();
+  const finished = new Uint8Array(8192), reset = new Uint8Array(8192); finished[8191] = 128; reset[8191] = 64;
+  const body = encodeRecordPayload({
+    payload: {
+      receiptRequest: 'requested',
+      receivedRecord: 0n,
+      challenge: new Uint8Array(32),
+      echo: new Uint8Array(32),
+      control: { ready: true, close: new Uint8Array(32), closeAck: new Uint8Array(32) },
+      snapshot: {
+        goaway: false,
+        finished,
+        reset,
+        states: Array.from({ length: 32 }, (_, id) => ({ id, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n })),
+        data: [0, 2].map(id => ({ id, offset: 0n, bytes: new Uint8Array(16384) })),
+      },
+    },
+  });
+  const capsule = await tx.seal({ plaintext: body }); expect(capsule.length).toBe(50221);
+  const envelope = encodePeerEnvelope({ envelope: { kind: 'routed', channel: 'c'.repeat(96), route: 'r'.repeat(96), body: new Uint8Array(capsule) } });
+  expect(envelope.length).toBeLessThanOrEqual(65536);
+  const decoded = decodePeerEnvelope({ bytes: envelope }); if (decoded?.kind !== 'routed') throw new Error('Missing routed record');
+  expect(await rx.accept({ capsule: decoded.body, apply: () => undefined })).toBe('accepted');
 });

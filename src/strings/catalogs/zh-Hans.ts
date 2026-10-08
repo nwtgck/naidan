@@ -139,6 +139,7 @@ import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/zh-Han
 import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/zh-Hans';
 import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/zh-Hans';
 import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/zh-Hans';
+import { naidanRpc__checking_response } from '@/strings/messages/naidanRpc__checking_response/zh-Hans';
 import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/zh-Hans';
 import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/zh-Hans';
 import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/zh-Hans';
@@ -5411,6 +5412,7 @@ export const catalog = {
   naidanRpc__disconnect,
   naidanRpc__disconnected,
   naidanRpc__connecting,
+  naidanRpc__checking_response,
   naidanRpc__connected,
   naidanRpc__stopping,
   naidanRpc__temporary,

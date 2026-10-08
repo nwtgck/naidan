@@ -139,6 +139,7 @@ import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/es';
 import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/es';
 import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/es';
 import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/es';
+import { naidanRpc__checking_response } from '@/strings/messages/naidanRpc__checking_response/es';
 import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/es';
 import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/es';
 import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/es';
@@ -5410,6 +5411,7 @@ export const catalog = {
   naidanRpc__disconnect,
   naidanRpc__disconnected,
   naidanRpc__connecting,
+  naidanRpc__checking_response,
   naidanRpc__connected,
   naidanRpc__stopping,
   naidanRpc__temporary,

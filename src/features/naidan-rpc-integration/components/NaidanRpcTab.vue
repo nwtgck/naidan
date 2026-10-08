@@ -166,11 +166,18 @@ async function toggleConnectOnStartup({ event }: { event: Event }): Promise<void
     },
   });
 }
-function phaseLabel({ phase }: { phase: RpcConnectionPhase }): string | undefined {
+function phaseLabel({ phase, health }: { phase: RpcConnectionPhase; health: RpcRegistrationView['health'] }): string | undefined {
   switch (phase) {
   case 'disconnected': return lazyStrings.naidanRpc__disconnected();
   case 'connecting': return lazyStrings.naidanRpc__connecting();
-  case 'connected': return lazyStrings.naidanRpc__connected();
+  case 'connected': {
+    const state = health?.state;
+    switch (state) {
+    case 'checking': return lazyStrings.naidanRpc__checking_response();
+    case 'healthy': case undefined: return lazyStrings.naidanRpc__connected();
+    default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+    }
+  }
   case 'stopping': return lazyStrings.naidanRpc__stopping();
   default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
   }
@@ -197,7 +204,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 :aria-pressed="selected === view.registration.id && !adding"
                 :tw-class="['w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50', selected === view.registration.id && !adding ? 'border-blue-100 bg-white text-blue-600 shadow-sm dark:border-blue-900/50 dark:bg-gray-800 dark:text-blue-400' : 'border-transparent text-gray-600 hover:bg-white/70 dark:text-gray-400 dark:hover:bg-gray-800/50']">
           <span tw-class="block truncate text-sm font-bold">{{ view.registration.label }}</span>
-          <span tw-class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" :tw-class="['h-1.5 w-1.5 rounded-full', view.phase === 'connected' ? 'bg-emerald-500' : view.phase === 'connecting' || view.phase === 'stopping' ? 'bg-amber-500' : 'bg-gray-400']"></span>{{ phaseLabel({ phase: view.phase }) }}</span>
+          <span tw-class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" :tw-class="['h-1.5 w-1.5 rounded-full', view.phase === 'connected' && view.health?.state !== 'checking' ? 'bg-emerald-500' : view.phase === 'connecting' || view.phase === 'stopping' || view.health?.state === 'checking' ? 'bg-amber-500' : 'bg-gray-400']"></span>{{ phaseLabel({ phase: view.phase, health: view.health }) }}</span>
         </button>
         <p v-if="!views.length" tw-class="px-1 pb-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.naidanRpc__no_connections() }}</p>
       </aside>
@@ -219,11 +226,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </template>
         <template v-else-if="current">
           <div tw-class="space-y-3 rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
-            <div tw-class="flex flex-wrap items-center justify-between gap-3"><h3 tw-class="min-w-0 break-words text-sm font-bold text-gray-800 dark:text-white">{{ current.registration.label }}</h3><span :tw-class="['rounded-lg px-2.5 py-1 text-xs font-medium', current.phase === 'connected' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300']">{{ phaseLabel({ phase: current.phase }) }}</span></div>
+            <div tw-class="flex flex-wrap items-center justify-between gap-3"><h3 tw-class="min-w-0 break-words text-sm font-bold text-gray-800 dark:text-white">{{ current.registration.label }}</h3><span data-testid="rpc-connection-state" :tw-class="['rounded-lg px-2.5 py-1 text-xs font-medium', current.phase === 'connected' && current.health?.state !== 'checking' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : current.health?.state === 'checking' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300']">{{ phaseLabel({ phase: current.phase, health: current.health }) }}</span></div>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ current.persistence === 'saved' ? lazyStrings.naidanRpc__saved() : lazyStrings.naidanRpc__temporary() }}</p>
             <p v-if="current.phase === 'disconnected' && current.desiredConnection === 'connected' && current.recoveryStatus === 'ready'" role="status" data-testid="rpc-maintaining" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.naidanRpc__connecting() }}</p>
             <p v-if="current.failure" tw-class="text-sm text-amber-700 dark:text-amber-300">{{ current.failure }}</p>
-            <button v-if="current.phase === 'disconnected'" type="button" :disabled="busy" @click="action({ run: connect })" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50" data-testid="rpc-connect">{{ lazyStrings.naidanRpc__connect() }}</button>
+            <button v-if="current.phase === 'disconnected' || current.recoveryStatus === 'waiting-peer'" type="button" :disabled="busy" @click="action({ run: connect })" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50" data-testid="rpc-connect">{{ lazyStrings.naidanRpc__connect() }}</button>
             <button v-if="current.phase !== 'disconnected' || current.desiredConnection === 'connected'" type="button" @click="disconnectSafely" tw-class="rounded-xl border border-red-100 bg-white px-4 py-2.5 text-sm font-bold text-red-600 shadow-sm transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-500/20 dark:border-red-900/40 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/20" data-testid="rpc-disconnect">{{ lazyStrings.naidanRpc__disconnect() }}</button>
           </div>
           <div v-if="current.persistence === 'temporary'" tw-class="space-y-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900 shadow-sm dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-100" data-testid="rpc-remember-card">

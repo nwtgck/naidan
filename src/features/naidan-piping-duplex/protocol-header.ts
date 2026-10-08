@@ -1,6 +1,6 @@
 /** The preamble is independent of payload framing and does not authenticate a peer. */
 export const PROTOCOL_HEADER_BYTES = 13;
-export const PROTOCOL_VERSION = 0x80000001;
+export const PROTOCOL_VERSION = 0x80000002;
 const MAGIC = [0, 110, 97, 105, 100, 97, 110, 112, 100] as const;
 
 /** These are local observations, never instructions to downgrade or block a peer. */

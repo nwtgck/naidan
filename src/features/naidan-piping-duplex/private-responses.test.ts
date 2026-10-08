@@ -67,7 +67,7 @@ it('interval overdue on resume registers one fresh window at resume, without gra
 it('early and stale timer callbacks cannot extend or cancel a later window', () => {
   const state = fixture(); state.responses.start(); const first = state.responses.challenge()!;
   state.now.monotonic = 1_000; state.now.wall = 1_000; state.timers[0]!.callback();
-  expect(state.timers[1]!.milliseconds).toBe(74_000);
+  expect(state.timers[1]!.milliseconds).toBe(14_000);
   state.responses.accept({ echo: first }); state.now.wall = 16_000; state.timers[2]!.callback();
   const second = state.responses.challenge(); state.timers[0]!.callback(); state.timers[1]!.callback(); state.timers[2]!.callback();
   expect(state.responses.challenge()).toEqual(second); expect(state.onFailure).not.toHaveBeenCalled(); state.responses.retire();
@@ -125,4 +125,28 @@ it('failed first-window timer cancellation rejects readiness and cannot create a
   await expect(responses.ready).rejects.toBe(cleanup); expect(scheduled).toHaveBeenCalledOnce();
   expect(state.onFailure).toHaveBeenCalledExactlyOnceWith({ error: cleanup });
   expect(() => responses.retire()).toThrow(cleanup); state.responses.retire();
+});
+
+it('health observers cannot throw into protocol state or leave timers after a reentrant stop', async () => {
+  const state = fixture(), stopped = new Error('Observer stopped its owner');
+  state.responses.subscribe({
+    listener: ({ state: health }) => {
+      if (health === 'checking') {
+        state.responses.stop({ error: stopped }); throw new Error('Observer render failed');
+      }
+    },
+  });
+  state.responses.start(); state.now.monotonic = 15000; state.now.wall = 15000;
+  expect(() => state.timers[0]!.callback()).not.toThrow();
+  await expect(state.responses.ready).rejects.toBe(stopped);
+  expect(state.timers).toHaveLength(1); expect(state.onFailure).not.toHaveBeenCalled(); state.responses.retire();
+});
+
+it('a warning is observational and never extends the immutable response deadline', async () => {
+  const state = fixture(), observed: string[] = [];
+  state.responses.subscribe({ listener: ({ state }) => observed.push(state) }); state.responses.start();
+  state.now.monotonic = 15000; state.now.wall = 15000; state.timers[0]!.callback();
+  expect(observed).toEqual(['healthy', 'checking']); expect(state.timers[1]!.milliseconds).toBe(60000);
+  state.now.monotonic = 75000; state.now.wall = 75000; state.timers[1]!.callback();
+  await expect(state.responses.ready).rejects.toBeInstanceOf(ResponseUnconfirmedError); expect(state.onFailure).toHaveBeenCalledOnce(); state.responses.retire();
 });

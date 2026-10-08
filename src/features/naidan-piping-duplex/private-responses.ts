@@ -15,6 +15,21 @@ export class PrivateResponses {
   private readonly onFailure: ({ error }: { error: unknown }) => void;
   private pending: Pending | undefined;
   private next: Deadline | undefined;
+  private warning: Deadline | undefined;
+  private health: 'healthy' | 'checking' = 'healthy';
+  private listener: (({ state }: { state: 'healthy' | 'checking' }) => void) | undefined;
+  subscribe({ listener }: { listener({ state }: { state: 'healthy' | 'checking' }): void }): void {
+    this.listener = listener; try {
+      listener({ state: this.health });
+    } catch { /* Observers do not own protocol state. */ }
+  }
+  private setHealth({ state }: { state: 'healthy' | 'checking' }): void {
+    if (this.health !== state) {
+      this.health = state; try {
+        this.listener?.({ state });
+      } catch { /* Observers do not own protocol state. */ }
+    }
+  }
   private timer: { identity: object; cancel(): void } | undefined;
   private started = false;
   private stopped: { error: unknown } | undefined;
@@ -76,8 +91,11 @@ export class PrivateResponses {
         if (remaining > 0) {
           this.schedule({ deadline }); return;
         }
-        if (this.pending?.deadline === deadline) this.fail({ error: new ResponseUnconfirmedError() });
+        if (this.pending && this.remaining({ deadline: this.pending.deadline }) <= 0) this.fail({ error: new ResponseUnconfirmedError() });
         else if (this.next === deadline) this.register();
+        else if (this.warning === deadline && this.pending) {
+          this.warning = undefined; this.setHealth({ state: 'checking' }); if (!this.stopped && this.pending) this.schedule({ deadline: this.pending.deadline });
+        }
       } catch (error) {
         this.fail({ error });
       }
@@ -89,7 +107,8 @@ export class PrivateResponses {
     const token = crypto.getRandomValues(new Uint8Array(32));
     const deadline = this.deadline({ milliseconds: this.policy.responseTimeoutMs });
     this.pending = { token, deadline }; this.next = undefined;
-    this.schedule({ deadline }); this.wake();
+    this.warning = this.policy.intervalMs < this.policy.responseTimeoutMs ? this.deadline({ milliseconds: this.policy.intervalMs }) : undefined;
+    this.schedule({ deadline: this.warning ?? deadline }); this.wake();
   }
   start(): void {
     if (this.started || this.stopped) throw new Error('Response owner already started or stopped');
@@ -117,7 +136,7 @@ export class PrivateResponses {
     this.check();
     const pending = this.pending;
     if (pending && echo !== undefined && sameToken({ left: pending.token, right: echo })) {
-      this.pending = undefined;
+      this.pending = undefined; this.warning = undefined; this.setHealth({ state: 'healthy' }); if (this.stopped) return;
       const cleanup = this.clearTimer();
       if (cleanup) {
         this.fail({ error: cleanup.error }); throw cleanup.error;
@@ -133,7 +152,7 @@ export class PrivateResponses {
 
   stop({ error }: { error: unknown }): void {
     if (this.stopped) return;
-    this.stopped = { error }; this.pending = undefined; this.next = undefined;
+    this.stopped = { error }; this.pending = undefined; this.next = undefined; this.warning = undefined;
     this.clearTimer(); this.first.reject(error);
   }
   retire(): void {

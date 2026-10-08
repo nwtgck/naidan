@@ -50,6 +50,7 @@ function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcRe
     phase,
     desiredConnection: phase === 'disconnected' ? 'disconnected' : 'connected',
     recoveryStatus: 'ready',
+    health: undefined,
     persistence,
     registryPersistence: persistence === 'saved' ? 'durable' : undefined,
     access: { effective: [], desired: [], saved: [], revision: 0, persistence },
@@ -348,4 +349,25 @@ it('blocked desired connections keep explicit revalidation and stop actions with
   const wrapper = panel(); await flushPromises();
   expect(wrapper.find('[data-testid="rpc-connect"]').exists()).toBe(true); expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(false); expect(wrapper.text()).toContain('Authority must be checked');
+});
+
+it('shows the owner-provided response warning and recovers without a UI timer or reconnect', async () => {
+  fixture.rows = [{ ...row({ phase: 'connected', persistence: 'saved' }), health: { state: 'healthy' } }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'checking' } }];
+  for (const listener of fixture.listeners) listener(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__checking_response');
+  fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'healthy' } }];
+  for (const listener of fixture.listeners) listener(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.disconnect).not.toHaveBeenCalled();
+});
+
+it('keeps an explicit Connect action available while waiting after a peer close', async () => {
+  fixture.rows = [{ ...row({ phase: 'connecting', persistence: 'saved' }), recoveryStatus: 'waiting-peer' }];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-connect"]').trigger('click'); await flushPromises();
+  expect(fixture.connect).toHaveBeenCalledOnce();
+  expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true);
 });

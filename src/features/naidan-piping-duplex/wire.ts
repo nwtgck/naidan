@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { snapshotSchema } from '@/features/naidan-piping-duplex/schemas';
 import { RECORD_PLAINTEXT_BYTES, MAX_OFFSET, SEGMENT_BYTES, ownBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
 export type StreamState = {
@@ -19,7 +20,14 @@ export type Snapshot = {
     states: StreamState[];
     data: Segment[];
 };
+const peerControlSchema = z.strictObject({
+  ready: z.boolean(),
+  close: z.instanceof(Uint8Array).refine(bytes => bytes.byteLength === 32 && bytes.buffer instanceof ArrayBuffer).optional(),
+  closeAck: z.instanceof(Uint8Array).refine(bytes => bytes.byteLength === 32 && bytes.buffer instanceof ArrayBuffer).optional(),
+});
+export type PeerControl = z.infer<typeof peerControlSchema>;
 export type RecordPayload = {
+    control?: PeerControl;
     receiptRequest: 'requested' | 'not-requested';
     receivedRecord: bigint | undefined;
     snapshot: Snapshot;
@@ -149,19 +157,27 @@ export function decodeSnapshot({ bytes }: {
 
 /** Receipt metadata shares the existing record authentication and size budget. */
 export function encodeRecordPayload({ payload }: { payload: RecordPayload }): Uint8Array {
-  const { receiptRequest, receivedRecord, snapshot, challenge, echo, ...rest } = payload;
+  const { receiptRequest, receivedRecord, snapshot, challenge, echo, control, ...rest } = payload;
   rest satisfies Record<PropertyKey, never>;
   requireValue({ condition: receivedRecord === undefined || (receivedRecord >= 0n && receivedRecord <= MAX_OFFSET), message: 'Receipt number range' });
   for (const token of [challenge, echo]) requireValue({ condition: token === undefined || (token instanceof Uint8Array && token.buffer instanceof ArrayBuffer && token.byteLength === 32), message: 'Response token length' });
+  const checkedControl = control === undefined ? undefined : peerControlSchema.parse(control);
+  const controlBytes = checkedControl === undefined ? 0 : 1 + (checkedControl.close === undefined ? 0 : 32) + (checkedControl.closeAck === undefined ? 0 : 32);
   const body = encodeSnapshot({ snapshot });
-  const headerBytes = 1 + (receivedRecord === undefined ? 0 : 8) + (challenge === undefined ? 0 : 32) + (echo === undefined ? 0 : 32);
+  const headerBytes = 1 + (receivedRecord === undefined ? 0 : 8) + (challenge === undefined ? 0 : 32) + (echo === undefined ? 0 : 32) + controlBytes;
   requireValue({ condition: headerBytes + body.length <= RECORD_PLAINTEXT_BYTES, message: 'Record payload size' });
   const bytes = new Uint8Array(headerBytes + body.length);
-  bytes[0] = (receiptRequested({ request: receiptRequest }) ? 1 : 0) | (receivedRecord === undefined ? 0 : 2) | (challenge === undefined ? 0 : 4) | (echo === undefined ? 0 : 8);
+  bytes[0] = (receiptRequested({ request: receiptRequest }) ? 1 : 0) | (receivedRecord === undefined ? 0 : 2) | (challenge === undefined ? 0 : 4) | (echo === undefined ? 0 : 8) | (checkedControl === undefined ? 0 : 16);
   if (receivedRecord !== undefined) new DataView(bytes.buffer).setBigUint64(1, receivedRecord, false);
   let cursor = receivedRecord === undefined ? 1 : 9;
   for (const token of [challenge, echo]) if (token !== undefined) {
     bytes.set(token, cursor); cursor += 32;
+  }
+  if (checkedControl !== undefined) {
+    bytes[cursor++] = (checkedControl.ready ? 1 : 0) | (checkedControl.close === undefined ? 0 : 2) | (checkedControl.closeAck === undefined ? 0 : 4);
+    for (const token of [checkedControl.close, checkedControl.closeAck]) if (token !== undefined) {
+      bytes.set(token, cursor); cursor += 32;
+    }
   }
   bytes.set(body, headerBytes);
   return bytes;
@@ -169,16 +185,27 @@ export function encodeRecordPayload({ payload }: { payload: RecordPayload }): Ui
 
 export function decodeRecordPayload({ bytes }: { bytes: Uint8Array }): RecordPayload {
   const owned = ownBytes({ bytes, maxBytes: RECORD_PLAINTEXT_BYTES });
-  requireValue({ condition: owned.length >= 1 && (owned[0]! & ~15) === 0, message: 'Receipt flags' });
+  requireValue({ condition: owned.length >= 1 && (owned[0]! & ~31) === 0, message: 'Receipt flags' });
   const hasReceipt = (owned[0]! & 2) !== 0, hasChallenge = (owned[0]! & 4) !== 0, hasEcho = (owned[0]! & 8) !== 0;
-  const headerBytes = 1 + (hasReceipt ? 8 : 0) + (hasChallenge ? 32 : 0) + (hasEcho ? 32 : 0);
+  let headerBytes = 1 + (hasReceipt ? 8 : 0) + (hasChallenge ? 32 : 0) + (hasEcho ? 32 : 0);
   requireValue({ condition: owned.length >= headerBytes + HEADER_BYTES, message: 'Truncated receipt' });
   const receivedRecord = !hasReceipt ? undefined : new DataView(owned.buffer).getBigUint64(1, false);
   requireValue({ condition: receivedRecord === undefined || receivedRecord <= MAX_OFFSET, message: 'Receipt number range' });
   let cursor = hasReceipt ? 9 : 1;
   const challenge = hasChallenge ? owned.slice(cursor, cursor + 32) : undefined; if (hasChallenge) cursor += 32;
-  const echo = hasEcho ? owned.slice(cursor, cursor + 32) : undefined;
+  const echo = hasEcho ? owned.slice(cursor, cursor + 32) : undefined; if (hasEcho) cursor += 32;
+  let control: PeerControl | undefined;
+  if ((owned[0]! & 16) !== 0) {
+    const flags = owned[cursor++];
+    requireValue({ condition: flags !== undefined && (flags & ~7) === 0, message: 'Peer control flags' });
+    const close = (flags! & 2) !== 0 ? owned.slice(cursor, cursor + 32) : undefined; if (close !== undefined) cursor += 32;
+    const closeAck = (flags! & 4) !== 0 ? owned.slice(cursor, cursor + 32) : undefined; if (closeAck !== undefined) cursor += 32;
+    control = peerControlSchema.parse({ ready: (flags! & 1) !== 0, close, closeAck });
+    headerBytes = cursor;
+    requireValue({ condition: owned.length >= headerBytes + HEADER_BYTES, message: 'Truncated peer control' });
+  }
   return {
+    ...(control === undefined ? {} : { control }),
     challenge,
     echo,
     receiptRequest: (owned[0]! & 1) === 0 ? 'not-requested' : 'requested',

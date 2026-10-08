@@ -1,3 +1,4 @@
+import type { PeerControl, Snapshot } from './wire';
 import { PrivateResponses } from '@/features/naidan-piping-duplex/private-responses';
 import type { LivenessPolicy } from '@/features/naidan-piping-duplex/private-responses';
 import { systemResponseClock } from '@/features/naidan-piping-duplex/response-window';
@@ -26,6 +27,21 @@ export type PreparedTransmission = {
   start({ onReceived }: { onReceived(): void }): () => void;
 };
 export class StreamSession {
+  private responseHealthListener: (({ state }: { state: 'healthy' | 'checking' }) => void) | undefined;
+  subscribeResponseHealth({ listener }: { listener({ state }: { state: 'healthy' | 'checking' }): void }): void {
+    this.responseHealthListener = listener;
+  }
+  private peerControls: { snapshot(): PeerControl; validate({ control, snapshot }: { control: PeerControl | undefined; snapshot: Snapshot }): boolean; accept({ control }: { control: PeerControl | undefined }): void } | undefined;
+  setPeerControls({ policy }: { policy: NonNullable<StreamSession['peerControls']> }): void {
+    requireValue({ condition: this.peerControls === undefined, message: 'Peer controls already owned' }); this.peerControls = policy;
+  }
+  stopApplication(): void {
+    this.internalMachine.abort(); this.internalNotify();
+  }
+  controlChanged(): void {
+    this.internalTransportPulse.fire();
+  }
+
   private internalMachine: Machine;
   private internalPulse = new Pulse();
   private internalTransportPulse = new Pulse();
@@ -348,6 +364,7 @@ export class StreamSession {
       },
     });
     this.internalResponses = responses;
+    responses.subscribe({ listener: ({ state }) => this.responseHealthListener?.({ state }) });
     responses.start();
   }
   retireResponses(): void {
@@ -371,10 +388,10 @@ export class StreamSession {
       const snapshot = fullSnapshot ? this.internalMachine.snapshot()
         : this.internalMachine.receiptSnapshot();
       const receiptRequest = fullSnapshot ? 'requested' : 'not-requested';
-      const challenge = this.internalResponses?.challenge(), echo = this.internalEcho?.slice();
+      const challenge = this.internalResponses?.challenge(), echo = this.internalEcho?.slice(), control = this.peerControls?.snapshot();
       const number = this.internalSend.next;
       const receivedRecord = this.internalReceive.high < 0n ? undefined : this.internalReceive.high;
-      const bytes = await this.internalSend.seal({ plaintext: encodeRecordPayload({ payload: { snapshot, receiptRequest, receivedRecord, challenge, echo } }) });
+      const bytes = await this.internalSend.seal({ plaintext: encodeRecordPayload({ payload: { snapshot, receiptRequest, receivedRecord, challenge, echo, ...(control === undefined ? {} : { control }) } }) });
       this.internalCheckSession();
       let started = false;
       return {
@@ -406,15 +423,17 @@ export class StreamSession {
     }): Promise<'accepted' | 'stale' | 'unauthenticated'> {
     this.internalCheckSession();
     try {
-      let changed = false, reply = false, challenge: Uint8Array | undefined, echo: Uint8Array | undefined;
+      let changed = false, reply = false, challenge: Uint8Array | undefined, echo: Uint8Array | undefined, control: PeerControl | undefined;
       const outcome = await this.internalReceive.accept({
         capsule,
-        apply: ({ snapshot, receiptRequest, receivedRecord, challenge: incomingChallenge, echo: incomingEcho }) => {
+        apply: ({ snapshot, receiptRequest, receivedRecord, challenge: incomingChallenge, echo: incomingEcho, control: incomingControl }) => {
           this.internalCheckSession();
           // Validate before Machine commits; malformed stream state and receipts
           // must never partially confirm a response or advance offsets.
           requireValue({ condition: receivedRecord === undefined || receivedRecord <= this.internalHighestOffered, message: 'Receipt for an unoffered record' });
-          changed = this.internalMachine.accept({ snapshot });
+          const applyApplication = this.peerControls?.validate({ control: incomingControl, snapshot }) !== false;
+          changed = applyApplication && this.internalMachine.accept({ snapshot });
+          control = incomingControl;
           if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
           reply = receiptRequested({ request: receiptRequest });
           challenge = incomingChallenge; echo = incomingEcho;
@@ -422,6 +441,7 @@ export class StreamSession {
       });
       switch (outcome) {
       case 'accepted': {
+        this.peerControls?.accept({ control });
         // Only after Records commits its authenticated high number can metadata
         // confirm readiness. Malformed snapshots/receipts never reach this point.
         this.internalResponses?.accept({ echo });

@@ -1,5 +1,5 @@
 /** A local decision, never a peer-provided terminal-reason frame. */
-export type NaidanPipingConnectionEndKind = 'local-stop' | 'response-unconfirmed' | 'record-exhausted'
+export type NaidanPipingConnectionEndKind = 'local-stop' | 'peer-closed' | 'response-unconfirmed' | 'record-exhausted'
   | 'authenticated-protocol-error' | 'authentication-budget-exhausted' | 'transport-fatal';
 export type NaidanPipingConnectionEnd = Readonly<{
   kind: NaidanPipingConnectionEndKind;

@@ -6,6 +6,7 @@ import { restrictedFetchHeadersSchema } from '@/utils/restricted-fetch-headers';
 import { ascii, ownBytes } from '@/features/naidan-piping-duplex/bytes';
 import { startPinnedConnection } from '@/features/naidan-piping-duplex/connection';
 import type { PinnedConnectionTask } from '@/features/naidan-piping-duplex/connection';
+import type { FiniteTransport } from './finite';
 import { FiniteEndpoint } from '@/features/naidan-piping-duplex/finite';
 import type { NaidanPipingKeyContext, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
@@ -45,6 +46,10 @@ const optionsSchema = z.strictObject({
   }),
 });
 
+export function validateDuplexOptions({ piping }: { piping: NaidanPipingDuplexOptions }): NaidanPipingDuplexOptions {
+  const settings = optionsSchema.parse(piping); validatePacing({ pacing: settings.pacing }); return settings;
+}
+
 /** An owned, pinned-peer Piping connection. It does not trust peers based on a short code alone. */
 export class NaidanPipingDuplexSession {
   private readonly streams: StreamSession;
@@ -62,7 +67,7 @@ export class NaidanPipingDuplexSession {
     streams: StreamSession;
     keys: NaidanPipingKeyContext;
     stop: AbortController;
-    endpoint: FiniteEndpoint;
+    endpoint: FiniteTransport;
     pacing: NaidanPipingDuplexPacing;
     bootstrapClosed: Promise<void>;
     signal: AbortSignal;
@@ -133,7 +138,9 @@ export class NaidanPipingDuplexSession {
     void this.closed.catch(() => {});
   }
 
-  private static async connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer, signal, publicHandshakeData, handshakeData }: {
+  private static async connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer, signal, publicHandshakeData, handshakeData, transports, onStreams }: {
+    transports?: { bootstrap: FiniteTransport; traffic: FiniteTransport };
+    onStreams?: ({ streams }: { streams: StreamSession }) => void;
     publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
     piping: NaidanPipingDuplexOptions;
     code: string;
@@ -147,8 +154,7 @@ export class NaidanPipingDuplexSession {
     const privateData = ownBytes({ bytes: handshakeData === undefined ? new Uint8Array() : handshakeData, maxBytes: 463 });
     signal.throwIfAborted();
     // Zod returns a private options snapshot before the first asynchronous boundary.
-    const settings = optionsSchema.parse(piping);
-    validatePacing({ pacing: settings.pacing });
+    const settings = validateDuplexOptions({ piping });
     const localIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
     const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 });
     const endpointOptions = {
@@ -159,8 +165,8 @@ export class NaidanPipingDuplexSession {
       headers: settings.headers,
     };
     // The final handshake flight and application traffic have independent POST ownership.
-    const bootstrapEndpoint = new FiniteEndpoint(endpointOptions);
-    const trafficEndpoint = new FiniteEndpoint(endpointOptions);
+    const bootstrapEndpoint = transports?.bootstrap ?? new FiniteEndpoint(endpointOptions);
+    const trafficEndpoint = transports?.traffic ?? new FiniteEndpoint(endpointOptions);
     const stop = new AbortController();
     const forward = () => stop.abort(signal.reason);
     signal.addEventListener('abort', forward, { once: true });
@@ -191,6 +197,7 @@ export class NaidanPipingDuplexSession {
       keys = established.keys; peerPublicData = established.peerPublicHandshakeData; peerPrivateData = established.peerHandshakeData;
       stop.signal.throwIfAborted();
       streams = await StreamSession.create({ keys });
+      onStreams?.({ streams });
       stop.signal.throwIfAborted();
       connection = new NaidanPipingDuplexSession({
         streams,
@@ -240,6 +247,15 @@ export class NaidanPipingDuplexSession {
     }
   }
 
+  /** Internal pinned-peer adapter: virtual transports share one physical mailbox. */
+  static connectWithTransport({ piping, code, role, identity, expectedPeer, signal, publicHandshakeData, handshakeData, transports, onStreams }: {
+    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole; identity: NaidanPipingIdentity;
+    expectedPeer: Uint8Array; signal: AbortSignal; publicHandshakeData: Uint8Array | undefined; handshakeData: Uint8Array | undefined;
+    transports: { bootstrap: FiniteTransport; traffic: FiniteTransport }; onStreams({ streams }: { streams: StreamSession }): void;
+  }): Promise<NaidanPipingDuplexSession> {
+    return this.connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer: undefined, signal, publicHandshakeData, handshakeData, transports, onStreams });
+  }
+
   static connect({ piping, code, role, identity, expectedPeer, signal, publicHandshakeData, handshakeData }: {
     publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
     piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole;
@@ -260,6 +276,9 @@ export class NaidanPipingDuplexSession {
   }
   get peerHandshakeData(): Uint8Array {
     this.stop.signal.throwIfAborted(); return this.privateData.slice();
+  }
+  get contextId(): Uint8Array {
+    return this.keys.contextId;
   }
   get peerIdentity(): Uint8Array {
     return this.keys.peerIdentity;
