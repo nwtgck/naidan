@@ -8,7 +8,9 @@ import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: e21ab5e036cdd3d81b509459f1979b05885d407a.
+// Reviewed browser variant artifact commit: b0e73a15c9704371d1ebff1dc9ba9a0ac24b2cca.
+// Generated browser JavaScript is byte-identical to the previously reviewed artifact.
+// This build includes the MoE direct-slot overlay, but does not activate the tensor-copy experiment.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 const coreHashes = {
   'webgpu-wasm64-jspi': '66934d8af20b38746be1560a20813380e7a05a724989f43ea3c31d1f71ed77b4',
