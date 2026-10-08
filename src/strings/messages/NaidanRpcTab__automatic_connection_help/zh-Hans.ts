@@ -1,1 +1,1 @@
-export const NaidanRpcTab__automatic_connection_help = (): string => "Naidan 启动时恢复此连接，并在意外断开后尝试重新连接。手动断开会暂停此页面的自动连接；重新加载后此设置将再次生效。";
+export const NaidanRpcTab__automatic_connection_help = (): string => "此设置仅在 Naidan 启动时生效，不会改变当前页面的连接或重连尝试。要在此页面停止连接，请选择“断开连接”。";

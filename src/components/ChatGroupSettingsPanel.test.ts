@@ -109,7 +109,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 const globalStubs = {
-  RpcConnectionSelect: true,
+  RpcRegistrationSelect: true,
   'lucide-vue-next': true,
   'LmParametersEditor': {
     name: 'LmParametersEditor',
@@ -146,8 +146,8 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 
 describe('ChatGroupSettingsPanel.vue', () => {
   it('hides disabled RPC choices while preserving existing chat and title references', async () => {
-    mockGroup.endpoint = { type: 'naidan_rpc', connectionId: undefined };
-    mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    mockGroup.endpoint = { type: 'naidan_rpc', registrationId: undefined };
+    mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     try {
       await flushPromises();

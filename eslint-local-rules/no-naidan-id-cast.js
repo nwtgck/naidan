@@ -7,8 +7,8 @@ function isNaidanIdImplementationFile({ filePath }) {
 }
 
 const NAIDAN_ID_TYPES = new Set([
-  'NaidanRpcConnectionId',
-  'NaidanRpcPeerId',
+  'NaidanRpcRegistrationId',
+  'NaidanRpcPeerPublicKey',
   'NaidanRpcRegistryId',
   'ChatId',
   'MessageId',

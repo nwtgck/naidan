@@ -1,14 +1,15 @@
+import { isAvailableRemoteImageEditor } from '@/01-models/image-generation-preferences';
 import { afterEach, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { DEFAULT_SETTINGS, type Settings, type BrowserImageGenerationSettings } from '@/01-models/types';
-import { toNaidanRpcConnectionId, toNaidanRpcPeerId, toBinaryObjectId } from '@/01-models/ids';
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toBinaryObjectId } from '@/01-models/ids';
 import type { RemoteImageModelEditorPreference } from '@/01-models/image-generation-preferences';
 import { createImageForm } from '@/features/image-generation/form';
 import { useImageInferenceLocation } from './use-image-inference-location';
 import { useImageInferencePreferences } from './use-image-inference-preferences';
 
 const rpc = vi.hoisted(() => ({ bind: vi.fn() }));
-vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({
   subscribeRpcState: () => () => {},
   getRpcManager: async () => ({ list: () => [], reload: async () => {}, bindClient: rpc.bind }),
 }));
@@ -20,8 +21,8 @@ afterEach(() => {
 
 function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPreference {
   return {
-    connectionId: toNaidanRpcConnectionId({ raw: `connection-${name}` }),
-    peerId: toNaidanRpcPeerId({ raw: (name === 'one' ? 'B' : 'C').repeat(43) }),
+    registrationId: toNaidanRpcRegistrationId({ raw: `connection-${name}` }),
+    peerPublicKey: toNaidanRpcPeerPublicKey({ raw: (name === 'one' ? 'B' : 'C').repeat(43) }),
     editor: {
       primary: { slot: 'model', file: { location: { kind: 'host', directoryId: 'remote-root', path: 'models/main.gguf' } }, family: 'sd-checkpoint' },
       components: [],
@@ -31,7 +32,7 @@ function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPr
 }
 function saved(): BrowserImageGenerationSettings {
   const one = preference({ name: 'one' });
-  return { width: 768, inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: one.connectionId, peerId: one.peerId } }, remoteModelEditors: [one] };
+  return { width: 768, inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId: one.registrationId, peerPublicKey: one.peerPublicKey } }, remoteModelEditors: [one] };
 }
 function harness({ preferences }: { preferences: BrowserImageGenerationSettings }) {
   const scope = effectScope(); scopes.push(scope);
@@ -88,8 +89,8 @@ it('persists explicit clearing while retaining concurrent settings and another p
   h.inferenceLocation.choosePrimary({ id: '' }); await settle();
   const actual = h.settings.value.experimental?.browserImageGeneration;
   expect(actual).toMatchObject({ width: 768, height: 1024 }); expect(h.settings.value.experimental?.locale).toBe('ja');
-  expect(actual?.remoteModelEditors?.find(item => item.connectionId === preference({ name: 'one' }).connectionId)?.editor.primary).toBeUndefined();
-  expect(actual?.remoteModelEditors?.find(item => item.connectionId === two.connectionId)).toEqual(two);
+  expect(actual?.remoteModelEditors?.filter(isAvailableRemoteImageEditor).find(item => item.registrationId === preference({ name: 'one' }).registrationId)?.editor.primary).toBeUndefined();
+  expect(actual?.remoteModelEditors?.filter(isAvailableRemoteImageEditor).find(item => item.registrationId === two.registrationId)).toEqual(two);
   const reopened = harness({ preferences: actual! }); await settle(); expect(reopened.inferenceLocation.editor.value.primary).toBeUndefined();
 });
 
@@ -128,18 +129,18 @@ it('resumes new provider edits while an obsolete save still owns its cleanup', a
   h.settings.value.experimental = {
     browserImageGeneration: {
       width: 1024,
-      inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId: two.connectionId, peerId: two.peerId } },
+      inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId: two.registrationId, peerPublicKey: two.peerPublicKey } },
       remoteModelEditors: [two],
     },
   };
   await settle(); expect(h.update).toHaveBeenCalledOnce();
-  expect(h.inferenceLocation.connectionId.value).toBe(two.connectionId);
+  expect(h.inferenceLocation.registrationId.value).toBe(two.registrationId);
   h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.9 }); h.inferenceLocation.setKind({ value: 'local' }); await settle();
   gate.resolve(); await settle();
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({
     width: 1024,
     inferenceLocation: { kind: 'local' },
-    remoteModelEditors: [{ connectionId: two.connectionId, editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }],
+    remoteModelEditors: [{ registrationId: two.registrationId, editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }],
   });
   expect(h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors).toHaveLength(1);
   expect(h.update).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
@@ -155,4 +156,19 @@ it('drains accepted edits after leaving the view when storage still belongs to i
   h.inferenceLocation.setKind({ value: 'local' }); await settle();
   h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.9 }); await settle(); h.scope.stop(); gate.resolve(); await settle();
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ inferenceLocation: { kind: 'local' }, remoteModelEditors: [{ editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }] });
+});
+
+it('keeps unavailable editor entries in position while editing a valid peer between them', async () => {
+  const { UnavailableRpcValue } = await import('@/01-models/unavailable-rpc-value');
+  const a = { registrationId: 'old-A', future: { value: [1] } }, c = { registrationId: 'old-C', future: { value: [3] } };
+  const one = preference({ name: 'one' });
+  const h = harness({ preferences: { ...saved(), remoteModelEditors: [{ unavailableRpc: new UnavailableRpcValue({ raw: a }) }, one, { unavailableRpc: new UnavailableRpcValue({ raw: c }) }] } });
+  await settle(); h.inferenceLocation.choosePrimary({ id: '' }); await settle();
+  const values = h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors;
+  expect(values).toHaveLength(3);
+  expect(values?.[0] && !isAvailableRemoteImageEditor(values[0]) && values[0].unavailableRpc.read()).toEqual(a);
+  expect(values?.[2] && !isAvailableRemoteImageEditor(values[2]) && values[2].unavailableRpc.read()).toEqual(c);
+  expect(values?.[1] && isAvailableRemoteImageEditor(values[1]) && values[1].editor.primary).toBeUndefined();
+  expect(h.inferenceLocation.capturePreferences().remoteModelEditors).toHaveLength(3);
+  expect(rpc.bind).not.toHaveBeenCalled();
 });

@@ -21,8 +21,8 @@ function chooseKind({ value }: { value: string }): void {
   default: throw new Error('Unknown image inference location');
   }
 }
-function chooseConnection({ value }: { value: string }): void {
-  props.inferenceLocation.chooseConnection({ id: props.inferenceLocation.entries.value.find(entry => idToRaw({ id: entry.connection.id }) === value)?.connection.id });
+function chooseRegistration({ value }: { value: string }): void {
+  props.inferenceLocation.chooseRegistration({ id: props.inferenceLocation.entries.value.find(entry => idToRaw({ id: entry.registration.id }) === value)?.registration.id });
 }
 function applyConfiguration(): void {
   if (props.disabled) return;
@@ -47,11 +47,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <option v-else-if="inferenceLocation.kind.value === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
     </select>
     <template v-if="inferenceLocation.kind.value === 'naidan_rpc'">
-      <label :for="id + '-connection'" tw-class="block text-xs font-semibold">{{ lazyStrings.naidanRpc__choose_connection() }}</label>
-      <select :id="id + '-connection'" :value="inferenceLocation.connectionKey.value" :disabled="disabled" @change="chooseConnection({ value: ($event.target as HTMLSelectElement).value })" data-testid="image-inference-location-connection" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-40">
+      <label :for="id + '-registration'" tw-class="block text-xs font-semibold">{{ lazyStrings.naidanRpc__choose_connection() }}</label>
+      <select :id="id + '-registration'" :value="inferenceLocation.registrationKey.value" :disabled="disabled" @change="chooseRegistration({ value: ($event.target as HTMLSelectElement).value })" data-testid="image-inference-location-registration" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-40">
         <option value="">{{ lazyStrings.naidanRpc__choose_connection() }}</option>
-        <option v-for="entry in inferenceLocation.entries.value" :key="idToRaw({ id: entry.connection.id })" :value="idToRaw({ id: entry.connection.id })">{{ entry.connection.label }}</option>
-        <option v-if="inferenceLocation.connectionId.value && !inferenceLocation.entries.value.some(entry => entry.connection.id === inferenceLocation.connectionId.value)" :value="inferenceLocation.connectionKey.value" disabled>{{ inferenceLocation.label.value || inferenceLocation.connectionKey.value }}</option>
+        <option v-for="entry in inferenceLocation.entries.value" :key="idToRaw({ id: entry.registration.id })" :value="idToRaw({ id: entry.registration.id })">{{ entry.registration.label }}</option>
+        <option v-if="inferenceLocation.registrationId.value && !inferenceLocation.entries.value.some(entry => entry.registration.id === inferenceLocation.registrationId.value)" :value="inferenceLocation.registrationKey.value" disabled>{{ inferenceLocation.label.value || inferenceLocation.registrationKey.value }}</option>
       </select>
       <p v-if="!enabled" role="status" tw-class="text-xs text-amber-700 dark:text-amber-400">{{ lazyStrings.naidanRpc__enable_first() }}</p>
       <p v-else-if="!inferenceLocation.connected.value" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.ImageInferenceLocation__connect_in_rpc_settings() }}</p>

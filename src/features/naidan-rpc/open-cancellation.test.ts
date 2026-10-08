@@ -19,6 +19,7 @@ function pendingTransport() {
   const openStream = vi.fn(() => opening.promise);
   const transport: NaidanRpcTransport = {
     openStream,
+    ended: new Promise(() => {}),
     closed: new Promise(() => {}),
     incomingStreams: {
       [Symbol.asyncIterator]() {

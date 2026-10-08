@@ -44,6 +44,7 @@ async function pair({ identities, binding }: {
   const signal = AbortSignal.timeout(5000);
   return promiseAllKeyed({
     a: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'initiator',
       identity: a,
       expectedPeer: b.publicKey,
@@ -52,6 +53,7 @@ async function pair({ identities, binding }: {
       signal,
     }),
     b: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'responder',
       identity: b,
       expectedPeer: a.publicKey,
@@ -75,6 +77,8 @@ function codecs({ keys, label }: { keys: { a: NaidanPipingKeyContext; b: NaidanP
 function empty({ goaway }: { goaway: boolean }): Uint8Array {
   return encodeRecordPayload({
     payload: {
+      challenge: undefined,
+      echo: undefined,
       receiptRequest: 'not-requested',
       receivedRecord: undefined,
       snapshot: { goaway, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] },
@@ -125,7 +129,7 @@ it('a forged high record number cannot poison the replay watermark', async () =>
   const keys = await pair({ identities: undefined, binding: undefined });
   const { tx, rx } = codecs({ keys, label: 'test/high-number' });
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
-  const forged = capsule.slice(); new DataView(forged.buffer).setBigUint64(1, (1n << 48n) - 1n, false);
+  const forged = capsule.slice(); new DataView(forged.buffer).setBigUint64(14, (1n << 48n) - 1n, false);
   expect(await rx.accept({
     capsule: forged,
     apply: () => {
@@ -241,7 +245,7 @@ it('a failed encryption burns its record number rather than reusing its nonce', 
   await expect(tx.seal({ plaintext: empty({ goaway: false }) })).rejects.toThrow('Injected');
   expect(tx.next).toBe(1n);
   const capsule = await tx.seal({ plaintext: empty({ goaway: false }) });
-  expect(new DataView(capsule.buffer).getBigUint64(1, false)).toBe(1n);
+  expect(new DataView(capsule.buffer).getBigUint64(14, false)).toBe(1n);
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
   keys.a.dispose(); keys.b.dispose();
 });
@@ -255,6 +259,8 @@ it('authenticated protocol violations reject the runner lifetime instead of look
   const invalid = await sender.seal({
     plaintext: encodeRecordPayload({
       payload: {
+        challenge: undefined,
+        echo: undefined,
         receiptRequest: 'not-requested',
         receivedRecord: undefined,
         snapshot: {
@@ -275,7 +281,7 @@ it('authenticated protocol violations reject the runner lifetime instead of look
       endpoint: { origin: 'https://relay.invalid', send: async () => {}, receive: async () => invalid, repair: async () => {} },
       pacing: { minimumMs: 2, idleResendIntervalMs: 100, retryBaseMs: 10, retryMaximumMs: 100 },
       onEvent: () => {},
-    })).rejects.toThrow('Record processing failed');
+    })).rejects.toThrow('unallocated');
     expect(session.stopped).toBe(true);
   } finally {
     stop.abort(); keys.a.dispose(); keys.b.dispose();

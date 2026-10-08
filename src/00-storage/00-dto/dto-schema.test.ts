@@ -56,16 +56,16 @@ describe('DTO module initialization', () => {
 
       const { SettingsSchemaDtoV2 } = await import('./dto');
       const { ExperimentalImageGenerationTranslationOverrideSchemaDto } = await import('./experimental-image-generation.dto');
-      const connectionId = 'connection-1';
-      const peerId = 'A'.repeat(43);
+      const registrationId = 'connection-1';
+      const peerPublicKey = 'A'.repeat(43);
       const rpcEndpoint = {
         type: 'experimental_type',
-        experimental: { endpoint: { type: 'naidan_rpc', connectionId } },
+        experimental: { endpoint: { type: 'naidan_rpc', registrationId } },
       };
-      const inferenceLocation = { kind: 'naidan_rpc', connection: { connectionId, peerId } };
+      const inferenceLocation = { kind: 'naidan_rpc', registration: { registrationId, peerPublicKey } };
       const remoteModelEditors = [{
-        connectionId,
-        peerId,
+        registrationId,
+        peerPublicKey,
         editor: { primary: undefined, components: [], loras: [] },
       }];
       const settings = SettingsSchemaDtoV2.parse({

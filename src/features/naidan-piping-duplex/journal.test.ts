@@ -26,7 +26,7 @@ it('cumulative journals recover lost flights without replaying delivered handsha
 it('a modified prefix cannot publish a later entry before the entire advertisement validates', async () => {
   const { a, b } = pair();
   await a.send({ bytes: new Uint8Array([7]) }); b.accept({ bytes: a.snapshot() });
-  await a.send({ bytes: new Uint8Array([8]) }); const invalid = a.snapshot(); invalid[71]! ^= 1;
+  await a.send({ bytes: new Uint8Array([8]) }); const invalid = a.snapshot(); invalid[70]! ^= 1;
   expect(() => b.accept({ bytes: invalid })).toThrow('prefix');
   expect(await b.receive({ signal: new AbortController().signal })).toEqual(new Uint8Array([7]));
   const stop = new AbortController(), absent = expect(b.receive({ signal: stop.signal })).rejects.toThrow(); stop.abort(); await absent;
@@ -56,7 +56,7 @@ it('all truncated prefixes and extra suffix bytes are rejected atomically', asyn
   b.accept({ bytes: valid }); expect(await b.receive({ signal: new AbortController().signal })).toEqual(new Uint8Array([9, 8]));
 });
 
-it.each([0, 1, 2, 34, 66, 67, 68, 69, 70])('journal envelope byte %s cannot alter direction, binding, count, index, phase or size', async at => {
+it.each([0, 1, 33, 65, 66, 67, 68, 69])('journal envelope byte %s cannot alter direction, binding, count, index, phase or size', async at => {
   const { a, b } = pair(); await a.send({ bytes: new Uint8Array([6]) }); const valid = a.snapshot();
   const changed = valid.slice(); changed[at]! ^= 32;
   expect(() => b.accept({ bytes: changed })).toThrow();

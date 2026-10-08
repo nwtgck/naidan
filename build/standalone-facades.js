@@ -2,7 +2,7 @@ export const STANDALONE_FACADES = [
   { facadePath: '@/features/image-generation/providers/local-environment', standalonePath: 'src/features/image-generation/providers/local-environment-standalone.ts' },
   { facadePath: '@/features/image-generation/history/worker/client', standalonePath: 'src/features/image-generation/history/worker/client-standalone.ts' },
   { facadePath: '@/features/image-generation/session/query-worker/client', standalonePath: 'src/features/image-generation/session/query-worker/client-standalone.ts' },
-  { facadePath: '@/features/naidan-peer-rpc/handlers/inference/resources-factory', standalonePath: 'src/features/naidan-peer-rpc/handlers/inference/resources-standalone.ts' },
+  { facadePath: '@/features/naidan-rpc-integration/handlers/inference/resources-factory', standalonePath: 'src/features/naidan-rpc-integration/handlers/inference/resources-standalone.ts' },
   { facadePath: '@/features/image-generation/components/ImageGenerationTranslationDefaults.vue', standalonePath: 'src/features/image-generation/components/ImageGenerationTranslationUnavailable.vue' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/use-image-benchmark', standalonePath: 'src/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone.ts' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/worker/client', standalonePath: 'src/features/stable-diffusion-cpp-browser/worker/client-standalone.ts' },

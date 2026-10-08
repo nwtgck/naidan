@@ -30,7 +30,7 @@ async function receiver() {
 it('receipt metadata has an independent canonical byte layout within the existing record budget', () => {
   for (const receiptRequest of ['requested', 'not-requested'] as const) {
     for (const receivedRecord of [undefined, 0n, 42n, MAX_OFFSET]) {
-      const payload = { snapshot: emptySnapshot(), receiptRequest, receivedRecord };
+      const payload = { challenge: undefined, echo: undefined, snapshot: emptySnapshot(), receiptRequest, receivedRecord };
       const bytes = encodeRecordPayload({ payload });
       const reference = new Uint8Array(Buffer.from(
         `${receiptRequest === 'requested' ? (receivedRecord === undefined ? '01' : '03') : (receivedRecord === undefined ? '00' : '02')}`
@@ -43,17 +43,16 @@ it('receipt metadata has an independent canonical byte layout within the existin
   for (const bytes of [new Uint8Array(), new Uint8Array([4]), new Uint8Array([2, 0]), new Uint8Array(CAPSULE_BYTES)]) {
     expect(() => decodeRecordPayload({ bytes })).toThrow();
   }
-  expect(() => encodeRecordPayload({ payload: { snapshot: emptySnapshot(), receiptRequest: 'requested', receivedRecord: MAX_OFFSET + 1n } })).toThrow();
+  expect(() => encodeRecordPayload({ payload: { challenge: undefined, echo: undefined, snapshot: emptySnapshot(), receiptRequest: 'requested', receivedRecord: MAX_OFFSET + 1n } })).toThrow();
 });
 
 it('a fresh round trip completes before HTTP EOF and receipt-only responses do not request another response', async () => {
-  const { a, b } = await sessionPair(), started = vi.fn(), received = vi.fn();
-  const confirmation = a.confirmResponse({ signal: new AbortController().signal, onRequestStarted: started });
+  const { a, b } = await sessionPair(), received = vi.fn();
+  a.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+  const confirmation = a.firstResponse;
   const request = await a.makeCapsule({ reason: 'update' });
-  expect(started).not.toHaveBeenCalled();
   const release = request.start({ onReceived: received });
   try {
-    expect(started).toHaveBeenCalledOnce();
     await b.acceptCapsule({ capsule: request.bytes });
     expect(received).not.toHaveBeenCalled();
     await deliver({ from: b, to: a, reason: 'update' });
@@ -79,15 +78,14 @@ it('old successful receipts and stale encrypted records cannot complete a later 
   await a.acceptCapsule({ capsule: old.bytes }); release();
   await deliver({ from: a, to: b, reason: 'update' });
   let completed = false;
-  const started = vi.fn();
-  const confirmation = a.confirmResponse({ signal: new AbortController().signal, onRequestStarted: started }).then(() => {
+  a.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+  const confirmation = a.firstResponse.then(() => {
     completed = true;
   });
   expect(await a.acceptCapsule({ capsule: old.bytes })).toBe('stale');
   await deliver({ from: b, to: a, reason: 'update' });
-  expect(completed).toBe(false); expect(started).not.toHaveBeenCalled();
+  expect(completed).toBe(false);
   await deliver({ from: a, to: b, reason: 'update' });
-  expect(started).toHaveBeenCalledOnce();
   await deliver({ from: b, to: a, reason: 'update' });
   await confirmation;
   expect(completed).toBe(true);
@@ -101,17 +99,17 @@ it('a confirmation created during encryption requires the next offered record', 
   });
   const preparing = a.makeCapsule({ reason: 'idle-resend' });
   await entered.promise;
-  const started = vi.fn(); let completed = false;
-  const confirmation = a.confirmResponse({ signal: new AbortController().signal, onRequestStarted: started }).then(() => {
+  let completed = false;
+  a.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+  const confirmation = a.firstResponse.then(() => {
     completed = true;
   });
   resume.resolve();
   const earlier = await preparing, release = earlier.start({ onReceived: () => {} });
   await b.acceptCapsule({ capsule: earlier.bytes }); release();
   await deliver({ from: b, to: a, reason: 'update' });
-  expect(started).not.toHaveBeenCalled(); expect(completed).toBe(false);
+  expect(completed).toBe(false);
   await deliver({ from: a, to: b, reason: 'update' });
-  expect(started).toHaveBeenCalledOnce();
   await deliver({ from: b, to: a, reason: 'update' });
   await confirmation;
 });
@@ -125,8 +123,9 @@ it('a request arriving during encryption retains its wake and is acknowledged by
   const revision = a.transportRevision;
   const preparing = a.makeCapsule({ reason: 'idle-resend' });
   await entered.promise;
-  const started = vi.fn(); let completed = false;
-  const confirmation = b.confirmResponse({ signal: new AbortController().signal, onRequestStarted: started }).then(() => {
+  let completed = false;
+  b.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+  const confirmation = b.firstResponse.then(() => {
     completed = true;
   });
   await deliver({ from: b, to: a, reason: 'update' });
@@ -137,7 +136,6 @@ it('a request arriving during encryption retains its wake and is acknowledged by
   expect(completed).toBe(false);
   await deliver({ from: a, to: b, reason: 'update' });
   await confirmation;
-  expect(started).toHaveBeenCalledOnce();
 });
 
 it('an authenticated receipt for a prepared but unoffered record cannot apply its accompanying stream state', async () => {
@@ -146,6 +144,8 @@ it('an authenticated receipt for a prepared but unoffered record cannot apply it
   const capsule = await sender.seal({
     plaintext: encodeRecordPayload({
       payload: {
+        challenge: undefined,
+        echo: undefined,
         receiptRequest: 'not-requested',
         receivedRecord: 0n,
         snapshot: { ...emptySnapshot(), states: [{ id: 1, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
@@ -157,15 +157,18 @@ it('an authenticated receipt for a prepared but unoffered record cannot apply it
 });
 
 it('invalid stream semantics cannot confirm an otherwise valid receipt', async () => {
-  const { session, sender } = await receiver(), started = vi.fn(), received = vi.fn();
-  const confirmation = session.confirmResponse({ signal: new AbortController().signal, onRequestStarted: started });
-  const rejected = expect(confirmation).rejects.toThrow('Record processing failed');
+  const { session, sender } = await receiver(), received = vi.fn();
+  session.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+  const confirmation = session.firstResponse;
+  const rejected = expect(confirmation).rejects.toThrow('unallocated');
   const transmission = await session.makeCapsule({ reason: 'idle-resend' });
   const release = transmission.start({ onReceived: received });
   try {
     const capsule = await sender.seal({
       plaintext: encodeRecordPayload({
         payload: {
+          challenge: undefined,
+          echo: undefined,
           receiptRequest: 'requested',
           receivedRecord: 0n,
           snapshot: { ...emptySnapshot(), states: [{ id: 0, flags: 0, rxNext: 0n, rxLimit: 65536n, final: 0n }] },
@@ -179,32 +182,6 @@ it('invalid stream semantics cannot confirm an otherwise valid receipt', async (
   } finally {
     release();
   }
-});
-
-it('cancelled confirmations remove their abort listeners and do not affect other owners', async () => {
-  const { a, b } = await sessionPair(), stop = new AbortController();
-  const remove = vi.spyOn(stop.signal, 'removeEventListener'), cancelledStarted = vi.fn(), liveStarted = vi.fn();
-  const cancelled = a.confirmResponse({ signal: stop.signal, onRequestStarted: cancelledStarted });
-  const rejected = expect(cancelled).rejects.toThrow('Cancel confirmation');
-  const live = a.confirmResponse({ signal: new AbortController().signal, onRequestStarted: liveStarted });
-  stop.abort(new Error('Cancel confirmation')); await rejected;
-  expect(remove).toHaveBeenCalledOnce();
-  await deliver({ from: a, to: b, reason: 'update' });
-  await deliver({ from: b, to: a, reason: 'update' });
-  await live;
-  expect(cancelledStarted).not.toHaveBeenCalled(); expect(liveStarted).toHaveBeenCalledOnce(); expect(a.stopped).toBe(false);
-});
-
-it('a reentrant start callback cannot start a confirmation that it just cancelled', async () => {
-  const { a, b } = await sessionPair(), cancelled = new AbortController(), cancelledStarted = vi.fn();
-  const live = a.confirmResponse({ signal: new AbortController().signal, onRequestStarted: () => cancelled.abort(new Error('Reentrant cancellation')) });
-  const abandoned = a.confirmResponse({ signal: cancelled.signal, onRequestStarted: cancelledStarted });
-  const rejected = expect(abandoned).rejects.toThrow('Reentrant cancellation');
-  await deliver({ from: a, to: b, reason: 'update' });
-  await rejected;
-  await deliver({ from: b, to: a, reason: 'update' });
-  await live;
-  expect(cancelledStarted).not.toHaveBeenCalled();
 });
 
 it('an old receipt cannot retire a newer outstanding transmission', async () => {

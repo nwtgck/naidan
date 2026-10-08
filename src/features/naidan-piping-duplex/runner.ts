@@ -1,3 +1,4 @@
+import { PipingRetirementError, RecordExhaustedError } from '@/features/naidan-piping-duplex/lifetime';
 import { requireValue } from '@/features/naidan-piping-duplex/bytes';
 import { AttemptError, Deadline, sleep, needsSenderRepair } from '@/features/naidan-piping-duplex/finite';
 import type { FiniteTransport } from '@/features/naidan-piping-duplex/finite';
@@ -101,6 +102,7 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
         onEvent({ event: { kind: 'sent', count: transmission.bytes.length } });
         failures = 0;
       } catch (error) {
+        if (error instanceof PipingRetirementError) throw error;
         if (local.signal.aborted || session.stopped)
           return;
         if (!(error instanceof AttemptError) || error.kind === 'fatal')
@@ -153,6 +155,7 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
         else
           await sleep({ milliseconds: settings.minimumMs, signal: local.signal });
       } catch (error) {
+        if (error instanceof PipingRetirementError) throw error;
         if (local.signal.aborted || session.stopped)
           return;
         if (!(error instanceof AttemptError) || error.kind === 'fatal')
@@ -173,21 +176,37 @@ export async function runDuplex({ session, endpoint, signal, pacing, onEvent }: 
     }
   };
   const jobs = [guard({ task: send }), guard({ task: receive })];
+  let logicalFailure: { error: unknown } | undefined;
+  const retirementFailures: unknown[] = [];
   try {
     await Promise.all(jobs);
     if (!signal.aborted && session.failureReason) throw session.failureReason;
   } catch (error) {
     if (!signal.aborted) {
       const failure = session.failureReason ?? error;
-      session.abort({ reason: 'Transport runner failed' });
-      throw failure;
+      logicalFailure = { error: failure };
+      try {
+        session.fail({ kind: failure instanceof RecordExhaustedError ? 'record-exhausted' : 'transport-fatal', error: failure });
+      } catch (cleanupError) {
+        retirementFailures.push(cleanupError);
+      }
     }
   } finally {
     local.abort();
-    await Promise.allSettled(jobs);
+    const settled = await Promise.allSettled(jobs);
+    const failures = retirementFailures;
+    for (const result of settled) {
+      if (result.status === 'rejected' && result.reason instanceof PipingRetirementError) failures.push(result.reason);
+    }
     parent.removeEventListener('abort', forward);
-    release();
+    try {
+      release();
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (retirementFailures.length) throw new PipingRetirementError({ cause: retirementFailures[0], logicalError: session.failureReason ?? signal.reason });
+  if (logicalFailure) throw logicalFailure.error;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

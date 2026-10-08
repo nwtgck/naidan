@@ -1,7 +1,8 @@
+import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import { ownBytes, requireValue, fields, ascii } from '@/features/naidan-piping-duplex/bytes';
 import { AttemptError, sleep, needsSenderRepair } from '@/features/naidan-piping-duplex/finite';
 import type { Deadline, FiniteTransport } from '@/features/naidan-piping-duplex/finite';
-import { RestartDiscoveryError, discoverCandidate } from '@/features/naidan-piping-duplex/bootstrap';
+import { DiscoveryObservations, RestartDiscoveryError, discoverCandidate } from '@/features/naidan-piping-duplex/bootstrap';
 import { establishVerifiedNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingKeyContext, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
@@ -10,28 +11,43 @@ import type { RendezvousChannel } from '@/features/naidan-piping-duplex/rendezvo
 import type { NaidanPipingRole } from '@/features/naidan-piping-duplex/role';
 import { isInitiator } from '@/features/naidan-piping-duplex/role';
 
+export type EstablishedConnection = { keys: NaidanPipingKeyContext; peerHandshakeData: Uint8Array; peerPublicHandshakeData: Uint8Array };
 export type PinnedConnectionTask = {
-  readonly ready: Promise<NaidanPipingKeyContext>;
+  readonly ready: Promise<EstablishedConnection>;
+  /** Logical bootstrap outcome after its work has joined; retained for direct callers. */
   readonly completion: Promise<void>;
+  /** Pure retirement barrier; ordinary bootstrap failure/cancellation is not cleanup failure. */
+  readonly closed: Promise<void>;
+  /** Stop only bootstrap work; transferred traffic keys remain caller-owned. */
+  retire(): Promise<void>;
 };
 
 /** Owns one selected candidate and its retained cumulative handshake; it never replays Noise. */
 async function runCandidate({ channel, confirmation, identity, expectedPeer, verifyPeer, purpose, endpoint,
-  signal, completionLeaseMs, intervalMs, onReady }: {
+  signal, intervalMs, responseTimeoutMs, onReady, handshakeData, peerPublicHandshakeData }: {
   channel: RendezvousChannel; confirmation: Deadline; identity: NaidanPipingIdentity;
   expectedPeer: Uint8Array | undefined; verifyPeer: NaidanPipingPeerVerifier | undefined; purpose: Uint8Array;
-  endpoint: FiniteTransport; signal: AbortSignal; completionLeaseMs: number | undefined; intervalMs: number;
-  onReady({ keys }: { keys: NaidanPipingKeyContext }): void;
+  endpoint: FiniteTransport; signal: AbortSignal; intervalMs: number; responseTimeoutMs: number;
+  handshakeData: Uint8Array; peerPublicHandshakeData: Uint8Array;
+  onReady({ result }: { result: EstablishedConnection }): void;
 }): Promise<void> {
   const stop = new AbortController();
   const activeSignal = AbortSignal.any([signal, stop.signal, confirmation.signal]);
+  const retirementFailures: unknown[] = [];
+  let logicalFailure: { error: unknown } | undefined;
+  const recordStop = () => {
+    logicalFailure ??= { error: activeSignal.reason };
+  };
+  activeSignal.addEventListener('abort', recordStop, { once: true });
+  if (activeSignal.aborted) recordStop();
   let established = false;
   let finalAdvertised = false;
-  const pause = () => established && finalAdvertised && completionLeaseMs === undefined ? Math.max(intervalMs, 5000) : intervalMs;
+  const pause = () => established && finalAdvertised ? Math.max(intervalMs, 5000) : intervalMs;
   const guarded = async ({ task }: { task(): Promise<void> }) => {
     try {
       await task();
     } catch (error) {
+      if (error instanceof PipingRetirementError) retirementFailures.push(error);
       stop.abort(error);
     }
   };
@@ -49,6 +65,7 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
         await endpoint.send({ route: channel.routes.send, bytes, signal: postSignal });
         if (wasEstablished) finalAdvertised = true;
       } catch (error) {
+        if (error instanceof PipingRetirementError) throw error;
         activeSignal.throwIfAborted();
         if (post.signal.reason !== advanced) {
           if (!(error instanceof AttemptError) || error.kind === 'fatal') throw error;
@@ -68,6 +85,7 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
         // ACK confirms SELECT; the responder's first Noise flight proves its ACK arrived.
         if (isInitiator({ role: channel.role }) ? channel.bound : channel.peerStartedNoise) confirmation.stopTimer();
       } catch (error) {
+        if (error instanceof PipingRetirementError) throw error;
         activeSignal.throwIfAborted();
         if (!(error instanceof AttemptError) || error.kind === 'fatal') throw error;
       }
@@ -82,7 +100,7 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
         ascii({ text: 'naidan-piping-purpose/v1' }), discoveryBinding, purpose,
       ],
     })));
-    const keys = await establishVerifiedNaidanPipingKeys({
+    const { keys, peerHandshakeData } = await establishVerifiedNaidanPipingKeys({
       role: channel.role,
       identity,
       expectedPeer,
@@ -90,40 +108,59 @@ async function runCandidate({ channel, confirmation, identity, expectedPeer, ver
       binding,
       channel,
       signal: activeSignal,
+      responseTimeoutMs,
+      handshakeData,
+      onResponseFailure: ({ error }) => stop.abort(error),
     });
     if (activeSignal.aborted) {
-      keys.dispose(); activeSignal.throwIfAborted();
+      keys.dispose(); peerHandshakeData.fill(0); activeSignal.throwIfAborted();
     }
     established = true;
-    onReady({ keys });
-    // The peer might still need the final journal. Traffic owns separate HTTP requests.
-    if (completionLeaseMs === undefined) {
-      await new Promise<void>((_resolve, reject) => {
-        if (activeSignal.aborted) reject(activeSignal.reason);
-        else activeSignal.addEventListener('abort', () => reject(activeSignal.reason), { once: true });
-      });
-    } else await sleep({ milliseconds: completionLeaseMs, signal: activeSignal });
+    onReady({ result: { keys, peerHandshakeData, peerPublicHandshakeData } });
+    // Keep advertising until the managed owner proves traffic readiness, then
+    // stops this bootstrap. The existing I/O jobs own the wait and its cleanup.
+    await Promise.all(jobs);
   } catch (error) {
-    if (!established && !signal.aborted && confirmation.signal.aborted && error === confirmation.signal.reason)
-      throw new RestartDiscoveryError();
-    throw error;
+    logicalFailure ??= { error };
+    if (!established && !signal.aborted && confirmation.signal.aborted && logicalFailure.error === confirmation.signal.reason) {
+      logicalFailure = { error: new RestartDiscoveryError() };
+    }
   } finally {
-    stop.abort();
-    confirmation.dispose();
+    // Stop all owners even if one synchronous disposer fails, then join I/O.
+    const failures = retirementFailures;
+    for (const dispose of [() => stop.abort(), () => confirmation.dispose()]) {
+      try {
+        dispose();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     await Promise.allSettled(jobs);
-    channel.dispose();
+    activeSignal.removeEventListener('abort', recordStop);
+    try {
+      channel.dispose();
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (retirementFailures.length) throw new PipingRetirementError({ cause: retirementFailures[0], logicalError: logicalFailure?.error });
+  if (logicalFailure) throw logicalFailure.error;
 }
 
-/** Waiting for a peer and human comparison have no expiry; only automatic candidate confirmation does. */
-export async function startPinnedConnection({ role, identity, expectedPeer, code, endpoint, signal, confirmationTimeoutMs,
-  completionLeaseMs, intervalMs, purpose, verifyPeer }: {
+/** Discovery and human comparison remain untimed; selected candidates and required machine responses have separate windows. */
+export async function startPinnedConnection({ role, identity, expectedPeer, code, endpoint, signal: parent, confirmationTimeoutMs,
+  intervalMs, purpose, verifyPeer, responseTimeoutMs, publicHandshakeData = new Uint8Array(), handshakeData = new Uint8Array() }: {
+  publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
   role: NaidanPipingRole | undefined; identity: NaidanPipingIdentity; expectedPeer: Uint8Array | undefined;
   verifyPeer: NaidanPipingPeerVerifier | undefined; code: string; endpoint: FiniteTransport; signal: AbortSignal;
-  confirmationTimeoutMs: number; completionLeaseMs: number | undefined; intervalMs: number; purpose: Uint8Array;
+  confirmationTimeoutMs: number; intervalMs: number; purpose: Uint8Array; responseTimeoutMs: number;
 }): Promise<PinnedConnectionTask> {
-  for (const value of [confirmationTimeoutMs, completionLeaseMs, intervalMs])
-    requireValue({ condition: value === undefined || (Number.isInteger(value) && value > 0 && value <= 2147483647), message: 'Connection timer duration' });
+  for (const value of [confirmationTimeoutMs, intervalMs, responseTimeoutMs])
+    requireValue({ condition: Number.isInteger(value) && value > 0 && value <= 2147483647, message: 'Connection timer duration' });
+  const stop = new AbortController();
+  const signal = AbortSignal.any([parent, stop.signal]);
+  const publicData = ownBytes({ bytes: publicHandshakeData, maxBytes: 256 }), privateData = ownBytes({ bytes: handshakeData, maxBytes: 463 });
+  const observations = new DiscoveryObservations();
   const purposeBytes = ownBytes({ bytes: purpose, maxBytes: 256 });
   const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 });
   requireValue({ condition: pin?.length === 32 || (pin === undefined && verifyPeer !== undefined), message: 'Expected pin or explicit peer comparison required' });
@@ -132,14 +169,14 @@ export async function startPinnedConnection({ role, identity, expectedPeer, code
   const room = await rendezvousRoom({ code, origin: endpoint.origin });
   signal.throwIfAborted();
   const owner = crypto.getRandomValues(new Uint8Array(16));
-  const ready = Promise.withResolvers<NaidanPipingKeyContext>();
+  const ready = Promise.withResolvers<EstablishedConnection>();
   void ready.promise.catch(() => {});
   const completion = (async () => {
     try {
       for (;;) {
         signal.throwIfAborted();
         try {
-          const { channel, confirmation } = await discoverCandidate({
+          const { channel, confirmation, peerPublicData } = await discoverCandidate({
             role,
             room,
             endpoint,
@@ -147,6 +184,8 @@ export async function startPinnedConnection({ role, identity, expectedPeer, code
             signal,
             confirmationTimeoutMs,
             intervalMs,
+            publicData,
+            observations,
           });
           await runCandidate({
             channel,
@@ -157,25 +196,39 @@ export async function startPinnedConnection({ role, identity, expectedPeer, code
             purpose: purposeBytes,
             endpoint,
             signal,
-            completionLeaseMs,
             intervalMs,
-            onReady: ({ keys }) => ready.resolve(keys),
+            responseTimeoutMs,
+            handshakeData: privateData,
+            peerPublicHandshakeData: peerPublicData,
+            onReady: ({ result }) => ready.resolve(result),
           });
           return;
         } catch (error) {
-          signal.throwIfAborted();
           if (!(error instanceof RestartDiscoveryError)) throw error;
+          signal.throwIfAborted();
           await sleep({ milliseconds: intervalMs, signal });
         }
       }
     } catch (error) {
       ready.reject(error); throw error;
     } finally {
-      owner.fill(0); room.fill(0);
+      owner.fill(0); room.fill(0); publicData.fill(0); privateData.fill(0);
     }
   })();
   void completion.catch(() => {});
-  return { ready: ready.promise, completion };
+  const closed = completion.catch(error => {
+    if (error instanceof PipingRetirementError) throw error;
+  });
+  void closed.catch(() => {});
+  return {
+    ready: ready.promise,
+    completion,
+    closed,
+    retire() {
+      stop.abort(new Error('Bootstrap retired'));
+      return closed;
+    },
+  };
 }
 
 export const TEST_ONLY = {

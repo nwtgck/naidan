@@ -343,7 +343,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
       const endpoint = (() => {
         switch (customEndpoint.type) {
         case 'naidan_rpc':
-          return { type: customEndpoint.type, connectionId: undefined };
+          return { type: customEndpoint.type, registrationId: undefined };
         case 'openai':
         case 'ollama':
           return {

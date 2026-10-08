@@ -1,5 +1,6 @@
+import { retainRpcEndpoint, retainedRpcEndpoint } from '@/00-storage/00-dto/retained-rpc';
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
-import { toNaidanRpcConnectionId } from '@/01-models/ids';
+import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import { llamaCppBrowserSettingsToDomain, llamaCppBrowserSettingsToDto } from './llama-cpp-browser-settings';
 /**
@@ -871,11 +872,11 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     if (endpoint !== undefined) {
       switch (endpoint.type) {
       case 'naidan_rpc': {
-        const { type, connectionId, ...rest } = endpoint;
+        const { type, registrationId, ...rest } = endpoint;
         rest satisfies Record<PropertyKey, never>;
         return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
           type,
-          connectionId: connectionId === undefined ? undefined : toNaidanRpcConnectionId({ raw: connectionId }),
+          registrationId: registrationId === undefined ? undefined : toNaidanRpcRegistrationId({ raw: registrationId }),
         });
       }
       case 'browser_provided_lm': {
@@ -901,6 +902,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
       type: 'unsupported_experimental_endpoint',
       persistedType,
+      unavailableRpc: retainedRpcEndpoint({ value: experimental })?.copy(),
     });
   }
   default: {
@@ -913,11 +915,11 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   switch (endpoint.type) {
   case 'naidan_rpc': {
-    const { type, connectionId, ...rest } = endpoint;
+    const { type, registrationId, ...rest } = endpoint;
     rest satisfies Record<PropertyKey, never>;
     const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({
       type,
-      connectionId: connectionId === undefined ? undefined : idToRaw({ id: connectionId }),
+      registrationId: registrationId === undefined ? undefined : idToRaw({ id: registrationId }),
     });
     return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
@@ -973,6 +975,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
     const {
       type: _type,
       persistedType: _persistedType,
+      unavailableRpc,
       ...unhandled
     } = endpoint;
 
@@ -980,7 +983,10 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
 
     return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
-      experimental: undefined,
+      experimental: unavailableRpc === undefined ? undefined : retainRpcEndpoint({
+        value: { endpoint: undefined },
+        raw: unavailableRpc,
+      }),
     });
   }
   default: {

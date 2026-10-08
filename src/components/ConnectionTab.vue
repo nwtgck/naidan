@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import RpcConnectionSelect from '@/features/naidan-peer-rpc/components/RpcConnectionSelect.vue';
+import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
@@ -101,7 +101,7 @@ const endpointType = computed<Endpoint['type']>({
     }
     case 'naidan_rpc':
       clearBrowserProvidedLmModelIds();
-      form.value.endpoint = { type, connectionId: undefined };
+      form.value.endpoint = { type, registrationId: undefined };
       resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     case 'llama_cpp_browser':
@@ -549,7 +549,7 @@ function setGlobalTitleEndpointType({
     });
     return;
   case 'naidan_rpc':
-    setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: explicitSettingsTitleModel({ modelId }) } });
+    setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: explicitSettingsTitleModel({ modelId }) } });
     return;
   case 'llama_cpp_browser':
   case 'transformers_js':
@@ -985,7 +985,7 @@ defineExpose({
                     disabled
                   >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
-                <RpcConnectionSelect v-if="form.endpoint.type === 'naidan_rpc'" v-model="form.endpoint.connectionId" />
+                <RpcRegistrationSelect v-if="form.endpoint.type === 'naidan_rpc'" v-model="form.endpoint.registrationId" />
                 <PromptApiStatus v-if="endpointType === 'browser_provided_lm'" show-ready tw-class="mt-3" />
               </div>
 
@@ -1180,10 +1180,10 @@ defineExpose({
                     </select>
                   </div>
 
-                  <RpcConnectionSelect
+                  <RpcRegistrationSelect
                     v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'"
-                    :model-value="globalTitleEndpoint.connectionId"
-                    @update:model-value="connectionId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', connectionId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })"
+                    :model-value="globalTitleEndpoint.registrationId"
+                    @update:model-value="registrationId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })"
                   />
 
                   <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-2">

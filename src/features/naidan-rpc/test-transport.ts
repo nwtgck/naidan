@@ -44,6 +44,7 @@ export function transportPair({ capacity, fragmentBytes }: { capacity: number; f
     return duplexes;
   };
   const transports = [0, 1].map(side => ({
+    ended: lifetime.promise.then(() => ({ error: undefined })),
     closed: lifetime.promise,
     async openStream({ signal }: { signal: AbortSignal | undefined }) {
       signal?.throwIfAborted(); check({ condition: !ended[1 - side] && active < capacity, code: 'RESOURCE_EXHAUSTED' });

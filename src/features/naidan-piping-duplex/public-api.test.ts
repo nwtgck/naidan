@@ -12,11 +12,16 @@ afterEach(() => vi.restoreAllMocks());
 it('the public duplex facade has a functional name and keeps key-only access separate', () => {
   expect(Object.keys(api).sort()).toEqual([
     'NaidanPipingDuplexSession',
+    'HandshakeResponseUnconfirmedError',
+    'PipingRetirementError',
+    'RecordExhaustedError',
+    'ResponseUnconfirmedError',
     'TEST_ONLY',
     'createNaidanPipingCode',
     'createNaidanPipingIdentity',
     'establishNaidanPipingKeys',
   ].sort());
+  expect(api.NaidanPipingDuplexSession.prototype).not.toHaveProperty('confirmResponse');
   expect(api.NaidanPipingDuplexSession.name).toBe('NaidanPipingDuplexSession');
   expect(Object.keys(peerKeys).sort()).toEqual([
     'TEST_ONLY', 'createNaidanPipingIdentity', 'establishNaidanPipingKeys',

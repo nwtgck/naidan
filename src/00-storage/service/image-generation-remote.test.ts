@@ -2,7 +2,7 @@
 // Snapshot construction is exercised separately in the image feature.
 import { expect, it } from 'vitest';
 import { reactive } from 'vue';
-import { toNaidanRpcConnectionId, toNaidanRpcPeerId, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
 import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -13,8 +13,8 @@ function remote() {
   const run = generationRunFixture({ id: 'run-example', sessionId: toImageGenerationSessionId({ raw: 'session-example' }), count: 1, seed: '42' });
   run.request.runtime = {
     profile: 'naidan-rpc',
-    connectionId: toNaidanRpcConnectionId({ raw: 'connection-example' }),
-    peerId: toNaidanRpcPeerId({ raw: 'A'.repeat(43) }),
+    registrationId: toNaidanRpcRegistrationId({ raw: 'connection-example' }),
+    peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'A'.repeat(43) }),
     label: 'Remote machine',
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/example.gguf' }, expected: { size: 1000, lastModified: 1 } } }, components: [], loras: [] },
   };
@@ -59,7 +59,7 @@ it('preserves unknown recovery facts while retaining a valid image asset', () =>
 it('rejects malformed connection provenance rather than mapping it to the local provider', () => {
   const run = remote();
   expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, profile: 'unknown-provider' } as never } })).toThrow();
-  expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, peerId: 'wrong' } as never } })).toThrow();
+  expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, peerPublicKey: 'wrong' } as never } })).toThrow();
 });
 
 it('keeps old local history requests readable without adding a remote tag', () => {

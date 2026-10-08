@@ -1,5 +1,8 @@
 /** The RPC layer borrows exclusive access to this iterator; it knows no relay, key or path. */
 export interface NaidanRpcTransport {
+  /** Logical end, independent of the physical retirement barrier below.
+   * The reason is local and opaque to the transport-independent RPC engine. */
+  readonly ended: Promise<{ readonly error: unknown }>;
   readonly incomingStreams: AsyncIterable<NaidanRpcDuplex>;
   readonly closed: Promise<void>;
   openStream({ signal }: { signal: AbortSignal | undefined }): Promise<NaidanRpcDuplex>;

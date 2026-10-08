@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { encodeProtocolHeader } from './protocol-header';
+import { AuthenticatedProtocolError, RecordExhaustedError } from '@/features/naidan-piping-duplex/lifetime';
 import { expect, it, vi } from 'vitest';
 import { CAPSULE_BYTES, MAX_OFFSET } from '@/features/naidan-piping-duplex/bytes';
 import { Records } from '@/features/naidan-piping-duplex/records';
@@ -21,7 +23,7 @@ async function codecs() {
 }
 
 function plaintext(): Uint8Array {
-  return encodeRecordPayload({ payload: { snapshot: emptySnapshot(), receiptRequest: 'not-requested', receivedRecord: undefined } });
+  return encodeRecordPayload({ payload: { challenge: undefined, echo: undefined, snapshot: emptySnapshot(), receiptRequest: 'not-requested', receivedRecord: undefined } });
 }
 
 it('authenticated but malformed plaintext never advances the replay watermark or invokes the application', async () => {
@@ -65,8 +67,8 @@ it('all visible header bytes are authenticated and mutation cannot change accept
 
 it('invalid outer lengths, types, and sequence bounds never invoke cryptography', async () => {
   const { rx } = await codecs();
-  const tooHigh = new Uint8Array(25); tooHigh[0] = 2;
-  new DataView(tooHigh.buffer).setBigUint64(1, MAX_OFFSET + 1n, false);
+  const tooHigh = new Uint8Array(38); tooHigh.set(encodeProtocolHeader()); tooHigh[13] = 5;
+  new DataView(tooHigh.buffer).setBigUint64(14, MAX_OFFSET + 1n, false);
   const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
   for (const capsule of [new Uint8Array(), new Uint8Array(24), new Uint8Array(25), tooHigh,
     new Uint8Array(CAPSULE_BYTES + 1), new Uint8Array(new SharedArrayBuffer(25)), null as unknown as Uint8Array]) {
@@ -82,10 +84,10 @@ it('invalid outer lengths, types, and sequence bounds never invoke cryptography'
 
 it('oversized or shared outbound plaintext does not burn a valid sequence number', async () => {
   const { tx } = await codecs();
-  for (const bytes of [new Uint8Array(CAPSULE_BYTES - 24), new Uint8Array(new SharedArrayBuffer(2))]) {
+  for (const bytes of [new Uint8Array(CAPSULE_BYTES - 37), new Uint8Array(new SharedArrayBuffer(2))]) {
     await expect(tx.seal({ plaintext: bytes })).rejects.toThrow(); expect(tx.next).toBe(0n);
   }
-  const capsule = await tx.seal({ plaintext: new Uint8Array(CAPSULE_BYTES - 25) });
+  const capsule = await tx.seal({ plaintext: new Uint8Array(CAPSULE_BYTES - 38) });
   expect(capsule.length).toBe(CAPSULE_BYTES); expect(tx.next).toBe(1n);
 });
 
@@ -128,11 +130,11 @@ it('epoch rotation changes the key before reusing the per-epoch nonce', async ()
   expect(outbound.mock.calls.map(([args]) => args.epoch)).toEqual([0n, 1n]);
   for (const number of [0, 16383, 16384]) {
     const capsule = selected.get(number)!;
-    expect(new DataView(capsule.buffer).getBigUint64(1, false)).toBe(BigInt(number));
+    expect(new DataView(capsule.buffer).getBigUint64(14, false)).toBe(BigInt(number));
     expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
   }
   expect(inbound.mock.calls.map(([args]) => args.epoch)).toEqual([0n, 1n]);
-  expect(selected.get(0)!.slice(9)).not.toEqual(selected.get(16384)!.slice(9));
+  expect(selected.get(0)!.slice(22)).not.toEqual(selected.get(16384)!.slice(22));
   expect(await rx.accept({
     capsule: selected.get(16383)!,
     apply: () => {
@@ -147,12 +149,12 @@ it('failed-authentication accounting survives success and epoch changes and rese
   vi.spyOn(right, 'aead').mockResolvedValue(cachedKey);
   const failure = new DOMException('Injected authentication failure', 'OperationError');
   const decrypt = vi.spyOn(crypto.subtle, 'decrypt').mockRejectedValue(failure);
-  const capsule = new Uint8Array(25); capsule[0] = 2;
+  const capsule = new Uint8Array(38); capsule.set(encodeProtocolHeader()); capsule[13] = 5;
   const apply = vi.fn(() => undefined);
   // Only test the accounting policy here. Real authentication is covered by the other record tests.
   for (let index = 0; index < 65534; index++) await rx.accept({ capsule, apply });
   expect(decrypt).toHaveBeenCalledTimes(65534); expect(apply).not.toHaveBeenCalled();
-  const rotated = capsule.slice(); new DataView(rotated.buffer).setBigUint64(1, 16384n, false);
+  const rotated = capsule.slice(); new DataView(rotated.buffer).setBigUint64(14, 16384n, false);
   decrypt.mockResolvedValueOnce(plaintext().buffer as ArrayBuffer);
   expect(await rx.accept({ capsule: rotated, apply })).toBe('accepted');
   expect(await rx.accept({ capsule, apply })).toBe('unauthenticated');
@@ -170,5 +172,66 @@ it('an unavailable key derivation releases the pending verification reservation'
   const { tx, rx, right } = await codecs(), capsule = await tx.seal({ plaintext: plaintext() });
   vi.spyOn(right, 'aead').mockRejectedValueOnce(new Error('Injected derivation error'));
   await expect(rx.accept({ capsule, apply: () => undefined })).rejects.toThrow('derivation');
+  expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
+});
+
+it('the last legal local record succeeds and the next seal is typed exhaustion without wrap', async () => {
+  const { tx } = await codecs();
+  // Test-only boundary injection, not a production counter-reset API.
+  Object.defineProperty(tx, 'internalNext', { value: MAX_OFFSET, writable: true });
+  const last = await tx.seal({ plaintext: plaintext() });
+  expect(new DataView(last.buffer, last.byteOffset, last.byteLength).getBigUint64(14, false)).toBe(MAX_OFFSET);
+  expect(tx.next).toBe(MAX_OFFSET + 1n);
+  await expect(tx.seal({ plaintext: plaintext() })).rejects.toBeInstanceOf(RecordExhaustedError);
+  expect(tx.next).toBe(MAX_OFFSET + 1n);
+});
+
+it('a failed final seal still consumes its local number permanently', async () => {
+  const { tx } = await codecs(), failure = new Error('Native seal failed');
+  Object.defineProperty(tx, 'internalNext', { value: MAX_OFFSET, writable: true });
+  const encrypt = vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValueOnce(failure);
+  await expect(tx.seal({ plaintext: plaintext() })).rejects.toBe(failure);
+  await expect(tx.seal({ plaintext: plaintext() })).rejects.toBeInstanceOf(RecordExhaustedError);
+  expect(encrypt).toHaveBeenCalledOnce(); expect(tx.next).toBe(MAX_OFFSET + 1n);
+});
+
+it('untrusted high record numbers and forged reason text cannot exhaust the local sender', async () => {
+  const { tx, rx } = await codecs(), apply = vi.fn(() => undefined);
+  const forged = new Uint8Array(64); forged.set(encodeProtocolHeader()); forged[13] = 5;
+  new DataView(forged.buffer).setBigUint64(14, MAX_OFFSET + 1n, false);
+  forged.set(new TextEncoder().encode('record-exhausted'), 22);
+  await expect(rx.accept({ capsule: forged, apply })).resolves.toBe('unauthenticated');
+  new DataView(forged.buffer).setBigUint64(14, 0n, false);
+  await expect(rx.accept({ capsule: forged, apply })).resolves.toBe('unauthenticated');
+  expect(tx.next).toBe(0n); expect(rx.high).toBe(-1n); expect(apply).not.toHaveBeenCalled();
+  await expect(tx.seal({ plaintext: plaintext() })).resolves.toBeInstanceOf(Uint8Array);
+});
+
+it('wrong usage and concurrent writer ownership are not counter exhaustion', async () => {
+  const { tx, rx } = await codecs();
+  await expect(rx.seal({ plaintext: plaintext() })).rejects.not.toBeInstanceOf(RecordExhaustedError);
+  Object.defineProperty(tx, 'internalBusy', { value: true, writable: true });
+  await expect(tx.seal({ plaintext: plaintext() })).rejects.not.toBeInstanceOf(RecordExhaustedError);
+});
+
+it('even authenticated forged terminal text remains malformed payload, not local exhaustion', async () => {
+  const { tx, rx } = await codecs();
+  const capsule = await tx.seal({ plaintext: new TextEncoder().encode('record-exhausted') });
+  const result = rx.accept({ capsule, apply: () => undefined });
+  await expect(result).rejects.toBeInstanceOf(AuthenticatedProtocolError);
+  await expect(result).rejects.not.toBeInstanceOf(RecordExhaustedError);
+  expect(rx.high).toBe(-1n);
+});
+
+it('AEAD associated data contains the complete selected header, kind and record number', async () => {
+  const { tx, rx } = await codecs(), encrypt = vi.spyOn(crypto.subtle, 'encrypt');
+  const capsule = await tx.seal({ plaintext: plaintext() });
+  const parameters = encrypt.mock.calls[0]![0] as AesGcmParams;
+  const aad = parameters.additionalData;
+  if (!(aad instanceof Uint8Array)) throw new Error('Expected owned record associated data');
+  expect(aad.slice(-22)).toEqual(capsule.slice(0, 22));
+  const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
+  const wrong = capsule.slice(); new DataView(wrong.buffer).setUint32(9, 0x80000002, true);
+  expect(await rx.accept({ capsule: wrong, apply: () => undefined })).toBe('unauthenticated'); expect(decrypt).not.toHaveBeenCalled();
   expect(await rx.accept({ capsule, apply: () => undefined })).toBe('accepted');
 });

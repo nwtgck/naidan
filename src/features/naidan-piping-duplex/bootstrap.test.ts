@@ -61,7 +61,7 @@ class PausedPostRelay {
           this.ownedPosts.set(owner, 0);
           throw new AttemptError({ kind: 'waiting-sender' });
         }
-        if (bytes.length === 34) this.offers.push(bytes.slice(2));
+        if (bytes.length === 48) this.offers.push(bytes.slice(14, 46));
         const sender: Sender = { bytes: bytes.slice(), failed: Promise.withResolvers<void>(), consumed: false };
         slot.sender = sender;
         const abort = () => sender.failed.reject(signal.reason);
@@ -111,7 +111,6 @@ async function tasks({ relay, signal, timeoutMs, roles }: {
     signal,
     code: 'ABCD-EFGH',
     confirmationTimeoutMs: timeoutMs,
-    completionLeaseMs: 40,
     intervalMs: 2,
     purpose: new Uint8Array([7, 4]),
     verifyPeer: undefined,
@@ -124,8 +123,8 @@ async function tasks({ relay, signal, timeoutMs, roles }: {
     }
   })();
   return promiseAllKeyed({
-    a: startPinnedConnection({ ...common, role: selectedRoles.a, identity: identities.a, expectedPeer: identities.b.publicKey, endpoint: relay.endpoint({ owner: 'a' }) }),
-    b: startPinnedConnection({ ...common, role: selectedRoles.b, identity: identities.b, expectedPeer: identities.a.publicKey, endpoint: relay.endpoint({ owner: 'b' }) }),
+    a: startPinnedConnection({ responseTimeoutMs: 75_000, ...common, role: selectedRoles.a, identity: identities.a, expectedPeer: identities.b.publicKey, endpoint: relay.endpoint({ owner: 'a' }) }),
+    b: startPinnedConnection({ responseTimeoutMs: 75_000, ...common, role: selectedRoles.b, identity: identities.b, expectedPeer: identities.a.publicKey, endpoint: relay.endpoint({ owner: 'b' }) }),
   });
 }
 
@@ -137,10 +136,10 @@ it.each(['automatic', 'pinned'] as const)('%s pairing advances when every POST E
   });
   const keys = await promiseAllKeyed({ a: pair.a.ready, b: pair.b.ready });
   onTestFinished(() => {
-    keys.a.dispose(); keys.b.dispose();
+    keys.a.keys.dispose(); keys.b.keys.dispose();
   });
-  expect(keys.a.contextId).toEqual(keys.b.contextId);
-  await Promise.all([pair.a.completion, pair.b.completion]);
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
+  await Promise.all([pair.a.retire(), pair.b.retire()]);
   expect(relay.occupied).toBe(0); expect(relay.repairs).toBe(0);
   if (roles === 'automatic') expect(relay.duplicates).toHaveLength(1);
 });
@@ -149,7 +148,7 @@ it('a lost ACK is replayed with the same selection before Noise proceeds', async
   const relay = new PausedPostRelay(), stop = new AbortController();
   let lost: Uint8Array | undefined;
   relay.drop = ({ bytes }) => {
-    if (!lost && bytes.length === 99 && bytes[33] === 2) {
+    if (!lost && bytes.length === 112 && bytes[46] === 2) {
       lost = bytes.slice(); return true;
     }
     return false;
@@ -160,18 +159,18 @@ it('a lost ACK is replayed with the same selection before Noise proceeds', async
   });
   const keys = await promiseAllKeyed({ a: pair.a.ready, b: pair.b.ready });
   onTestFinished(() => {
-    keys.a.dispose(); keys.b.dispose();
+    keys.a.keys.dispose(); keys.b.keys.dispose();
   });
   expect(lost).toBeDefined();
-  const acknowledgements = relay.posts.filter(({ bytes }) => bytes.length === 99 && bytes[33] === 2);
+  const acknowledgements = relay.posts.filter(({ bytes }) => bytes.length === 112 && bytes[46] === 2);
   expect(acknowledgements.length).toBeGreaterThan(1);
   expect(acknowledgements.every(({ bytes }) => bytes.every((value, index) => value === lost?.[index]))).toBe(true);
-  expect(keys.a.contextId).toEqual(keys.b.contextId);
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
 });
 
 it('permanent ACK loss retires requests and starts fresh attempts without producing keys', async () => {
   const relay = new PausedPostRelay(), stop = new AbortController();
-  relay.drop = ({ bytes }) => bytes.length === 99 && bytes[33] === 2;
+  relay.drop = ({ bytes }) => bytes.length === 112 && bytes[46] === 2;
   const pair = await tasks({ relay, signal: stop.signal, timeoutMs: 40, roles: 'automatic' });
   onTestFinished(async () => {
     stop.abort(); await Promise.allSettled([pair.a.completion, pair.b.completion]);
@@ -195,20 +194,21 @@ it('candidate selection joins a cancelled OFFER before starting SELECT', async (
   onTestFinished(async () => {
     release.resolve(); stop.abort(); await Promise.allSettled([pair.a.completion, pair.b.completion]);
   });
-  await vi.waitFor(() => expect(relay.posts.some(({ bytes }) => bytes.length === 66)).toBe(true));
-  expect(relay.posts.some(({ bytes }) => bytes.length === 99)).toBe(false);
+  await vi.waitFor(() => expect(relay.posts.some(({ bytes }) => bytes.length === 80)).toBe(true));
+  expect(relay.posts.some(({ bytes }) => bytes.length === 112)).toBe(false);
   release.resolve();
   const keys = await promiseAllKeyed({ a: pair.a.ready, b: pair.b.ready });
   onTestFinished(() => {
-    keys.a.dispose(); keys.b.dispose();
+    keys.a.keys.dispose(); keys.b.keys.dispose();
   });
-  expect(keys.a.contextId).toEqual(keys.b.contextId);
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
 });
 
 it('waiting for an absent peer outlives the automatic candidate confirmation budget', async () => {
   const relay = new PausedPostRelay(), stop = new AbortController();
   const identity = await createNaidanPipingIdentity(), peer = await createNaidanPipingIdentity();
   const task = await startPinnedConnection({
+    responseTimeoutMs: 75_000,
     endpoint: relay.endpoint({ owner: 'alone' }),
     role: undefined,
     code: 'ABCD-EFGH',
@@ -218,7 +218,6 @@ it('waiting for an absent peer outlives the automatic candidate confirmation bud
     purpose: new Uint8Array([1]),
     signal: stop.signal,
     confirmationTimeoutMs: 10,
-    completionLeaseMs: 40,
     intervalMs: 2,
   });
   onTestFinished(async () => {
@@ -249,7 +248,7 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
     return {
       ...base,
       async send(args) {
-        if (args.bytes.length === 34) {
+        if (args.bytes.length === 48) {
           if (owner === 'a') {
             aOffers++;
             if (aOffers === 1) {
@@ -290,24 +289,23 @@ it('restarts automatic offering after consuming its own delayed server-side OFFE
     role: undefined,
     code: 'ABCD-EFGH',
     confirmationTimeoutMs: 500,
-    completionLeaseMs: 40,
     intervalMs: 2,
     purpose: new Uint8Array([1]),
     verifyPeer: undefined,
   };
-  const a = await startPinnedConnection({ ...common, endpoint: endpoint({ owner: 'a' }), identity: identities.a, expectedPeer: identities.b.publicKey });
+  const a = await startPinnedConnection({ responseTimeoutMs: 75_000, ...common, endpoint: endpoint({ owner: 'a' }), identity: identities.a, expectedPeer: identities.b.publicKey });
   onTestFinished(async () => {
     stop.abort(); bDuplicate.resolve(); selfConsumed.resolve(); await a.completion.catch(() => {});
   });
   await aSecond.promise;
-  const b = await startPinnedConnection({ ...common, endpoint: endpoint({ owner: 'b' }), identity: identities.b, expectedPeer: identities.a.publicKey });
+  const b = await startPinnedConnection({ responseTimeoutMs: 75_000, ...common, endpoint: endpoint({ owner: 'b' }), identity: identities.b, expectedPeer: identities.a.publicKey });
   onTestFinished(async () => {
     stop.abort(); await b.completion.catch(() => {});
   });
   const keys = await promiseAllKeyed({ a: a.ready, b: b.ready });
   onTestFinished(() => {
-    keys.a.dispose(); keys.b.dispose();
+    keys.a.keys.dispose(); keys.b.keys.dispose();
   });
   expect(aOffers).toBeGreaterThanOrEqual(3);
-  expect(keys.a.contextId).toEqual(keys.b.contextId); expect(relay.repairs).toBe(0);
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId); expect(relay.repairs).toBe(0);
 });

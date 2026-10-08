@@ -16,6 +16,8 @@ type Slot = { sender: Pending | undefined; receiver: Pending | undefined };
 
 /** Test-only finite relay: no key, stream state, or peer identity lives here. */
 class MemoryRelay {
+  journalPosts = 0;
+  readonly firstRecordPost = Promise.withResolvers<void>();
   private readonly slots = new Map<string, Slot>();
   private transform: ({ route, bytes }: { route: string; bytes: Uint8Array }) => Uint8Array = ({ bytes }) => bytes;
   transformReplies({ transform }: { transform: ({ route, bytes }: { route: string; bytes: Uint8Array }) => Uint8Array }): void {
@@ -59,6 +61,8 @@ class MemoryRelay {
     };
     const body = init?.body;
     if (body !== undefined && !(body instanceof Uint8Array)) throw new Error('Finite bytes required');
+    if (body instanceof Uint8Array && body[13] === 4) this.journalPosts++;
+    if (body instanceof Uint8Array && body[13] === 5) this.firstRecordPost.resolve();
     const entry: Pending = {
       bytes: body instanceof Uint8Array ? new Uint8Array(body) : undefined,
       resolve: pending.resolve,
@@ -79,12 +83,13 @@ class MemoryRelay {
 }
 
 const options: NaidanPipingDuplexOptions = {
+  liveness: { intervalMs: 15_000, responseTimeoutMs: 75_000 },
   baseUrl: 'https://relay.invalid',
   policy: 'https-only',
   requestTimeoutMs: 500,
   repairTimeoutMs: 30,
+  handshakeResponseTimeoutMs: 75_000,
   candidateConfirmationTimeoutMs: 3000,
-  handshakeRetentionMs: 150,
   pacing: { minimumMs: 2, idleResendIntervalMs: 30, retryBaseMs: 10, retryMaximumMs: 50 },
 };
 const controllers = new Set<AbortController>();
@@ -104,12 +109,12 @@ function setup() {
   const stop = new AbortController(); controllers.add(stop);
   return { relay, stop };
 }
-async function sessions({ signal }: { signal: AbortSignal }) {
+async function sessions({ signal, piping = options }: { signal: AbortSignal; piping?: NaidanPipingDuplexOptions }) {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const code = createNaidanPipingCode();
   return promiseAllKeyed({
     a: NaidanPipingDuplexSession.connect({
-      piping: options,
+      piping,
       code,
       role: 'initiator',
       identity: identities.a,
@@ -117,7 +122,7 @@ async function sessions({ signal }: { signal: AbortSignal }) {
       signal,
     }),
     b: NaidanPipingDuplexSession.connect({
-      piping: options,
+      piping,
       code,
       role: 'responder',
       identity: identities.b,
@@ -141,6 +146,7 @@ async function readAll({ readable }: { readable: ReadableStream<Uint8Array> }): 
 it('managed API owns both directions, large writes, half-close, and complete cleanup', async () => {
   const { relay, stop } = setup();
   const { a, b } = await sessions({ signal: stop.signal });
+  const journalPosts = relay.journalPosts; expect(journalPosts).toBeGreaterThan(0);
   const incoming = b.incomingStreams[Symbol.asyncIterator]();
   const left = await a.openStream({ signal: undefined }), accepted = await incoming.next();
   if (accepted.done) throw new Error('Missing incoming stream');
@@ -156,6 +162,7 @@ it('managed API owns both directions, large writes, half-close, and complete cle
   await Promise.all([left.closed, right.closed]);
   await Promise.all([a.drain({ signal: undefined }), b.drain({ signal: undefined })]);
   expect((await incoming.next()).done).toBe(true);
+  expect(relay.journalPosts).toBe(journalPosts);
   stop.abort(); await Promise.all([a.closed, b.closed]);
   expect(relay.occupied).toBe(0);
 });
@@ -218,8 +225,9 @@ it('different upper transport profiles are bound into authentication and cannot 
   const { relay, stop } = setup();
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const endpoint = () => new FiniteEndpoint({ baseUrl: options.baseUrl, policy: 'https-only', timeoutMs: 100, repairTimeoutMs: 20 });
-  const common = { code: 'ABCD-EFGH', signal: stop.signal, verifyPeer: undefined, confirmationTimeoutMs: 500, completionLeaseMs: 50, intervalMs: 2 };
+  const common = { code: 'ABCD-EFGH', signal: stop.signal, verifyPeer: undefined, confirmationTimeoutMs: 500, intervalMs: 2 };
   const a = await startPinnedConnection({
+    responseTimeoutMs: 75_000,
     ...common,
     role: 'initiator',
     identity: identities.a,
@@ -228,6 +236,7 @@ it('different upper transport profiles are bound into authentication and cannot 
     purpose: new Uint8Array([1]),
   });
   const b = await startPinnedConnection({
+    responseTimeoutMs: 75_000,
     ...common,
     role: 'responder',
     identity: identities.b,
@@ -253,7 +262,7 @@ it('a successful POST without peer acceptance leaves the write pending', async (
   let dropped = 0;
   relay.transformReplies({
     transform: ({ bytes }) => {
-      if (bytes[0] !== 2) return bytes;
+      if (bytes[13] !== 5) return bytes;
       dropped++;
       return new Uint8Array();
     },
@@ -287,7 +296,7 @@ it('concurrent streams recover from relay state loss, corrupt bytes, and replaye
   let target: string | undefined, recorded: Uint8Array | undefined, altered = 0, replayed = 0;
   relay.transformReplies({
     transform: ({ route, bytes }) => {
-      if (bytes[0] !== 2) return bytes;
+      if (bytes[13] !== 5) return bytes;
       if (!target) {
         target = route; recorded = bytes.slice(); return bytes;
       }
@@ -334,42 +343,42 @@ it('concurrent streams recover from relay state loss, corrupt bytes, and replaye
   expect(relay.occupied).toBe(0);
 });
 
-async function pinnedTasks({ signal, confirmationTimeoutMs, completionLeaseMs }: {
-  signal: AbortSignal; confirmationTimeoutMs: number; completionLeaseMs: number;
+async function pinnedTasks({ signal, confirmationTimeoutMs }: {
+  signal: AbortSignal; confirmationTimeoutMs: number;
 }) {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const endpoint = () => new FiniteEndpoint({ baseUrl: options.baseUrl, policy: 'https-only', timeoutMs: 100, repairTimeoutMs: 20 });
-  const common = { code: 'ABCD-EFGH', signal, verifyPeer: undefined, confirmationTimeoutMs, completionLeaseMs, intervalMs: 2, purpose: new Uint8Array([1, 4]) };
+  const common = { code: 'ABCD-EFGH', signal, verifyPeer: undefined, confirmationTimeoutMs, intervalMs: 2, purpose: new Uint8Array([1, 4]) };
   return promiseAllKeyed({
-    a: startPinnedConnection({ ...common, role: 'initiator', identity: identities.a, expectedPeer: identities.b.publicKey, endpoint: endpoint() }),
-    b: startPinnedConnection({ ...common, role: 'responder', identity: identities.b, expectedPeer: identities.a.publicKey, endpoint: endpoint() }),
+    a: startPinnedConnection({ responseTimeoutMs: 75_000, ...common, role: 'initiator', identity: identities.a, expectedPeer: identities.b.publicKey, endpoint: endpoint() }),
+    b: startPinnedConnection({ responseTimeoutMs: 75_000, ...common, role: 'responder', identity: identities.b, expectedPeer: identities.a.publicKey, endpoint: endpoint() }),
   });
 }
 
 /** Preserve the valid cumulative prefix rather than replacing a missing flight with corrupt bytes. */
 function withholdFinalResponderFlight({ bytes }: { bytes: Uint8Array }): Uint8Array {
-  if (bytes.length < 99 || bytes[32] !== 1 || bytes[33] !== 2 || bytes[98] !== 4) return bytes;
-  let end = 99;
+  if (bytes.length < 112 || bytes[13] !== 4 || bytes[46] !== 2 || bytes[111] !== 4) return bytes;
+  let end = 112;
   for (let index = 0; index < 3; index++) end += 4 + new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(end + 2, false);
-  const prefix = bytes.slice(0, end); prefix[98] = 3;
+  const prefix = bytes.slice(0, end); prefix[111] = 3;
   return prefix;
 }
 
-it('key readiness and finite handshake cleanup are distinct and cleanup does not dispose returned keys', async () => {
-  const { relay, stop } = setup(), tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000, completionLeaseMs: 80 });
+it('key readiness and explicit handshake retirement are distinct and cleanup does not dispose returned keys', async () => {
+  const { relay, stop } = setup(), tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000 });
   const keys = await promiseAllKeyed({ a: tasks.a.ready, b: tasks.b.ready });
   let completed = false; void tasks.a.completion.then(() => {
     completed = true;
   }, () => {});
   try {
     expect(completed).toBe(false);
-    await Promise.all([tasks.a.completion, tasks.b.completion]);
+    await Promise.all([tasks.a.retire(), tasks.b.retire()]);
     expect(relay.occupied).toBe(0);
     const context = new Uint8Array([5]);
-    const left = keys.a.createDomain({ label: 'test/after-cleanup', context }), right = keys.b.createDomain({ label: 'test/after-cleanup', context });
+    const left = keys.a.keys.createDomain({ label: 'test/after-cleanup', context }), right = keys.b.keys.createDomain({ label: 'test/after-cleanup', context });
     expect(await left.route({ direction: 1 })).toBe(await right.route({ direction: 1 }));
   } finally {
-    stop.abort(); keys.a.dispose(); keys.b.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
+    stop.abort(); keys.a.keys.dispose(); keys.b.keys.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
   }
 });
 
@@ -377,47 +386,51 @@ it('a lost final key-confirmation flight is repeated without restarting the hand
   const { relay, stop } = setup(); let lost = 0;
   relay.transformReplies({
     transform: ({ bytes }) => {
-      if (lost || bytes.length < 99 || bytes[32] !== 1 || bytes[33] !== 2 || bytes[98] !== 4) return bytes;
+      if (lost || bytes.length < 112 || bytes[13] !== 4 || bytes[46] !== 2 || bytes[111] !== 4) return bytes;
       lost++; return withholdFinalResponderFlight({ bytes });
     },
   });
-  const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000, completionLeaseMs: 100 });
+  const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000 });
   const keys = await promiseAllKeyed({ a: tasks.a.ready, b: tasks.b.ready });
   try {
-    expect(lost).toBe(1); expect(keys.a.contextId).toEqual(keys.b.contextId);
-    await Promise.all([tasks.a.completion, tasks.b.completion]); expect(relay.occupied).toBe(0);
+    expect(lost).toBe(1); expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
+    await Promise.all([tasks.a.retire(), tasks.b.retire()]); expect(relay.occupied).toBe(0);
   } finally {
-    stop.abort(); keys.a.dispose(); keys.b.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
+    stop.abort(); keys.a.keys.dispose(); keys.b.keys.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
   }
-});
+}, 15_000); // Host test bound includes the preserved 5s established-journal resend cadence.
 
 it('permanent final-flight loss cannot be reported as mutual connection success', async () => {
   const { relay, stop } = setup(); let lost = 0;
+  const finalFlightLost = Promise.withResolvers<void>();
   relay.transformReplies({
     transform: ({ bytes }) => {
       const prefix = withholdFinalResponderFlight({ bytes });
-      if (prefix !== bytes) lost++;
+      if (prefix !== bytes) {
+        lost++; finalFlightLost.resolve();
+      }
       return prefix;
     },
   });
-  const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 600, completionLeaseMs: 100 });
+  const tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 600 });
   try {
     const remote = await tasks.b.ready;
     let localReady = false;
     void tasks.a.ready.then(() => {
       localReady = true;
     }, () => {});
-    await tasks.b.completion;
-    // This is after candidate confirmation; no blanket Noise timeout is installed.
+    await finalFlightLost.promise;
+    await tasks.b.retire();
+    // One-sided key readiness is not mutual readiness; explicit retirement does not publish the waiting side.
     expect(localReady).toBe(false); expect(lost).toBeGreaterThan(0);
     stop.abort();
     const results = await Promise.allSettled([tasks.a.ready, tasks.b.ready]);
     expect(lost).toBeGreaterThan(0);
     expect(results[0]!.status).toBe('rejected'); expect(results[1]!.status).toBe('fulfilled');
-    for (const result of results) if (result.status === 'fulfilled') result.value.dispose();
-    remote.dispose();
+    for (const result of results) if (result.status === 'fulfilled') result.value.keys.dispose();
+    remote.keys.dispose();
     const completed = await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
-    expect(completed[0]!.status).toBe('rejected'); expect(completed[1]!.status).toBe('fulfilled');
+    expect(completed[0]!.status).toBe('rejected'); expect(completed[1]!.status).toBe('rejected');
     expect(relay.occupied).toBe(0);
   } finally {
     stop.abort(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
@@ -425,22 +438,22 @@ it('permanent final-flight loss cannot be reported as mutual connection success'
 });
 
 it('cancelling handshake retention cleans all HTTP requests but leaves key ownership with its caller', async () => {
-  const { relay, stop } = setup(), tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000, completionLeaseMs: 10000 });
+  const { relay, stop } = setup(), tasks = await pinnedTasks({ signal: stop.signal, confirmationTimeoutMs: 2000 });
   const keys = await promiseAllKeyed({ a: tasks.a.ready, b: tasks.b.ready });
   try {
     stop.abort(new Error('Cancel handshake retention'));
     const completed = await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
     expect(completed.every(result => result.status === 'rejected')).toBe(true); expect(relay.occupied).toBe(0);
-    const domain = keys.a.createDomain({ label: 'test/retained-key-owner', context: new Uint8Array() });
+    const domain = keys.a.keys.createDomain({ label: 'test/retained-key-owner', context: new Uint8Array() });
     expect(await domain.route({ direction: 1 })).not.toHaveLength(0);
   } finally {
-    stop.abort(); keys.a.dispose(); keys.b.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
+    stop.abort(); keys.a.keys.dispose(); keys.b.keys.dispose(); await Promise.allSettled([tasks.a.completion, tasks.b.completion]);
   }
 });
 
 it('managed configuration and pins are owned before asynchronous connection work', async () => {
   const { relay, stop } = setup(), identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
-  const copiedOptions = { ...options, pacing: { ...options.pacing } }, pin = identities.b.publicKey.slice();
+  const copiedOptions = { ...options, pacing: { ...options.pacing }, liveness: { ...options.liveness } }, pin = identities.b.publicKey.slice();
   const left = NaidanPipingDuplexSession.connect({
     piping: copiedOptions,
     code: 'ABCD-EFGH',
@@ -449,7 +462,7 @@ it('managed configuration and pins are owned before asynchronous connection work
     expectedPeer: pin,
     signal: stop.signal,
   });
-  copiedOptions.baseUrl = 'https://other.invalid'; copiedOptions.pacing.minimumMs = 0; pin.fill(0);
+  copiedOptions.baseUrl = 'https://other.invalid'; copiedOptions.pacing.minimumMs = 0; copiedOptions.liveness.intervalMs = 0; pin.fill(0);
   const right = NaidanPipingDuplexSession.connect({
     piping: options,
     code: 'ABCD-EFGH',
@@ -474,7 +487,7 @@ it('the public pairing API uses a short number, waits for both approvals, and ke
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const shownA = Promise.withResolvers<Uint8Array>(), shownB = Promise.withResolvers<Uint8Array>();
   const approveA = Promise.withResolvers<boolean>(), approveB = Promise.withResolvers<boolean>();
-  const settings = { ...options, candidateConfirmationTimeoutMs: 100, handshakeRetentionMs: undefined };
+  const settings = { ...options, handshakeResponseTimeoutMs: 75_000, candidateConfirmationTimeoutMs: 100 };
   const first = NaidanPipingDuplexSession.pair({
     piping: settings,
     code: '0017',
@@ -517,7 +530,7 @@ it('a pairing cancelled while waiting for user comparison never returns a usable
   const { relay, stop } = setup();
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const shown = Promise.withResolvers<void>(), gate = Promise.withResolvers<boolean>();
-  const settings = { ...options, handshakeRetentionMs: undefined };
+  const settings = { ...options };
   const a = NaidanPipingDuplexSession.pair({
     piping: settings,
     code: '0023',
@@ -536,4 +549,219 @@ it('a pairing cancelled while waiting for user comparison never returns a usable
   });
   const failures = [expect(a).rejects.toBeDefined(), expect(b).rejects.toBeDefined()];
   await shown.promise; stop.abort(); gate.resolve(true); await Promise.all(failures); expect(relay.occupied).toBe(0);
+});
+
+it('peer loss during a credit-blocked transfer ends through private response policy while RPC-style work stays busy', async () => {
+  const { relay, stop } = setup();
+  const { a, b } = await sessions({
+    signal: stop.signal,
+    piping: {
+      ...options,
+      liveness: { intervalMs: 20, responseTimeoutMs: 350 },
+    },
+  });
+  const incoming = b.incomingStreams[Symbol.asyncIterator](), stream = await a.openStream({ signal: undefined });
+  const remote = await incoming.next(); if (remote.done) throw new Error('Missing incoming stream');
+  const writer = stream.writable.getWriter(); let writeSettled = false;
+  const writing = writer.write(new Uint8Array(256 * 1024)); void writing.then(() => {
+    writeSettled = true;
+  }, () => {
+    writeSettled = true;
+  });
+  await new Promise(resolve => setTimeout(resolve, 100)); expect(writeSettled).toBe(false);
+  // Reload/loss removes that session's owners. Outstanding application work
+  // cannot pause the Duplex-owned check or manufacture a fresh echo.
+  b.abort({ reason: 'Simulated remote reload' }); await b.closed;
+  const end = await a.ended; expect(end.kind).toBe('response-unconfirmed');
+  await expect(writing).rejects.toBeDefined(); await a.closed;
+  expect(relay.occupied).toBe(0); writer.releaseLock(); stop.abort();
+});
+
+it('publishes bounded authenticated opaque metadata as independent copies after first echo', async () => {
+  const { stop, relay } = setup();
+  const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const importKey = vi.spyOn(crypto.subtle, 'importKey');
+  const publicA = new Uint8Array(256).fill(11), privateA = new Uint8Array(463).fill(12);
+  const a = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCDEFGH',
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: identities.b.publicKey,
+    signal: stop.signal,
+    publicHandshakeData: publicA,
+    handshakeData: privateA,
+  });
+  publicA.fill(99); privateA.fill(99);
+  const b = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCDEFGH',
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    signal: stop.signal,
+    publicHandshakeData: new Uint8Array([21]),
+    handshakeData: new Uint8Array([22]),
+  });
+  const pair = await promiseAllKeyed({ a, b });
+  expect(pair.b.peerPublicHandshakeData).toEqual(new Uint8Array(256).fill(11));
+  expect(pair.b.peerHandshakeData).toEqual(new Uint8Array(463).fill(12));
+  expect(pair.a.peerPublicHandshakeData).toEqual(new Uint8Array([21])); expect(pair.a.peerHandshakeData).toEqual(new Uint8Array([22]));
+  const materialSizes = importKey.mock.calls.filter(args => args[0] === 'raw' && args[2] === 'HKDF').map(args => {
+    const bytes = args[1]; return bytes instanceof ArrayBuffer || ArrayBuffer.isView(bytes) ? bytes.byteLength : 0;
+  });
+  expect(materialSizes.filter(size => size === 64)).toHaveLength(2); expect(Math.max(...materialSizes)).toBe(64);
+  pair.b.peerHandshakeData.fill(0); pair.b.peerPublicHandshakeData.fill(0);
+  expect(pair.b.peerHandshakeData[0]).toBe(12); expect(pair.b.peerPublicHandshakeData[0]).toBe(11);
+  stop.abort(); await Promise.all([pair.a.closed, pair.b.closed]); expect(relay.occupied).toBe(0);
+  expect(() => pair.a.peerHandshakeData).toThrow(); expect(() => pair.b.peerPublicHandshakeData).toThrow();
+});
+
+it.each(['public', 'private', 'shared'] as const)('invalid %s metadata fails before HTTP begins', async kind => {
+  const { stop } = setup(), identity = await createNaidanPipingIdentity();
+  const bytes = kind === 'shared' ? new Uint8Array(new SharedArrayBuffer(1)) : new Uint8Array(kind === 'public' ? 257 : 464);
+  await expect(NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCDEFGH',
+    role: 'initiator',
+    identity,
+    expectedPeer: new Uint8Array(32).fill(2),
+    signal: stop.signal,
+    publicHandshakeData: kind === 'public' ? bytes : undefined,
+    handshakeData: kind === 'public' ? undefined : bytes,
+  })).rejects.toThrow();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('altering public metadata cannot authenticate or publish the selected candidate', async () => {
+  const { stop, relay } = setup();
+  relay.transformReplies({
+    transform: ({ bytes }) => {
+      if (bytes[13] !== 1 || bytes.length !== 49) return bytes;
+      const changed = bytes.slice(); changed[48]! ^= 1; return changed;
+    },
+  });
+  const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const a = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCDEFGH',
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: identities.b.publicKey,
+    signal: stop.signal,
+    publicHandshakeData: new Uint8Array([1]),
+  });
+  const b = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code: 'ABCDEFGH',
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    signal: stop.signal,
+  });
+  void a.catch(error => stop.abort(error)); void b.catch(error => stop.abort(error));
+  const results = await Promise.allSettled([a, b]); expect(results.every(result => result.status === 'rejected')).toBe(true); expect(relay.occupied).toBe(0);
+});
+
+it.each(['connect', 'pair'] as const)('%s rejects explicit null metadata rather than treating it as omission', async mode => {
+  const { stop } = setup(), identity = await createNaidanPipingIdentity();
+  for (const field of ['publicHandshakeData', 'handshakeData']) {
+    const metadata = { [field]: null as unknown as Uint8Array };
+    const common = { piping: options, code: 'ABCDEFGH', identity, signal: stop.signal, ...metadata };
+    const result = mode === 'connect' ? NaidanPipingDuplexSession.connect({ ...common, role: 'initiator', expectedPeer: new Uint8Array(32) })
+      : NaidanPipingDuplexSession.pair({ ...common, verifyPeer: async () => true });
+    await expect(result).rejects.toThrow('non-shared Uint8Array');
+  }
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('omitted and explicit empty metadata interoperate without upper-layer interpretation', async () => {
+  const { stop, relay } = setup(), identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const pair = await promiseAllKeyed({
+    a: NaidanPipingDuplexSession.connect({
+      piping: options,
+      code: 'ABCDEFGH',
+      role: 'initiator',
+      identity: identities.a,
+      expectedPeer: identities.b.publicKey,
+      signal: stop.signal,
+    }),
+    b: NaidanPipingDuplexSession.connect({
+      piping: options,
+      code: 'ABCDEFGH',
+      role: 'responder',
+      identity: identities.b,
+      expectedPeer: identities.a.publicKey,
+      signal: stop.signal,
+      publicHandshakeData: new Uint8Array(),
+      handshakeData: new Uint8Array(),
+    }),
+  });
+  for (const connection of [pair.a, pair.b]) {
+    expect(connection.peerHandshakeData).toEqual(new Uint8Array()); expect(connection.peerPublicHandshakeData).toEqual(new Uint8Array());
+  }
+  stop.abort(); await Promise.all([pair.a.closed, pair.b.closed]); expect(relay.occupied).toBe(0);
+});
+
+it.each(['initiator', 'responder'] as const)('%s cannot supply a first echo before its held MAC verification succeeds', async role => {
+  const { relay, stop } = setup();
+  const directions = new WeakMap<CryptoKey, number>();
+  const derive = crypto.subtle.deriveKey.bind(crypto.subtle), verify = crypto.subtle.verify.bind(crypto.subtle);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  vi.spyOn(crypto.subtle, 'deriveKey').mockImplementation(async (...args) => {
+    const key = await derive(...args), algorithm = args[0];
+    if (typeof algorithm === 'object' && algorithm.name === 'HKDF') {
+      const info = (algorithm as HkdfParams).info;
+      const bytes = info instanceof ArrayBuffer ? new Uint8Array(info) : new Uint8Array(info.buffer, info.byteOffset, info.byteLength);
+      if (new TextDecoder().decode(bytes).includes('peer-key-confirm/v1')) directions.set(key, bytes[bytes.length - 1]!);
+    }
+    return key;
+  });
+  vi.spyOn(crypto.subtle, 'verify').mockImplementation(async (...args) => {
+    if (directions.get(args[1]) === (role === 'initiator' ? 2 : 1)) {
+      entered.resolve(); await release.promise;
+    }
+    return verify(...args);
+  });
+  const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
+  const code = createNaidanPipingCode();
+  const first = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code,
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: identities.b.publicKey,
+    signal: stop.signal,
+  });
+  const second = NaidanPipingDuplexSession.connect({
+    piping: options,
+    code,
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    signal: stop.signal,
+  });
+  const published = { initiator: false, responder: false };
+  void first.then(() => {
+    published.initiator = true;
+  }, () => {});
+  void second.then(() => {
+    published.responder = true;
+  }, () => {});
+  try {
+    await entered.promise;
+    // The ungated peer has reached actual encrypted traffic while this MAC stays held.
+    await relay.firstRecordPost.promise;
+    expect(published).toEqual({ initiator: false, responder: false });
+    release.resolve();
+    const pair = await promiseAllKeyed({ a: first, b: second });
+    expect(pair.a.peerIdentity).not.toEqual(pair.b.peerIdentity);
+    expect(relay.journalPosts).toBeGreaterThan(0);
+    stop.abort(); await Promise.all([pair.a.closed, pair.b.closed]);
+    expect(relay.occupied).toBe(0);
+  } finally {
+    release.resolve(); stop.abort();
+    const results = await Promise.allSettled([first, second]);
+    await Promise.all(results.flatMap(result => result.status === 'fulfilled' ? [result.value.closed] : []));
+  }
 });

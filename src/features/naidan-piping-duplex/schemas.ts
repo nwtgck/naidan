@@ -25,7 +25,6 @@ export const snapshotSchema = z.strictObject({
 });
 
 export const journalEnvelopeSchema = z.strictObject({
-  version: z.literal(1),
   role: z.union([z.literal(1), z.literal(2)]),
   count: z.number().int().min(0).max(16),
   attemptI: z.instanceof(Uint8Array).refine(value => value.byteLength === 32),

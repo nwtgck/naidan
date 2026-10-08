@@ -14,7 +14,7 @@ vi.mock('@/features/image-generation/providers/local-environment', () => import(
 const settings = ref({ ...DEFAULT_SETTINGS, experimental: { naidanRpc: 'enabled' as const } });
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, initialized: ref(false), updateExperimental: vi.fn(), captureExperimentalStorage: () => () => true, updateExperimentalForStorage: vi.fn(async () => 'saved' as const) }) }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () => 'memory', subscribeToChanges: () => () => {} } }));
-vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn(async () => ({ reload: async () => {}, list: () => [] })) }));
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn(async () => ({ reload: async () => {}, list: () => [] })) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => {
   throw new Error('Device probes leaked into standalone');
 });
@@ -63,7 +63,7 @@ it('restores a pending session location before local availability would disable 
   try {
     await flushPromises();
     const local = view.captureDraft!()!; expect(local.inferenceLocation).toEqual({ kind: 'local' }); expect(local.request.runtime).toBeUndefined();
-    const remote = { ...local, inferenceLocation: { kind: 'naidan_rpc' as const, connection: undefined }, request: { ...local.request, parameters: { ...local.request.parameters, prompt: 'Stored remote draft' } } };
+    const remote = { ...local, inferenceLocation: { kind: 'naidan_rpc' as const, registration: undefined }, request: { ...local.request, parameters: { ...local.request.parameters, prompt: 'Stored remote draft' } } };
     await view.restoreDraft!({ draft: remote }); await flushPromises();
     expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc'); expect(view.parameters.value.prompt).toBe('Stored remote draft');
     expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();

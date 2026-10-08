@@ -1,4 +1,4 @@
-import { toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import { ExperimentalImageGenerationRuntimeSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationModelFile, ImageGenerationRecord, ImageGenerationSummary } from '@/01-models/image-generation-history';
 import { idToRaw, toBinaryObjectId, toHostModelDirectoryId, toImageGenerationId } from '@/01-models/ids';
@@ -69,7 +69,7 @@ export function imageGenerationRequestBodyToDto({ request }: { request: Omit<Ima
 
 export function imageGenerationRuntimeToDomain({ runtime }: { runtime: ExperimentalImageGenerationDto['request']['runtime'] }): ImageGenerationRecord['request']['runtime'] {
   switch (runtime.profile) {
-  case 'naidan-rpc': return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), connectionId: toNaidanRpcConnectionId({ raw: runtime.connectionId }), peerId: toNaidanRpcPeerId({ raw: runtime.peerId }) };
+  case 'naidan-rpc': return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
   case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
   default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
   }

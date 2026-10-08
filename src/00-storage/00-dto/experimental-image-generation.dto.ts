@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EndpointSchemaDto, LmParametersSchemaDto, ReasoningSchemaDto } from './dto';
 import {
+  exactRpcObject,
   ExperimentalBrowserImageModelSelectionSchemaDto,
   ExperimentalImageGenerationPathSchemaDto,
   ExperimentalImageInferenceLocationPreferenceSchemaDto,
@@ -23,15 +24,17 @@ export const ExperimentalImageGenerationRuntimeSchemaDto = z.union([
     weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
     gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
   })),
-  resolveMissingAsUndefined(z.object({
-    profile: z.literal('naidan-rpc'),
-    connectionId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),
-    peerId: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-    label: z.string().max(100),
-    // An unfinished draft can exist before a model is selected. Actual
-    // generation requires an explicit model selection at the RPC boundary.
-    modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
-  })),
+  exactRpcObject({
+    schema: resolveMissingAsUndefined(z.strictObject({
+      profile: z.literal('naidan-rpc'),
+      registrationId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),
+      peerPublicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+      label: z.string().max(100),
+      // An unfinished draft can exist before a model is selected. Actual
+      // generation requires an explicit model selection at the RPC boundary.
+      modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
+    })),
+  }),
 ]);
 export type ExperimentalImageGenerationRuntimeDto = z.infer<typeof ExperimentalImageGenerationRuntimeSchemaDto>;
 
@@ -342,7 +345,7 @@ export type ExperimentalImageGenerationDraftDto = z.infer<typeof ExperimentalIma
 
 export type ExperimentalImageGenerationRequestDto = z.infer<typeof ExperimentalImageGenerationRequestSchemaDto>;
 
-export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined(z.object({
+const ImageGenerationRunBaseSchemaDto = z.object({
   acceptedOrder: missingAsUndefined(ExperimentalImageGenerationActivityOrderSchemaDto),
   id: ExperimentalImageGenerationIdSchemaDto,
   sessionId: ExperimentalImageGenerationIdSchemaDto,
@@ -357,7 +360,8 @@ export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined
     assetId: ExperimentalImageGenerationIdSchemaDto,
   }).strict()).max(256),
   execution: ExperimentalImageGenerationRunExecutionSchemaDto,
-}).strict()).superRefine((run, context) => {
+}).strict();
+function validateRun({ run, context }: { run: { request: { parameters: { seed: string } }, seeds: string[], sources: { role: string, sessionId: string, assetId: string }[] }, context: z.RefinementCtx }): void {
   try {
     const seeds = planImageGenerationSeeds({ baseSeed: run.request.parameters.seed, count: run.seeds.length });
     if (seeds.some((seed, index) => seed !== run.seeds[index])) throw new Error('Seed plan differs from the accepted base seed.');
@@ -370,8 +374,32 @@ export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined
     if (sources.has(key)) context.addIssue({ code: 'custom', path: ['sources', index], message: 'Duplicate lineage source.' });
     sources.add(key);
   });
-});
+}
+export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined(ImageGenerationRunBaseSchemaDto).superRefine((run, context) => validateRun({ run, context }));
 export type ExperimentalImageGenerationRunDto = z.infer<typeof ExperimentalImageGenerationRunSchemaDto>;
+
+const UnavailableRpcRuntimeCommonSchemaDto = resolveMissingAsUndefined(z.object({
+  profile: z.literal('naidan-rpc'),
+  label: z.string().max(100),
+  modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
+}));
+const UnavailableDirectRecordSchemaDto = ExperimentalImageGenerationSchemaDto.extend({
+  request: ExperimentalImageGenerationSchemaDto.shape.request.extend({ runtime: UnavailableRpcRuntimeCommonSchemaDto }),
+});
+const UnavailableRunRecordSchemaDto = resolveMissingAsUndefined(ImageGenerationRunBaseSchemaDto.extend({
+  request: ExperimentalImageGenerationRequestSchemaDto.extend({ runtime: UnavailableRpcRuntimeCommonSchemaDto }),
+})).superRefine((run, context) => validateRun({ run, context }));
+
+export function unavailableDirectRpcRecord({ raw }: { raw: unknown }): { id: string } | undefined {
+  const result = UnavailableDirectRecordSchemaDto.safeParse(raw);
+  if (!result.success || ExperimentalImageGenerationSchemaDto.safeParse(raw).success) return undefined;
+  return { id: result.data.id };
+}
+export function unavailableRunRpcRecord({ raw }: { raw: unknown }): { id: string, sessionId: string } | undefined {
+  const result = UnavailableRunRecordSchemaDto.safeParse(raw);
+  if (!result.success || ExperimentalImageGenerationRunSchemaDto.safeParse(raw).success) return undefined;
+  return { id: result.data.id, sessionId: result.data.sessionId };
+}
 
 export const ExperimentalImageGenerationAssetSchemaDto = z.object({
   id: ExperimentalImageGenerationIdSchemaDto,

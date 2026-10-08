@@ -1,4 +1,4 @@
-import type { NaidanRpcConnectionId, NaidanRpcPeerId } from './ids';
+import type { NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
 import { restrictedFetchHeadersSchema } from '@/utils/restricted-fetch-headers';
 
 export type NaidanRpcTransportSettings = {
@@ -9,14 +9,14 @@ export type NaidanRpcTransportSettings = {
 export type NaidanRpcIdentity = { privateKey: CryptoKey, publicKey: string };
 /** Stored names are untrusted strings until the peer contract validates them.
  * No credentials or identity keys are included in ordinary settings exports. */
-export type NaidanRpcConnection = {
-  id: NaidanRpcConnectionId,
-  peerId: NaidanRpcPeerId,
+export type NaidanRpcRegistration = {
+  id: NaidanRpcRegistrationId,
+  peerPublicKey: NaidanRpcPeerPublicKey,
   localPublicKey: string,
   label: string,
   transport: NaidanRpcTransportSettings,
-  allowedMethods: readonly string[],
-  autoConnect: 'disabled' | 'enabled',
+  inboundAllowedMethods: readonly string[],
+  connectOnStartup: 'disabled' | 'enabled',
   revision: number,
 };
 export function normalizeNaidanRpcTransport({ transport }: { transport: NaidanRpcTransportSettings }): NaidanRpcTransportSettings {
@@ -36,7 +36,7 @@ export function normalizeNaidanRpcTransport({ transport }: { transport: NaidanRp
 }
 export function normalizeNaidanRpcLabel({ label }: { label: string }): string {
   const normalized = label.trim();
-  if (!normalized || normalized.length > 100) throw new Error('Invalid RPC connection label');
+  if (!normalized || normalized.length > 100) throw new Error('Invalid RPC registration label');
   return normalized;
 }
 export const TEST_ONLY = {

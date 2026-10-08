@@ -9,7 +9,7 @@ import {
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
-import { startRpcAutomaticConnections } from '@/features/naidan-peer-rpc/runtime/feature';
+import { startRpcAutomaticConnections } from '@/features/naidan-rpc-integration/runtime/feature';
 import {
   readFirstQueryValue,
   resolveInitialRoute,

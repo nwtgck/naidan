@@ -1,3 +1,9 @@
+import { PrivateResponses } from '@/features/naidan-piping-duplex/private-responses';
+import type { LivenessPolicy } from '@/features/naidan-piping-duplex/private-responses';
+import { systemResponseClock } from '@/features/naidan-piping-duplex/response-window';
+import type { ResponseClock } from '@/features/naidan-piping-duplex/response-window';
+import { AuthenticatedProtocolError, AuthenticationBudgetExhaustedError, ConnectionLifetime, ResponseUnconfirmedError } from '@/features/naidan-piping-duplex/lifetime';
+import type { NaidanPipingConnectionEndKind } from '@/features/naidan-piping-duplex/lifetime';
 import { isInitiator } from '@/features/naidan-piping-duplex/role';
 import { Pulse, requireValue } from '@/features/naidan-piping-duplex/bytes';
 import { Machine, isFinished } from '@/features/naidan-piping-duplex/machine';
@@ -13,13 +19,6 @@ export type NaidanPipingDuplexStream = {
         reason: string;
     }): void;
 };
-type ResponseConfirmation = {
-  threshold: bigint;
-  record: bigint | undefined;
-  started(): void;
-  resolve(): void;
-  reject({ reason }: { reason: unknown }): void;
-};
 export type PreparedTransmission = {
   kind: 'snapshot' | 'receipt-only';
   bytes: Uint8Array;
@@ -33,7 +32,8 @@ export class StreamSession {
   private internalStop = new AbortController();
   private internalSend: Records;
   private internalReceive: Records;
-  private internalFailure: Error | undefined;
+  private readonly lifetime = new ConnectionLifetime();
+  readonly ended = this.lifetime.ended;
   private internalIncomingOwned = false;
   private internalIncomingEnded = false;
   private internalNextPending = false;
@@ -44,7 +44,8 @@ export class StreamSession {
   private internalLastSnapshotRevision = -1;
   private internalHighestOffered = -1n;
   private internalPeerReceived = -1n;
-  private internalConfirmations = new Set<ResponseConfirmation>();
+  private internalResponses: PrivateResponses | undefined;
+  private internalEcho: Uint8Array | undefined;
   private internalTransmission: { number: bigint, receipt: 'waiting' | 'received', onReceived(): void } | undefined;
   readonly routes: {
         send: string;
@@ -90,10 +91,10 @@ export class StreamSession {
     };
   }
   get failureReason(): Error | undefined {
-    return this.internalFailure;
+    return this.lifetime.end?.error;
   }
   get stopped(): boolean {
-    return this.internalFailure !== undefined;
+    return this.lifetime.end !== undefined;
   }
   get revision(): number {
     return this.internalPulse.revision;
@@ -117,8 +118,9 @@ export class StreamSession {
     this.internalTransportPulse.fire();
   }
   private internalCheckSession(): void {
-    if (this.internalFailure)
-      throw this.internalFailure;
+    const failure = this.lifetime.end;
+    if (failure)
+      throw failure.error;
   }
   private internalCheckStream({ id }: {
         id: number;
@@ -328,40 +330,28 @@ export class StreamSession {
     update();
     return { id, readable, writable, closed, abort };
   }
-  /** A fresh, authenticated round trip after this call; no caller-managed counters. */
-  async confirmResponse({ signal, onRequestStarted }: { signal: AbortSignal, onRequestStarted(): void }): Promise<void> {
+  /** Internal readiness is available only after the managed owner starts responses. */
+  get firstResponse(): Promise<void> {
+    if (!this.internalResponses) throw new Error('Response owner not started');
+    return this.internalResponses.ready;
+  }
+  /** Managed owner starts this once, before the runner's first payload snapshot. */
+  startResponses({ policy, clock = systemResponseClock }: { policy: LivenessPolicy; clock?: ResponseClock }): void {
     this.internalCheckSession();
-    signal.throwIfAborted();
-    requireValue({ condition: this.internalConfirmations.size < 32, message: 'Response confirmation budget exhausted' });
-    const completed = Promise.withResolvers<void>();
-    const settle = ({ completion }: { completion: { kind: 'confirmed' } | { kind: 'failed', reason: unknown } }) => {
-      if (!this.internalConfirmations.delete(confirmation)) return;
-      signal.removeEventListener('abort', cancel);
-      switch (completion.kind) {
-      case 'confirmed': completed.resolve(); break;
-      case 'failed': completed.reject(completion.reason); break;
-      default: { const unreachable: never = completion; throw new Error(String(unreachable)); }
-      }
-    };
-    const confirmation: ResponseConfirmation = {
-      threshold: this.internalSend.next,
-      record: undefined,
-      started: () => {
-        try {
-          onRequestStarted();
-        } catch (reason) {
-          settle({ completion: { kind: 'failed', reason } });
-        }
+    requireValue({ condition: this.internalResponses === undefined, message: 'Response owner already started' });
+    const responses = new PrivateResponses({
+      policy,
+      clock,
+      wake: () => this.internalTransportPulse.fire(),
+      onFailure: ({ error }) => {
+        this.fail({ kind: error instanceof ResponseUnconfirmedError ? 'response-unconfirmed' : 'transport-fatal', error });
       },
-      resolve: () => settle({ completion: { kind: 'confirmed' } }),
-      reject: ({ reason }) => settle({ completion: { kind: 'failed', reason } }),
-    };
-    const cancel = () => confirmation.reject({ reason: signal.reason });
-    this.internalConfirmations.add(confirmation);
-    signal.addEventListener('abort', cancel, { once: true });
-    if (signal.aborted) cancel();
-    this.internalTransportPulse.fire();
-    return completed.promise;
+    });
+    this.internalResponses = responses;
+    responses.start();
+  }
+  retireResponses(): void {
+    this.internalResponses?.retire();
   }
   async makeCapsule({ reason }: { reason: 'update' | 'idle-resend' }): Promise<PreparedTransmission> {
     this.internalCheckSession();
@@ -380,11 +370,11 @@ export class StreamSession {
       // offered offsets. Regular idle resends still carry the complete snapshot.
       const snapshot = fullSnapshot ? this.internalMachine.snapshot()
         : this.internalMachine.receiptSnapshot();
-      const receiptRequest = fullSnapshot || this.internalConfirmations.size > 0
-        ? 'requested' : 'not-requested';
+      const receiptRequest = fullSnapshot ? 'requested' : 'not-requested';
+      const challenge = this.internalResponses?.challenge(), echo = this.internalEcho?.slice();
       const number = this.internalSend.next;
       const receivedRecord = this.internalReceive.high < 0n ? undefined : this.internalReceive.high;
-      const bytes = await this.internalSend.seal({ plaintext: encodeRecordPayload({ payload: { snapshot, receiptRequest, receivedRecord } }) });
+      const bytes = await this.internalSend.seal({ plaintext: encodeRecordPayload({ payload: { snapshot, receiptRequest, receivedRecord, challenge, echo } }) });
       this.internalCheckSession();
       let started = false;
       return {
@@ -402,14 +392,6 @@ export class StreamSession {
           this.internalHighestOffered = number;
           this.internalMachine.markOffered({ snapshot });
           if (fullSnapshot) this.internalLastSnapshotRevision = revision;
-          if (receiptRequested({ request: receiptRequest })) {
-            for (const confirmation of [...this.internalConfirmations]) {
-              if (this.internalConfirmations.has(confirmation) && confirmation.record === undefined && confirmation.threshold <= number) {
-                confirmation.record = number;
-                confirmation.started();
-              }
-            }
-          }
           return () => {
             if (this.internalTransmission === owner) this.internalTransmission = undefined;
           };
@@ -424,10 +406,10 @@ export class StreamSession {
     }): Promise<'accepted' | 'stale' | 'unauthenticated'> {
     this.internalCheckSession();
     try {
-      let changed = false, reply = false;
+      let changed = false, reply = false, challenge: Uint8Array | undefined, echo: Uint8Array | undefined;
       const outcome = await this.internalReceive.accept({
         capsule,
-        apply: ({ snapshot, receiptRequest, receivedRecord }) => {
+        apply: ({ snapshot, receiptRequest, receivedRecord, challenge: incomingChallenge, echo: incomingEcho }) => {
           this.internalCheckSession();
           // Validate before Machine commits; malformed stream state and receipts
           // must never partially confirm a response or advance offsets.
@@ -435,15 +417,18 @@ export class StreamSession {
           changed = this.internalMachine.accept({ snapshot });
           if (receivedRecord !== undefined && receivedRecord > this.internalPeerReceived) this.internalPeerReceived = receivedRecord;
           reply = receiptRequested({ request: receiptRequest });
+          challenge = incomingChallenge; echo = incomingEcho;
         },
       });
       switch (outcome) {
       case 'accepted': {
-        if (changed) this.internalNotify(); else if (reply) this.internalTransportPulse.fire();
-        // Notify only after Records has committed its authenticated high number.
-        for (const confirmation of [...this.internalConfirmations]) {
-          if (confirmation.record !== undefined && this.internalPeerReceived >= confirmation.record) confirmation.resolve();
-        }
+        // Only after Records commits its authenticated high number can metadata
+        // confirm readiness. Malformed snapshots/receipts never reach this point.
+        this.internalResponses?.accept({ echo });
+        if (challenge !== undefined) this.internalEcho = challenge.slice();
+        // Same-token requests in newer records can recover a lost echo. An
+        // echo-only record does not recursively request another control record.
+        if (changed) this.internalNotify(); else if (reply || challenge !== undefined) this.internalTransportPulse.fire();
         const owner = this.internalTransmission;
         if (owner?.receipt === 'waiting' && this.internalPeerReceived === owner.number) {
           owner.receipt = 'received';
@@ -456,8 +441,12 @@ export class StreamSession {
       }
       return outcome;
     } catch (error) {
-      this.abort({ reason: 'Record processing failed' });
-      throw error;
+      this.fail({
+        kind: error instanceof AuthenticationBudgetExhaustedError ? 'authentication-budget-exhausted'
+          : error instanceof AuthenticatedProtocolError ? 'authenticated-protocol-error' : 'transport-fatal',
+        error,
+      });
+      throw this.lifetime.end?.error;
     }
   }
   async drain({ signal }: {
@@ -478,12 +467,16 @@ export class StreamSession {
   abort({ reason }: {
         reason: string;
     }): void {
-    if (this.internalFailure)
-      return;
-    this.internalFailure = new Error(reason);
-    this.internalStop.abort(this.internalFailure);
+    this.fail({ kind: 'local-stop', error: new Error(reason) });
+  }
+  /** Internal owners supply a local classification; incoming bytes cannot select it. */
+  fail({ kind, error }: { kind: NaidanPipingConnectionEndKind; error: unknown }): void {
+    if (this.lifetime.end) return;
+    const outcome = this.lifetime.commit({ kind, error });
+    this.internalStop.abort(outcome.error);
     this.internalMachine.abort();
-    for (const confirmation of [...this.internalConfirmations]) confirmation.reject({ reason: this.internalFailure });
+    this.internalResponses?.stop({ error: outcome.error });
+    this.internalEcho = undefined;
     this.internalNotify();
   }
 }

@@ -83,7 +83,7 @@ it('the maximum legal snapshot fits its independently calculated size', () => {
   };
   const encoded = encodeSnapshot({ snapshot });
   expect(encoded.length).toBe(50045);
-  expect(encoded.length).toBeLessThan(CAPSULE_BYTES - 25);
+  expect(encoded.length).toBeLessThan(CAPSULE_BYTES - 38);
   expect(encoded).toEqual(reference({ snapshot }));
   expect(() => encodeSnapshot({ snapshot: { ...snapshot, states: [...snapshot.states, state({ id: 32 })] } })).toThrow('count');
   expect(() => encodeSnapshot({ snapshot: { ...snapshot, data: [...snapshot.data, { id: 2, offset: 0n, bytes: new Uint8Array([1]) }] } })).toThrow('count');
@@ -157,7 +157,7 @@ it('decoded DATA and bitmaps own their buffers and do not expose another segment
 });
 
 it('oversized, shared and malformed headers are rejected before returning state', () => {
-  for (const bytes of [new Uint8Array(CAPSULE_BYTES - 24), new Uint8Array(new SharedArrayBuffer(5)),
+  for (const bytes of [new Uint8Array(CAPSULE_BYTES - 37), new Uint8Array(new SharedArrayBuffer(5)),
     new Uint8Array([2, 0, 0, 0, 0]), new Uint8Array([0, 255, 255, 0, 0]),
     new Uint8Array([0, 0, 0, 33, 0]), new Uint8Array([0, 0, 0, 0, 3])]) {
     expect(() => decodeSnapshot({ bytes })).toThrow();

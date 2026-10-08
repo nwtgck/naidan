@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { encodeProtocolHeader } from './protocol-header';
 import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { NaidanRpcPeer, contract, expose, procedure, rpc } from '@/features/naidan-rpc';
@@ -33,8 +34,8 @@ async function opened() {
   });
   const call = peer.client({ contract: definition }).get({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const incoming = await iterator.next(); if (incoming.done) throw new Error('Missing duplex');
-  const wire = new FramedDuplex({ duplex: incoming.value });
-  expect(await wire.read()).toMatchObject({ type: 'open', version: 1 });
+  const wire = new FramedDuplex({ onProtocolFailure: () => {}, duplex: incoming.value });
+  expect(await wire.read()).toMatchObject({ type: 'open' });
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [] } });
   return { call, wire, duplex: incoming.value };
 }
@@ -99,9 +100,11 @@ it('retains only arrived payload bytes when six peers declare maximum-sized fram
     for (let index = 0; index < 6; index++) {
       const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
       const wire = new FramedDuplex({
+        onProtocolFailure: () => {},
         duplex: {
           readable: new ReadableStream({
             start(controller) {
+              controller.enqueue(encodeProtocolHeader());
               controller.enqueue(header); controller.enqueue(new Original([1]));
             },
           }),
@@ -130,7 +133,7 @@ it('a stalled maximum-sized item declaration does not reserve its sibling stream
   });
   const call = peer.client({ contract: api }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   const incoming = await transport.b.incomingStreams[Symbol.asyncIterator]().next(); if (incoming.done) throw new Error('Missing stream');
-  const wire = new FramedDuplex({ duplex: incoming.value }); await wire.read();
+  const wire = new FramedDuplex({ onProtocolFailure: () => {}, duplex: incoming.value }); await wire.read();
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [] } });
   await wire.send({ frame: { type: 'result', value: { large: new Reference({ id: 2, mode: 'items' }), sibling: new Reference({ id: 4, mode: 'items' }) } } });
   const result = await call.result; await wire.read();
@@ -169,7 +172,7 @@ it('repeating STOP while a producer cancellation waits cannot create unbounded c
     timeoutMs: 1000,
   });
   const incoming = await transport.b.incomingStreams[Symbol.asyncIterator]().next(); if (incoming.done) throw new Error('Missing stream');
-  const wire = new FramedDuplex({ duplex: incoming.value }); await wire.read();
+  const wire = new FramedDuplex({ onProtocolFailure: () => {}, duplex: incoming.value }); await wire.read();
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [1] } });
   await wire.send({ frame: { type: 'stop', id: 1 } });
   await wire.send({ frame: { type: 'stop', id: 1 } }).catch(() => {});
@@ -202,8 +205,8 @@ it.each(['wrong-type', 'reference'] as const)('retires an awaiting callback afte
     peer.dispose(); transport.close();
   });
   const duplex = await transport.b.openStream({ signal: new AbortController().signal });
-  const wire = new FramedDuplex({ duplex });
-  await wire.send({ frame: { type: 'open', version: 1, contract: api.name, method: 'run', value: new Reference({ id: 1, mode: 'callback' }) } });
+  const wire = new FramedDuplex({ onProtocolFailure: () => {}, duplex });
+  await wire.send({ frame: { type: 'open', contract: api.name, method: 'run', value: new Reference({ id: 1, mode: 'callback' }) } });
   expect(await wire.read()).toEqual({ type: 'accept', scope: 'input', ids: [1] });
   const invocation = await wire.read();
   if (invocation?.type !== 'invoke') throw new Error('Expected callback invocation');
@@ -218,9 +221,11 @@ it('strips finite envelope extensions after inspecting their raw capability refe
     const payload = encode({ value, limit: FRAME_BYTES }), bytes = new Uint8Array(payload.length + 4);
     new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
     const wire = new FramedDuplex({
+      onProtocolFailure: () => {},
       duplex: {
         readable: new ReadableStream({
           start(controller) {
+            controller.enqueue(encodeProtocolHeader());
             controller.enqueue(bytes); controller.close();
           },
         }),
@@ -250,7 +255,7 @@ it('permits a sibling item and STOP while a large typed item is only partly deli
   });
   const call = peer.client({ contract: api }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   const incoming = await transport.b.incomingStreams[Symbol.asyncIterator]().next(); if (incoming.done) throw new Error('Missing stream');
-  const wire = new FramedDuplex({ duplex: incoming.value }); await wire.read();
+  const wire = new FramedDuplex({ onProtocolFailure: () => {}, duplex: incoming.value }); await wire.read();
   await wire.send({ frame: { type: 'accept', scope: 'input', ids: [] } });
   await wire.send({ frame: { type: 'result', value: { large: new Reference({ id: 2, mode: 'items' }), small: new Reference({ id: 4, mode: 'items' }) } } });
   const result = await call.result; await wire.read();

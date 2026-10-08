@@ -1,5 +1,5 @@
 import { snapshotSchema } from '@/features/naidan-piping-duplex/schemas';
-import { CAPSULE_BYTES, MAX_OFFSET, SEGMENT_BYTES, ownBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
+import { RECORD_PLAINTEXT_BYTES, MAX_OFFSET, SEGMENT_BYTES, ownBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
 export type StreamState = {
     id: number;
     flags: number;
@@ -23,6 +23,8 @@ export type RecordPayload = {
     receiptRequest: 'requested' | 'not-requested';
     receivedRecord: bigint | undefined;
     snapshot: Snapshot;
+    challenge: Uint8Array | undefined;
+    echo: Uint8Array | undefined;
 };
 export function receiptRequested({ request }: { request: RecordPayload['receiptRequest'] }): boolean {
   switch (request) {
@@ -38,7 +40,7 @@ function unsigned({ value, max }: {
 }): void {
   requireValue({ condition: Number.isInteger(value) && value >= 0 && value <= max, message: 'Unsigned field range' });
 }
-/** A closed, bounded schema. New layouts require a distinct authenticated record profile. */
+/** A closed, bounded snapshot schema. Payload metadata has its own strict codec. */
 export function encodeSnapshot({ snapshot }: {
     snapshot: Snapshot;
 }): Uint8Array {
@@ -58,7 +60,7 @@ export function encodeSnapshot({ snapshot }: {
     let total = HEADER_BYTES + size * 2 + ordered.length * STATE_BYTES;
     for (const segment of segments)
       total += DATA_HEADER_BYTES + segment.bytes.length;
-    requireValue({ condition: total <= CAPSULE_BYTES - 25, message: 'Snapshot size' });
+    requireValue({ condition: total <= RECORD_PLAINTEXT_BYTES, message: 'Snapshot size' });
     const bytes = new Uint8Array(total), view = new DataView(bytes.buffer);
     bytes[0] = goaway ? 1 : 0;
     view.setUint16(1, size, false);
@@ -99,7 +101,7 @@ export function encodeSnapshot({ snapshot }: {
 export function decodeSnapshot({ bytes }: {
     bytes: Uint8Array;
 }): Snapshot {
-  const owned = ownBytes({ bytes, maxBytes: CAPSULE_BYTES - 25 });
+  const owned = ownBytes({ bytes, maxBytes: RECORD_PLAINTEXT_BYTES });
   requireValue({ condition: owned.length >= HEADER_BYTES, message: 'Snapshot header' });
   const view = new DataView(owned.buffer), size = view.getUint16(1, false), stateCount = owned[3]!, dataCount = owned[4]!;
   requireValue({
@@ -147,27 +149,38 @@ export function decodeSnapshot({ bytes }: {
 
 /** Receipt metadata shares the existing record authentication and size budget. */
 export function encodeRecordPayload({ payload }: { payload: RecordPayload }): Uint8Array {
-  const { receiptRequest, receivedRecord, snapshot, ...rest } = payload;
+  const { receiptRequest, receivedRecord, snapshot, challenge, echo, ...rest } = payload;
   rest satisfies Record<PropertyKey, never>;
   requireValue({ condition: receivedRecord === undefined || (receivedRecord >= 0n && receivedRecord <= MAX_OFFSET), message: 'Receipt number range' });
+  for (const token of [challenge, echo]) requireValue({ condition: token === undefined || (token instanceof Uint8Array && token.buffer instanceof ArrayBuffer && token.byteLength === 32), message: 'Response token length' });
   const body = encodeSnapshot({ snapshot });
-  const headerBytes = receivedRecord === undefined ? 1 : 9;
-  requireValue({ condition: headerBytes + body.length <= CAPSULE_BYTES - 25, message: 'Record payload size' });
+  const headerBytes = 1 + (receivedRecord === undefined ? 0 : 8) + (challenge === undefined ? 0 : 32) + (echo === undefined ? 0 : 32);
+  requireValue({ condition: headerBytes + body.length <= RECORD_PLAINTEXT_BYTES, message: 'Record payload size' });
   const bytes = new Uint8Array(headerBytes + body.length);
-  bytes[0] = (receiptRequested({ request: receiptRequest }) ? 1 : 0) | (receivedRecord === undefined ? 0 : 2);
+  bytes[0] = (receiptRequested({ request: receiptRequest }) ? 1 : 0) | (receivedRecord === undefined ? 0 : 2) | (challenge === undefined ? 0 : 4) | (echo === undefined ? 0 : 8);
   if (receivedRecord !== undefined) new DataView(bytes.buffer).setBigUint64(1, receivedRecord, false);
+  let cursor = receivedRecord === undefined ? 1 : 9;
+  for (const token of [challenge, echo]) if (token !== undefined) {
+    bytes.set(token, cursor); cursor += 32;
+  }
   bytes.set(body, headerBytes);
   return bytes;
 }
 
 export function decodeRecordPayload({ bytes }: { bytes: Uint8Array }): RecordPayload {
-  const owned = ownBytes({ bytes, maxBytes: CAPSULE_BYTES - 25 });
-  requireValue({ condition: owned.length >= 1 && owned[0]! <= 3, message: 'Receipt flags' });
-  const headerBytes = (owned[0]! & 2) === 0 ? 1 : 9;
-  requireValue({ condition: owned.length >= headerBytes, message: 'Truncated receipt' });
-  const receivedRecord = headerBytes === 1 ? undefined : new DataView(owned.buffer).getBigUint64(1, false);
+  const owned = ownBytes({ bytes, maxBytes: RECORD_PLAINTEXT_BYTES });
+  requireValue({ condition: owned.length >= 1 && (owned[0]! & ~15) === 0, message: 'Receipt flags' });
+  const hasReceipt = (owned[0]! & 2) !== 0, hasChallenge = (owned[0]! & 4) !== 0, hasEcho = (owned[0]! & 8) !== 0;
+  const headerBytes = 1 + (hasReceipt ? 8 : 0) + (hasChallenge ? 32 : 0) + (hasEcho ? 32 : 0);
+  requireValue({ condition: owned.length >= headerBytes + HEADER_BYTES, message: 'Truncated receipt' });
+  const receivedRecord = !hasReceipt ? undefined : new DataView(owned.buffer).getBigUint64(1, false);
   requireValue({ condition: receivedRecord === undefined || receivedRecord <= MAX_OFFSET, message: 'Receipt number range' });
+  let cursor = hasReceipt ? 9 : 1;
+  const challenge = hasChallenge ? owned.slice(cursor, cursor + 32) : undefined; if (hasChallenge) cursor += 32;
+  const echo = hasEcho ? owned.slice(cursor, cursor + 32) : undefined;
   return {
+    challenge,
+    echo,
     receiptRequest: (owned[0]! & 1) === 0 ? 'not-requested' : 'requested',
     receivedRecord,
     snapshot: decodeSnapshot({ bytes: owned.subarray(headerBytes) }),

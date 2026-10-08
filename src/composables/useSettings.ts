@@ -1,4 +1,4 @@
-import { configureRpcFeature } from '@/features/naidan-peer-rpc/runtime/feature';
+import { configureRpcFeature } from '@/features/naidan-rpc-integration/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';

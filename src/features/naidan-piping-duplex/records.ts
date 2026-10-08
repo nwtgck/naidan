@@ -1,4 +1,6 @@
-import { CAPSULE_BYTES, MAX_OFFSET, ownBytes, fields, ascii, u64, joinBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
+import { encodeProtocolHeader, inspectProtocolHeader } from './protocol-header';
+import { AuthenticatedProtocolError, AuthenticationBudgetExhaustedError, RecordExhaustedError } from '@/features/naidan-piping-duplex/lifetime';
+import { RECORD_PLAINTEXT_BYTES, CAPSULE_BYTES, MAX_OFFSET, ownBytes, fields, ascii, u64, joinBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
 import { decodeRecordPayload } from '@/features/naidan-piping-duplex/wire';
 import type { RecordPayload } from '@/features/naidan-piping-duplex/wire';
 import type { NaidanPipingKeyDomain, NaidanPipingDirection } from '@/features/naidan-piping-duplex/key-context';
@@ -66,12 +68,13 @@ export class Records {
   async seal({ plaintext }: {
         plaintext: Uint8Array;
     }): Promise<Uint8Array> {
-    requireValue({ condition: this.internalUsage === 'encrypt' && !this.internalBusy && this.internalNext <= MAX_OFFSET, message: 'Record writer unavailable' });
-    const bytes = ownBytes({ bytes: plaintext, maxBytes: CAPSULE_BYTES - 25 });
+    requireValue({ condition: this.internalUsage === 'encrypt' && !this.internalBusy, message: 'Record writer unavailable' });
+    if (this.internalNext > MAX_OFFSET) throw new RecordExhaustedError();
+    const bytes = ownBytes({ bytes: plaintext, maxBytes: RECORD_PLAINTEXT_BYTES });
     const number = this.internalNext++;
     this.internalBusy = true;
     try {
-      const header = joinBytes({ parts: [new Uint8Array([2]), u64({ value: number })] });
+      const header = joinBytes({ parts: [encodeProtocolHeader(), new Uint8Array([5]), u64({ value: number })] });
       const key = await this.internalKey({ number });
       const body = new Uint8Array(await crypto.subtle.encrypt(this.internalParams({ number, header }), key, bytes));
       this.internalDomain.assertActive();
@@ -89,28 +92,22 @@ export class Records {
     if (!(capsule instanceof Uint8Array) || !(capsule.buffer instanceof ArrayBuffer) || capsule.byteLength > CAPSULE_BYTES)
       return 'unauthenticated';
     const bytes = ownBytes({ bytes: capsule, maxBytes: CAPSULE_BYTES });
-    if (bytes.length < 25 || bytes[0] !== 2)
+    if (inspectProtocolHeader({ bytes, maxBytes: CAPSULE_BYTES }).kind !== 'supported' || bytes.length < 38 || bytes[13] !== 5)
       return 'unauthenticated';
-    const number = new DataView(bytes.buffer).getBigUint64(1, false);
+    const number = new DataView(bytes.buffer).getBigUint64(14, false);
     if (number > MAX_OFFSET)
       return 'unauthenticated';
     // Reserve before any await so concurrent verification cannot overspend the failure budget.
-    requireValue({
-      condition: this.internalFailedAuthentications + this.internalVerifications < FAILED_AUTHENTICATION_LIMIT,
-      message: 'Authentication verification budget exhausted',
-    });
+    if (this.internalFailedAuthentications + this.internalVerifications >= FAILED_AUTHENTICATION_LIMIT) throw new AuthenticationBudgetExhaustedError();
     this.internalVerifications++;
     let plaintext: Uint8Array, key: CryptoKey;
     try {
       key = await this.internalKey({ number });
       try {
-        plaintext = new Uint8Array(await crypto.subtle.decrypt(this.internalParams({ number, header: bytes.subarray(0, 9) }), key, bytes.subarray(9)));
+        plaintext = new Uint8Array(await crypto.subtle.decrypt(this.internalParams({ number, header: bytes.subarray(0, 22) }), key, bytes.subarray(22)));
       } catch {
         this.internalFailedAuthentications++;
-        requireValue({
-          condition: this.internalFailedAuthentications < FAILED_AUTHENTICATION_LIMIT,
-          message: 'Authentication verification budget exhausted',
-        });
+        if (this.internalFailedAuthentications >= FAILED_AUTHENTICATION_LIMIT) throw new AuthenticationBudgetExhaustedError();
         return 'unauthenticated';
       }
     } finally {
@@ -121,8 +118,12 @@ export class Records {
     this.internalDomain.assertActive();
     if (number <= this.internalHigh)
       return 'stale';
-    const payload = decodeRecordPayload({ bytes: plaintext });
-    apply({ ...payload, number });
+    try {
+      const payload = decodeRecordPayload({ bytes: plaintext });
+      apply({ ...payload, number });
+    } catch (error) {
+      throw new AuthenticatedProtocolError({ cause: error });
+    }
     this.internalHigh = number;
     this.internalRemember({ number, key });
     return 'accepted';

@@ -1,5 +1,7 @@
 export const MAX_OFFSET = (1n << 48n) - 1n;
 export const CAPSULE_BYTES = 65536;
+export const RECORD_OVERHEAD_BYTES = 38;
+export const RECORD_PLAINTEXT_BYTES = CAPSULE_BYTES - RECORD_OVERHEAD_BYTES;
 export const SEGMENT_BYTES = 16384;
 export const RECEIVE_WINDOW = 65536n;
 export const RETAINED_STREAMS = 32;

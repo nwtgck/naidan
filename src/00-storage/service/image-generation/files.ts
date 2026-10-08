@@ -1,3 +1,5 @@
+import { UnavailableRpcRecordError } from './unavailable-record';
+import { stringifyStorageDto } from '@/00-storage/service/serialize';
 import { z } from 'zod';
 import type { ImageGenerationReadResult, ImageGenerationReadWarning } from '@/01-models/image-generation';
 
@@ -61,7 +63,7 @@ export async function writeImageGenerationText({ directory, name, text }: { dire
 }
 
 /** Storage-local helper. Callers must hold the Image Generation lock for every method. */
-export function createImageGenerationTable<R, S>({ directory, layout, recordSchema, indexSchema, recordId, summaryId, summarize, validateRecord, validateSummary }: {
+export function createImageGenerationTable<R, S>({ directory, layout, recordSchema, indexSchema, recordId, summaryId, summarize, validateRecord, validateSummary, unavailableRecord }: {
   directory: FileSystemDirectoryHandle | undefined,
   layout: 'files' | 'session-directories',
   recordSchema: z.ZodType<R>,
@@ -71,6 +73,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
   summarize: ({ record }: { record: R }) => S,
   validateRecord: ({ record }: { record: R }) => void,
   validateSummary: ({ summary }: { summary: S }) => void,
+  unavailableRecord: (({ raw }: { raw: unknown }) => { id: string } | undefined) | undefined,
 }) {
   async function readRecord({ shardDirectory, id }: { shardDirectory: FileSystemDirectoryHandle, id: string }): Promise<R | undefined> {
     let text: string | undefined;
@@ -84,7 +87,13 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     default: { const exhaustive: never = layout; throw new Error(String(exhaustive)); }
     }
     if (text === undefined) return undefined;
-    const record = recordSchema.parse(JSON.parse(text));
+    const raw: unknown = JSON.parse(text);
+    const unavailable = unavailableRecord?.({ raw });
+    if (unavailable !== undefined) {
+      if (unavailable.id !== id) throw new Error('Image Generation record identity does not match its location.');
+      throw new UnavailableRpcRecordError({ id: id });
+    }
+    const record = recordSchema.parse(raw);
     if (recordId({ record }) !== id) throw new Error('Image Generation record identity does not match its location.');
     validateRecord({ record });
     return record;
@@ -113,7 +122,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     return ids;
   }
 
-  async function readIndex({ shardDirectory, shard }: { shardDirectory: FileSystemDirectoryHandle, shard: string }): Promise<{ items: S[] }> {
+  async function readIndex({ shardDirectory, shard }: { shardDirectory: FileSystemDirectoryHandle, shard: string }): Promise<{ items: S[], unavailable: string[] }> {
     const text = await readImageGenerationText({ directory: shardDirectory, name: 'index.json' });
     // Even dirty indexes must parse before mutation. Never replace corrupt bytes
     // with an empty "healthy" index. Read-only listing can fall back to records.
@@ -126,19 +135,24 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     }
     const dirty = await readImageGenerationText({ directory: shardDirectory, name: 'index.dirty' }) !== undefined;
     const ids = await recordIds({ shardDirectory, shard });
-    const items: S[] = [];
+    const items: S[] = [], unavailable: string[] = [];
+    // Tables with RPC runtimes derive membership from actual files even when
+    // cached. Other table kinds retain their ordinary clean-cache fast path.
     for (const id of ids) {
       const cached = indexed.get(id);
-      // A dirty marker invalidates EVERY cached summary in that shard. Checking
-      // only filenames misses tag/status/title changes to existing records.
-      if (!dirty && cached !== undefined) {
+      if (unavailableRecord === undefined && !dirty && cached !== undefined) {
         items.push(cached); continue;
       }
-      const record = await readRecord({ shardDirectory, id });
-      if (record === undefined) throw new Error('Image Generation record is incomplete or disappeared.');
-      items.push(summarize({ record }));
+      try {
+        const record = await readRecord({ shardDirectory, id });
+        if (record === undefined) throw new Error('Image Generation record is incomplete or disappeared.');
+        items.push(summarize({ record }));
+      } catch (error) {
+        if (!(error instanceof UnavailableRpcRecordError)) throw error;
+        unavailable.push(id);
+      }
     }
-    return { items };
+    return { items, unavailable };
   }
 
   async function load({ id }: { id: string }): Promise<R | undefined> {
@@ -159,7 +173,10 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     for await (const [shard, handle] of directory.entries()) {
       if (handle.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) continue;
       try {
-        items.push(...(await readIndex({ shardDirectory: handle, shard })).items); continue;
+        const index = await readIndex({ shardDirectory: handle, shard });
+        items.push(...index.items);
+        for (const id of index.unavailable) warn({ path: `${shard}/${id}`, error: new UnavailableRpcRecordError({ id: id }) });
+        continue;
       } catch (error) {
         warn({ path: `${shard}/index.json`, error });
       }
@@ -198,6 +215,16 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     return { items, warnings, warningCount };
   }
 
+  /** Read-only shard validation before a caller publishes inputs or reserves activity.
+   * The actual write revalidates under the same store lock; no cache/token escapes. */
+  async function preflightWrite({ id }: { id: string }): Promise<void> {
+    const rawId = imageGenerationRawIdSchema.parse(id);
+    if (!directory) throw new Error('Image Generation table is unavailable.');
+    const shard = rawId.slice(-2).toLowerCase();
+    const shardDirectory = await imageGenerationDirectory({ parent: directory, name: shard, create: false });
+    if (shardDirectory) await readIndex({ shardDirectory, shard });
+  }
+
   async function write({ record, assertCurrent, beforeCommit }: {
     record: R,
     assertCurrent: ({ current }: { current: R | undefined }) => void,
@@ -205,6 +232,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
   }): Promise<void> {
     const snapshot = recordSchema.parse(record);
     validateRecord({ record: snapshot });
+    const text = stringifyStorageDto({ value: snapshot, space: undefined });
     const id = imageGenerationRawIdSchema.parse(recordId({ record: snapshot }));
     if (!directory) throw new Error('Image Generation table is unavailable.');
     const shard = id.slice(-2).toLowerCase();
@@ -214,8 +242,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     assertCurrent({ current });
     await beforeCommit();
     await writeImageGenerationText({ directory: shardDirectory, name: 'index.dirty', text: 'record-first' });
-    const text = JSON.stringify(snapshot);
-    if (current === undefined || JSON.stringify(current) !== text) {
+    if (current === undefined || stringifyStorageDto({ value: current, space: undefined }) !== text) {
       switch (layout) {
       case 'files': await writeImageGenerationText({ directory: shardDirectory, name: `${id}.json`, text }); break;
       case 'session-directories': {
@@ -243,11 +270,11 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     }
     const summaries = index.items.filter(summary => summaryId({ summary }) !== id);
     summaries.push(summarize({ record: snapshot }));
-    await writeImageGenerationText({ directory: shardDirectory, name: 'index.json', text: JSON.stringify(indexSchema.parse({ items: summaries })) });
+    await writeImageGenerationText({ directory: shardDirectory, name: 'index.json', text: stringifyStorageDto({ value: indexSchema.parse({ items: summaries }), space: undefined }) });
     await shardDirectory.removeEntry('index.dirty');
   }
 
-  return { load, list, write };
+  return { load, list, write, preflightWrite };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

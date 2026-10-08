@@ -1,1 +1,1 @@
-export const NaidanRpcTab__automatic_connection_help = (): string => "Naidanの起動時に接続を再開し、予期しない切断後は再接続を試みます。手動で切断すると、このページでは自動接続を停止します。リロード後は再び有効になります。";
+export const NaidanRpcTab__automatic_connection_help = (): string => "この設定はNaidanの起動時だけに適用されます。現在の接続や再接続には影響しません。このページで接続を停止するには「切断」を選んでください。";

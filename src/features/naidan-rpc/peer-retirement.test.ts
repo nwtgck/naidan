@@ -27,7 +27,7 @@ function idleIncoming() {
 it('retirement joins a pending stream open and aborts its late duplex before returning', async () => {
   const opening = Promise.withResolvers<NaidanRpcDuplex>(), transportClosed = Promise.withResolvers<void>();
   const open = vi.fn(async () => opening.promise);
-  const transport: NaidanRpcTransport = { openStream: open, incomingStreams: idleIncoming(), closed: transportClosed.promise };
+  const transport: NaidanRpcTransport = { openStream: open, incomingStreams: idleIncoming(), ended: new Promise(() => {}), closed: transportClosed.promise };
   const peer = new NaidanRpcPeer({ transport, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   const rejected = Promise.all([expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' }), expect(call.closed).rejects.toBeDefined()]);
@@ -48,6 +48,7 @@ it('retirement includes the incoming iterator owner, including a late incoming d
   const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>(), returned = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
   const abort = vi.fn();
   const transport: NaidanRpcTransport = {
+    ended: new Promise(() => {}),
     closed: new Promise(() => {}),
     openStream: async () => {
       throw new Error('No outgoing calls');
@@ -72,6 +73,7 @@ it('joins asynchronous iterator return cleanup even after next has finished', as
   const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>(), returned = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
   const peer = new NaidanRpcPeer({
     transport: {
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => {
         throw new Error('No outgoing calls');
@@ -105,6 +107,7 @@ it('a failed iterator cleanup is reported only after a late outgoing duplex is r
   const failure = new Error('Iterator cleanup failed');
   const peer = new NaidanRpcPeer({
     transport: {
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: () => opening.promise,
       incomingStreams: {
@@ -144,6 +147,7 @@ it('reports a synchronous iterator return failure through retirement without dro
   const failure = new Error('Synchronous return failure');
   const peer = new NaidanRpcPeer({
     transport: {
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => {
         throw new Error('No outgoing calls');
@@ -172,6 +176,7 @@ it('closes an iterator even when creating it synchronously aborts the parent lif
   const cleanup = vi.fn(async () => ({ done: true as const, value: undefined }));
   const peer = new NaidanRpcPeer({
     transport: {
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => {
         throw new Error('No outgoing calls');
@@ -196,6 +201,7 @@ it('aborts an outgoing duplex when it cannot acquire the framed stream writers',
   const peer = new NaidanRpcPeer({
     transport: {
       incomingStreams: idleIncoming(),
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => ({ readable, writable, closed: Promise.resolve(), abort }),
     },
@@ -220,6 +226,7 @@ it('retains a failed late-duplex abort while still joining the other pending ope
   const peer = new NaidanRpcPeer({
     transport: {
       incomingStreams: idleIncoming(),
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: () => openings[at++]!.promise,
     },
@@ -265,6 +272,7 @@ it('does not report retirement success if an incoming duplex rejected during shu
           return { next: () => next.promise, return: () => returned.promise };
         },
       },
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => {
         throw new Error('Not used');
@@ -298,6 +306,7 @@ it('retains adopted duplex abort failures and waits for framed cleanup before re
   const peer = new NaidanRpcPeer({
     transport: {
       incomingStreams: idleIncoming(),
+      ended: new Promise(() => {}),
       closed: new Promise(() => {}),
       openStream: async () => ({
         readable: new ReadableStream<Uint8Array>({ cancel: cancelled }),
@@ -335,4 +344,103 @@ it('retains adopted duplex abort failures and waits for framed cleanup before re
   } finally {
     ending.resolve(); await peer.retire().catch(() => {});
   }
+});
+
+it('failed outgoing adoption retains capacity until its owned discard completes', async () => {
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  const readable = new ReadableStream<Uint8Array>({
+    cancel() {
+      entered.resolve(); return gate.promise;
+    },
+  });
+  const writable = new WritableStream<Uint8Array>(), writer = writable.getWriter();
+  const open = vi.fn(async () => ({ readable, writable, closed: Promise.resolve(), abort() {} }));
+  const peer = new NaidanRpcPeer({
+    transport: { incomingStreams: idleIncoming(), ended: new Promise(() => {}), closed: new Promise(() => {}), openStream: open },
+    exports: [],
+    limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
+    signal: new AbortController().signal,
+  });
+  const client = peer.client({ contract: definition });
+  const first = client.run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+  await expect(first.result).rejects.toBeInstanceOf(TypeError); await expect(first.closed).rejects.toBeInstanceOf(TypeError);
+  await entered.promise;
+  const second = client.run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+  await expect(second.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  await expect(second.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' }); expect(open).toHaveBeenCalledOnce();
+  gate.resolve(); writer.releaseLock(); await peer.retire();
+});
+
+it.each(['caller', 'callee'] as const)('retains partial constructor release failure for %s', async role => {
+  const failure = new Error('Partial reader release failed');
+  const readable = new ReadableStream<Uint8Array>(), reader = readable.getReader();
+  const release = reader.releaseLock.bind(reader); release();
+  const original = readable.getReader.bind(readable);
+  let held: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  vi.spyOn(readable, 'getReader').mockImplementation(() => {
+    held = original(); vi.spyOn(held, 'releaseLock').mockImplementation(() => {
+      throw failure;
+    }); return held;
+  });
+  const writable = new WritableStream<Uint8Array>(), writer = writable.getWriter();
+  const duplex = { readable, writable, closed: Promise.resolve(), abort() {} };
+  const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
+  const peer = new NaidanRpcPeer({
+    transport: {
+      ended: new Promise(() => {}),
+      closed: new Promise(() => {}),
+      openStream: async () => duplex,
+      incomingStreams: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: () => next.promise,
+            async return() {
+              return { done: true as const, value: undefined };
+            },
+          };
+        },
+      },
+    },
+    exports: [],
+    limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
+    signal: new AbortController().signal,
+  });
+  if (role === 'caller') {
+    const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+    await expect(call.result).rejects.toMatchObject({ cause: failure }); await expect(call.closed).rejects.toMatchObject({ cause: failure });
+    next.resolve({ done: true, value: undefined });
+  } else next.resolve({ done: false, value: duplex });
+  expect((await peer.ended).error).toBe(failure);
+  await expect(peer.retire()).rejects.toBe(failure);
+  vi.restoreAllMocks(); held?.releaseLock(); writer.releaseLock();
+});
+
+it('logical peer termination preserves the first opaque cause independently of retirement', async () => {
+  const lowerEnd = Promise.withResolvers<{ error: unknown }>(), returned = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
+  const peer = new NaidanRpcPeer({
+    transport: {
+      ended: lowerEnd.promise,
+      closed: new Promise(() => {}),
+      openStream: async () => {
+        throw new Error('Unused');
+      },
+      incomingStreams: {
+        [Symbol.asyncIterator]() {
+          return { next: () => Promise.reject(null), return: () => returned.promise };
+        },
+      },
+    },
+    exports: [],
+    limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
+    signal: new AbortController().signal,
+  });
+  const ended = await peer.ended; expect(ended.error).toBe(null); expect(Object.isFrozen(ended)).toBe(true);
+  lowerEnd.resolve({ error: new Error('Later lower error') }); peer.dispose();
+  expect(await peer.ended).toBe(ended);
+  let retired = false; const retirement = peer.retire().then(() => {
+    retired = true;
+  });
+  await Promise.resolve(); expect(retired).toBe(false);
+  returned.resolve({ done: true, value: undefined }); await retirement;
+  await expect(peer.closed).rejects.toBe(null);
 });

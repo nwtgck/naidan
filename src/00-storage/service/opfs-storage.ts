@@ -1,3 +1,5 @@
+import { UnrepresentableRpcValueError } from '@/01-models/unavailable-rpc-value';
+import { stringifyStorageDto } from './serialize';
 import { iterateAttachmentParts } from './message-attachments';
 import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from './legacy-uploaded-file-content';
 import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
@@ -530,11 +532,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
+    const serialized = stringifyStorageDto({ value: ChatMetaSchemaDto.parse(dto), space: undefined });
     const dir = await this.getDir({ name: 'chat-metas' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -608,11 +610,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
+    const serialized = stringifyStorageDto({ value: ChatGroupSchemaDto.parse(dto), space: undefined });
     const dir = await this.getDir({ name: 'chat-groups' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -828,12 +830,12 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
-    await this.ensureRoot();
     const dto = settingsToDto({ domain: settings });
-    const validated = SettingsSchemaDto.parse(dto);
+    const serialized = stringifyStorageDto({ value: SettingsSchemaDto.parse(dto), space: undefined });
+    await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(validated));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -843,7 +845,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(await file.text())) });
-    } catch {
+    } catch (error) {
+      // Unavailable RPC bytes must not masquerade as absent settings.
+      if (error instanceof UnrepresentableRpcValueError) throw error;
       return null;
     }
   }

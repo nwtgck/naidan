@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { RemoteImageModelEditor } from '@/01-models/image-generation-preferences';
-import type { PeerImageCatalogItem } from '@/features/naidan-peer-rpc/contract';
+import type { PeerImageCatalogItem } from '@/features/naidan-rpc-integration/contract';
 import { remoteImageEditorReady, remoteImageFileKey, remoteImageModelChoices, remoteImageSelectionFromEditor } from './remote-image-model-editor';
 
 function file({ path }: { path: string }) {

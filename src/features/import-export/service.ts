@@ -1,3 +1,5 @@
+import { UnrepresentableRpcValueError } from '@/01-models/unavailable-rpc-value';
+import { stringifyStorageDto } from '@/00-storage/service/serialize';
 import { ensureStrings } from '@/strings';
 import { generateId } from '@/01-models/id';
 import type {
@@ -525,7 +527,7 @@ export class ImportExportService {
         });
         await addTextFile({
           path: `${rootPath}settings.json`,
-          text: JSON.stringify(settingsToDto({ domain: snapshot.structure.settings }), null, 2),
+          text: stringifyStorageDto({ value: SettingsSchemaDto.parse(settingsToDto({ domain: snapshot.structure.settings })), space: 2 }),
         });
 
         if (excludeFlags.chat) {
@@ -549,7 +551,7 @@ export class ImportExportService {
         for (const group of snapshot.structure.chatGroups) {
           await addTextFile({
             path: `${rootPath}chat-groups/${idToRaw({ id: group.id })}.json`,
-            text: JSON.stringify(chatGroupToDto({ domain: group }), null, 2),
+            text: stringifyStorageDto({ value: ChatGroupSchemaDto.parse(chatGroupToDto({ domain: group })), space: 2 }),
           });
         }
 
@@ -557,7 +559,7 @@ export class ImportExportService {
           const metasDto = snapshot.structure.chatMetas.map(domain => chatMetaToDto({ domain }));
           await addTextFile({
             path: `${rootPath}chat-metas.json`,
-            text: JSON.stringify({ entries: metasDto }, null, 2),
+            text: stringifyStorageDto({ value: { entries: metasDto.map(dto => ChatMetaSchemaDto.parse(dto)) }, space: 2 }),
           });
         }
 
@@ -624,13 +626,13 @@ export class ImportExportService {
               }
               await addTextFile({
                 path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-                text: JSON.stringify(currentThreadExport.chatDto, null, 2),
+                text: stringifyStorageDto({ value: currentThreadExport.chatDto, space: 2 }),
               });
               break;
             }
             await addTextFile({
               path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-              text: JSON.stringify(normalizeChatDtoTree({ chatDto: chunk.data }), null, 2),
+              text: stringifyStorageDto({ value: normalizeChatDtoTree({ chatDto: chunk.data }), space: 2 }),
             });
             break;
           }
@@ -856,6 +858,18 @@ export class ImportExportService {
     }
   }
 
+  private async preflightRetainedRpcSettings({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<void> {
+    const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+    if (!settingsFile) return;
+    try {
+      SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+    } catch (error) {
+      // Retained RPC values cannot be silently skipped by a destructive import.
+      // Keep the legacy policy for unrelated malformed settings unchanged.
+      if (error instanceof UnrepresentableRpcValueError) throw error;
+    }
+  }
+
   /**
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
@@ -865,6 +879,7 @@ export class ImportExportService {
       const rootPath = this.findRootPath({ zip });
 
       let snapshot: StorageSnapshot;
+      await this.preflightRetainedRpcSettings({ zip, rootPath });
       const mode = config.data.mode;
       switch (mode) {
       case 'replace':
@@ -892,6 +907,7 @@ export class ImportExportService {
     try {
       const rootPath = this.findRootPath({ zip });
       const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+      await this.preflightRetainedRpcSettings({ zip, rootPath });
 
       const mode = config.data.mode;
       // Check every selected message before any destructive write. Restore reads a
@@ -912,7 +928,10 @@ export class ImportExportService {
           try {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-          } catch (e) { /* Ignore */ }
+          } catch (error) {
+            if (error instanceof UnrepresentableRpcValueError) throw error;
+            // Preserve the existing policy for unrelated legacy corruption.
+          }
         }
         const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
         await this.storage.restore({ snapshot: replaceSnapshot });
@@ -923,7 +942,10 @@ export class ImportExportService {
           try {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-          } catch (e) { /* Ignore */ }
+          } catch (error) {
+            if (error instanceof UnrepresentableRpcValueError) throw error;
+            // Preserve the existing policy for unrelated legacy corruption.
+          }
         }
         const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
         await this.storage.restore({ snapshot: appendSnapshot });
@@ -1028,7 +1050,10 @@ export class ImportExportService {
             if (res.success) metasDto.push(res.data);
           }
         }
-      } catch (e) { /* Ignore */ }
+      } catch (error) {
+        if (error instanceof UnrepresentableRpcValueError) throw error;
+        // Preserve the existing policy for unrelated legacy corruption.
+      }
     }
 
     const groupsPrefix = rootPath + 'chat-groups/';
@@ -1038,7 +1063,10 @@ export class ImportExportService {
         try {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) groupsDto.push(result.data);
-        } catch (e) { /* Ignore */ }
+        } catch (error) {
+          if (error instanceof UnrepresentableRpcValueError) throw error;
+          // Preserve the existing policy for unrelated legacy corruption.
+        }
       }
     }
 
@@ -1136,7 +1164,10 @@ export class ImportExportService {
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
             importedGroupsDto.push(dto);
           }
-        } catch (e) { /* Ignore */ }
+        } catch (error) {
+          if (error instanceof UnrepresentableRpcValueError) throw error;
+          // Preserve the existing policy for unrelated legacy corruption.
+        }
       }
     }
 
@@ -1158,7 +1189,10 @@ export class ImportExportService {
             importedMetas.push({ dto, originalId });
           }
         }
-      } catch (e) { /* Ignore */ }
+      } catch (error) {
+        if (error instanceof UnrepresentableRpcValueError) throw error;
+        // Preserve the existing policy for unrelated legacy corruption.
+      }
     }
 
     // Reserve IDs only for existing fork targets in imported chats. Reading each

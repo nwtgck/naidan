@@ -47,25 +47,31 @@ async function start({ verifyA, verifyB, known, corruptStatus }: {
     } await ba.send({ bytes });
   };
   const a = establishVerifiedNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    onResponseFailure: undefined,
     role: 'initiator',
     identity: identities.a,
     expectedPeer: known ? identities.b.publicKey : undefined,
+    handshakeData: new Uint8Array([31]),
     verifyPeer: verifyA,
     binding,
     channel: { send: ab.send, receive: ba.receive },
     signal: stop.signal,
   });
   const b = establishVerifiedNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    onResponseFailure: undefined,
     role: 'responder',
     identity: identities.b,
     expectedPeer: known ? identities.a.publicKey : undefined,
+    handshakeData: new Uint8Array([32]),
     verifyPeer: verifyB,
     binding,
     channel: { send: bSend, receive: ab.receive },
     signal: stop.signal,
   });
   void a.catch(error => stop.abort(error)); void b.catch(error => stop.abort(error));
-  return { a, b, identities, stop };
+  return { a, b, identities, stop, responderFlights: () => bFlights };
 }
 
 it('both peers compare the complete binding and neither can export keys before both explicit approvals', async () => {
@@ -89,9 +95,10 @@ it('both peers compare the complete binding and neither can export keys before b
   }); void pair.b.then(() => {
     released++;
   });
-  pendingA.resolve(true); await new Promise(resolve => setTimeout(resolve, 10)); expect(released).toBe(0);
+  pendingA.resolve(true); await new Promise(resolve => setTimeout(resolve, 10)); expect(released).toBe(0); expect(pair.responderFlights()).toBe(2);
   pendingB.resolve(true); const keys = await promiseAllKeyed({ a: pair.a, b: pair.b });
-  expect(keys.a.contextId).toEqual(keys.b.contextId); keys.a.dispose(); keys.b.dispose();
+  expect(keys.a.peerHandshakeData).toEqual(new Uint8Array([32])); expect(keys.b.peerHandshakeData).toEqual(new Uint8Array([31]));
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId); keys.a.keys.dispose(); keys.b.keys.dispose();
 });
 
 it('rejecting a comparison prevents either peer from returning a usable context', async () => {
@@ -119,8 +126,8 @@ it('the verification callback receives copies and cannot rewrite the authenticat
   };
   const pair = await start({ known: false, corruptStatus: false, verifyA: verify, verifyB: verify });
   const keys = await promiseAllKeyed({ a: pair.a, b: pair.b });
-  expect(keys.a.peerIdentity).toEqual(pair.identities.b.publicKey); expect(keys.b.peerIdentity).toEqual(pair.identities.a.publicKey);
-  expect(keys.a.contextId).toEqual(keys.b.contextId); keys.a.dispose(); keys.b.dispose();
+  expect(keys.a.keys.peerIdentity).toEqual(pair.identities.b.publicKey); expect(keys.b.keys.peerIdentity).toEqual(pair.identities.a.publicKey);
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId); keys.a.keys.dispose(); keys.b.keys.dispose();
 });
 
 it('an authenticated-status modification fails before requesting human approval', async () => {
@@ -140,7 +147,7 @@ it('different handshake transcripts cannot produce the same displayed full compa
       },
       verifyB: async () => true,
     });
-    const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); keys.a.dispose(); keys.b.dispose();
+    const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); keys.a.keys.dispose(); keys.b.keys.dispose();
   }
   expect(shown[0]).not.toEqual(shown[1]);
 });
@@ -150,12 +157,14 @@ it('two pinned peers do not need to display or approve another comparison', asyn
     throw new Error('Known peer must not prompt');
   });
   const pair = await start({ known: true, corruptStatus: false, verifyA: verify, verifyB: verify });
-  const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); expect(verify).not.toHaveBeenCalled(); keys.a.dispose(); keys.b.dispose();
+  const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); expect(verify).not.toHaveBeenCalled(); keys.a.keys.dispose(); keys.b.keys.dispose();
 });
 
 it('unknown-peer establishment without a verifier fails closed', async () => {
   const identity = await createNaidanPipingIdentity();
   await expect(establishVerifiedNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    onResponseFailure: undefined,
     role: 'initiator',
     identity,
     expectedPeer: undefined,

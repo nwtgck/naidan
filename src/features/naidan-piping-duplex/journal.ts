@@ -61,12 +61,11 @@ export class JournalChannel implements NaidanPipingHandshakeChannel {
   snapshot(): Uint8Array {
     if (this.internalFailure)
       throw this.internalFailure;
-    const header = new Uint8Array(67);
-    header[0] = 1;
-    header[1] = isInitiator({ role: this.internalRole }) ? 1 : 2;
-    header.set(this.internalAttemptI, 2);
-    header.set(this.internalAttemptR, 34);
-    header[66] = this.internalLocal.length;
+    const header = new Uint8Array(66);
+    header[0] = isInitiator({ role: this.internalRole }) ? 1 : 2;
+    header.set(this.internalAttemptI, 1);
+    header.set(this.internalAttemptR, 33);
+    header[65] = this.internalLocal.length;
     const entries = this.internalLocal.map((body, index) => {
       const head = new Uint8Array(4);
       head[0] = index;
@@ -81,25 +80,24 @@ export class JournalChannel implements NaidanPipingHandshakeChannel {
     }): void {
     if (this.internalFailure)
       throw this.internalFailure;
-    const input = ownBytes({ bytes, maxBytes: 16384 });
+    const input = ownBytes({ bytes, maxBytes: 8322 });
     journalEnvelopeSchema.parse({
-      version: input[0],
-      role: input[1],
-      count: input[66],
-      attemptI: input.slice(2, 34),
-      attemptR: input.slice(34, 66),
+      role: input[0],
+      count: input[65],
+      attemptI: input.slice(1, 33),
+      attemptR: input.slice(33, 65),
     });
-    requireValue({ condition: input.length >= 67 && input[0] === 1 && input[1] === (isInitiator({ role: this.internalRole }) ? 2 : 1), message: 'Journal role/version' });
+    requireValue({ condition: input.length >= 66 && input[0] === (isInitiator({ role: this.internalRole }) ? 2 : 1), message: 'Journal role' });
     requireValue({
-      condition: equalBytes({ left: input.subarray(2, 34), right: this.internalAttemptI }) &&
-                equalBytes({ left: input.subarray(34, 66), right: this.internalAttemptR }),
+      condition: equalBytes({ left: input.subarray(1, 33), right: this.internalAttemptI }) &&
+                equalBytes({ left: input.subarray(33, 65), right: this.internalAttemptR }),
       message: 'Journal attempt mismatch',
     });
-    const count = input[66];
+    const count = input[65];
     if (count === undefined || count > 16)
       throw new Error('Journal count');
     const entries: Uint8Array[] = [];
-    let at = 67;
+    let at = 66;
     for (let index = 0; index < count; index++) {
       requireValue({ condition: at + 4 <= input.length, message: 'Journal truncated header' });
       const length = new DataView(input.buffer).getUint16(at + 2, false);

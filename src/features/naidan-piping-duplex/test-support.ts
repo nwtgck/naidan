@@ -43,6 +43,7 @@ export async function keyPair() {
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange timed out')), 5000);
   const jobs = {
     a: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'initiator',
       identity: a,
       expectedPeer: b.publicKey,
@@ -51,6 +52,7 @@ export async function keyPair() {
       signal: stop.signal,
     }),
     b: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'responder',
       identity: b,
       expectedPeer: a.publicKey,

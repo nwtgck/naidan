@@ -324,11 +324,9 @@ it.each([false, true])('starts new idle probes, preserves the response request a
   try {
     await new Promise(resolve => setTimeout(resolve, 50));
     expect({ aPosts, bPosts }).toEqual({ aPosts: 2, bPosts: 2 });
-    const startedA = vi.fn(), startedB = vi.fn();
-    const confirmedA = a.confirmResponse({ signal: stop.signal, onRequestStarted: startedA });
-    const confirmedB = b.confirmResponse({ signal: stop.signal, onRequestStarted: startedB });
-    await Promise.all([confirmedA, confirmedB]);
-    expect(startedA).toHaveBeenCalledOnce(); expect(startedB).toHaveBeenCalledOnce();
+    a.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+    b.startResponses({ policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 } });
+    await Promise.all([a.firstResponse, b.firstResponse]);
     await new Promise(resolve => setTimeout(resolve, 25));
     const settled = { aPosts, bPosts };
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -338,4 +336,79 @@ it.each([false, true])('starts new idle probes, preserves the response request a
   } finally {
     stop.abort(); await Promise.all([left, right]); a.abort({ reason: 'Done' }); b.abort({ reason: 'Done' });
   }
+});
+
+it('a queued private challenge cannot create a second POST or move its deadline while the full POST owner is held', async () => {
+  const { a } = await sessionPair(), entered = Promise.withResolvers<void>(), cleanup = Promise.withResolvers<void>(), cancelled = Promise.withResolvers<void>();
+  const stop = new AbortController(), callbacks: (() => void)[] = []; let wall = 0, posts = 0, active = 0, maximum = 0;
+  const endpoint: FiniteTransport = {
+    ...idleEndpoint(),
+    async send({ signal }) {
+      posts++; active++; maximum = Math.max(maximum, active); entered.resolve();
+      try {
+        await waitForAbort({ signal });
+      } finally {
+        cancelled.resolve(); await cleanup.promise; active--;
+      }
+    },
+  };
+  const running = runDuplex({ session: a, endpoint, signal: stop.signal, pacing, onEvent() {} });
+  let retired = false; void running.then(() => {
+    retired = true;
+  }, () => {
+    retired = true;
+  });
+  await entered.promise;
+  a.startResponses({
+    policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 },
+    clock: {
+      monotonic: () => 0,
+      wall: () => wall,
+      schedule({ callback }) {
+        callbacks.push(callback); return () => {};
+      },
+    },
+  });
+  wall = 75_000; callbacks[0]!();
+  await expect(a.ended).resolves.toMatchObject({ kind: 'response-unconfirmed' }); await cancelled.promise;
+  expect(posts).toBe(1); expect(maximum).toBe(1); expect(retired).toBe(false);
+  cleanup.resolve(); await expect(running).rejects.toMatchObject({ name: 'ResponseUnconfirmedError' }); expect(active).toBe(0);
+});
+
+it('response expiry aborts receiving immediately but joins native seal already in progress', async () => {
+  const { a } = await sessionPair(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), receiveAborted = Promise.withResolvers<void>();
+  const encrypt = crypto.subtle.encrypt.bind(crypto.subtle), callbacks: (() => void)[] = []; let wall = 0;
+  vi.spyOn(crypto.subtle, 'encrypt').mockImplementationOnce(async (...args) => {
+    entered.resolve(); await release.promise; return encrypt(...args);
+  });
+  a.startResponses({
+    policy: { intervalMs: 15_000, responseTimeoutMs: 75_000 },
+    clock: {
+      monotonic: () => 0,
+      wall: () => wall,
+      schedule({ callback }) {
+        callbacks.push(callback); return () => {};
+      },
+    },
+  });
+  const send = vi.fn(waitForAbort), endpoint: FiniteTransport = {
+    ...idleEndpoint(),
+    send,
+    async receive({ signal }) {
+      try {
+        return await waitForAbort({ signal });
+      } finally {
+        receiveAborted.resolve();
+      }
+    },
+  };
+  const running = runDuplex({ session: a, endpoint, signal: new AbortController().signal, pacing, onEvent() {} });
+  let retired = false; void running.then(() => {
+    retired = true;
+  }, () => {
+    retired = true;
+  });
+  await entered.promise; wall = 75_000; callbacks[0]!(); await receiveAborted.promise;
+  expect(retired).toBe(false); expect(send).not.toHaveBeenCalled();
+  release.resolve(); await expect(running).rejects.toMatchObject({ name: 'ResponseUnconfirmedError' }); expect(send).not.toHaveBeenCalled();
 });

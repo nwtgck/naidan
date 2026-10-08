@@ -1,3 +1,4 @@
+import { UnavailableRpcRecordError } from './image-generation/unavailable-record';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
 import { imageGenerationRoot } from './image-generation/context';
 import { z } from 'zod';
@@ -5,7 +6,7 @@ import type { ImageGenerationHistoryPage, ImageGenerationHistoryQuery, ImageGene
 import { idToRaw, type ImageGenerationId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationIndexSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationIndexSchemaDto, unavailableDirectRpcRecord } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { type ExperimentalImageGenerationDto, type ExperimentalImageGenerationIndexDto, type ExperimentalImageGenerationSummaryDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationSummaryToDomain, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 
@@ -109,12 +110,18 @@ function summarize({ record }: { record: ExperimentalImageGenerationDto }): Expe
 async function readRecord({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<ExperimentalImageGenerationDto | undefined> {
   const text = await readText({ directory, name: `${rawId}.json` });
   if (text === undefined) return undefined;
-  const record = ExperimentalImageGenerationSchemaDto.parse(JSON.parse(text));
+  const raw: unknown = JSON.parse(text);
+  const unavailable = unavailableDirectRpcRecord({ raw });
+  if (unavailable !== undefined) {
+    if (unavailable.id !== rawId) throw new Error('Image generation record identity does not match its filename');
+    throw new UnavailableRpcRecordError({ id: rawId });
+  }
+  const record = ExperimentalImageGenerationSchemaDto.parse(raw);
   if (record.id !== rawId) throw new Error('Image generation record identity does not match its filename');
   return record;
 }
 
-async function readIndex({ directory, shard }: { directory: FileSystemDirectoryHandle, shard: string }): Promise<ExperimentalImageGenerationIndexDto> {
+async function readIndex({ directory, shard }: { directory: FileSystemDirectoryHandle, shard: string }): Promise<{ index: ExperimentalImageGenerationIndexDto, unavailable: string[] }> {
   const text = await readText({ directory, name: 'index.json' });
   // A corrupt index remains an explicit error. It is never replaced with an
   // empty index, even when individual records could otherwise be read.
@@ -133,18 +140,28 @@ async function readIndex({ directory, shard }: { directory: FileSystemDirectoryH
       delete index.generations[rawId]; changed = true;
     }
   }
+  const unavailable: string[] = [];
   for (const rawId of files) {
-    if (Object.hasOwn(index.generations, rawId)) continue;
-    const record = await readRecord({ directory, rawId });
-    if (!record) throw new Error('Image generation record disappeared during index recovery');
-    Object.defineProperty(index.generations, rawId, { value: summarize({ record }), configurable: true, enumerable: true, writable: true });
-    changed = true;
+    try {
+      const record = await readRecord({ directory, rawId });
+      if (!record) throw new Error('Image generation record disappeared during index recovery');
+      const summary = summarize({ record });
+      if (JSON.stringify(index.generations[rawId]) !== JSON.stringify(summary)) {
+        Object.defineProperty(index.generations, rawId, { value: summary, configurable: true, enumerable: true, writable: true });
+        changed = true;
+      }
+    } catch (error) {
+      if (!(error instanceof UnavailableRpcRecordError)) throw error;
+      unavailable.push(rawId);
+      if (Object.hasOwn(index.generations, rawId)) {
+        delete index.generations[rawId]; changed = true;
+      }
+    }
   }
-  // Immutable records allow filename reconciliation without reopening every
-  // healthy JSON record. This recovers record-first saves and file-first deletes
-  // interrupted before their derived index was committed.
+  // Unavailable membership comes from the actual files on every pass. Rewriting
+  // readable summaries cannot erase an opaque sibling from later mutations.
   if (changed) await writeText({ directory, name: 'index.json', text: JSON.stringify(index) });
-  return index;
+  return { index, unavailable };
 }
 
 /** Called once when a direct-generation save owner is created. */
@@ -183,7 +200,7 @@ export async function saveImageGenerationRecord({ storageType, record, writeImag
       const shard = dto.id.slice(-2).toLowerCase();
       const directory = await parent.getDirectoryHandle(shard, { create: true });
       if (await isDeleted({ directory, rawId: dto.id })) throw new Error('This image history record was deleted');
-      const index = await readIndex({ directory, shard });
+      const { index } = await readIndex({ directory, shard });
       const existing = await readRecord({ directory, rawId: dto.id });
       if (existing && JSON.stringify(existing) !== JSON.stringify(dto)) throw new Error('Image generation records are immutable');
       const root = await imageGenerationRoot({ create: false });
@@ -236,7 +253,7 @@ export async function deleteImageGenerationRecord({ storageType, id }: { storage
       } catch (error) {
         if (isNotFound({ error })) return; throw error;
       }
-      const index = await readIndex({ directory, shard });
+      const { index } = await readIndex({ directory, shard });
       const existing = await readRecord({ directory, rawId });
       // Commit deletion intent before removing metadata. Even a lost response
       // cannot make a retained save recreate this identity on another attempt.
@@ -256,7 +273,9 @@ async function queryShard({ directory, shard, warn }: {
   warn: ({ path, cause }: { path: string, cause: unknown }) => void,
 }): Promise<ExperimentalImageGenerationSummaryDto[]> {
   try {
-    return Object.values((await readIndex({ directory, shard })).generations);
+    const { index, unavailable } = await readIndex({ directory, shard });
+    for (const id of unavailable) warn({ path: `${shard}/${id}.json`, cause: new UnavailableRpcRecordError({ id: id }) });
+    return Object.values(index.generations);
   } catch (cause) {
     warn({ path: shard, cause });
   }

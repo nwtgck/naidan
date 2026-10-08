@@ -1,5 +1,6 @@
-import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreference } from './image-generation-preferences';
-import type { NaidanRpcConnectionId } from '@/01-models/ids';
+import type { UnavailableRpcValue } from './unavailable-rpc-value';
+import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreferenceValue } from './image-generation-preferences';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 /**
  * Domain Definitions (Single Source of Truth)
  *
@@ -83,9 +84,10 @@ export type BrowserProvidedLmEndpoint = {
 export type UnsupportedExperimentalEndpoint = {
   type: 'unsupported_experimental_endpoint',
   persistedType: string | undefined,
+  unavailableRpc?: UnavailableRpcValue,
 };
 
-export type NaidanRpcEndpoint = { type: 'naidan_rpc', connectionId: NaidanRpcConnectionId | undefined };
+export type NaidanRpcEndpoint = { type: 'naidan_rpc', registrationId: NaidanRpcRegistrationId | undefined };
 
 export type SupportedEndpoint = NaidanRpcEndpoint | HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
@@ -435,7 +437,7 @@ export type BrowserImageGenerationSettings = {
   imageDownload?: { format?: 'png' | 'webp' | 'jpeg', metadata?: 'include' | 'omit' },
   modelSelection?: BrowserImageModelSelection,
   inferenceLocation?: ImageInferenceLocationPreference,
-  remoteModelEditors?: RemoteImageModelEditorPreference[],
+  remoteModelEditors?: RemoteImageModelEditorPreferenceValue[],
   preview?: {
     enabled?: 'enabled' | 'disabled',
     mode?: 'projection' | 'vae',

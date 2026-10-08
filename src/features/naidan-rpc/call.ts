@@ -1,10 +1,11 @@
+import { cancelReader, releaseLocks, RpcRetirementError } from '@/features/naidan-rpc/stream-retirement';
 import { decode, encode } from '@/features/naidan-rpc/codec';
 import type { Reference, WireValue } from '@/features/naidan-rpc/codec';
 import { FramedDuplex, wireValue } from '@/features/naidan-rpc/framing';
 import type { Frame } from '@/features/naidan-rpc/framing';
 import { compile, pack, project, references, isStream } from '@/features/naidan-rpc/schema';
 import type { Capability, Packed, Plan, Source } from '@/features/naidan-rpc/schema';
-import { CALLBACK_LIMIT, check, deferred, duration, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, RPC_VERSION } from '@/features/naidan-rpc/primitives';
+import { CALLBACK_LIMIT, check, deferred, duration, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
 import type { NaidanRpcErrorCode } from '@/features/naidan-rpc/primitives';
 import type { PreparedMethod } from '@/features/naidan-rpc/contract';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
@@ -63,19 +64,39 @@ export class RpcConversation {
   private jobs = 0;
   private callbacksRunning = 0;
   private finishing = false;
+  private readRetired = false;
 
-  constructor({ duplex, role, timeoutMs, resolveMethod }: {
+  private readonly onRetirementFailure: ({ error }: { error: unknown }) => void;
+  constructor({ duplex, role, timeoutMs, resolveMethod, onRetirementFailure, onProtocolFailure }: {
+    onRetirementFailure: ({ error }: { error: unknown }) => void;
+    onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void;
     duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined;
     resolveMethod: ({ contract, method }: { contract: string; method: string }) => PreparedMethod;
   }) {
     if (timeoutMs !== undefined) duration({ milliseconds: timeoutMs });
+    this.onRetirementFailure = onRetirementFailure;
     this.duplex = duplex; this.role = role; this.resolveMethod = resolveMethod; this.maxTimeoutMs = timeoutMs;
     this.nextReference = isCaller({ role }) ? 1 : 2;
-    this.channel = new FramedDuplex({ duplex });
+    this.channel = new FramedDuplex({
+      duplex,
+      onProtocolFailure: ({ error }) => {
+        if (this.wireEnded) return;
+        this.failure ??= error;
+        onProtocolFailure({ error }); this.abort({ code: 'PROTOCOL_ERROR' });
+      },
+      onRetirementFailure: ({ error }) => this.recordRetirementFailure({ error }),
+    });
     this.deadlineAt = performance.now() + (timeoutMs ?? Infinity);
     this.timer = timeoutMs === undefined ? undefined : setTimeout(() => this.abort({ code: 'DEADLINE_EXCEEDED' }), timeoutMs);
+    void this.channel.preambleSent.catch(cause => {
+      this.failure ??= new NaidanRpcError({ code: 'TRANSPORT_ERROR', cause }); this.abort({ code: 'TRANSPORT_ERROR' });
+    });
     void duplex.closed.catch(() => this.abort({ code: 'TRANSPORT_ERROR' }));
-    void this.read();
+    // The read loop is separate from cleanup jobs: cleanup may unblock it but
+    // must never await itself through the conversation retirement barrier.
+    void this.read().finally(() => {
+      this.readRetired = true; this.maybeRetire();
+    });
   }
   private active(): boolean {
     return !this.failure && !this.finishSent && !this.finishReceived && !this.wireEnded;
@@ -98,16 +119,26 @@ export class RpcConversation {
     });
     return pending;
   }
-  private task({ run }: { run: () => Promise<void> }): void {
+  private task({ run, retirement = false }: { run: () => Promise<void>; retirement?: boolean }): void {
     this.jobs++;
     void Promise.resolve().then(run).catch(error => {
-      if (this.active()) this.reject({ error: error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'HANDLER_FAILED' }) });
+      if (retirement && error instanceof RpcRetirementError) {
+        this.recordRetirementFailure({ error: error.cause });
+      } else if (this.active()) this.reject({ error: error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'HANDLER_FAILED' }) });
     }).finally(() => {
       this.jobs--; this.maybeFinish(); this.maybeRetire();
     });
   }
+  private recordRetirementFailure({ error }: { error: unknown }): void {
+    if (this.retirementFailure) return;
+    this.retirementFailure = { error };
+    try {
+      this.onRetirementFailure({ error });
+    } catch { /* Keep the first cleanup cause and continue joining. */ }
+    this.abort({ code: 'TRANSPORT_ERROR' });
+  }
   private maybeRetire(): void {
-    if (!this.wireEnded || this.jobs !== 0) return;
+    if (!this.wireEnded || !this.readRetired || this.jobs !== 0) return;
     this.exports.clear(); this.imports.clear(); this.partialBytes = 0; this.notices.clear(); this.observed.clear(); this.method = undefined; this.observers = {};
     if (this.retirementFailure) this.retired.reject(this.retirementFailure.error); else this.retired.resolve();
   }
@@ -125,7 +156,7 @@ export class RpcConversation {
     this.method = prepared; this.observers = { ...on };
     try {
       this.register({ packed, scope: 'input' }); this.inputOffered = true;
-      void this.send({ frame: { type: 'open', version: RPC_VERSION, contract, method, timeoutMs, value: packed.value } });
+      void this.send({ frame: { type: 'open', contract, method, timeoutMs, value: packed.value } });
     } catch {
       this.abort({ code: 'INVALID_ARGUMENT' });
     }
@@ -218,24 +249,35 @@ export class RpcConversation {
     state.phase = 'stopping'; state.pendingBytes = undefined;
     const sending = state.sending;
     this.task({
+      retirement: true,
       run: async () => {
+        const failures: unknown[] = [];
         try {
           if (isStream(state.capability)) {
-            if (state.reader) await state.reader.cancel();
-            else await (state.value as ReadableStream<unknown>).cancel();
+            state.reader ??= (state.value as ReadableStream<unknown>).getReader();
+            await cancelReader({ reader: state.reader, reason: this.failure });
           }
-        } finally {
-        // A STOP acknowledgement cannot overtake a fragment already queued.
-          await sending?.catch(() => {});
-          state.phase = 'terminal';
-          try {
-            state.reader?.releaseLock();
-          } catch { /* A cancelled pull may still be settling. */ }
-          if (acknowledge && this.active()) await this.send({ frame: { type: 'stopped', id } });
+        } catch (error) {
+          failures.push(error); this.recordRetirementFailure({ error: error instanceof RpcRetirementError ? error.cause : error });
         }
+        // A STOP acknowledgement cannot overtake a fragment already queued.
+        await sending?.catch(() => {});
+        try {
+          releaseLocks({ reader: state.reader, writer: undefined });
+        } catch (error) {
+          failures.push(error);
+        }
+        state.phase = 'terminal';
+        if (failures.length) {
+          const first = failures[0];
+          throw first instanceof RpcRetirementError ? first : new RpcRetirementError({ cause: first });
+        }
+        // Sending an acknowledgement is ordinary wire work, not source cleanup.
+        if (acknowledge && this.active()) void this.send({ frame: { type: 'stopped', id } });
       },
     });
   }
+
   private stopImport({ id }: { id: number }): Promise<void> {
     const state = this.imports.get(id); if (!state || phaseIs({ phase: state.phase, expected: 'terminal' })) return Promise.resolve();
     if (phaseIs({ phase: state.phase, expected: 'stopping' })) return state.pending?.promise ?? Promise.resolve();
@@ -283,7 +325,12 @@ export class RpcConversation {
         }
         if (!this.active() || state.phase !== 'pulling') return;
         if (ended) {
-          state.phase = 'terminal'; state.reader.releaseLock();
+          try {
+            releaseLocks({ reader: state.reader, writer: undefined });
+          } catch (error) {
+            this.recordRetirementFailure({ error: error instanceof RpcRetirementError ? error.cause : error }); return;
+          }
+          state.phase = 'terminal';
           await this.send({ frame: { type: 'end', id, sequence } }); return;
         }
         const parsed = capability.item.parse(item);
@@ -503,11 +550,12 @@ export class RpcConversation {
     } catch (error) {
       // The caller still receives cancellation, but the owner must not mistake
       // a failed lower abort for successful resource retirement.
-      this.retirementFailure ??= { error };
+      this.recordRetirementFailure({ error });
     }
     this.task({
+      retirement: true,
       run: async () => {
-        await this.channel.stop({ error: this.failure }); this.channel.release();
+        await this.channel.stop({ error: this.failure });
       },
     });
     this.closed.reject(this.failure); this.maybeRetire();
@@ -639,6 +687,7 @@ export class RpcConversation {
       while (!this.wireEnded) {
         check({ condition: performance.now() < this.deadlineAt, code: 'DEADLINE_EXCEEDED' });
         const frame = await this.channel.read();
+        if (this.wireEnded) return;
         if (!frame) break;
         // Dispatch never awaits application handlers, source reads, callbacks or response writes.
         await this.handle({ frame });
@@ -647,13 +696,15 @@ export class RpcConversation {
       if (this.wireEnded) return;
       check({ condition: this.finishReceived !== undefined || (this.finishSent !== undefined && this.acknowledged), code: 'PROTOCOL_ERROR' });
       await this.duplex.closed;
-      this.wireEnded = true; clearTimeout(this.timer); this.channel.release();
+      if (this.wireEnded) return;
+      this.wireEnded = true; clearTimeout(this.timer);
+      this.task({ retirement: true, run: () => this.channel.retire() });
       this.controller.abort();
       if (this.failure) this.closed.reject(this.failure); else this.closed.resolve();
       this.maybeRetire();
     } catch (error) {
-      if (error instanceof NaidanRpcPublicError) this.failure ??= error;
-      this.abort({ code: error instanceof NaidanRpcError ? error.code : 'PROTOCOL_ERROR' });
+      this.failure ??= error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'PROTOCOL_ERROR', cause: error });
+      this.abort({ code: this.failure.code });
     }
   }
 }

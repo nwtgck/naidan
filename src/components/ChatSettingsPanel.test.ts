@@ -43,8 +43,8 @@ vi.mock('../composables/useLayout', () => ({
 
 describe('ChatSettingsPanel.vue', () => {
   it('hides disabled RPC choices while preserving existing chat and title references', async () => {
-    mockCurrentChat.value.endpoint = { type: 'naidan_rpc', connectionId: undefined };
-    mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', connectionId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    mockCurrentChat.value.endpoint = { type: 'naidan_rpc', registrationId: undefined };
+    mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     try {
       await flushPromises();
@@ -110,7 +110,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   const globalStubs = {
-    RpcConnectionSelect: true,
+    RpcRegistrationSelect: true,
     XIcon: true,
     RefreshCwIcon: true,
     GlobeIcon: true,
