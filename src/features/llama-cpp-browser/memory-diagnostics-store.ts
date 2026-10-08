@@ -8,7 +8,7 @@ export type MemoryDiagnosticsHistory = {
   profile: MemoryDiagnostic['profile'],
   status: 'observed' | 'runtime-released' | 'worker-ended',
   observedMaximumBytes: number,
-  latestLoad: { ordinal: number, baselineBytes: number } | undefined,
+  latestLoad: { ordinal: number, baselineBytes: number, gpuRequests: MemoryDiagnostic['gpuRequests'] } | undefined,
   samples: MemoryDiagnostic[],
 };
 const histories = shallowRef<MemoryDiagnosticsHistory[]>([]);
@@ -32,7 +32,7 @@ export function observeWorkerMemory({ worker }: { worker: Pick<Worker, 'postMess
       switch (sample.checkpoint) {
       case 'runtime-released': status = 'runtime-released'; break;
       case 'before-model-load':
-        latestLoad = { ordinal: (latestLoad?.ordinal ?? 0) + 1, baselineBytes: sample.capacityBytes };
+        latestLoad = { ordinal: (latestLoad?.ordinal ?? 0) + 1, baselineBytes: sample.capacityBytes, gpuRequests: sample.gpuRequests };
         status = 'observed'; break;
       case 'decode': case 'runtime-ready': case 'model-loaded': case 'model-load-failed': case 'context-ready': case 'prefill-start': case 'prefill-complete': case 'generation-complete': case 'generation-interrupted': case 'generation-cleaned': case 'model-released': status = 'observed'; break;
       default: { const exhaustive: never = sample.checkpoint; throw new Error(String(exhaustive)); }

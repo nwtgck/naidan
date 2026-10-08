@@ -1,3 +1,4 @@
+import { associateGpuRequests, createGpuRequestObserver } from './webgpu-request-diagnostics';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { beginMemoryDiagnostics, sampleMemoryDiagnostics, subscribeMemoryDiagnostics } from './memory-diagnostics';
 import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
@@ -38,4 +39,21 @@ describe('passive Wasm memory checkpoints', () => {
     expect(listener).toHaveBeenCalledTimes(4);
     stop(); stopThrowing();
   });
+});
+
+it('includes GPU request snapshots in the same phase, timestamp and runtime identity', () => {
+  const core = { module: { HEAPU8: new Uint8Array(65536) } };
+  const observer = createGpuRequestObserver();
+  const device = observer.wrapDevice({ device: { queue: {}, createBuffer: ({ size }: GPUBufferDescriptor) => ({ size }) } as unknown as GPUDevice });
+  associateGpuRequests({ core, snapshot: observer.snapshot });
+  const samples: MemoryDiagnostic[] = [];
+  const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
+  beginMemoryDiagnostics({ core, profile: 'webgpu-wasm64-jspi' });
+  device.createBuffer({ size: 100, usage: 0 });
+  sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
+  stop();
+  expect(samples[0]!.gpuRequests!.bufferBytes).toBe(0);
+  expect(samples[1]!.gpuRequests!.bufferBytes).toBe(100);
+  expect(samples[1]!.instanceId).toBe(samples[0]!.instanceId);
+  expect(samples[1]!.checkpoint).toBe('model-loaded');
 });

@@ -1,3 +1,4 @@
+import { readGpuRequests } from './webgpu-request-diagnostics';
 import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import type { MemoryCheckpoint, MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
 
@@ -41,6 +42,7 @@ export function sampleMemoryDiagnostics({ core, checkpoint }: { core: ObservedCo
       profile: instance.profile,
       checkpoint,
       capacityBytes: core.module.HEAPU8.buffer.byteLength,
+      gpuRequests: readGpuRequests({ core }),
       timestamp,
     };
     for (const listener of listeners) {

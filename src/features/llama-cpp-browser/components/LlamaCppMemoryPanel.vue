@@ -29,8 +29,23 @@ defineExpose({
       <p>{{ lazyStrings.LlamaCppMemoryPanel__last_sample() }}: {{ formatCapacity({ bytes: history.samples[history.samples.length - 1]!.capacityBytes }) }}</p>
       <p>{{ lazyStrings.LlamaCppMemoryPanel__observed_maximum() }}: {{ formatCapacity({ bytes: history.observedMaximumBytes }) }}</p>
       <p v-if="history.latestLoad">{{ lazyStrings.LlamaCppMemoryPanel__change_since_latest_load_started() }} #{{ history.latestLoad.ordinal }}: {{ formatCapacity({ bytes: history.samples[history.samples.length - 1]!.capacityBytes - history.latestLoad.baselineBytes }) }}</p>
+      <template v-if="history.samples[history.samples.length - 1]!.gpuRequests">
+        <p data-testid="gpu-request-note">{{ lazyStrings.LlamaCppMemoryPanel__gpu_request_note() }}</p>
+        <p v-if="history.latestLoad?.gpuRequests" data-testid="gpu-request-load-delta">{{ lazyStrings.LlamaCppMemoryPanel__gpu_requests_since_load_started({
+          bufferBytes: formatCapacity({ bytes: history.samples[history.samples.length - 1]!.gpuRequests!.bufferBytes - history.latestLoad.gpuRequests.bufferBytes }),
+          bufferCount: history.samples[history.samples.length - 1]!.gpuRequests!.bufferCount - history.latestLoad.gpuRequests.bufferCount,
+          writeBytes: formatCapacity({ bytes: history.samples[history.samples.length - 1]!.gpuRequests!.writeBytes - history.latestLoad.gpuRequests.writeBytes }),
+          writeCount: history.samples[history.samples.length - 1]!.gpuRequests!.writeCount - history.latestLoad.gpuRequests.writeCount,
+        }) }}</p>
+      </template>
       <ol tw-class="font-mono space-y-1">
-        <li v-for="(sample, index) in [...history.samples].reverse()" :key="index">{{ formatTimestamp({ timestamp: sample.timestamp }) }} · {{ sample.checkpoint }} · {{ formatCapacity({ bytes: sample.capacityBytes }) }}</li>
+        <li v-for="(sample, index) in [...history.samples].reverse()" :key="index">{{ formatTimestamp({ timestamp: sample.timestamp }) }} · {{ sample.checkpoint }} · {{ formatCapacity({ bytes: sample.capacityBytes }) }}
+          <p v-if="sample.gpuRequests" data-testid="gpu-request-sample">{{ lazyStrings.LlamaCppMemoryPanel__gpu_request_totals({
+            bufferBytes: formatCapacity({ bytes: sample.gpuRequests.bufferBytes }), bufferCount: sample.gpuRequests.bufferCount,
+            writeBytes: formatCapacity({ bytes: sample.gpuRequests.writeBytes }), writeCount: sample.gpuRequests.writeCount,
+            largestWrite: formatCapacity({ bytes: sample.gpuRequests.largestWriteBytes }), largeWrites: sample.gpuRequests.writesAtLeast4MiB,
+          }) }}</p>
+        </li>
       </ol>
     </section>
   </div>

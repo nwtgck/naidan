@@ -42,6 +42,9 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/zh-Hans';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/zh-Hans';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/zh-Hans';
+import { LlamaCppMemoryPanel__gpu_requests_since_load_started } from '@/strings/messages/LlamaCppMemoryPanel__gpu_requests_since_load_started/zh-Hans';
+import { LlamaCppMemoryPanel__gpu_request_totals } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_totals/zh-Hans';
+import { LlamaCppMemoryPanel__gpu_request_note } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_note/zh-Hans';
 import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/messages/ImageRecoveredOutputs__managed_by_pending_run/zh-Hans';
 import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/zh-Hans';
 import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/zh-Hans';
@@ -2744,6 +2747,9 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  LlamaCppMemoryPanel__gpu_request_note,
+  LlamaCppMemoryPanel__gpu_request_totals,
+  LlamaCppMemoryPanel__gpu_requests_since_load_started,
   ImageRecoveredOutputs__discard_warning,
   ImageRecoveredOutputs__discard_image,
   ImageRecoveredOutputs__download_image,

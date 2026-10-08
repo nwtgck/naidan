@@ -221,8 +221,9 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
 
 /** Passed only into this core factory's lexical navigator binding. No global
  * navigator/GPU prototypes, lcore files, Wasm bytes, or reported limits change. */
-export function createCoreWebGpuNavigator({ navigator, report }: {
+export function createCoreWebGpuNavigator({ navigator, report, observeDevice }: {
   navigator: Pick<Navigator, 'gpu'> | undefined, report: ({ axis, count, limit, chunks }: DispatchSplit) => void,
+  observeDevice?: ({ device }: { device: GPUDevice }) => GPUDevice,
 }): Pick<Navigator, 'gpu'> | undefined {
   if (!navigator?.gpu) return navigator;
   const gpu = navigator.gpu;
@@ -242,7 +243,8 @@ export function createCoreWebGpuNavigator({ navigator, report }: {
               target: adapter,
               overrides: {
                 async requestDevice(descriptor) {
-                  return wrapDevice({ device: await adapter.requestDevice(descriptor), report });
+                  const device = await adapter.requestDevice(descriptor);
+                  return wrapDevice({ device: observeDevice ? observeDevice({ device }) : device, report });
                 },
               },
             });
