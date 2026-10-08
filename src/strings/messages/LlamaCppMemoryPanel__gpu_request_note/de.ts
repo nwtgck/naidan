@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__gpu_request_note = (): string => 'GPU API request totals for this runtime. These are not current memory usage, physical RAM, VRAM, completed transfers or successful allocations. Totals do not decrease when buffers are released. 4 MiB is only a request-size bucket, not a detected browser transfer mode.';

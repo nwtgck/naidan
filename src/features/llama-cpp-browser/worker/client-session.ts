@@ -1,3 +1,4 @@
+import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
@@ -13,6 +14,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   disposeTransport: ({ active }: { active: boolean }) => void,
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
+  const stopObservingMemory = observeWorkerMemory({ worker });
   let disposed = false;
   const disposeListeners = new Set<() => void>();
   let lastOperation: Diagnostic | undefined;
@@ -55,6 +57,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   let rejectActive: (() => void) | undefined;
   const dispose = (): void => {
     if (disposed) return;
+    stopObservingMemory();
     disposed = true; debugEnabled = false; stopWaiting(); pendingOperations.clear();
     const active = rejectActive !== undefined;
     rejectActive?.();

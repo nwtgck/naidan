@@ -1,3 +1,4 @@
+import { sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { copyNativeUtf8 } from '@/features/llama-cpp-browser/runtime/native-utf8';
 import { createDeliveryDecode } from './delivery-decode';
 import { createGenerationYieldPacing } from './generation-yield-pacing';
@@ -135,6 +136,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   try {
     checkCancelled();
     // Prompt preparation is an ordinary response wait, not another model load.
+    sampleMemoryDiagnostics({ core, checkpoint: 'prefill-start' });
     setStage({ value: 'prefill' });
     progress({ phase: 'prefill', completed: 0, total: 0 });
     logDiagnostic({ diagnostic: { event: 'prefill-start' } });
@@ -355,6 +357,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
       prefillOutputs!.configure({ batch, count, final: offset + count === tokenCount });
       const status = await api.llama_decode(context, batch);
+      sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
       measurements.counters.prefillDecodeCalls++;
       measurements.counters.maximumPrefillBatchTokens = Math.max(measurements.counters.maximumPrefillBatchTokens, count);
       if (status === 0) measurements.counters.prefillDecodedTokens += count;
@@ -377,6 +380,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     checkCancelled();
     progress({ phase: 'prefill', completed: tokenCount, total: tokenCount });
     checkCancelled();
+    sampleMemoryDiagnostics({ core, checkpoint: 'prefill-complete' });
     logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount, reusedTokens, evaluatedTokens: tokenCount - reusedTokens } });
     setStage({ value: 'sampler-create' });
     const sp = record({ name: 'llama_sampler_chain_params' }); await api.llama_sampler_chain_default_params(sp);
@@ -545,6 +549,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
         core.setField({ name: 'llama_batch', pointer: batch, field: 'pos', value: position });
       }
       const status = await api.llama_decode(context, batch);
+      sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
       if (status === 0) measurements.counters.decodedTokens++;
       if (status === 2) checkCancelled();
       if (status !== 0) {
@@ -645,11 +650,13 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     default: { const exhaustive: never = finishReason; throw new Error(`Unknown completion: ${exhaustive}`); }
     }
     flushPartial = undefined;
+    sampleMemoryDiagnostics({ core, checkpoint: 'generation-complete' });
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
     cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     outcome = 'completed';
     return { ...parsed, finishReason };
   } catch (error) {
+    sampleMemoryDiagnostics({ core, checkpoint: 'generation-interrupted' });
     outcome = failureOutcome({ error });
     const failedStage = stage;
     // Drain already accepted bytes before reporting a cooperative cancellation or failure.
@@ -669,6 +676,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     try {
       await cleanup();
     } finally {
+      sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
       reportPerformance();
     }
     // The owning worker or a model/profile/file change releases the resident cache.

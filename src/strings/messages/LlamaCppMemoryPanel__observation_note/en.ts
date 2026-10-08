@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__observation_note = (): string => "Samples are taken during loading and inference, even while this panel is closed. Capacity is not allocated heap usage, physical RAM or GPU memory. The observed maximum may miss peaks. No worker is started by this panel.";

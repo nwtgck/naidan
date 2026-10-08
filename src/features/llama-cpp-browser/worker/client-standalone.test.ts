@@ -1,3 +1,4 @@
+import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
@@ -27,8 +28,14 @@ const calls = vi.hoisted(() => ({
 }));
 vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser', () => ({ createStandaloneWorker: calls.factory }));
 vi.mock('../runtime/shared-storage-probe', () => ({ verifySharedStorage: calls.probe }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => calls.remote, releaseWorkerRemote: calls.release, workerProxy: ({ value }: { value: unknown }) => value }));
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: () => calls.remote,
+  releaseWorkerRemote: calls.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 class TestWorker extends EventTarget {
+  postMessage = vi.fn();
   terminate = vi.fn();
 }
 let worker: TestWorker;
@@ -37,6 +44,7 @@ function request(): GenerateInput {
 }
 
 beforeEach(() => {
+  memoryHistoryTest.reset();
   vi.resetAllMocks(); worker = new TestWorker(); vi.stubGlobal('Worker', TestWorker);
   calls.factory.mockResolvedValue(worker); calls.probe.mockResolvedValue(undefined);
   calls.remote.finishAudioGeneration.mockResolvedValue(undefined); calls.remote.generateAudio.mockResolvedValue(audioResult()); calls.remote.listModels.mockResolvedValue([]); calls.remote.release.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
@@ -48,6 +56,29 @@ afterEach(() => {
 });
 
 describe('standalone llama Worker lifetime', () => {
+  it('collects memory only from an already started standalone worker', async () => {
+    const client = createLlamaCppWorkerClient();
+    expect(calls.factory).not.toHaveBeenCalled();
+    expect(memoryDiagnosticsHistories.value).toEqual([]);
+    await client.listModels({ signal: undefined });
+    worker.dispatchEvent(new MessageEvent('message', {
+      data: {
+        kind: 'naidan-llama-cpp-memory',
+        instanceId: 'standalone-core',
+        profile: 'cpu-wasm32',
+        checkpoint: 'model-loaded',
+        capacityBytes: 131072,
+        timestamp: 1000,
+      },
+    }));
+    expect(memoryDiagnosticsHistories.value[0]?.samples[0]?.capacityBytes).toBe(131072);
+    expect(calls.remote.prepareModel).not.toHaveBeenCalled();
+    expect(calls.remote.generate).not.toHaveBeenCalled();
+    client.dispose();
+    expect(memoryDiagnosticsHistories.value[0]?.status).toBe('worker-ended');
+    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+  });
+
   it('probes capabilities through the actual initialized Worker and propagates its disposal', async () => {
     const report = { recommended: 'webgpu-wasm32-jspi', profiles: [{ profile: 'webgpu-wasm32-jspi', status: 'available' }] };
     calls.remote.probeProfiles.mockResolvedValueOnce(report);

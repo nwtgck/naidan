@@ -1,3 +1,12 @@
+import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/es';
+import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/es';
+import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/es';
+import { LlamaCppMemoryPanel__last_sample } from '@/strings/messages/LlamaCppMemoryPanel__last_sample/es';
+import { LlamaCppMemoryPanel__observed_maximum } from '@/strings/messages/LlamaCppMemoryPanel__observed_maximum/es';
+import { LlamaCppMemoryPanel__no_samples } from '@/strings/messages/LlamaCppMemoryPanel__no_samples/es';
+import { LlamaCppMemoryPanel__observation_note } from '@/strings/messages/LlamaCppMemoryPanel__observation_note/es';
+import { LlamaCppMemoryPanel__linear_memory_capacity } from '@/strings/messages/LlamaCppMemoryPanel__linear_memory_capacity/es';
+import { LlamaCppMemoryPanel__llama_cpp_browser } from '@/strings/messages/LlamaCppMemoryPanel__llama_cpp_browser/es';
 import { imageGeneration__apply_to_next_run } from '@/strings/messages/imageGeneration__apply_to_next_run/es';
 import { imageGeneration__current_value } from '@/strings/messages/imageGeneration__current_value/es';
 import { imageGeneration__apply_this_setting } from '@/strings/messages/imageGeneration__apply_this_setting/es';
@@ -33,6 +42,9 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/es';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/es';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/es';
+import { LlamaCppMemoryPanel__gpu_requests_since_load_started } from '@/strings/messages/LlamaCppMemoryPanel__gpu_requests_since_load_started/es';
+import { LlamaCppMemoryPanel__gpu_request_totals } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_totals/es';
+import { LlamaCppMemoryPanel__gpu_request_note } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_note/es';
 import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/messages/ImageRecoveredOutputs__managed_by_pending_run/es';
 import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/es';
 import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/es';
@@ -2735,6 +2747,9 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  LlamaCppMemoryPanel__gpu_request_note,
+  LlamaCppMemoryPanel__gpu_request_totals,
+  LlamaCppMemoryPanel__gpu_requests_since_load_started,
   ImageRecoveredOutputs__discard_warning,
   ImageRecoveredOutputs__discard_image,
   ImageRecoveredOutputs__download_image,
@@ -5374,4 +5389,13 @@ export const catalog = {
   ImagePendingRuns__run_information_pending,
   ImagePendingRuns__save_without_generating_again,
   ImagePendingRuns__unsaved_runs,
+  LlamaCppMemoryPanel__active_history,
+  LlamaCppMemoryPanel__ended_history,
+  LlamaCppMemoryPanel__last_sample,
+  LlamaCppMemoryPanel__observed_maximum,
+  LlamaCppMemoryPanel__no_samples,
+  LlamaCppMemoryPanel__observation_note,
+  LlamaCppMemoryPanel__linear_memory_capacity,
+  LlamaCppMemoryPanel__llama_cpp_browser,
+  LlamaCppMemoryPanel__change_since_latest_load_started,
 } satisfies Strings;

@@ -1,3 +1,5 @@
+import { subscribeMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
+import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
 import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
@@ -81,6 +83,40 @@ afterEach(async () => {
 });
 
 describe('resident projector debug changes', () => {
+  it('records failed model-load capacity without replacing the native error', async () => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    core.module.HEAPU8 = new Uint8Array(65536);
+    const failure = new Error('native load failure');
+    vi.mocked(core.api.llama_model_load_from_file).mockImplementation(async () => {
+      core.module.HEAPU8 = new Uint8Array(131072);
+      throw failure;
+    });
+    const samples: MemoryDiagnostic[] = [];
+    const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
+    try {
+      await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
+      expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-load-failed']);
+      expect(samples.at(-1)?.capacityBytes).toBe(131072);
+    } finally {
+      stop();
+    }
+  });
+
+  it('records successful preparation and retained capacity when releasing the model', async () => {
+    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    core.module.HEAPU8 = new Uint8Array(65536);
+    const samples: MemoryDiagnostic[] = [];
+    const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
+    try {
+      await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+      await releaseSession({ releaseRuntime: false });
+      expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-loaded', 'context-ready', 'model-released']);
+      expect(samples.at(-1)?.capacityBytes).toBe(65536);
+    } finally {
+      stop();
+    }
+  });
+
   it('caches request-invariant native chat metadata and configures a wider logical prefill batch', async () => {
     const core = host.core; if (!core) throw new Error('Expected native fixture');
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });

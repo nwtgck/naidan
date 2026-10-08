@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__observation_note = (): string => "As amostras são coletadas durante o carregamento e a inferência, mesmo com o painel fechado. Capacidade não é uso de heap, RAM física ou GPU. Picos podem não ser registrados. Este painel não inicia workers.";

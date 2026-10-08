@@ -3,6 +3,7 @@ import { twClasses, twClassString } from 'virtual:naidan-tailwind';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { idToRaw } from '@/01-models/ids';
 import { ref } from 'vue';
+import LlamaCppMemoryPanel from '@/features/llama-cpp-browser/components/LlamaCppMemoryPanel.vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useLayout } from '@/composables/useLayout';
@@ -16,6 +17,20 @@ const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent
 const { openFileExplorer } = useFileExplorerModal();
 const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
+const selectedTab = ref<'events' | 'llama'>('events');
+function navigateTabs({ event }: { event: KeyboardEvent }): void {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  if (event.key === 'Home') selectedTab.value = 'events';
+  else if (event.key === 'End') selectedTab.value = 'llama';
+  else switch (selectedTab.value) {
+  case 'events': selectedTab.value = 'llama'; break;
+  case 'llama': selectedTab.value = 'events'; break;
+  default: { const exhaustive: never = selectedTab.value; throw new Error(String(exhaustive)); }
+  }
+  const target = event.currentTarget;
+  if (target instanceof HTMLElement) target.querySelector<HTMLButtonElement>(`[data-tab="${selectedTab.value}"]`)?.focus();
+}
 const menuRef = ref<HTMLElement | null>(null);
 
 async function triggerTestError(): Promise<void> {
@@ -114,7 +129,10 @@ defineExpose({
     >
       <div tw-class="flex items-center gap-2">
         <TerminalIcon tw-class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        <span tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">{{ lazyStrings.DebugPanel__system_events() }}</span>
+        <div role="tablist" @keydown="navigateTabs({ event: $event })" tw-class="flex gap-2">
+          <button id="debug-events-tab" role="tab" data-tab="events" data-testid="debug-events-tab" :aria-selected="selectedTab === 'events'" :tabindex="selectedTab === 'events' ? 0 : -1" aria-controls="debug-events-content" @click="selectedTab = 'events'" :tw-class="['text-xs font-bold px-2 py-1 rounded', selectedTab === 'events' ? 'bg-blue-100 dark:bg-blue-900' : 'text-gray-500']">{{ lazyStrings.DebugPanel__system_events() }}</button>
+          <button id="debug-llama-tab" role="tab" data-tab="llama" data-testid="debug-llama-tab" :aria-selected="selectedTab === 'llama'" :tabindex="selectedTab === 'llama' ? 0 : -1" aria-controls="debug-llama-content" @click="selectedTab = 'llama'" :tw-class="['text-xs font-bold px-2 py-1 rounded', selectedTab === 'llama' ? 'bg-blue-100 dark:bg-blue-900' : 'text-gray-500']">{{ lazyStrings.LlamaCppMemoryPanel__llama_cpp_browser() }}</button>
+        </div>
 
         <div
           v-if="errorCount > 0"
@@ -199,7 +217,7 @@ defineExpose({
     </div>
 
     <!-- Content Area -->
-    <div tw-class="h-[calc(100%-40px)] overflow-y-auto bg-gray-50/30 dark:bg-black/40 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
+    <div v-show="selectedTab === 'events'" id="debug-events-content" role="tabpanel" tabindex="0" aria-labelledby="debug-events-tab" tw-class="h-[calc(100%-40px)] overflow-y-auto bg-gray-50/30 dark:bg-black/40 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
       <div v-if="eventCount === 0" tw-class="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
         <XIcon tw-class="w-8 h-8 opacity-20" />
         <p tw-class="text-xs font-bold uppercase tracking-widest">{{ lazyStrings.DebugPanel__no_events_recorded() }}</p>
@@ -221,6 +239,9 @@ defineExpose({
           <pre v-if="event.details" tw-class="bg-black/5 dark:bg-black/50 p-3 rounded-xl text-[10px] text-gray-500 dark:text-gray-400 overflow-x-auto border border-gray-100/50 dark:border-gray-800">{{ stringifyDetails({ details: event.details as any }) }}</pre>
         </div>
       </div>
+    </div>
+    <div v-show="selectedTab === 'llama'" id="debug-llama-content" role="tabpanel" tabindex="0" aria-labelledby="debug-llama-tab" tw-class="h-[calc(100%-40px)] overflow-y-auto p-3">
+      <LlamaCppMemoryPanel />
     </div>
   </div>
 </template>

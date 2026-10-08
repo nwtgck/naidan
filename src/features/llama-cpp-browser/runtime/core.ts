@@ -1,3 +1,4 @@
+import { associateGpuRequests, createGpuRequestObserver } from './webgpu-request-diagnostics';
 import { copyNativeUtf8 } from './native-utf8';
 import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-browser/runtime/artifacts';
 import { z } from 'zod';
@@ -241,10 +242,12 @@ export type Core = ReturnType<typeof attachCore> & { chat: NativeChat };
 export async function createCore({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }): Promise<Core> {
+  const gpuRequests = createGpuRequestObserver();
   const options: CoreModuleOptions = usesWebGpu({ profile }) ? {
     ...moduleOptions,
     naidanNavigator: createCoreWebGpuNavigator({
       navigator: globalThis.navigator,
+      observeDevice: gpuRequests.wrapDevice,
       report({ axis, count, limit, chunks }) {
         logDiagnostic({
           diagnostic: {
@@ -262,8 +265,14 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
   } : moduleOptions;
   const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions: options });
   switch (profile) {
-  case 'webgpu-wasm32-asyncify': return { ...attachCore({ module, callMode: 'asyncify' }), chat };
-  case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
+  case 'webgpu-wasm32-asyncify': {
+    const core = { ...attachCore({ module, callMode: 'asyncify' }), chat };
+    if (usesWebGpu({ profile })) associateGpuRequests({ core, snapshot: gpuRequests.snapshot }); return core;
+  }
+  case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'cpu-wasm64': case 'cpu-wasm32': {
+    const core = { ...attachCore({ module, callMode: 'direct' }), chat };
+    if (usesWebGpu({ profile })) associateGpuRequests({ core, snapshot: gpuRequests.snapshot }); return core;
+  }
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }

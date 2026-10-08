@@ -66,6 +66,20 @@ describe('DebugPanel', () => {
     expect(wrapper.find('[data-testid="debug-content-area"]').exists()).toBe(true);
   });
 
+  it('switches accessible tabs and preserves the selected tab across closing', async () => {
+    isDebugOpen.value = true;
+    const wrapper = mount(DebugPanel);
+    await wrapper.get('[data-testid="debug-llama-tab"]').trigger('click');
+    expect(wrapper.get('[data-testid="debug-llama-tab"]').attributes('aria-selected')).toBe('true');
+    expect(wrapper.get('[data-testid="llama-memory-empty"]').text()).toContain('No runtime samples');
+    isDebugOpen.value = false; await wrapper.vm.$nextTick();
+    isDebugOpen.value = true; await wrapper.vm.$nextTick();
+    expect(wrapper.get('[data-testid="debug-llama-tab"]').attributes('aria-selected')).toBe('true');
+    await wrapper.get('[role="tablist"]').trigger('keydown', { key: 'Home' });
+    expect(wrapper.get('[data-testid="debug-events-tab"]').attributes('aria-selected')).toBe('true');
+    wrapper.unmount();
+  });
+
   it('opens development tools menu when ... button is clicked', async () => {
     isDebugOpen.value = true;
     const wrapper = mount(DebugPanel);
