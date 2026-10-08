@@ -10,7 +10,8 @@ import type { LlamaCppWorkerApi } from './types';
 // Worker transport and storage are in-memory: this catches cancellation wiring
 // regressions that a manager test with a mocked importModel() cannot observe.
 const transport = vi.hoisted(() => ({ remote: undefined as WorkerServerApi<LlamaCppWorkerApi> | undefined, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
   wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release,
   workerProxy: ({ value }: { value: unknown }) => value,
