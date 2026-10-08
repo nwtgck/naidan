@@ -1,3 +1,12 @@
+import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/ko';
+import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/ko';
+import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/ko';
+import { LlamaCppMemoryPanel__last_sample } from '@/strings/messages/LlamaCppMemoryPanel__last_sample/ko';
+import { LlamaCppMemoryPanel__observed_maximum } from '@/strings/messages/LlamaCppMemoryPanel__observed_maximum/ko';
+import { LlamaCppMemoryPanel__no_samples } from '@/strings/messages/LlamaCppMemoryPanel__no_samples/ko';
+import { LlamaCppMemoryPanel__observation_note } from '@/strings/messages/LlamaCppMemoryPanel__observation_note/ko';
+import { LlamaCppMemoryPanel__linear_memory_capacity } from '@/strings/messages/LlamaCppMemoryPanel__linear_memory_capacity/ko';
+import { LlamaCppMemoryPanel__llama_cpp_browser } from '@/strings/messages/LlamaCppMemoryPanel__llama_cpp_browser/ko';
 import { imageGeneration__apply_to_next_run } from '@/strings/messages/imageGeneration__apply_to_next_run/ko';
 import { imageGeneration__current_value } from '@/strings/messages/imageGeneration__current_value/ko';
 import { imageGeneration__apply_this_setting } from '@/strings/messages/imageGeneration__apply_this_setting/ko';
@@ -5374,4 +5383,13 @@ export const catalog = {
   ImagePendingRuns__run_information_pending,
   ImagePendingRuns__save_without_generating_again,
   ImagePendingRuns__unsaved_runs,
+  LlamaCppMemoryPanel__active_history,
+  LlamaCppMemoryPanel__ended_history,
+  LlamaCppMemoryPanel__last_sample,
+  LlamaCppMemoryPanel__observed_maximum,
+  LlamaCppMemoryPanel__no_samples,
+  LlamaCppMemoryPanel__observation_note,
+  LlamaCppMemoryPanel__linear_memory_capacity,
+  LlamaCppMemoryPanel__llama_cpp_browser,
+  LlamaCppMemoryPanel__change_since_latest_load_started,
 } satisfies Strings;

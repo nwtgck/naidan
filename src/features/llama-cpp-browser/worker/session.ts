@@ -1,3 +1,4 @@
+import { beginMemoryDiagnostics, sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { openModelFileAccess } from './model-file-access';
 import type { AudioBackend } from '@/features/audio-generation/types';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -79,11 +80,13 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
         }
       }
     }
+    sampleMemoryDiagnostics({ core: runtime.core, checkpoint: 'model-released' });
     logDiagnostic({ diagnostic: { event: "released" } });
   }
   if (runtime && releaseRuntime) {
     const previous = runtime; runtime = undefined;
     await previous.core.api.llama_backend_free();
+    sampleMemoryDiagnostics({ core: previous.core, checkpoint: 'runtime-released' });
   }
 }
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
@@ -184,6 +187,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     await releaseSession({ releaseRuntime: true });
     onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
     runtime = { profile, requestedProfile: request.options.profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile, assetBaseURL: request.assetBaseURL }) };
+    beginMemoryDiagnostics({ core: runtime.core, profile });
   }
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core; const api = core.api;
@@ -201,6 +205,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   if (resident && !unchanged) await releaseSession({ releaseRuntime: false });
   checkCancelled();
   if (!resident) {
+    sampleMemoryDiagnostics({ core, checkpoint: 'before-model-load' });
     const mounts: ReturnType<typeof mountReadOnlyFile>[] = [];
     const accesses: { close(): void }[] = [];
     const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n;
@@ -276,8 +281,12 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       if (model === 0n) throw new LlamaCppBrowserError({ code: "runtime-error" });
       resident = { model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, name: request.model, id: directory.id, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
       model = 0n;
+      sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       logDiagnostic({ diagnostic: { event: "load-complete", elapsedMs: performance.now() - started, profile } });
+    } catch (error) {
+      sampleMemoryDiagnostics({ core, checkpoint: 'model-load-failed' });
+      throw error;
     } finally {
       try {
         if (model !== 0n) await api.llama_model_free(model);
@@ -386,6 +395,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         current.context = await api.llama_init_from_model(current.model, cp);
         checkCancelled();
         if (current.context !== 0n) {
+          sampleMemoryDiagnostics({ core, checkpoint: 'context-ready' });
           current.contextProjector = current.projector ? 'present' : 'absent';
           break;
         }

@@ -1,3 +1,4 @@
+import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import type { AudioPreviewEvent } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
@@ -9,12 +10,14 @@ import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-b
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
 const transport = vi.hoisted(() => ({ remote: { prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
   wrapWorkerRemote: () => transport.remote,
   releaseWorkerRemote: transport.release,
   workerProxy: ({ value }: { value: unknown }) => value,
 }));
 class TestWorker extends EventTarget {
+  postMessage = vi.fn();
   static instances: TestWorker[] = [];
   terminate = vi.fn();
   constructor() {
@@ -23,6 +26,7 @@ class TestWorker extends EventTarget {
 }
 
 beforeEach(() => {
+  memoryHistoryTest.reset();
   vi.clearAllMocks(); TestWorker.instances = [];
   vi.stubGlobal('Worker', TestWorker);
   transport.remote.listModels.mockResolvedValue([]);
@@ -36,6 +40,27 @@ afterEach(() => {
 });
 
 describe('hosted Worker lifetime', () => {
+  it('passively receives memory checkpoints without calling the worker API', () => {
+    const client = createLlamaCppWorkerClient();
+    const worker = TestWorker.instances[0]!;
+    worker.dispatchEvent(new MessageEvent('message', {
+      data: {
+        kind: 'naidan-llama-cpp-memory',
+        instanceId: 'core-one',
+        profile: 'cpu-wasm64',
+        checkpoint: 'runtime-ready',
+        capacityBytes: 2 ** 33,
+        timestamp: 1000,
+      },
+    }));
+    expect(memoryDiagnosticsHistories.value[0]?.samples[0]?.capacityBytes).toBe(2 ** 33);
+    expect(transport.remote.prepareModel).not.toHaveBeenCalled();
+    expect(transport.remote.generate).not.toHaveBeenCalled();
+    expect(transport.remote.probeProfiles).not.toHaveBeenCalled();
+    client.dispose();
+    expect(memoryDiagnosticsHistories.value[0]?.status).toBe('worker-ended');
+  });
+
   it('validates capability reports and notifies session observers once when the Worker dies', async () => {
     const report = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
     transport.remote.probeProfiles.mockResolvedValueOnce(report);

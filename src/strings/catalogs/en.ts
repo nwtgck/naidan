@@ -1,3 +1,12 @@
+import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/en';
+import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/en';
+import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/en';
+import { LlamaCppMemoryPanel__last_sample } from '@/strings/messages/LlamaCppMemoryPanel__last_sample/en';
+import { LlamaCppMemoryPanel__observed_maximum } from '@/strings/messages/LlamaCppMemoryPanel__observed_maximum/en';
+import { LlamaCppMemoryPanel__no_samples } from '@/strings/messages/LlamaCppMemoryPanel__no_samples/en';
+import { LlamaCppMemoryPanel__observation_note } from '@/strings/messages/LlamaCppMemoryPanel__observation_note/en';
+import { LlamaCppMemoryPanel__linear_memory_capacity } from '@/strings/messages/LlamaCppMemoryPanel__linear_memory_capacity/en';
+import { LlamaCppMemoryPanel__llama_cpp_browser } from '@/strings/messages/LlamaCppMemoryPanel__llama_cpp_browser/en';
 import { imageGeneration__apply_to_next_run } from '@/strings/messages/imageGeneration__apply_to_next_run/en';
 import { imageGeneration__current_value } from '@/strings/messages/imageGeneration__current_value/en';
 import { imageGeneration__apply_this_setting } from '@/strings/messages/imageGeneration__apply_this_setting/en';
@@ -5377,6 +5386,15 @@ export const catalog = {
   ImagePendingRuns__run_information_pending,
   ImagePendingRuns__save_without_generating_again,
   ImagePendingRuns__unsaved_runs,
+  LlamaCppMemoryPanel__llama_cpp_browser,
+  LlamaCppMemoryPanel__linear_memory_capacity,
+  LlamaCppMemoryPanel__observation_note,
+  LlamaCppMemoryPanel__no_samples,
+  LlamaCppMemoryPanel__observed_maximum,
+  LlamaCppMemoryPanel__last_sample,
+  LlamaCppMemoryPanel__ended_history,
+  LlamaCppMemoryPanel__active_history,
+  LlamaCppMemoryPanel__change_since_latest_load_started,
 } satisfies BoundaryStringCatalog;
 
 export type Strings = typeof catalog;

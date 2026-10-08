@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__observation_note = (): string => "Se toman muestras durante la carga y la inferencia, incluso con el panel cerrado. La capacidad no es el uso de heap, RAM física o GPU. Pueden faltar picos. Este panel no inicia workers.";
