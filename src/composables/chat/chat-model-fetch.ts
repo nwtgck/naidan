@@ -64,7 +64,7 @@ export async function fetchModelsForChat({
       && isSupportedEndpoint(endpoint)
       && mutableChat.modelId
       && !models.includes(mutableChat.modelId)
-      && !(endpoint.type === 'llama_cpp_browser' && /^hf\.co\//.test(mutableChat.modelId))
+      && !(endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(mutableChat.modelId))
     ) {
       let replacement = '';
       switch (endpoint.type) {

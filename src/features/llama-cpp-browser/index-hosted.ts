@@ -1,3 +1,5 @@
+import { storageService } from '@/00-storage/service';
+import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { resolveRuntimeProfile } from './runtime/detect-profile';
 import { audioGenerationInputSchema } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema, resolveProfilePreference, type ProfileCapabilities, type ProfileState } from './runtime/profile-capabilities';
@@ -5,7 +7,7 @@ import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp
 import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { LlamaCppWorkerClient } from './worker/types';
-import { errorCode, generateInputSchema, LlamaCppBrowserError, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
+import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
 import { logDiagnostic } from './debug-log';
 
@@ -256,7 +258,19 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     };
   },
   async listModels({ signal }) {
-    signal?.throwIfAborted(); const models = await listStoredModels(); signal?.throwIfAborted(); return models;
+    signal?.throwIfAborted();
+    const directories = await storageService.loadHostModelDirectories();
+    let models: LocalModel[]; let opfsFailure: { error: unknown } | undefined;
+    try {
+      models = await listStoredModels();
+    } catch (error) {
+      // An unavailable browser store must not hide usable linked folders.
+      if (!directories.length) throw error;
+      models = []; opfsFailure = { error };
+    }
+    models.push(...await listHostStoredModels({ directories, signal }));
+    if (opfsFailure) recordOpfsInventoryIssue(opfsFailure);
+    signal?.throwIfAborted(); return models.sort((a, b) => a.name.localeCompare(b.name));
   },
   importModel({ file, signal }) {
     return run({

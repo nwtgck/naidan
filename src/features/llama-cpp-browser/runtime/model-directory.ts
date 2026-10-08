@@ -8,7 +8,7 @@ import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
 const pendingName = '.llama-cpp-import-pending';
-export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File };
+export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File, storageKind?: 'host' };
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {

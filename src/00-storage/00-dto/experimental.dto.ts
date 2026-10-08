@@ -208,6 +208,13 @@ export const ExperimentalBrowserImageModelSelectionSchemaDto = z.object({
     strength: z.number().finite().min(-10).max(10),
   })).max(16),
 });
+export const ExperimentalLlamaCppBrowserSettingsSchemaDto = resolveMissingAsUndefined(z.object({
+  modelDownloadDestination: missingAsUndefined(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('opfs') }),
+    z.object({ kind: z.literal('host'), directoryId: z.string().min(1) }),
+  ])),
+}));
+
 export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissingAsUndefined(z.object({
   width: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
   height: missingAsUndefined(z.number().int().min(128).max(2048).multipleOf(64)),
@@ -262,6 +269,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
       z.literal('full'),
     ])),
   }))),
+  llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsSchemaDto),
   browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
   hostModelDirectories: missingAsUndefined(z.array(z.object({
     id: z.string(),

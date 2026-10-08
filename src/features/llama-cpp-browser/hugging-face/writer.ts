@@ -1,7 +1,9 @@
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { isProjector } from './model-variants';
 import { scanDeletionTree, pruneEmptyDirectories } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import { openSyncAccess, type DownloadAccess } from './sync-access';
+import { openDownloadAccess, type DownloadFileAccess } from './download-access';
+import { isHostDestination, modelDestinationSchema, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
+import { hostDownloadMarker } from './host-download-marker';
 import { releaseWorkerRemote, type WorkerRemote, type WorkerCapability, type WorkerProxy, type WorkerServerApi, type WorkerTransfer } from '@/utils/worker-transport';
 import { z } from 'zod';
 import { readModelFiles, resolveModelFiles, validGguf } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -10,7 +12,7 @@ import { journalSchema, sharedProjectorConflictMessage, existingModelConflictMes
 
 export type DownloadWriterApi = {
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>,
-  begin({ selection }: { selection: DownloadSelection }): Promise<BeginDownloadResult>,
+  begin({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<BeginDownloadResult>,
   open({ fileIndex, start }: { fileIndex: number, start: number }): Promise<void>,
   append({ bytes }: WorkerTransfer<{ bytes: Uint8Array<ArrayBuffer> }>): Promise<number>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callbacks must be top-level arguments.
@@ -23,27 +25,42 @@ export type DownloadWriterApi = {
 export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
   let folder: FileSystemDirectoryHandle | undefined; let journal: DownloadJournal | undefined;
   let comparison: File | undefined;
-  let access: DownloadAccess | undefined; let index: number | undefined;
+  let target: ModelDestination = { kind: 'opfs' };
+  let access: DownloadFileAccess | undefined; let index: number | undefined;
   let position = 0; let checkpointPosition = 0; let checkpointTime = 0;
   let currentReader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>> | undefined; let stopped = false;
+  const checkpointWhileOpen = (): boolean => {
+    const mode = access?.checkpointMode;
+    switch (mode) {
+    case 'periodic': case undefined: return true;
+    case 'on-close': return false;
+    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    }
+  };
   const checkpoint = async (): Promise<void> => {
     if ((!access && !comparison) || index === undefined || !folder || !journal) return;
-    access?.flush(); journal.bytes[index] = position;
+    await access?.flush(); journal.bytes[index] = position;
     await writeJournal({ folder, journal }); checkpointPosition = position; checkpointTime = performance.now();
   };
   const close = async (): Promise<void> => {
     try {
       await checkpoint();
     } finally {
-      access?.close(); access = undefined; comparison = undefined; index = undefined;
+      await access?.close(); access = undefined; comparison = undefined; index = undefined;
     }
   };
   const api: WorkerServerApi<DownloadWriterApi> = {
     verifyStorage,
-    async begin({ selection }: { selection: DownloadSelection }): Promise<BeginDownloadResult> {
+    async begin({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<BeginDownloadResult> {
+      target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
       selection = selectionSchema.parse(selection); resolveModelFiles({ files: selection.files });
       if (selection.files.filter(file => isProjector({ path: file.path })).length > 1) throw new Error('Only one projector can be downloaded');
-      folder = await repositoryFolder({ repository: selection.repository, create: true });
+      folder = await repositoryFolder({ repository: selection.repository, create: true, destination: target });
+      // Never let our repository journal claim another engine's pending file.
+      // Check every selected marker before creating any ownership metadata.
+      if (isHostDestination(target)) for (let index = 0; index < selection.files.length; index++) {
+        await hostDownloadMarker({ folder, selection, index, action: 'check' });
+      }
       try {
         journal = await readJournal({ folder });
         if (JSON.stringify(journal.selection) !== JSON.stringify(selection)) return { status: 'conflict', reason: 'different-download' };
@@ -67,7 +84,7 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
         const hasCompleteMainSet = mainFiles.every(file => existing.get(file.path)?.size === file.size);
         const comparesInstalledMain = addsProjector && hasCompleteMainSet;
         if (selection.files.some((file, index) => reused[index] && (existing.get(file.path)!.size !== file.size || (!isProjector({ path: file.path }) && !comparesInstalledMain)))) return { status: 'conflict', reason: 'existing-files' };
-        if (!contents.files.length) await pruneEmptyDirectories({ folder, directories: contents.directories });
+        if (!isHostDestination(target) && !contents.files.length) await pruneEmptyDirectories({ folder, directories: contents.directories });
         journal = { version: 1, selection, reused, bytes: selection.files.map(() => 0), complete: selection.files.map(() => false) };
         await writeJournal({ folder, journal });
       }
@@ -78,15 +95,16 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
           journal.bytes[i] = 0; journal.complete[i] = false; continue;
         }
         const handle = await selectedFile({ folder, path: file.path, create: true });
-        const sync = await openSyncAccess({ handle });
+        if (isHostDestination(target)) await hostDownloadMarker({ folder, selection, index: i, action: 'create' });
+        const sync = await openDownloadAccess({ handle, kind: target.kind, offset: journal.bytes[i]! });
         try {
           const actual = sync.getSize(); const recorded = journal.bytes[i]!;
           if (actual < recorded || actual > file.size) throw new Error('Download file differs from its journal');
           if (actual !== recorded) {
-            sync.truncate(recorded); sync.flush();
+            await sync.truncate({ size: recorded }); await sync.flush();
           }
         } finally {
-          sync.close();
+          await sync.close();
         }
       }
       await writeJournal({ folder, journal });
@@ -101,11 +119,12 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
         if (start !== 0) throw new Error('Shared file verification must start at zero');
         comparison = await handle.getFile();
         if (comparison.size !== journal.selection.files[fileIndex]!.size) throw new Error(isProjector({ path: journal.selection.files[fileIndex]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
-      } else access = await openSyncAccess({ handle });
+      } else access = await openDownloadAccess({ handle, kind: target.kind, offset: start });
       stopped = false; index = fileIndex; position = start; checkpointPosition = start; checkpointTime = performance.now();
-      access?.truncate(start); journal.complete[fileIndex] = false; await checkpoint();
+      await access?.truncate({ size: start }); journal.complete[fileIndex] = false;
+      if (checkpointWhileOpen()) await checkpoint();
     },
-    async append({ bytes }: { bytes: Uint8Array }): Promise<number> {
+    async append({ bytes }: { bytes: Uint8Array<ArrayBuffer> }): Promise<number> {
       if (!(bytes instanceof Uint8Array) || bytes.byteLength > 1024 * 1024 || (!access && !comparison) || index === undefined || !journal) throw new Error('Invalid download chunk');
       if (position + bytes.byteLength > journal.selection.files[index]!.size) throw new Error('Download exceeds expected size');
       if (comparison) {
@@ -115,10 +134,10 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
       }
       let offset = 0;
       while (access && offset < bytes.length) {
-        const count = access.write(bytes.subarray(offset), { at: position });
+        const count = await access.write({ bytes: bytes.subarray(offset), at: position });
         if (count <= 0) throw new Error('Download write made no progress'); offset += count; position += count;
       }
-      if (position - checkpointPosition >= 8 * 1024 * 1024 || performance.now() - checkpointTime >= 2000) await checkpoint();
+      if (checkpointWhileOpen() && (position - checkpointPosition >= 8 * 1024 * 1024 || performance.now() - checkpointTime >= 2000)) await checkpoint();
       return position;
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callbacks must be top-level arguments.
@@ -154,19 +173,28 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
     async finishFile(): Promise<void> {
       if ((!access && !comparison) || index === undefined || !journal || !folder || position !== journal.selection.files[index]!.size) throw new Error('Incomplete download');
       await checkpoint(); journal.complete[index] = true; await writeJournal({ folder, journal });
-      access?.close(); access = undefined; comparison = undefined; index = undefined;
+      await access?.close(); access = undefined; comparison = undefined; index = undefined;
     },
     async pause(): Promise<void> {
       await close();
     },
     async finish(): Promise<void> {
       if (!folder || !journal || access || comparison || !journal.complete.every(Boolean)) throw new Error('Incomplete download');
-      const files = (await readModelFiles({ folder, prefix: '' })).filter(file => journal!.selection.files.some(expected => expected.path === file.path));
+      const files = isHostDestination(target)
+        ? await Promise.all(journal.selection.files.map(async expected => {
+          const handle = await selectedFile({ folder: folder!, path: expected.path, create: false });
+          return { path: expected.path, handle, file: await handle.getFile() };
+        }))
+        : (await readModelFiles({ folder, prefix: '' })).filter(file => journal!.selection.files.some(expected => expected.path === file.path));
       if (files.length !== journal.selection.files.length) throw new Error('Download file set changed');
       for (const file of files) {
         if (!journal.selection.files.some(expected => expected.path === file.path && expected.size === file.file.size) || !await validGguf({ file: file.file })) throw new Error('Invalid downloaded GGUF');
       }
-      resolveModelFiles({ files }); await folder.removeEntry(pendingName);
+      resolveModelFiles({ files });
+      if (isHostDestination(target)) for (let index = 0; index < journal.selection.files.length; index++) {
+        if (!journal.reused?.[index]) await hostDownloadMarker({ folder, selection: journal.selection, index, action: 'remove' });
+      }
+      await folder.removeEntry(pendingName);
     },
   };
   return api;

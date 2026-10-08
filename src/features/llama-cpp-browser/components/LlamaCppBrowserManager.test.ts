@@ -120,6 +120,33 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('lists browser storage and all linked roots together with readable source labels and no source selector', async () => {
+    const first: LocalModel = {
+      id: 'host/root-a/owner/repo:model.gguf',
+      name: 'host/root-a/owner/repo:model.gguf',
+      size: 128,
+      importedAt: 1,
+      source: { kind: 'host', directoryId: 'root-a', directoryName: 'Models A', repository: 'owner/repo', path: 'model.gguf' },
+    };
+    const second: LocalModel = {
+      ...first,
+      id: 'host/root-b/owner/repo:model.gguf',
+      name: 'host/root-b/owner/repo:model.gguf',
+      source: { kind: 'host', directoryId: 'root-b', directoryName: 'Models B', repository: 'owner/repo', path: 'model.gguf' },
+    };
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, first, second]);
+    const wrapper = render(); await flushPromises();
+    const list = wrapper.get('[data-testid="llama-cpp-browser-model-list"]');
+    expect(list.findAll('li')).toHaveLength(3);
+    expect(list.findAll('[data-testid="llama-imported-model-source"]').map(source => source.text())).toEqual([
+      'Browser storage (OPFS)', 'Models A / owner/repo / model.gguf', 'Models B / owner/repo / model.gguf',
+    ]);
+    expect(list.find('[data-testid="llama-download-destination"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('Models B');
+    expect(list.findAll('li')).toHaveLength(1);
+    expect(wrapper.emitted('modelsChanged')?.[0]?.[0]).toEqual([storedModel, first, second]);
+  });
+
   it('filters imported names without changing the underlying list and shares default-model confirmation', async () => {
     const second = { ...storedModel, id: 'user/second', name: 'Qwen-Q8_0.gguf' };
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, second]);

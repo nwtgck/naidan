@@ -480,6 +480,13 @@ export class StorageService {
     }
   }
 
+  /** Model inventory may render before storage initialization. Registration
+   * metadata is absent then; actual provider failures must remain observable. */
+  async loadHostModelDirectories(): Promise<NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>> {
+    if (!this.provider) return [];
+    return (await this.provider.loadSettings())?.experimental?.hostModelDirectories ?? [];
+  }
+
   async loadSettings(): Promise<Settings | null> {
     return this.getProvider().loadSettings();
   }

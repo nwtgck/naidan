@@ -1,3 +1,4 @@
+import { parseHostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { artifactRole } from './artifact-role';
 import { type RepositoryCatalog, type ModelCandidate } from './catalog';
 import { preferredProjector, quantizationName } from './presentation';
@@ -36,13 +37,26 @@ export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { q
 }
 
 /** Uses already validated LOCAL model listings; never triggers remote discovery. */
-export function findLocalSuggestedModel({ quantization, models }: { quantization: SuggestedQuantization, models: readonly LocalModel[] }): LocalModel | undefined {
-  const prefix = `hf.co/${quantization.repository}:`.toLowerCase();
+export function findLocalSuggestedModel({ quantization, models, destination }: { quantization: SuggestedQuantization, models: readonly LocalModel[], destination?: ModelDestination }): LocalModel | undefined {
+  const target = destination ?? { kind: 'opfs' };
   const matches = models.filter(model => {
-    if (!model.id.toLowerCase().startsWith(prefix)) return false;
     try {
-      const path = decodeURIComponent(model.id.slice(prefix.length));
-      return artifactRole({ path }) === 'model' && quantizationName({ path }) === quantization.preferredQuantization;
+      const path = (() => {
+        switch (target.kind) {
+        case 'opfs': {
+          const prefix = `hf.co/${quantization.repository}:`.toLowerCase();
+          return model.id.toLowerCase().startsWith(prefix) ? decodeURIComponent(model.id.slice(prefix.length)) : undefined;
+        }
+        case 'host': {
+          if (!model.id.startsWith('host/')) return undefined;
+          const reference = parseHostModelReference({ name: model.id });
+          // Native directory IDs and filesystem paths are case-sensitive.
+          return reference.destination.directoryId === target.directoryId && reference.repository === quantization.repository ? reference.modelPath : undefined;
+        }
+        default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+        }
+      })();
+      return path !== undefined && artifactRole({ path }) === 'model' && quantizationName({ path }) === quantization.preferredQuantization;
     } catch {
       return false;
     }
