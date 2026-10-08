@@ -3,6 +3,7 @@ import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
 import ModelSelector from '@/components/ModelSelector.vue';
+import { useSettings } from '@/composables/useSettings';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { setLocale } from '@/strings';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -13,7 +14,19 @@ import { audioResult } from './test-utils/wav';
 import AudioGenerationView from './AudioGenerationView.vue';
 import * as referencePreparation from './reference-audio';
 import type { inspectStoredAudioModel } from './model-detection';
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ availableModels: ref([]), isFetchingModels: ref(false), fetchModels: vi.fn() }) }));
+vi.mock('@/composables/useSettings', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/composables/useSettings')>();
+  return {
+    ...actual,
+    useSettings: () => ({
+      // The real catalog also consumes shared settings for its download target.
+      ...actual.useSettings(),
+      availableModels: ref<string[]>([]),
+      isFetchingModels: ref(false),
+      fetchModels: vi.fn<ReturnType<typeof actual.useSettings>['fetchModels']>(),
+    }),
+  };
+});
 const detection = vi.hoisted(() => ({ inspect: vi.fn<typeof inspectStoredAudioModel>() }));
 vi.mock('./model-detection', async importOriginal => ({ ...await importOriginal<typeof import('./model-detection')>(), inspectStoredAudioModel: detection.inspect }));
 
@@ -42,6 +55,7 @@ let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  useSettings().TEST_ONLY.__testOnlyReset();
   service.getState.mockReturnValue({ status: 'idle' }); service.getOptions.mockReturnValue({ profile: 'cpu-wasm32' });
   service.restartRuntime.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   service.subscribe.mockReturnValue(service.unsubscribe); service.generateAudio.mockResolvedValue(audioResult());
@@ -413,6 +427,7 @@ describe('catalog placement and continuing previews', () => {
     const catalog = view.findComponent(LlamaCppBrowserModelSuggestions);
     expect(catalog.exists()).toBe(true); expect(catalog.props('suggestions')).toEqual(audioModelCatalog);
     expect(catalog.props('selectionAction')).toBe('select');
+    expect(catalog.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('opfs');
     expect(catalog.element.closest('[data-testid="audio-model-manager"]')).toBeNull();
     expect(view.get('[data-testid="audio-model-manager"]').findComponent(LlamaCppBrowserModelSuggestions).exists()).toBe(false);
     expect(view.find('[data-testid="llama-repository-catalog"]').exists()).toBe(false);

@@ -11,6 +11,7 @@ const source: DownloadJob = {
   key: 'fixture',
   repository: 'owner/repo',
   source: 'repository',
+  destination: { kind: 'opfs' },
   status: 'downloading',
   error: undefined,
   selection: { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'dir/model-00001-of-00002.gguf', size: 128 }, { path: 'dir/model-00002-of-00002.gguf', size: 128 }] },
