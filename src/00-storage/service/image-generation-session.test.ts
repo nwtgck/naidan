@@ -1,10 +1,11 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toImageGenerationSessionId } from '@/01-models/ids';
+import { toImageGenerationRunId, toImageGenerationSessionId } from '@/01-models/ids';
 import { ExperimentalImageGenerationCatalogSchemaDto, ExperimentalImageGenerationSessionSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationCatalogToDomain, imageGenerationCatalogToDto, imageGenerationSessionToDomain, imageGenerationSessionToDto } from '@/00-storage/mapper/image-generation';
 import { createImageGenerationStorageHarness, generationSessionFixture, generationRunFixture, generationDraftFixture } from './image-generation/test-support';
 import * as service from './image-generation';
+import { collectImageGenerationSessionMetadata } from './image-generation-export';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 
@@ -176,6 +177,50 @@ it.each(['missing', 'stale', 'dirty'] as const)('preserves unavailable RPC sibli
   expect(JSON.parse(activity.text).sequence).toBe(sequence + 2);
   expect(JSON.parse((await fs.file({ path: `${path}/next-aa.json` })).text).acceptedOrder).toBe(sequence + 1);
   expect(JSON.parse((await fs.file({ path: `${path}/later-aa.json` })).text).acceptedOrder).toBe(sequence + 2);
+});
+
+it('uses a cold stale RPC summary only for presentation and rejects canonical actions without changing bytes', async () => {
+  const h = await setup();
+  const local = generationRunFixture({ id: 'local-aa', sessionId: h.session.id, count: 1, seed: '42' });
+  await service.createImageGenerationRun({ store: h.store, run: local, writeInputs: async () => {} });
+  const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
+  const localFile = await fs.file({ path: `${path}/local-aa.json` });
+  const raw = JSON.parse(localFile.text);
+  raw.id = 'remote-aa'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
+  const remote = await directory.getFileHandle('remote-aa.json', { create: true }); remote.text = JSON.stringify(raw);
+  const index = await directory.getFileHandle('index.json'), cached = JSON.parse(index.text);
+  cached.items.push({ ...cached.items[0], id: 'remote-aa' }); index.text = JSON.stringify(cached);
+  const activity = await fs.file({ path: `${root}/session-activity.json` });
+  const session = await fs.file({ path: `${root}/sessions/aa/session-aa/session.json` });
+  const preserved = [localFile, remote, index, activity, session].map(file => file.text);
+  const writes = fs.writes.length;
+
+  // Reopen from persisted bytes before any read can validate the opaque record.
+  const reopened = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'forbid' });
+  if (!reopened) throw new Error('Missing reopened catalog.');
+  const store = { storageType: 'opfs' as const, storeId: reopened.id };
+  fs.reads.length = 0;
+  const listed = await service.listImageGenerationRuns({ store, sessionId: h.session.id });
+  const snapshot = await service.readImageGenerationSessionIndex({ store, sessionId: h.session.id });
+  for (const result of [listed, snapshot.runs]) {
+    expect(result.items.map(item => item.id).sort()).toEqual(['local-aa', 'remote-aa']);
+    expect(result.warningCount).toBe(0); expect(result.warnings).toEqual([]);
+  }
+  expect(fs.reads.some(name => name.endsWith('/local-aa.json') || name.endsWith('/remote-aa.json'))).toBe(false);
+
+  const runId = toImageGenerationRunId({ raw: 'remote-aa' });
+  await expect(service.loadImageGenerationRun({ store, sessionId: h.session.id, runId })).rejects.toThrow('unsupported RPC runtime');
+  await expect(service.updateImageGenerationRunExecution({
+    store,
+    sessionId: h.session.id,
+    runId,
+    execution: { type: 'running', startedAt: 3 },
+    expectedRevision: 0,
+  })).rejects.toThrow('unsupported RPC runtime');
+  await expect(service.recordImageGenerationSessionUse({ store, sessionId: h.session.id, runId })).rejects.toThrow('unsupported RPC runtime');
+  await expect(collectImageGenerationSessionMetadata({ store, sessionId: h.session.id })).rejects.toThrow('unsupported RPC runtime');
+  expect([localFile, remote, index, activity, session].map(file => file.text)).toEqual(preserved);
+  expect(fs.writes).toHaveLength(writes);
 });
 
 it.each(['wrong-id', 'wrong-session', 'invalid-width', 'invalid-seeds'] as const)('does not hide %s behind an unavailable RPC runtime', async corruption => {

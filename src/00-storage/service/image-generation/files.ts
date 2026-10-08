@@ -122,7 +122,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     return ids;
   }
 
-  async function readIndex({ shardDirectory, shard }: { shardDirectory: FileSystemDirectoryHandle, shard: string }): Promise<{ items: S[], unavailable: string[] }> {
+  async function readIndex({ shardDirectory, shard, purpose }: { shardDirectory: FileSystemDirectoryHandle, shard: string, purpose: 'presentation' | 'mutation' }): Promise<{ items: S[], unavailable: string[] }> {
     const text = await readImageGenerationText({ directory: shardDirectory, name: 'index.json' });
     // Even dirty indexes must parse before mutation. Never replace corrupt bytes
     // with an empty "healthy" index. Read-only listing can fall back to records.
@@ -136,12 +136,20 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     const dirty = await readImageGenerationText({ directory: shardDirectory, name: 'index.dirty' }) !== undefined;
     const ids = await recordIds({ shardDirectory, shard });
     const items: S[] = [], unavailable: string[] = [];
-    // Tables with RPC runtimes derive membership from actual files even when
-    // cached. Other table kinds retain their ordinary clean-cache fast path.
+    // Clean summaries are presentation-only. Mutation must validate canonical
+    // RPC records so stale summaries cannot authorize writes or erase opaque data.
     for (const id of ids) {
       const cached = indexed.get(id);
-      if (unavailableRecord === undefined && !dirty && cached !== undefined) {
-        items.push(cached); continue;
+      if (!dirty && cached !== undefined) {
+        switch (purpose) {
+        case 'presentation': items.push(cached); continue;
+        case 'mutation':
+          if (unavailableRecord === undefined) {
+            items.push(cached); continue;
+          }
+          break;
+        default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+        }
       }
       try {
         const record = await readRecord({ shardDirectory, id });
@@ -173,7 +181,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     for await (const [shard, handle] of directory.entries()) {
       if (handle.kind !== 'directory' || !/^[a-z0-9_-]{2}$/.test(shard)) continue;
       try {
-        const index = await readIndex({ shardDirectory: handle, shard });
+        const index = await readIndex({ shardDirectory: handle, shard, purpose: 'presentation' });
         items.push(...index.items);
         for (const id of index.unavailable) warn({ path: `${shard}/${id}`, error: new UnavailableRpcRecordError({ id: id }) });
         continue;
@@ -222,7 +230,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     if (!directory) throw new Error('Image Generation table is unavailable.');
     const shard = rawId.slice(-2).toLowerCase();
     const shardDirectory = await imageGenerationDirectory({ parent: directory, name: shard, create: false });
-    if (shardDirectory) await readIndex({ shardDirectory, shard });
+    if (shardDirectory) await readIndex({ shardDirectory, shard, purpose: 'mutation' });
   }
 
   async function write({ record, assertCurrent, beforeCommit }: {
@@ -237,7 +245,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     if (!directory) throw new Error('Image Generation table is unavailable.');
     const shard = id.slice(-2).toLowerCase();
     const shardDirectory = await directory.getDirectoryHandle(shard, { create: true });
-    const index = await readIndex({ shardDirectory, shard });
+    const index = await readIndex({ shardDirectory, shard, purpose: 'mutation' });
     const current = await readRecord({ shardDirectory, id });
     assertCurrent({ current });
     await beforeCommit();

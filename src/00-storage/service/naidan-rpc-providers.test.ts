@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import { MemoryStorageProvider } from './memory-storage';
+import type { ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
-const registry = { version: 1 as const, id: 'registry-example', connections: [] };
+const registry = { version: 2, id: 'registry-example', registrations: [] } satisfies ExperimentalNaidanRpcRegistryDto;
 const filename = 'naidan-rpc-connections.json';
 /** A writable buffers changes until close, as an OPFS replacement does. */
 function opfsFixture() {
@@ -148,7 +149,7 @@ it('propagates directory access failures for reads, writes and removals', async 
 it('leaves the old root-level registry untouched without reading or migrating it', async () => {
   const { provider, storage, files } = opfsFixture();
   const oldFilename = 'experimental-naidan-rpc-connections.json';
-  const oldContent = JSON.stringify({ ...registry, id: 'old-registry-example' });
+  const oldContent = JSON.stringify({ version: 1, id: 'old-registry-example', connections: [] });
   storage.files.set(oldFilename, { content: oldContent });
   expect(await provider.loadNaidanRpcRegistry()).toBeUndefined();
   await provider.saveNaidanRpcRegistry({ registry });

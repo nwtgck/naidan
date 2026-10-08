@@ -42,13 +42,18 @@ describe('createOllamaProvider', () => {
   });
 });
 
-it('never loads another provider for a persisted unavailable RPC endpoint', async () => {
+it.each([
+  { type: 'naidan_rpc', connectionId: 'old-peer-A' },
+  { type: 'naidan_rpc', connectionId: 'old-peer-A', registrationId: 'registration-B' },
+  { type: 'naidan_rpc', registrationId: 'registration-B', future: { value: 'unavailable' } },
+])('never loads another provider for a persisted unavailable RPC endpoint: %j', async endpoint => {
   const provider = new LocalStorageProvider();
   await provider.saveSettings({ settings: { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: 'https://other-peer.example' } } });
   const key = `${STORAGE_KEY_PREFIX}lsp:settings`, raw = JSON.parse(localStorage.getItem(key)!);
-  raw.endpoint = { type: 'experimental_type', experimental: { endpoint: { type: 'naidan_rpc', registrationId: 'old-peer-A' } } };
+  raw.endpoint = { type: 'experimental_type', experimental: { endpoint } };
   localStorage.setItem(key, JSON.stringify(raw));
   const loaded = await provider.loadSettings(); if (!loaded) throw new Error('Missing settings');
+  expect(loaded.endpoint.type).toBe('unsupported_experimental_endpoint');
   const fetch = vi.spyOn(globalThis, 'fetch');
   try {
     await expect(loadLmProvider({ endpoint: loaded.endpoint, fakeLmDebugModeStatus: 'disabled' })).rejects.toThrow('Unsupported experimental endpoint');
