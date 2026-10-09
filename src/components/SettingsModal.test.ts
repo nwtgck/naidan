@@ -290,6 +290,33 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     wrapper.unmount();
   });
 
+  it('suspends only the retained model manager while the performance screen is open', async () => {
+    const route = useRoute(); route.query.settings = 'llama-cpp-browser';
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true },
+      global: {
+        stubs: {
+          ...globalStubs,
+          LlamaCppBrowserUpsell: true,
+          LlamaCppBrowserManager: {
+            name: 'LlamaCppBrowserManager',
+            props: { suspended: Boolean },
+            template: '<div data-testid="local-manager-stub" />',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
+    expect(manager.props('suspended')).toBe(false);
+    await wrapper.setProps({ suspended: true }); await flushPromises();
+    expect(manager.props('suspended')).toBe(true);
+    await wrapper.setProps({ suspended: false }); await flushPromises();
+    expect(manager.props('suspended')).toBe(false);
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserManager' }).vm).toBe(manager.vm);
+    wrapper.unmount();
+  });
+
   describe('UI / Design Regression', () => {
     it('positions the close button correctly in the top-right corner', async () => {
       const wrapper = mount(SettingsModal, {

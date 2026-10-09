@@ -418,12 +418,12 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :active="!props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" />
+                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" />
                 <section tw-class="mt-8 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
                   <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
                   <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>
                   <button type="button" data-testid="open-llama-cpp-performance"
-                    :disabled="props.performanceLoading" tw-class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
+                          :disabled="props.performanceLoading" tw-class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
                   <p v-if="props.performanceError" role="alert" tw-class="break-words text-xs text-red-700 dark:text-red-300">{{ props.performanceError }}</p>
                 </section>
               </div>

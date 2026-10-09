@@ -20,7 +20,9 @@ import LlamaCppBrowserModelImport from './LlamaCppBrowserModelImport.vue';
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
-const props = defineProps<{ active?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
+// Suspension is opt-in: an omitted Boolean prop is false in Vue. It must not
+// disable model management in onboarding or other callers without this prop.
+const props = defineProps<{ suspended?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();
 async function inspectRepository({ input }: { input: string }): Promise<void> {
   if (unavailable.value || active.value || importing.value || refreshing.value) return;
@@ -72,27 +74,28 @@ let refreshRequested = false;
 let disposed = false;
 
 function refresh(): Promise<void> {
-  if (unavailable.value || disposed || props.active === false) return Promise.resolve();
+  if (unavailable.value || disposed || props.suspended) return Promise.resolve();
   refreshRequested = true;
   if (refreshPromise) return refreshPromise;
   const controller = new AbortController(); refreshController = controller; refreshing.value = true;
   // Defer execution until refreshPromise is assigned, including synchronous failures.
   refreshPromise = Promise.resolve().then(async () => {
-    while (refreshRequested && !disposed && !controller.signal.aborted) {
+    while (refreshRequested && !disposed && !props.suspended && !controller.signal.aborted) {
       refreshRequested = false; listError.value = undefined;
       try {
         const found = await llamaCppBrowserService.listModels({ signal: controller.signal });
-        if (!disposed && !controller.signal.aborted && !refreshRequested) {
+        if (!disposed && !props.suspended && !controller.signal.aborted && !refreshRequested) {
           models.value = found; hostIssues.value = [...getHostModelInventoryIssues()]; emit('modelsChanged', found);
         }
       } catch (error) {
-        if (!disposed && !controller.signal.aborted) listError.value = errorCode({ error });
+        if (!disposed && !props.suspended && !controller.signal.aborted) listError.value = errorCode({ error });
       }
     }
   }).finally(() => {
     refreshing.value = false; refreshController = undefined; refreshPromise = undefined;
-    // A list notification can arrive after the loop exits but before this cleanup.
-    return refreshRequested && !disposed && !controller.signal.aborted ? refresh() : undefined;
+    // A list notification or resume can arrive before this cleanup. Resume must
+    // drain its queued refresh even if the previous controller was aborted.
+    return refreshRequested && !disposed && !props.suspended ? refresh() : undefined;
   });
   return refreshPromise;
 }
@@ -100,7 +103,7 @@ let modelSelectionVersion = 0;
 async function selectReadyModel({ model }: { model: LocalModel }): Promise<void> {
   const version = ++modelSelectionVersion;
   await refresh();
-  if (disposed || version !== modelSelectionVersion) return;
+  if (disposed || props.suspended || version !== modelSelectionVersion) return;
   const available = models.value.find(entry => entry.id === model.id);
   if (available) emit('modelSelected', available.name);
 }
@@ -122,7 +125,15 @@ function formatSize({ bytes }: { bytes: number }): string {
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
-watch(() => props.active, active => { if (active !== false) void refresh(); });
+watch(() => props.suspended, suspended => {
+  if (suspended) {
+    modelSelectionVersion++;
+    refreshRequested = false;
+    refreshController?.abort();
+  } else {
+    void refresh();
+  }
+});
 watch(queue.changed, () => {
   void refresh();
 });
