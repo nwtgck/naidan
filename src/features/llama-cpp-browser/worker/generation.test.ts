@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { attachCore, createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { generate } from './generation';
+import * as checkpointPerformanceModule from './checkpoint-performance';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import * as pacingModule from './output-pacing';
 import * as deliveryDecodeModule from './delivery-decode';
@@ -1695,7 +1696,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
       const reusedAt = Math.min(Infinity, ...allocationSpies.flatMap(spy => spy.mock.results.flatMap((result, index) =>
         result.type === 'return' && result.value === checkpoint.pointer ? [spy.mock.invocationCallOrder[index]!] : [])));
       expect(free.mock.calls.filter(([args], index) => args.pointer === checkpoint.pointer
-        && free.mock.invocationCallOrder[index]! < reusedAt)).toHaveLength(1);
+        && free.mock.invocationCallOrder[index]! < reusedAt)).toHaveLength(scenario === 'shortened-header' ? 0 : 1);
       await releaseSession({ releaseRuntime: false });
       await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
       batches.length = 0;
@@ -1706,6 +1707,37 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     } finally {
       spy.mockRestore(); restore.mockRestore(); clear.mockRestore(); debug.mockRestore(); free.mockRestore();
       for (const allocation of allocationSpies) allocation.mockRestore();
+    }
+  }, 30000);
+
+  it('retains a verified restored checkpoint at the same boundary without a redundant host readback', async () => {
+    await releaseSession({ releaseRuntime: false });
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
+    const req = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    const initial = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const checkpoint = session.cache.checkpoint;
+    if (!checkpoint) throw new Error('Expected native checkpoint');
+    const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
+    const size = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
+    const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
+    try {
+      for (let index = 0; index < 3; index++) {
+        const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+        expect(retry).toEqual(initial);
+      }
+      expect(restore).toHaveBeenCalledTimes(3);
+      expect(capture).not.toHaveBeenCalled(); expect(size).not.toHaveBeenCalled();
+      expect(session.cache.checkpoint).toBe(checkpoint);
+      const warmLogits = await readNativeLogits();
+      const warmPosition = await sequencePosition();
+      await releaseSession({ releaseRuntime: false });
+      const cold = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(cold).toEqual(initial);
+      expect(await sequencePosition()).toBe(warmPosition);
+      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
+    } finally {
+      capture.mockRestore(); size.mockRestore(); restore.mockRestore();
     }
   }, 30000);
 
@@ -3058,5 +3090,195 @@ describe('single-encoding prompt transfer with the supplied native runtime', () 
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('template-unsupported');
     expect(decode).not.toHaveBeenCalled();
+  }, 30000);
+});
+
+describe('measurement contracts with supplied native Wasm', () => {
+  beforeEach(async () => {
+    await releaseSession({ releaseRuntime: true });
+    host.companion = false; host.sameFile = true; host.revision++;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks(); await releaseSession({ releaseRuntime: true });
+  });
+
+  it.each(['attention', 'recurrent'] as const)('measures fresh and continued %s inference without changing output or logits', async kind => {
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createInputSensitiveGguf({ chatTemplate: 'chatml' })
+      : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
+    const req: WorkerGenerateInput = { ...request({ messages: [{ role: 'user', content: 'Explain local text generation in English.' }] }), debug: 'off', maxTokens: 8 };
+    const runMeasured = async ({ input, sequence }: { input: WorkerGenerateInput, sequence: 'fresh' | 'continue' }) => {
+      const reports: unknown[] = [];
+      const output = await generate({
+        request: { ...input, measurement: { sequence } },
+        signal: undefined,
+        onEvent: () => {},
+        onProgress: () => {},
+        onSummary: ({ diagnostic }) => reports.push(diagnostic),
+      });
+      expect(reports).toHaveLength(1);
+      const report = diagnosticSchema.parse(reports[0]);
+      expect(report).toMatchObject({ event: 'generation-performance', performance: { outcome: 'completed', input: 'text' } });
+      return { output, metrics: report.performance! };
+    };
+    const reference = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    const referenceLogits = await readNativeLogits();
+    const modelLoads = host.modelLoads;
+    const first = await runMeasured({ input: req, sequence: 'fresh' });
+    expect(first.output).toEqual(reference);
+    expect(await readNativeLogits()).toEqual(referenceLogits);
+    expect(first.metrics.reusedTokens).toBe(0);
+    expect(first.metrics.prefillDecodedTokens).toBe(first.metrics.promptTokens);
+    expect(first.metrics.nonEogTokens).toBeGreaterThan(0);
+    expect(first.metrics.nonEogTokens).toBeLessThanOrEqual(8);
+    expect(first.metrics.memoryReset?.requestedClears).toBe(1);
+    const second = await runMeasured({ input: req, sequence: 'fresh' });
+    expect(second.output).toEqual(first.output);
+    expect(await readNativeLogits()).toEqual(referenceLogits);
+    expect(second.metrics.reusedTokens).toBe(0);
+    expect(host.modelLoads).toBe(modelLoads);
+    const followup = {
+      ...req,
+      messages: [...req.messages,
+        { role: 'assistant' as const, content: first.output.content, reasoning_content: first.output.reasoningContent },
+        { role: 'user' as const, content: 'Give one more example in English.' }],
+    };
+    const continued = await runMeasured({ input: followup, sequence: 'continue' });
+    expect(continued.metrics.reusedTokens).toBeGreaterThan(0);
+    const continuedLogits = await readNativeLogits();
+    const full = await runMeasured({ input: followup, sequence: 'fresh' });
+    expect(full.output).toEqual(continued.output);
+    const fullLogits = await readNativeLogits();
+    expect(fullLogits).toHaveLength(continuedLogits.length);
+    for (const [index, value] of fullLogits.entries()) expect(value).toBeCloseTo(continuedLogits[index]!, 5);
+    expect(full.metrics.reusedTokens).toBe(0);
+    expect(readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).some(item => item.event === 'generation-performance')).toBe(false);
+  }, 30000);
+
+  it('keeps checkpoint clocks out of ordinary chat and observes explicit recurrent measurements', async () => {
+    host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
+    const factory = vi.spyOn(checkpointPerformanceModule, 'createCheckpointPerformance');
+    const req = { ...request({ messages: [{ role: 'user', content: 'Explain a local model.' }] }), debug: 'off' as const };
+    const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(factory).not.toHaveBeenCalled();
+    const reports: unknown[] = [];
+    const measured = await generate({
+      request: { ...req, measurement: { sequence: 'fresh' } },
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+      onSummary: ({ diagnostic }) => reports.push(diagnostic),
+    });
+    expect(measured).toEqual(ordinary); expect(factory).toHaveBeenCalledOnce();
+    const checkpoint = diagnosticSchema.parse(reports[0]).performance?.checkpoint;
+    expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
+    expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-readback']);
+    expect(checkpoint?.phases.every(phase => phase.elapsedMs >= 0 && phase.visits === 1)).toBe(true);
+  }, 30000);
+
+  it('retains model read counters in measured loading without per-read timers', async () => {
+    host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+    const factory = vi.spyOn(modelReadModule, 'createModelReadCache');
+    const reports: unknown[] = [];
+    await generate({
+      request: { ...request({ messages: [{ role: 'user', content: 'English fixture' }] }), debug: 'off', measurement: { sequence: 'fresh' } },
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+      onSummary: ({ diagnostic }) => reports.push(diagnostic),
+    });
+    expect(factory).toHaveBeenCalledExactlyOnceWith({ mode: 'read-ahead', now: undefined });
+    const reads = readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).filter(item => item.event === 'file-read-performance');
+    expect(reads).toHaveLength(1);
+    const counters = diagnosticSchema.parse(reads[0]).fileReads!;
+    expect(counters.sourceCalls).toBeGreaterThan(0);
+    expect(counters.sourceBytes).toBeGreaterThan(0);
+    expect(counters.sourceReadMs).toBeUndefined();
+    expect(diagnosticSchema.parse(reports[0]).performance?.outcome).toBe('completed');
+  }, 30000);
+});
+
+describe('metadata-only operation diagnostics with real native evaluation', () => {
+  beforeEach(async () => {
+    await releaseSession({ releaseRuntime: true }); host.companion = false; host.sameFile = true; host.revision++;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks(); await releaseSession({ releaseRuntime: true });
+  });
+
+  it('reports diagnostic setup failure kind/stage without leaking native exception text', async () => {
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'Public input.' }] }), maxTokens: 2, debug: 'off' as const };
+    const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const reader = vi.spyOn(host.core!, 'createTensorPlacementReader').mockImplementationOnce(() => {
+      throw new TypeError('private native detail');
+    });
+    const reports: unknown[] = [];
+    await expect(generate({
+      request: { ...req, measurement: { sequence: 'fresh', observation: 'placement' } },
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+      onSummary: ({ diagnostic }) => reports.push(diagnostic),
+    })).rejects.toThrow();
+    expect(reports).toHaveLength(1);
+    expect(diagnosticSchema.parse(reports[0])).toMatchObject({ stage: 'session', failureKind: 'type-error', performance: { outcome: 'failed' } });
+    expect(JSON.stringify(reports)).not.toContain('private native detail');
+    reader.mockRestore();
+    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+  }, 30000);
+
+  it.each(['attention', 'recurrent'] as const)('collects bounded %s operation metadata and removes the callback before ordinary inference', async kind => {
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createInputSensitiveGguf({ chatTemplate: 'chatml' }) : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'Explain local inference.' }] }), maxTokens: 2, debug: 'off' as const };
+    const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const core = host.core!;
+    const readerFactory = vi.spyOn(core, 'createTensorPlacementReader');
+    const remove = vi.spyOn(core.module, 'removeFunction');
+    const modelLoads = host.modelLoads, reads = host.reads;
+    const reports: unknown[] = [];
+    const diagnosed = await generate({
+      request: { ...req, measurement: { sequence: 'fresh', observation: 'placement' } },
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+      onSummary: ({ diagnostic }) => {
+        reports.push(diagnostic);
+      },
+    });
+    expect(diagnosed).toEqual(ordinary);
+    const report = diagnosticSchema.parse(reports[0]);
+    const census = report.performance?.backendCensus;
+    expect(census).toBeDefined(); expect(census!.observedNodes).toBeGreaterThan(0); expect(census!.errors).toBe(0);
+    expect(census!.entries.some(entry => entry.phase === 'prefill')).toBe(true);
+    expect(census!.entries.some(entry => entry.phase === 'decode')).toBe(true);
+    expect(census!.entries.some(entry => entry.op === 'GGML_OP_MUL_MAT')).toBe(true);
+    expect(census!.entries.every(entry => entry.shape.length === 4 && entry.webgpuSupport === 'unavailable')).toBe(true);
+    expect(census!.placementMeaning).toBe('destination-buffer-not-execution-backend');
+    expect(report.performance?.sampleWindows?.length).toBeGreaterThan(0);
+    expect(report.performance?.memoryObservation?.wasmHeapBeforeBytes).toBeGreaterThan(0);
+    expect(readerFactory).toHaveBeenCalledOnce();
+    expect(host.modelLoads).toBe(modelLoads); expect(host.reads).toBe(reads);
+    const diagnosticContext = sessionTesting.residentContext();
+    await generate({
+      request: { ...req, measurement: { sequence: 'fresh' } },
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+      onSummary: ({ diagnostic }) => {
+        reports.push(diagnostic);
+      },
+    });
+    // Allocators may recycle the same address; callback removal, not pointer inequality, is the ownership proof.
+    expect(diagnosticContext).toBeDefined(); expect(remove).toHaveBeenCalled();
+    expect(readerFactory).toHaveBeenCalledOnce(); expect(host.reads).toBe(reads);
+    expect(diagnosticSchema.parse(reports[1]).performance?.backendCensus).toBeUndefined();
+    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+    expect(readerFactory).toHaveBeenCalledOnce();
   }, 30000);
 });

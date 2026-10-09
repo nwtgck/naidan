@@ -1,0 +1,1 @@
+export const llamaCppPerformance__keep_page_visible = (): string => "Keep this tab visible. A hidden-page trial is retained but excluded from the standard summary; the next trial waits for the page to become visible.";

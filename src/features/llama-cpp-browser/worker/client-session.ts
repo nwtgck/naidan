@@ -165,6 +165,20 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         disposeListeners.delete(listener);
       };
     },
+    async releaseRuntime({ signal }) {
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
+      // Release is serialized with inference. A wedged cleanup retires the
+      // transport instead of handing a still-active runtime to another model.
+      const timer = setTimeout(abort, 10000);
+      try {
+        await invoke({ call: () => remote.release(), signal: controller.signal, onAbort: undefined, abortTimeoutMs: undefined });
+      } finally {
+        clearTimeout(timer); signal?.removeEventListener('abort', abort);
+      }
+    },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     importModel: ({ file, onProgress, signal }) => importWithCancellation({
@@ -200,7 +214,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
       }
     },
-    generate: async ({ request, onEvent, onProgress, signal }) => {
+    generate: async ({ request, onEvent, onProgress, signal, onSummary }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
         generationId: ++nextGenerationId,
@@ -229,6 +243,16 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
                 if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
                 if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
                 if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+              },
+            }),
+            workerProxy({
+              value: ({ diagnostic }: { diagnostic: unknown }) => {
+                // A cooperative Stop still owns its terminal summary. Late callbacks
+                // after this call has settled must never reach the next trial.
+                if (!acceptingEvents || disposed || !accepted.measurement) return;
+                const summary = diagnosticSchema.parse(diagnostic);
+                if (summary.event !== 'generation-performance' || !summary.performance) throw new Error('Invalid generation summary');
+                onSummary?.({ diagnostic: summary });
               },
             })),
           signal,

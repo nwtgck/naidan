@@ -20,7 +20,7 @@ import LlamaCppBrowserModelImport from './LlamaCppBrowserModelImport.vue';
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
-const props = defineProps<{ suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
+const props = defineProps<{ active?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();
 async function inspectRepository({ input }: { input: string }): Promise<void> {
   if (unavailable.value || active.value || importing.value || refreshing.value) return;
@@ -72,7 +72,7 @@ let refreshRequested = false;
 let disposed = false;
 
 function refresh(): Promise<void> {
-  if (unavailable.value || disposed) return Promise.resolve();
+  if (unavailable.value || disposed || props.active === false) return Promise.resolve();
   refreshRequested = true;
   if (refreshPromise) return refreshPromise;
   const controller = new AbortController(); refreshController = controller; refreshing.value = true;
@@ -122,6 +122,7 @@ function formatSize({ bytes }: { bytes: number }): string {
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
+watch(() => props.active, active => { if (active !== false) void refresh(); });
 watch(queue.changed, () => {
   void refresh();
 });

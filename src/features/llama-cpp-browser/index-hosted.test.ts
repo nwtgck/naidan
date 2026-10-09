@@ -5,8 +5,8 @@ import { listStoredModels, removeStoredModel } from './runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
-import type { LlamaCppBrowserService } from './service-contract';
-const worker = vi.hoisted(() => ({ prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
+import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
+const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => worker));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
@@ -22,7 +22,7 @@ beforeEach(async () => {
     ],
   });
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
-  worker.prepareModel.mockResolvedValue(undefined); worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+  worker.releaseRuntime.mockResolvedValue(undefined); worker.prepareModel.mockResolvedValue(undefined); worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -488,5 +488,117 @@ describe('preparation progress ownership', () => {
     controller.abort(); onProgress.mockClear();
     worker.prepareModel.mock.calls[0]![0].onProgress({ progress: { phase: 'loading', completed: 0.8, total: 1 } });
     expect(onProgress).not.toHaveBeenCalled(); gate.reject(new LlamaCppBrowserError({ code: 'aborted' })); await rejection;
+  });
+});
+
+describe('measured generation operation ownership', () => {
+  it('releases native state before and after, passes fresh/continue, and leaves ordinary options unchanged', async () => {
+    const order: string[] = [];
+    worker.releaseRuntime.mockImplementation(async () => {
+      order.push('release');
+    });
+    worker.generate.mockImplementation(async ({ request, onSummary }) => {
+      order.push(request.measurement?.sequence ?? 'ordinary');
+      expect(onSummary).toBeTypeOf('function');
+      return { content: 'output', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        for (const sequence of ['fresh', 'continue'] as const) {
+          await scope.generate({ input: input(), sequence, onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+        }
+      },
+    });
+    expect(order).toEqual(['release', 'fresh', 'continue', 'release']);
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('keeps unrelated requests outside the measured interval and rejects an escaped scope', async () => {
+    let escaped: LlamaCppPerformanceScope | undefined;
+    const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+    const measured = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        escaped = scope; entered.resolve(); await gate.promise;
+        await scope.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+      },
+    });
+    await entered.promise;
+    const ordinary = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await Promise.resolve(); expect(worker.generate).not.toHaveBeenCalled();
+    gate.resolve(); await measured; await ordinary;
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual(['fresh', undefined]);
+    expect(() => escaped!.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: escaped!.signal })).toThrow('closed');
+  });
+
+  it('does not start a measurement behind already reserved work', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    const ordinary = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).rejects.toThrow('busy');
+    expect(worker.releaseRuntime).not.toHaveBeenCalled();
+    gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await ordinary;
+  });
+
+  it('rejects overlapping scoped native calls', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    await service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        const args = { input: input(), sequence: 'fresh' as const, onEvent: () => {}, onSummary: () => {}, signal: scope.signal };
+        const first = scope.generate(args);
+        expect(() => scope.generate(args)).toThrow('busy');
+        gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await first;
+      },
+    });
+  });
+});
+
+describe('investigation and read-only cache ownership', () => {
+  it('does not queue investigation behind a reserved read-only invocation or evict its cache', async () => {
+    const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
+    const operation = vi.fn(async () => {});
+    try {
+      const sending = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation })).rejects.toThrow('busy');
+      await sending;
+      expect(operation).not.toHaveBeenCalled();
+      expect(worker.releaseRuntime).not.toHaveBeenCalled();
+      expect(worker.dispose).not.toHaveBeenCalled();
+    } finally {
+      await reader.dispose();
+    }
+  });
+
+  it('retiring a former read-only cache owner cannot dispose a newer measured operation', async () => {
+    const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
+    await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const entered = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
+    const measured = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        entered.resolve();
+        await finish.promise;
+        await scope.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+      },
+    });
+    await entered.promise;
+    const retired = reader.dispose();
+    try {
+      await Promise.resolve();
+      expect(worker.dispose).not.toHaveBeenCalled();
+    } finally {
+      finish.resolve();
+      await measured;
+      await retired;
+    }
+    expect(worker.dispose).not.toHaveBeenCalled();
+    expect(worker.releaseRuntime).toHaveBeenCalledTimes(2);
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual([undefined, 'fresh', undefined]);
   });
 });

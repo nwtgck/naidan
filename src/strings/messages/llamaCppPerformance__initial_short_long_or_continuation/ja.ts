@@ -1,0 +1,1 @@
+export const llamaCppPerformance__initial_short_long_or_continuation = ({ value }: { value: 'initial' | 'short' | 'long' | 'continuation' | 'placement' }): string => ({"placement": '演算配置の診断', "initial": "初回応答", "short": "常駐・短文", "long": "常駐・長文", "continuation": "会話への追加入力"}[value]);

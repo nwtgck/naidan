@@ -5,7 +5,8 @@ import type { prepareSession } from './session';
 import type { WorkerPrepareCall } from './types';
 import type { WorkerAudioCall } from './types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
-import { logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
+import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
+import { logDiagnostic, logNativeDiagnostic, logOperation } from '@/features/llama-cpp-browser/debug-log';
 import type { importStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import type { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -586,5 +587,62 @@ describe('generation progress mailbox integration', () => {
     } finally {
       blocked.resolve(); log.mockRestore();
     }
+  });
+});
+
+describe('measured generation terminal reports', () => {
+  it('collects bounded loading evidence with debug off and waits for summary delivery', async () => {
+    const api = createWorkerApi(); const summary = vi.fn(); const gate = deferred();
+    summary.mockImplementation(async () => {
+      await gate.promise;
+    });
+    const modelReads = { target: 'model' as const, mode: 'read-ahead' as const, requests: 100, sourceCalls: 10, sourceBytes: 2000, deliveredBytes: 1500, directReads: 9, fills: 1, hits: 90, hitBytes: 900, peakBufferBytes: 65536, allocationFallbacks: 0 };
+    calls.generate.mockImplementationOnce(async ({ request, onSummary }) => {
+      expect(request.debug).toBe('off');
+      logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 45, profile: 'cpu-wasm32' } });
+      logDiagnostic({ diagnostic: { event: 'context-retry', contextTokens: 4096, batchTokens: 128, reason: 'context-allocation' } });
+      logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: modelReads } });
+      onSummary?.({ diagnostic: performanceReport() });
+      return completed();
+    });
+    let settled = false;
+    const pending = api.generate({ ...request({ generationId: 1 }), debug: 'off', measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, summary).then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(summary).toHaveBeenCalledOnce()); expect(settled).toBe(false);
+    expect(summary.mock.calls[0]?.[0].diagnostic.performance.preparationEvents).toMatchObject([{ event: 'load-complete', elapsedMs: 45 }, { event: 'context-retry', contextTokens: 4096, batchTokens: 128 }]);
+    expect(summary.mock.calls[0]?.[0].diagnostic.performance.modelReads).toEqual(modelReads);
+    gate.resolve(); await pending; await api.release();
+  });
+
+  it('returns cooperative stop evidence even while generation rejects, then releases ownership', async () => {
+    const api = createWorkerApi(); const summary = vi.fn(); const gate = deferred();
+    calls.generate.mockImplementationOnce(async ({ signal, onSummary }) => {
+      await gate.promise; expect(signal?.aborted).toBe(true);
+      onSummary?.({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const pending = api.generate({ ...request({ generationId: 2 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, summary);
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await api.cancelGeneration({ generationId: 2 }); gate.resolve(); await rejected;
+    expect(summary.mock.calls[0]?.[0].diagnostic.performance.outcome).toBe('aborted'); await api.release();
+  });
+
+  it('does not export measurement reports for an ordinary generation', async () => {
+    calls.generate.mockImplementationOnce(async ({ onSummary }) => {
+      onSummary?.({ diagnostic: performanceReport() }); return completed();
+    });
+    const summary = vi.fn(); await createWorkerApi().generate(request({ generationId: 3 }), async () => {}, () => {}, undefined, summary);
+    expect(summary).not.toHaveBeenCalled();
+  });
+
+  it('clears active ownership even if a malformed measurement report fails serialization', async () => {
+    calls.generate.mockImplementationOnce(async ({ onSummary }) => {
+      const diagnostic = performanceReport(); diagnostic.elapsedMs = -1;
+      onSummary?.({ diagnostic }); return completed();
+    });
+    const api = createWorkerApi();
+    await expect(api.generate({ ...request({ generationId: 4 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, () => {})).rejects.toThrow();
+    await expect(api.release()).resolves.toBeUndefined();
   });
 });

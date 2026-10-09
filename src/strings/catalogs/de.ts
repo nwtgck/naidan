@@ -456,6 +456,56 @@ import { audioGeneration__preview_help } from '@/strings/messages/audioGeneratio
 import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/de';
 import { audioGeneration__capture_preview } from '@/strings/messages/audioGeneration__capture_preview/de';
 import { audioGeneration__captured_steps } from '@/strings/messages/audioGeneration__captured_steps/de';
+import { llamaCppPerformance__add_models } from '@/strings/messages/llamaCppPerformance__add_models/de';
+import { llamaCppPerformance__advanced_conditions } from '@/strings/messages/llamaCppPerformance__advanced_conditions/de';
+import { llamaCppPerformance__back_to_settings } from '@/strings/messages/llamaCppPerformance__back_to_settings/de';
+import { llamaCppPerformance__clear_selection } from '@/strings/messages/llamaCppPerformance__clear_selection/de';
+import { llamaCppPerformance__completed_trials } from '@/strings/messages/llamaCppPerformance__completed_trials/de';
+import { llamaCppPerformance__copy_model_list } from '@/strings/messages/llamaCppPerformance__copy_model_list/de';
+import { llamaCppPerformance__creating_zip } from '@/strings/messages/llamaCppPerformance__creating_zip/de';
+import { llamaCppPerformance__download_requested } from '@/strings/messages/llamaCppPerformance__download_requested/de';
+import { llamaCppPerformance__elapsed_ms } from '@/strings/messages/llamaCppPerformance__elapsed_ms/de';
+import { llamaCppPerformance__environment_notes } from '@/strings/messages/llamaCppPerformance__environment_notes/de';
+import { llamaCppPerformance__first_received_ms } from '@/strings/messages/llamaCppPerformance__first_received_ms/de';
+import { llamaCppPerformance__generation_tokens_per_second } from '@/strings/messages/llamaCppPerformance__generation_tokens_per_second/de';
+import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/de';
+import { llamaCppPerformance__keep_page_visible } from '@/strings/messages/llamaCppPerformance__keep_page_visible/de';
+import { llamaCppPerformance__loading_models } from '@/strings/messages/llamaCppPerformance__loading_models/de';
+import { llamaCppPerformance__maximum_output_tokens } from '@/strings/messages/llamaCppPerformance__maximum_output_tokens/de';
+import { llamaCppPerformance__measure_saved_models } from '@/strings/messages/llamaCppPerformance__measure_saved_models/de';
+import { llamaCppPerformance__model_input } from '@/strings/messages/llamaCppPerformance__model_input/de';
+import { llamaCppPerformance__model_input_help } from '@/strings/messages/llamaCppPerformance__model_input_help/de';
+import { llamaCppPerformance__no_saved_models } from '@/strings/messages/llamaCppPerformance__no_saved_models/de';
+import { llamaCppPerformance__not_collected } from '@/strings/messages/llamaCppPerformance__not_collected/de';
+import { llamaCppPerformance__notes_help } from '@/strings/messages/llamaCppPerformance__notes_help/de';
+import { llamaCppPerformance__open_speed_investigation } from '@/strings/messages/llamaCppPerformance__open_speed_investigation/de';
+import { llamaCppPerformance__operation_diagnostic } from '@/strings/messages/llamaCppPerformance__operation_diagnostic/de';
+import { llamaCppPerformance__operation_diagnostic_help } from '@/strings/messages/llamaCppPerformance__operation_diagnostic_help/de';
+import { llamaCppPerformance__output_preview } from '@/strings/messages/llamaCppPerformance__output_preview/de';
+import { llamaCppPerformance__per_request_timeout_minutes } from '@/strings/messages/llamaCppPerformance__per_request_timeout_minutes/de';
+import { llamaCppPerformance__planned_calls } from '@/strings/messages/llamaCppPerformance__planned_calls/de';
+import { llamaCppPerformance__preparation_or_measurement } from '@/strings/messages/llamaCppPerformance__preparation_or_measurement/de';
+import { llamaCppPerformance__refresh_models } from '@/strings/messages/llamaCppPerformance__refresh_models/de';
+import { llamaCppPerformance__remove_model } from '@/strings/messages/llamaCppPerformance__remove_model/de';
+import { llamaCppPerformance__repeats } from '@/strings/messages/llamaCppPerformance__repeats/de';
+import { llamaCppPerformance__replace_results_and_measure } from '@/strings/messages/llamaCppPerformance__replace_results_and_measure/de';
+import { llamaCppPerformance__result_details } from '@/strings/messages/llamaCppPerformance__result_details/de';
+import { llamaCppPerformance__results_are_memory_only } from '@/strings/messages/llamaCppPerformance__results_are_memory_only/de';
+import { llamaCppPerformance__runtime_profile } from '@/strings/messages/llamaCppPerformance__runtime_profile/de';
+import { llamaCppPerformance__save_zip } from '@/strings/messages/llamaCppPerformance__save_zip/de';
+import { llamaCppPerformance__saved_models } from '@/strings/messages/llamaCppPerformance__saved_models/de';
+import { llamaCppPerformance__search_models } from '@/strings/messages/llamaCppPerformance__search_models/de';
+import { llamaCppPerformance__select_all } from '@/strings/messages/llamaCppPerformance__select_all/de';
+import { llamaCppPerformance__speed_investigation } from '@/strings/messages/llamaCppPerformance__speed_investigation/de';
+import { llamaCppPerformance__standard_measurement } from '@/strings/messages/llamaCppPerformance__standard_measurement/de';
+import { llamaCppPerformance__standard_measurement_help } from '@/strings/messages/llamaCppPerformance__standard_measurement_help/de';
+import { llamaCppPerformance__start_measurement } from '@/strings/messages/llamaCppPerformance__start_measurement/de';
+import { llamaCppPerformance__stop_and_return_to_settings } from '@/strings/messages/llamaCppPerformance__stop_and_return_to_settings/de';
+import { llamaCppPerformance__stop_measurement } from '@/strings/messages/llamaCppPerformance__stop_measurement/de';
+import { llamaCppPerformance__stopping } from '@/strings/messages/llamaCppPerformance__stopping/de';
+import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPerformance__trial_status/de';
+import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/de';
+import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/de';
 import { llamaCppBrowserDownloads__required_companion_included } from '@/strings/messages/llamaCppBrowserDownloads__required_companion_included/de';
 import { llamaCppBrowserDownloads__use_this_model } from '@/strings/messages/llamaCppBrowserDownloads__use_this_model/de';
 import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/de';
@@ -3183,6 +3233,56 @@ export const catalog = {
   audioGeneration__preview_pending,
   audioGeneration__capture_preview,
   audioGeneration__captured_steps,
+  llamaCppPerformance__add_models,
+  llamaCppPerformance__advanced_conditions,
+  llamaCppPerformance__back_to_settings,
+  llamaCppPerformance__clear_selection,
+  llamaCppPerformance__completed_trials,
+  llamaCppPerformance__copy_model_list,
+  llamaCppPerformance__creating_zip,
+  llamaCppPerformance__download_requested,
+  llamaCppPerformance__elapsed_ms,
+  llamaCppPerformance__environment_notes,
+  llamaCppPerformance__first_received_ms,
+  llamaCppPerformance__generation_tokens_per_second,
+  llamaCppPerformance__initial_short_long_or_continuation,
+  llamaCppPerformance__keep_page_visible,
+  llamaCppPerformance__loading_models,
+  llamaCppPerformance__maximum_output_tokens,
+  llamaCppPerformance__measure_saved_models,
+  llamaCppPerformance__model_input,
+  llamaCppPerformance__model_input_help,
+  llamaCppPerformance__no_saved_models,
+  llamaCppPerformance__not_collected,
+  llamaCppPerformance__notes_help,
+  llamaCppPerformance__open_speed_investigation,
+  llamaCppPerformance__operation_diagnostic,
+  llamaCppPerformance__operation_diagnostic_help,
+  llamaCppPerformance__output_preview,
+  llamaCppPerformance__per_request_timeout_minutes,
+  llamaCppPerformance__planned_calls,
+  llamaCppPerformance__preparation_or_measurement,
+  llamaCppPerformance__refresh_models,
+  llamaCppPerformance__remove_model,
+  llamaCppPerformance__repeats,
+  llamaCppPerformance__replace_results_and_measure,
+  llamaCppPerformance__result_details,
+  llamaCppPerformance__results_are_memory_only,
+  llamaCppPerformance__runtime_profile,
+  llamaCppPerformance__save_zip,
+  llamaCppPerformance__saved_models,
+  llamaCppPerformance__search_models,
+  llamaCppPerformance__select_all,
+  llamaCppPerformance__speed_investigation,
+  llamaCppPerformance__standard_measurement,
+  llamaCppPerformance__standard_measurement_help,
+  llamaCppPerformance__start_measurement,
+  llamaCppPerformance__stop_and_return_to_settings,
+  llamaCppPerformance__stop_measurement,
+  llamaCppPerformance__stopping,
+  llamaCppPerformance__trial_status,
+  llamaCppPerformance__wait_for_other_work,
+  llamaCppPerformance__waiting_for_visible_page,
   llamaCppBrowserDownloads__required_companion_included,
   llamaCppBrowserDownloads__use_this_model,
   audioGeneration__not_detected_as_audio,

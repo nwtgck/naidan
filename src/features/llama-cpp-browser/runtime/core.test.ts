@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as artifacts from './artifacts';
+import { readGpuRequests } from './webgpu-request-diagnostics';
 import { attachCore, createCore, type Core } from './core';
 
 describe('native call adaptation', () => {
@@ -45,14 +46,35 @@ describe('native call adaptation', () => {
     if (pointer !== undefined) core.free({ pointer });
   });
 
-  it('uses direct Promise calls and bigint pointers for the wasm32 JSPI profile', async () => {
+  it.each([
+    { profile: 'webgpu-wasm32-jspi', bindings: false },
+    { profile: 'webgpu-wasm32-jspi', bindings: true },
+    { profile: 'webgpu-wasm64-jspi', bindings: false },
+    { profile: 'webgpu-wasm64-jspi', bindings: true },
+  ] as const)('keeps Promise calls, callback metadata and GPU observation for $profile (bindings: $bindings)', async ({ profile, bindings }) => {
     const original = artifacts.loadCoreModule;
     // Substitute the real CPU32 module only at loading so this test also runs
-    // without host JSPI. Exercise its call-mode selection and the wasm32 ABI.
-    const load = vi.spyOn(artifacts, 'loadCoreModule').mockImplementationOnce(args => original({ ...args, profile: 'cpu-wasm32' }));
+    // without host JSPI. Exercise profile routing against a real wasm32 ABI,
+    // not execution of either WebGPU or a wasm64 binary.
+    const load = vi.spyOn(artifacts, 'loadCoreModule').mockImplementationOnce(async args => {
+      const loaded = await original({ ...args, profile: 'cpu-wasm32' });
+      // Model old/new contracts explicitly, independently of installed exports.
+      const module = new Proxy(loaded.module, {
+        get(target, property) {
+          if (property === '_lcb_callback_metadata_version') return bindings ? () => 1 : undefined;
+          if (typeof property === 'string' && property.startsWith('_lcb_callback_')) return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+          return Reflect.get(target, property, target);
+        },
+      });
+      return new Proxy(loaded, {
+        get(target, property) {
+          return property === 'module' ? module : Reflect.get(target, property, target);
+        },
+      });
+    });
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
     const jspiCore = await createCore({
-      profile: 'webgpu-wasm32-jspi',
+      profile,
       baseURL,
       moduleOptions: {
         wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
@@ -63,7 +85,10 @@ describe('native call adaptation', () => {
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });
     try {
-      expect(load.mock.calls[0]?.[0].profile).toBe('webgpu-wasm32-jspi');
+      expect(load.mock.calls[0]?.[0].profile).toBe(profile);
+      expect(jspiCore.createTensorPlacementReader().capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
+      expect(readGpuRequests({ core: jspiCore })).toEqual({ bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0 });
+      expect(readGpuRequests({ core })).toBeUndefined();
       expect(jspiCore.pointerBytes).toBe(4);
       await jspiCore.api.llama_model_default_params(pointer);
       expect(typeof pointer).toBe('bigint');
@@ -125,7 +150,7 @@ describe('native call adaptation', () => {
     expect(ccall.mock.calls[0]![2]).not.toBe(ccall.mock.calls[2]![2]);
   });
 
-  it.each(['direct', 'asyncify'] as const)('validates every call with cached metadata in %s mode', async callMode => {
+  it.each(['direct', 'asyncify', 'jspi'] as const)('validates every call with cached metadata in %s mode', async callMode => {
     const bound = attachCore({ module: core.module, callMode });
     const ccall = vi.spyOn(core.module, 'ccall');
     const invalid: unknown[][] = [
@@ -164,5 +189,76 @@ describe('native call adaptation', () => {
     const run = () => kind === 'string' ? bound.utf8({ text: 'owned native string' }) : bound.allocRecord({ name: 'llama_batch' });
     expect(run).toThrow('out of bounds'); expect(freed).toHaveLength(1); expect(freed[0]).not.toBe(0n);
     truncated = false;
+  });
+
+  it.each([false, true])('reads callback metadata safely with Promise-wrapped exports (new bindings: %s)', async bindings => {
+    const invoked = vi.fn();
+    const module = new Proxy(core.module, {
+      get(target, property) {
+        if (property === '_lcb_callback_metadata_version') return bindings ? () => 1 : undefined;
+        if (typeof property === 'string' && property.startsWith('_lcb_callback_')) return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+        const value: unknown = Reflect.get(target, property, target);
+        if (typeof property === 'string' && property.startsWith('_lcb_ggml_') && typeof value === 'function') return (...args: unknown[]) => {
+          invoked(property); return Promise.resolve(Reflect.apply(value, target, args));
+        };
+        return value;
+      },
+    });
+    if (!bindings) {
+      // 022 classified JSPI as direct and called this Promise-returning export
+      // as a scalar during reader setup, before creating a diagnostic context.
+      const legacyContract = attachCore({ module, callMode: 'direct' });
+      expect(() => legacyContract.createTensorPlacementReader()).toThrow('Expected synchronous scalar: _lcb_ggml_backend_dev_count');
+      expect(invoked).toHaveBeenCalledWith('_lcb_ggml_backend_dev_count');
+      invoked.mockClear();
+    }
+    const bound = attachCore({ module, callMode: 'jspi' });
+    const params = core.allocRecord({ name: 'ggml_init_params' });
+    core.setField({ name: 'ggml_init_params', pointer: params, field: 'mem_size', value: 1024n * 1024n });
+    core.setField({ name: 'ggml_init_params', pointer: params, field: 'no_alloc', value: 1 });
+    let context = 0n, buffer = 0n;
+    try {
+      context = await core.api.ggml_init(params);
+      const tensor = await core.api.ggml_new_tensor_1d(context, core.constant({ name: 'GGML_TYPE_F32' }), 16n);
+      const buft = await core.api.ggml_backend_dev_buffer_type(await core.api.ggml_backend_dev_get(0n));
+      buffer = await core.api.ggml_backend_alloc_ctx_tensors_from_buft(context, buft);
+      expect(buffer).not.toBe(0n);
+      const reader = bound.createTensorPlacementReader();
+      const metadata = reader.read({ tensor });
+      expect(invoked).not.toHaveBeenCalled(); // No ordinary export enters the callback/setup.
+      expect(reader.capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
+      expect(metadata).toMatchObject({
+        op: 'GGML_OP_NONE',
+        type: 'GGML_TYPE_F32',
+        shape: [16, 1, 1, 1],
+        storage: bindings ? 'host' : 'unknown',
+        webgpuSupport: 'unavailable',
+      });
+      expect(await bound.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
+      expect(invoked).toHaveBeenCalledWith('_lcb_ggml_backend_dev_count');
+      // General reentrant access remains prohibited while any API call is pending.
+      const pending = bound.api.ggml_backend_dev_count();
+      expect(() => bound.createTensorPlacementReader()).toThrow('Serialize');
+      await pending;
+    } finally {
+      if (buffer) await core.api.ggml_backend_buffer_free(buffer);
+      if (context) await core.api.ggml_free(context);
+      core.free({ pointer: params });
+    }
+  });
+
+  it('rejects an incompatible or incomplete declared callback surface during setup', () => {
+    for (const version of [2, 1]) {
+      const module = new Proxy(core.module, {
+        get(target, property) {
+          if (property === '_lcb_callback_metadata_version') return () => version;
+          // Keep the incomplete fixture incomplete after updating the package.
+          if (property === '_lcb_callback_ggml_op_desc') return undefined;
+          return Reflect.get(target, property, target);
+        },
+      });
+      const bound = attachCore({ module, callMode: 'jspi' });
+      expect(() => bound.createTensorPlacementReader()).toThrow(version === 2 ? 'Unsupported callback metadata binding version' : 'Missing native export');
+    }
   });
 });

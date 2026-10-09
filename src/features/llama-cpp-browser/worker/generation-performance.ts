@@ -20,12 +20,21 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   const stages = new Map<DiagnosticStage, { stage: DiagnosticStage, visits: number, elapsedMs: number }>();
   if (enabled) stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
   const counters = {
+    checkpoint: undefined as PerformanceSummary['checkpoint'],
+    backendCensus: undefined as PerformanceSummary['backendCensus'],
+    memoryObservation: undefined as PerformanceSummary['memoryObservation'],
+    sampleWindows: enabled ? [] as NonNullable<PerformanceSummary['sampleWindows']> : undefined,
     input: 'unknown' as PerformanceSummary['input'],
     sessionPreparation: undefined as PerformanceSummary['sessionPreparation'],
     contextTokens: undefined as number | undefined,
     maximumTokens: undefined as number | undefined,
     sampling: undefined as PerformanceSummary['sampling'],
     sampledTokens: 0,
+    nonEogTokens: 0,
+    firstNonEogSampleMs: undefined as number | undefined,
+    lastNonEogSampleMs: undefined as number | undefined,
+    prefillBatchTokens: undefined as number | undefined,
+    runtimeAssetBaseURL: undefined as string | undefined,
     decodedTokens: 0,
     prefillDecodedTokens: 0,
     prefillDecodeCalls: 0,
@@ -90,6 +99,21 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
         },
       };
     },
+    rendered({ endOfGeneration }: { endOfGeneration: boolean }): void {
+      if (endOfGeneration || !enabled || finished) return;
+      counters.nonEogTokens++;
+      counters.firstNonEogSampleMs ??= lastSampleMs;
+      counters.lastNonEogSampleMs = lastSampleMs;
+      const windows = counters.sampleWindows;
+      if (windows && lastSampleMs !== undefined) {
+        const current = windows.at(-1);
+        if (!current || current.lastSample - current.firstSample >= 15) {
+          if (windows.length < 256) windows.push({ firstSample: counters.nonEogTokens, lastSample: counters.nonEogTokens, firstMs: lastSampleMs, lastMs: lastSampleMs });
+        } else {
+          current.lastSample = counters.nonEogTokens; current.lastMs = lastSampleMs;
+        }
+      }
+    },
     delivered(): void {
       if (enabled && !finished && firstDeliveryMs === undefined) firstDeliveryMs = Math.max(0, now() - started);
     },
@@ -107,6 +131,8 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
           outcome,
           ...counters,
           postFirstSample: postFirstSample(),
+          memoryObservation: counters.memoryObservation ? { ...counters.memoryObservation } : undefined,
+          sampleWindows: counters.sampleWindows?.map(window => ({ ...window })),
           sampling: counters.sampling ? { ...counters.sampling } : undefined,
           sessionPreparation: counters.sessionPreparation ? { ...counters.sessionPreparation } : undefined,
           streaming: counters.streaming ? { ...counters.streaming } : undefined,

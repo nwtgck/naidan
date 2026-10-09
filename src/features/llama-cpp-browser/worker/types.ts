@@ -8,7 +8,7 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional() }).strict();
+export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.literal('placement').optional() }).strict().optional(), assetBaseURL: z.url().optional() }).strict();
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
 export const workerPrepareInputSchema = workerGenerateInputSchema.pick({ model: true, options: true, debug: true, assetBaseURL: true }).strict();
@@ -42,7 +42,7 @@ export interface LlamaCppWorkerApi {
   importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
   removeModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
+  generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
   prepareModel({ request, onProgress, signal }: { request: WorkerPrepareInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<void>;
@@ -50,11 +50,12 @@ export interface LlamaCppWorkerClient {
   subscribeDisposed({ listener }: { listener: () => void }): () => void;
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   canReuse(): boolean;
+  releaseRuntime({ signal }: { signal: AbortSignal | undefined }): Promise<void>;
   listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
   importModel({ file, onProgress, signal }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   importDirectory({ directory, onProgress, signal }: { directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
-  generate({ request, onEvent, onProgress, signal }: { request: GenerateInput, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<GenerationResult>;
+  generate({ request, onEvent, onProgress, signal, onSummary }: { request: GenerateInput & Pick<WorkerGenerateInput, 'measurement'>, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void }): Promise<GenerationResult>;
   dispose(): void;
 }
 export const TEST_ONLY = {

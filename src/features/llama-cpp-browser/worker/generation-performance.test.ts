@@ -8,7 +8,7 @@ describe('bounded generation performance summaries', () => {
   it('performs no clock reads or reporting when disabled', () => {
     const now = vi.fn(() => 100);
     const metrics = createGenerationPerformance({ enabled: false, now });
-    metrics.enter({ next: 'native-sample' }); metrics.sampled(); metrics.delivered();
+    metrics.enter({ next: 'native-sample' }); metrics.sampled(); metrics.rendered({ endOfGeneration: false }); metrics.delivered();
     expect(metrics.finish({ outcome: 'completed', profile })).toBeUndefined();
     expect(now).not.toHaveBeenCalled();
   });
@@ -25,6 +25,8 @@ describe('bounded generation performance summaries', () => {
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.elapsedMs).toBe(20);
     expect(report.performance).toEqual({
+      sampleWindows: [],
+      nonEogTokens: 0,
       version: 1,
       outcome: 'completed',
       input: 'unknown',
@@ -370,5 +372,51 @@ describe('post-first-sample throughput', () => {
         },
       }).success).toBe(false);
     }
+  });
+});
+
+describe('nonterminal token interval measurement', () => {
+  it('does not count EOG as a displayed token or include its final wait', () => {
+    let at = 100;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 110; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+    at = 140; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+    at = 160; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(report.performance).toMatchObject({ sampledTokens: 3, nonEogTokens: 2, firstNonEogSampleMs: 10, lastNonEogSampleMs: 40 });
+  });
+});
+
+it('uses already acquired sample timestamps for bounded windows without extra clock reads', () => {
+  let time = 0; const now = vi.fn(() => time);
+  const metrics = createGenerationPerformance({ enabled: true, now });
+  for (let i = 0; i < 35; i++) {
+    time++; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  }
+  expect(now).toHaveBeenCalledTimes(36);
+  const result = metrics.finish({ outcome: 'completed', profile: 'cpu-wasm32' });
+  expect(result?.performance?.sampleWindows).toEqual([
+    { firstSample: 1, lastSample: 16, firstMs: 1, lastMs: 16 },
+    { firstSample: 17, lastSample: 32, firstMs: 17, lastMs: 32 },
+    { firstSample: 33, lastSample: 35, firstMs: 33, lastMs: 35 },
+  ]);
+  expect(diagnosticSchema.safeParse(result).success).toBe(true);
+});
+
+it('keeps inclusive debug throughput and nonterminal investigation intervals distinct in one summary', () => {
+  let at = 0;
+  const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+  at = 100; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  at = 150; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  at = 210; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+  at = 250;
+  const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+  expect(report.performance).toMatchObject({
+    sampledTokens: 3,
+    postFirstSample: { sampledTokens: 2, elapsedMs: 110, tokensPerSecond: 2000 / 110 },
+    nonEogTokens: 2,
+    firstNonEogSampleMs: 100,
+    lastNonEogSampleMs: 150,
+    sampleWindows: [{ firstSample: 1, lastSample: 2, firstMs: 100, lastMs: 150 }],
   });
 });

@@ -85,6 +85,11 @@ vi.mock('@/features/transformers-js/model-support-investigation', () => ({
   }),
 }));
 
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceModal.vue', () => ({
+  default: { name: 'LlamaCppBrowserPerformanceModal', props: ['isOpen', 'defaultModel'], emits: ['close'],
+    template: '<div data-testid="llama-performance-stub" :data-open="isOpen"><button @click="$emit(\'close\')">close</button></div>' },
+}));
+
 vi.mock('@/components/SettingsModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
@@ -150,6 +155,23 @@ describe('AppAuxiliaryUi', () => {
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
     vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(route) } as unknown as ReturnType<typeof useRouter>);
+  });
+
+  it('opens performance inside Settings, restores the origin and retains the mounted results host', async () => {
+    route.query = { settings: 'llama-cpp-browser' };
+    const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body }); await flushPromises();
+    const button = wrapper.get<HTMLButtonElement>('[data-testid="settings-open-model-support-investigation-stub"]');
+    button.element.focus();
+    await wrapper.vm.TEST_ONLY.openLlamaCppPerformance({ defaultModel: 'local.gguf' }); await flushPromises();
+    expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(false);
+    expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('true');
+    wrapper.vm.TEST_ONLY.closeLlamaCppPerformance(); await flushPromises();
+    expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(true);
+    expect(document.activeElement).toBe(button.element);
+    delete route.query.settings; await flushPromises();
+    expect(wrapper.find('[data-testid="llama-performance-stub"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('false');
+    wrapper.unmount();
   });
 
   it('opens the preset settings tab once while preserving unrelated query state', async () => {

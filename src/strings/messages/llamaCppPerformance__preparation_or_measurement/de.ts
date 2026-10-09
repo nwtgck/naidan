@@ -1,0 +1,1 @@
+export const llamaCppPerformance__preparation_or_measurement = ({ value }: { value: 'preparation' | 'measurement' }): string => ({"preparation": "Preparation", "measurement": "Measurement"}[value]);

@@ -1,4 +1,5 @@
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
+import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
@@ -246,5 +247,19 @@ describe('standalone preparation', () => {
     expect(calls.remote.prepareModel.mock.calls[0]![0].assetBaseURL).toBeUndefined();
     expect(calls.remote.generate).not.toHaveBeenCalled(); client.dispose();
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+  });
+});
+
+describe('standalone measured requests', () => {
+  it('forwards measurement options and the separate summary without changing the ordinary profile', async () => {
+    const client = createLlamaCppWorkerClient(); const summary = vi.fn();
+    calls.remote.generate.mockImplementationOnce(async (request, _events, _progress, _diagnostics, onSummary) => {
+      expect(request.measurement).toEqual({ sequence: 'fresh' });
+      onSummary({ diagnostic: performanceReport() });
+      return { content: 'result', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await client.releaseRuntime({ signal: undefined });
+    await client.generate({ request: { ...request(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onSummary: summary, signal: undefined });
+    expect(summary).toHaveBeenCalledOnce(); expect(calls.remote.release).toHaveBeenCalledOnce(); client.dispose();
   });
 });

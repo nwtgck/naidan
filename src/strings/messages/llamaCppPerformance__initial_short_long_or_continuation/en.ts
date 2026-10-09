@@ -1,0 +1,1 @@
+export const llamaCppPerformance__initial_short_long_or_continuation = ({ value }: { value: 'initial' | 'short' | 'long' | 'continuation' | 'placement' }): string => ({"placement": 'Operation placement diagnostic', "initial": "Initial response", "short": "Resident / short", "long": "Resident / long", "continuation": "Continuation"}[value]);

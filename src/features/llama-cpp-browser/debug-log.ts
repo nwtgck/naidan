@@ -1,3 +1,5 @@
+import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
+import { backendCensusSchema } from './performance/backend-census-schema';
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
@@ -18,6 +20,22 @@ const sampleRateSchema = z.object({
   elapsedMs: z.number().finite().nonnegative(),
   tokensPerSecond: z.number().finite().nonnegative().optional(),
 }).strict();
+const fileReadSchema = z.object({
+  target: z.enum(['model', 'projector']),
+  mode: z.enum(['read-ahead', 'direct']),
+  requests: z.number().int().nonnegative(),
+  sourceCalls: z.number().int().nonnegative(),
+  sourceBytes: z.number().int().nonnegative(),
+  deliveredBytes: z.number().int().nonnegative(),
+  directReads: z.number().int().nonnegative(),
+  fills: z.number().int().nonnegative(),
+  hits: z.number().int().nonnegative(),
+  hitBytes: z.number().int().nonnegative(),
+  peakBufferBytes: z.number().int().nonnegative().max(65536),
+  allocationFallbacks: z.number().int().nonnegative().max(1),
+  sourceReadMs: z.number().finite().nonnegative().optional(),
+}).strict();
+
 export const diagnosticSchema = z.object({
   event: eventSchema,
   generationThroughput: z.object({
@@ -26,21 +44,7 @@ export const diagnosticSchema = z.object({
     postFirstSample: sampleRateSchema,
     interval: sampleRateSchema,
   }).strict().optional(),
-  fileReads: z.object({
-    target: z.enum(['model', 'projector']),
-    mode: z.enum(['read-ahead', 'direct']),
-    requests: z.number().int().nonnegative(),
-    sourceCalls: z.number().int().nonnegative(),
-    sourceBytes: z.number().int().nonnegative(),
-    deliveredBytes: z.number().int().nonnegative(),
-    directReads: z.number().int().nonnegative(),
-    fills: z.number().int().nonnegative(),
-    hits: z.number().int().nonnegative(),
-    hitBytes: z.number().int().nonnegative(),
-    peakBufferBytes: z.number().int().nonnegative().max(65536),
-    allocationFallbacks: z.number().int().nonnegative().max(1),
-    sourceReadMs: z.number().finite().nonnegative().optional(),
-  }).strict().optional(),
+  fileReads: fileReadSchema.optional(),
   progressDelivery: z.object({
     received: z.number().int().nonnegative(),
     sent: z.number().int().nonnegative(),
@@ -52,6 +56,21 @@ export const diagnosticSchema = z.object({
     peakPending: z.number().int().nonnegative().max(1),
   }).strict().optional(),
   performance: z.object({
+    // Existing load counters, without enabling per-read clocks in standard measurement.
+    modelReads: fileReadSchema.optional(),
+    backendCensus: backendCensusSchema.optional(),
+    checkpoint: checkpointPerformanceSchema.optional(),
+    memoryObservation: z.object({
+      wasmHeapBeforeBytes: z.number().int().nonnegative(),
+      wasmHeapAfterBytes: z.number().int().nonnegative().optional(),
+      checkpointRetainedBytes: z.number().int().nonnegative().optional(),
+    }).strict().optional(),
+    sampleWindows: z.array(z.object({
+      firstSample: z.number().int().positive(),
+      lastSample: z.number().int().positive(),
+      firstMs: z.number().finite().nonnegative(),
+      lastMs: z.number().finite().nonnegative(),
+    }).strict()).max(256).optional(),
     version: z.literal(1),
     outcome: z.enum(['completed', 'aborted', 'failed']),
     input: z.enum(['text', 'multimodal', 'unknown']),
@@ -69,6 +88,14 @@ export const diagnosticSchema = z.object({
       // The generated seed is recorded, never overridden by measurement.
       seed: z.number().int().min(0).max(4294967295).optional(),
     }).strict().optional(),
+    preparationEvents: z.array(z.object({
+      event: z.enum(['runtime-ready', 'load-start', 'load-complete', 'model-reused', 'context-start', 'context-retry', 'context-ready']),
+      observedMs: z.number().finite().nonnegative(),
+      elapsedMs: z.number().finite().nonnegative().optional(),
+      contextTokens: z.number().int().positive().optional(),
+      batchTokens: z.number().int().positive().optional(),
+      reason: z.string().optional(),
+    }).strict()).max(64).optional(),
     sampledTokens: z.number().int().nonnegative(),
     decodedTokens: z.number().int().nonnegative(),
     prefillDecodedTokens: z.number().int().nonnegative(),
@@ -131,6 +158,12 @@ export const diagnosticSchema = z.object({
     // Includes sampled stop/EOG tokens, not text chunks or decoded prompt tokens.
     // Excludes the first sample from the numerator and final delivery/cleanup.
     postFirstSample: sampleRateSchema.optional(),
+    // Non-EOG samples, including tokens without a visible text fragment.
+    nonEogTokens: z.number().int().nonnegative().optional(),
+    firstNonEogSampleMs: z.number().finite().nonnegative().optional(),
+    lastNonEogSampleMs: z.number().finite().nonnegative().optional(),
+    prefillBatchTokens: z.number().int().positive().optional(),
+    runtimeAssetBaseURL: z.string().optional(),
     firstSampleMs: z.number().finite().nonnegative().optional(),
     firstDeliveryMs: z.number().finite().nonnegative().optional(),
     // Exclusive Worker wall-clock intervals, not GPU kernel durations. Missing
