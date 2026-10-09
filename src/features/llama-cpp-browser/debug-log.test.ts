@@ -21,6 +21,69 @@ describe('private browser diagnostics', () => {
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
   });
 
+  it.each([
+    { backend: 'WebGPU', value: 4096.5, ending: '' },
+    { backend: 'CPU', value: 0, ending: '\n' },
+    { backend: 'CPU_Mapped', value: 12.25, ending: '\r\n' },
+  ])('logs actual $backend KV allocation without a debug subscription', ({ backend, value, ending }) => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message: `llama_kv_cache: ${backend.padStart(10)} KV buffer size = ${value.toFixed(2).padStart(8)} MiB${ending}` });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([
+      { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: backend, nativeValue: value },
+    ]);
+  });
+
+  it.each(['off', 'on'] as const)('keeps individual KV allocation attempts visible with debug %s, without duplicating or aggregating retries', debugMode => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: debugMode, listener });
+    try {
+      for (const value of [128, 64, 64]) {
+        logNativeDiagnostic({ message: `llama_kv_cache:     WebGPU KV buffer size = ${value.toFixed(2)} MiB` });
+      }
+      const expected = [128, 64, 64].map(nativeValue => ({ event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue }));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(expected);
+      expect(listener.mock.calls).toEqual(expected.map(diagnostic => [{ diagnostic }]));
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each([
+    undefined, 128, {},
+    'llama_kv_cache: private device KV buffer size = 128.00 MiB',
+    'llama_kv_cache: /private/model.gguf KV buffer size = 128.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = -1.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = NaN MiB',
+    'llama_kv_cache: WebGPU KV buffer size = Infinity MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 1e3 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.0 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.000 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 9007199254740992.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB private prompt',
+    'private llama_kv_cache: WebGPU KV buffer size = 128.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\n\n',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\nprivate',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\r',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\u2028',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\u2029',
+    'llama_kv_cache:' + ' '.repeat(256) + 'WebGPU KV buffer size = 128.00 MiB',
+    'llama_kv_cache: size = 128.00 MiB (1024 cells, 32 layers, 1/1 seqs), K (f16): 64.00 MiB, V (f16): 64.00 MiB',
+  ])('drops unknown or malformed KV allocation lines: %s', message => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    try {
+      logNativeDiagnostic({ message });
+      expect(debug).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('logs safe technical fields with the common prefix', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
@@ -368,4 +431,16 @@ describe('bounded model read diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, ...extra } } });
     expect(debug).not.toHaveBeenCalled();
   });
+});
+
+it.each([{ backend: 'CPU', nativeValue: 0 }, { backend: 'WebGPU', nativeValue: 62.81 }])('preserves rounded recurrent-state allocation $nativeValue MiB separately from KV and rejects unknown or suffixed RS lines', ({ backend, nativeValue }) => {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    logNativeDiagnostic({ message: `llama_memory_recurrent: ${backend.padStart(10)} RS buffer size = ${nativeValue.toFixed(2).padStart(8)} MiB\n` });
+    logNativeDiagnostic({ message: 'llama_memory_recurrent: private-device RS buffer size = 62.81 MiB' });
+    logNativeDiagnostic({ message: 'llama_memory_recurrent: CPU RS buffer size = 62.81 MiB private' });
+    expect(readDiagnostics({ calls: log.mock.calls })).toEqual([{ event: 'native-info', nativeMetric: 'recurrent_buffer_mib', nativeBackend: backend, nativeValue }]);
+  } finally {
+    log.mockRestore();
+  }
 });

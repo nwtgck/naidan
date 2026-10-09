@@ -1,3 +1,4 @@
+import { observeMeasurementMemory } from './memory-observation';
 import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
@@ -11,7 +12,7 @@ import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchem
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
   worker: Worker,
   remote: WorkerRemote<LlamaCppWorkerApi>,
-  disposeTransport: ({ active }: { active: boolean }) => void,
+  disposeTransport: ({ active }: { active: boolean }) => void | Promise<void>,
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
   const stopObservingMemory = observeWorkerMemory({ worker });
@@ -55,21 +56,33 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   };
   let nextGenerationId = 0;
   let rejectActive: (() => void) | undefined;
-  const dispose = (): void => {
-    if (disposed) return;
+  let disposal: Promise<void> | undefined;
+  const dispose = (): Promise<void> => {
+    if (disposal) return disposal;
+    const completion = Promise.withResolvers<void>();
+    disposal = completion.promise;
     stopObservingMemory();
     disposed = true; debugEnabled = false; stopWaiting(); pendingOperations.clear();
     const active = rejectActive !== undefined;
     rejectActive?.();
     worker.removeEventListener('error', onError);
     worker.removeEventListener('messageerror', onMessageError);
-    disposeTransport({ active });
+    // Preserve synchronous hosted termination; expose completion of bounded
+    // standalone teardown so a measured model cannot overlap the next Worker.
+    try {
+      void Promise.resolve(disposeTransport({ active })).catch(error => {
+        logFailure({ stage: 'cleanup', error });
+      }).finally(completion.resolve);
+    } catch (error) {
+      logFailure({ stage: 'cleanup', error }); completion.resolve();
+    }
     for (const listener of disposeListeners) {
       try {
         listener();
       } catch { /* Disposal observers cannot interrupt cleanup. */ }
     }
     disposeListeners.clear();
+    return disposal;
   };
   // eslint-disable-next-line local-rules-named-args/require-named-args -- DOM Worker error listener signature.
   const onError = (event: ErrorEvent): void => {
@@ -214,13 +227,15 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
       }
     },
-    generate: async ({ request, onEvent, onProgress, signal, onSummary }) => {
+    generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
         generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
       let acceptingEvents = true;
+      const started = accepted.measurement ? performance.now() : undefined;
+      const memory = started === undefined ? undefined : observeMeasurementMemory({ worker, now: () => performance.now() - started });
       try {
         const result = await invoke({
           call: () => remote.generate(accepted,
@@ -236,7 +251,12 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             }),
             workerProxy({
               value: ({ diagnostic }: { diagnostic: unknown }) => {
-                if (!acceptingEvents || disposed || signal?.aborted) return;
+                if (!acceptingEvents || disposed) return;
+                if (memory) {
+                  const observed = diagnosticSchema.safeParse(diagnostic);
+                  if (observed.success) memory.record({ diagnostic: observed.data });
+                }
+                if (signal?.aborted) return;
                 debugEnabled = accepted.debug === 'on';
                 const checkpoint = diagnosticSchema.parse(diagnostic);
                 if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
@@ -264,6 +284,10 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
+        const observed = memory?.finish();
+        try {
+          if (observed) onMemoryDiagnostics?.({ memory: observed });
+        } catch { /* Observation must not replace inference success or failure. */ }
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {

@@ -318,3 +318,20 @@ it('retains diagnostic capability and truncation warnings despite successful gen
   expect(snapshot.trials.at(-1)).toMatchObject({ status: 'succeeded', exclusion: ['instrumented'], warnings: ['placement-layout-only', 'placement-incomplete'] });
   expect(snapshot.trials.slice(0, -1).every(trial => !trial.warnings.length)).toBe(true);
 });
+
+it('retains failed-attempt memory and rejects late evidence from the previous model', async () => {
+  const test = setup({ models: 2 });
+  let late: Parameters<LlamaCppPerformanceScope['generate']>[0] | undefined;
+  const memory = { samples: [], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [], droppedNativeSettings: 0 };
+  test.generate.mockImplementationOnce(async args => {
+    late = args; args.onMemoryDiagnostics?.({ memory });
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  });
+  await test.start();
+  const trials = test.runner.snapshot()!.trials;
+  expect(trials[0]?.memoryDiagnostics).toEqual(memory); expect(trials[0]?.status).toBe('failed');
+  expect(trials.some(trial => trial.modelIndex === 1 && trial.status === 'succeeded')).toBe(true);
+  late!.onMemoryDiagnostics?.({ memory: { ...memory, droppedSamples: 99 } });
+  expect(trials[0]?.memoryDiagnostics?.droppedSamples).toBe(0);
+  expect(trials.filter(trial => trial.modelIndex === 1).every(trial => trial.memoryDiagnostics === undefined)).toBe(true);
+});

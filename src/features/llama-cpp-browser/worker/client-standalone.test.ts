@@ -263,3 +263,14 @@ describe('standalone measured requests', () => {
     expect(summary).toHaveBeenCalledOnce(); expect(calls.remote.release).toHaveBeenCalledOnce(); client.dispose();
   });
 });
+
+it('forwards measured memory evidence through the lazy standalone facade', async () => {
+  const sample = { kind: 'naidan-llama-cpp-memory', instanceId: 'standalone-one', profile: 'webgpu-wasm64-jspi', checkpoint: 'context-ready', capacityBytes: 131072, timestamp: 100 };
+  calls.remote.generate.mockImplementationOnce(async () => {
+    worker.dispatchEvent(new MessageEvent('message', { data: sample }));
+    return { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+  });
+  const client = createLlamaCppWorkerClient(), receive = vi.fn();
+  await client.generate({ request: { ...request(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onMemoryDiagnostics: receive, signal: undefined });
+  expect(receive).toHaveBeenCalledOnce(); expect(receive.mock.calls[0]?.[0].memory.samples).toEqual([sample]); client.dispose();
+});

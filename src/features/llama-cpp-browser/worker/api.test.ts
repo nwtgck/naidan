@@ -1,3 +1,4 @@
+import { createGpuRequestObserver } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import type { generateAudio } from './audio-generation';
@@ -645,4 +646,33 @@ describe('measured generation terminal reports', () => {
     await expect(api.generate({ ...request({ generationId: 4 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, () => {})).rejects.toThrow();
     await expect(api.release()).resolves.toBeUndefined();
   });
+});
+
+it.each([undefined, { sequence: 'fresh' as const }])('forwards safe native allocation metrics only for measurement %j', async measurement => {
+  const receive = vi.fn();
+  calls.generate.mockImplementationOnce(async () => {
+    for (const message of [
+      'load_tensors: WebGPU model buffer size = 128.00 MiB',
+      'llama_kv_cache: WebGPU KV buffer size = 64.00 MiB',
+      'llama_memory_recurrent: CPU RS buffer size = 8.00 MiB',
+      'sched_reserve: WebGPU compute buffer size = 16.00 MiB',
+      'llama_kv_cache: private-device KV buffer size = 64.00 MiB',
+    ]) logNativeDiagnostic({ message });
+    return completed();
+  });
+  await createWorkerApi().generate({ ...request({ generationId: 100 }), debug: 'off', measurement }, async () => {}, () => {}, receive);
+  expect(receive.mock.calls.map(([{ diagnostic }]) => diagnostic.nativeMetric)).toEqual(measurement ? ['model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib', 'compute_buffer_mib'] : []);
+});
+
+it.each([undefined, { sequence: 'fresh' as const }])('gates existing queue observations to measurement %j and closes them at RPC completion', async measurement => {
+  const observer = createGpuRequestObserver();
+  const device = observer.wrapDevice({ device: { queue: { submit() {} } } as unknown as GPUDevice, adapter: undefined });
+  let submitCount: number | undefined;
+  calls.generate.mockImplementationOnce(async () => {
+    device.queue.submit([]); submitCount = observer.snapshot()?.queue?.submitCount;
+    return completed();
+  });
+  await createWorkerApi().generate({ ...request({ generationId: 101 }), debug: 'off', measurement }, async () => {}, () => {});
+  expect(submitCount).toBe(measurement ? 1 : undefined);
+  expect(observer.snapshot()?.queue).toBeUndefined();
 });

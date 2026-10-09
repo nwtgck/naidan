@@ -1,6 +1,6 @@
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { describe, expect, it, vi } from 'vitest';
-import { createGpuRequestObserver, associateGpuRequests, readGpuRequests } from './webgpu-request-diagnostics';
+import { beginGpuMeasurement, createGpuRequestObserver, associateGpuRequests, readGpuRequests } from './webgpu-request-diagnostics';
 
 function fixture() {
   const buffers = new WeakSet<object>();
@@ -132,4 +132,198 @@ it('composes with the real dispatch navigator without eagerly requesting adapter
   expect(observer.snapshot()).toMatchObject({ bufferCount: 1, bufferBytes: 1024, writeCount: 1, writeBytes: 256 });
   expect(gpu.requestAdapter).toHaveBeenCalledTimes(1); expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
   expect(navigator.gpu).toBe(gpu); expect(raw.device.queue).toBe(raw.queue);
+});
+
+function queueFixture({ promise }: { promise: Promise<void> }) {
+  const queue = {
+    submit: vi.fn(function (this: unknown) {
+      expect(this).toBe(queue);
+    }),
+    onSubmittedWorkDone: vi.fn(function (this: unknown) {
+      expect(this).toBe(queue); return promise;
+    }),
+  };
+  const observer = createGpuRequestObserver();
+  const device = observer.wrapDevice({ device: { queue } as unknown as GPUDevice });
+  return { queue, observer, device };
+}
+
+describe('measurement-only existing queue completion observations', () => {
+  it('preserves original promise identity, native receiver and immutable wall-duration snapshots', async () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => {
+      resolve = done;
+    });
+    const { device, observer, queue } = queueFixture({ promise });
+    let now = 10;
+    const finish = beginGpuMeasurement({ now: () => now });
+    try {
+      const commands: GPUCommandBuffer[] = [];
+      device.queue.submit(commands);
+      expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+      const old = observer.snapshot()!;
+      expect(old.queue).toMatchObject({ submitCount: 1, completionWaitCount: 1, completionWaitPending: 1 });
+      now = 35; resolve(); await promise;
+      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitPending: 0, completionWaitDurationMs: 25 });
+      expect(old.queue!.completionWaitPending).toBe(1);
+      expect(queue.submit).toHaveBeenCalledExactlyOnceWith(commands);
+      expect(queue.onSubmittedWorkDone).toHaveBeenCalledTimes(1);
+    } finally {
+      finish();
+    }
+  });
+
+  it('preserves rejection identity without an unhandled observer promise', async () => {
+    const error = new Error('device lost');
+    const promise = Promise.reject(error);
+    const { device, observer } = queueFixture({ promise });
+    const finish = beginGpuMeasurement({ now: () => 10 });
+    try {
+      expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+      await expect(promise).rejects.toBe(error);
+      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitRejected: 1, completionWaitPending: 0 });
+    } finally {
+      finish();
+    }
+  });
+
+  it('ignores late settlements and stale disposals during the next request', async () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => {
+      resolve = done;
+    });
+    const { device, observer } = queueFixture({ promise });
+    const first = beginGpuMeasurement({ now: () => 0 });
+    device.queue.onSubmittedWorkDone();
+    first();
+    const second = beginGpuMeasurement({ now: () => 20 });
+    try {
+      device.queue.submit([]); first(); resolve(); await promise;
+      expect(observer.snapshot()!.queue).toMatchObject({ submitCount: 1, completionWaitCount: 0, completionWaitResolved: 0, completionWaitPending: 0 });
+    } finally {
+      second();
+    }
+    expect(observer.snapshot()!.queue).toBeUndefined();
+  });
+
+  it('does not observe promise settlements, time, or add queue calls outside measurements', () => {
+    const promise = Promise.resolve();
+    const then = vi.spyOn(promise, 'then');
+    const { device, queue, observer } = queueFixture({ promise });
+    // Vitest's mock itself attaches a settlement observer to returned promises.
+    let calls = 0;
+    Object.assign(queue, {
+      onSubmittedWorkDone() {
+        calls++; return promise;
+      },
+    });
+    device.queue.submit([]);
+    expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+    expect(then).not.toHaveBeenCalled();
+    expect(calls).toBe(1);
+    expect(observer.snapshot()!.queue).toBeUndefined();
+  });
+
+  it('keeps synchronous native errors and tolerates failing clocks', async () => {
+    const promise = Promise.resolve();
+    const { device, observer, queue } = queueFixture({ promise });
+    const finish = beginGpuMeasurement({
+      now: () => {
+        throw new Error('clock');
+      },
+    });
+    try {
+      expect(device.queue.onSubmittedWorkDone()).toBe(promise); await promise;
+      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitDurationMs: undefined, longestCompletionWaitDurationMs: undefined });
+      const error = new Error('native');
+      queue.submit.mockImplementation(() => {
+        throw error;
+      });
+      expect(() => device.queue.submit([])).toThrow(error);
+      expect(observer.snapshot()!.queue!.submitCount).toBe(0);
+    } finally {
+      finish();
+    }
+  });
+});
+
+it('captures only actual selected adapter/device metadata, treating redaction and failures as unavailable', async () => {
+  const raw = fixture();
+  Object.assign(raw.device, { features: new Set(['shader-f16']) });
+  const observer = createGpuRequestObserver();
+  const adapter = {
+    info: {
+      vendor: 'vendor',
+      architecture: '',
+      device: '',
+      get description() {
+        throw new Error('redacted');
+      },
+    },
+    isFallbackAdapter: false,
+    features: new Set(['timestamp-query', 'shader-f16']),
+    requestDevice: vi.fn(() => Promise.resolve(raw.device)),
+  };
+  const gpu = { requestAdapter: vi.fn(() => Promise.resolve(adapter)) };
+  const navigator = createCoreWebGpuNavigator({ navigator: { gpu } as unknown as Pick<Navigator, 'gpu'>, report() {}, observeDevice: observer.wrapDevice })!;
+  expect(observer.snapshot()!.metadata).toBeUndefined();
+  const selected = await navigator.gpu.requestAdapter(); await selected!.requestDevice();
+  const snapshot = observer.snapshot()!;
+  expect(snapshot.metadata).toEqual({ adapterInfo: { vendor: 'vendor' }, fallbackAdapter: false, adapterFeatures: ['shader-f16', 'timestamp-query'], deviceFeatures: ['shader-f16'], deviceLimits: { maxComputeWorkgroupsPerDimension: 65535 } });
+  snapshot.metadata!.adapterInfo!.vendor = 'changed';
+  expect(observer.snapshot()!.metadata!.adapterInfo!.vendor).toBe('vendor');
+  expect(gpu.requestAdapter).toHaveBeenCalledTimes(1); expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
+});
+
+it('prefers current adapter-info fallback status over the legacy adapter property', () => {
+  const observer = createGpuRequestObserver();
+  observer.wrapDevice({ device: fixture().device, adapter: { info: { isFallbackAdapter: true }, isFallbackAdapter: false } as unknown as GPUAdapter });
+  expect(observer.snapshot()!.metadata!.fallbackAdapter).toBe(true);
+});
+
+it('caps outstanding native wait observers across closed request windows without changing original promises', async () => {
+  const gate = Promise.withResolvers<void>();
+  const { device, observer, queue } = queueFixture({ promise: gate.promise });
+  // Avoid Vitest mock promise bookkeeping when counting observer reactions.
+  Object.assign(queue, { onSubmittedWorkDone: () => gate.promise });
+  const then = vi.spyOn(gate.promise, 'then');
+  const closeFirst = beginGpuMeasurement({ now: () => 1 });
+  for (let i = 0; i < 300; i++) expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
+  const first = observer.snapshot()!;
+  expect(first.queue).toMatchObject({ completionWaitCount: 300, completionWaitPending: 256, completionWaitUnobserved: 44 });
+  expect(then).toHaveBeenCalledTimes(256);
+  closeFirst();
+  const closeSecond = beginGpuMeasurement({ now: () => 2 });
+  try {
+    expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
+    expect(then).toHaveBeenCalledTimes(256);
+    gate.resolve(); await gate.promise;
+    // Old settlement frees observer slots, but cannot mutate either old snapshot
+    // or the new request's outcomes. It never reports skipped waits as complete.
+    expect(first.queue!.completionWaitPending).toBe(256);
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 0, completionWaitPending: 0, completionWaitUnobserved: 1 });
+    device.queue.onSubmittedWorkDone(); await gate.promise;
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 2, completionWaitResolved: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
+  } finally {
+    closeSecond(); then.mockRestore();
+  }
+});
+
+it('keeps the bounded completion observer budget local to each runtime', () => {
+  const never = new Promise<void>(() => {});
+  const first = queueFixture({ promise: never });
+  const second = queueFixture({ promise: never });
+  const closeFirst = beginGpuMeasurement({ now: () => 0 });
+  for (let i = 0; i < 256; i++) first.device.queue.onSubmittedWorkDone();
+  closeFirst();
+  const closeSecond = beginGpuMeasurement({ now: () => 1 });
+  try {
+    first.device.queue.onSubmittedWorkDone();
+    second.device.queue.onSubmittedWorkDone();
+    expect(first.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 1, completionWaitPending: 0 });
+    expect(second.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 0, completionWaitPending: 1 });
+  } finally {
+    closeSecond();
+  }
 });

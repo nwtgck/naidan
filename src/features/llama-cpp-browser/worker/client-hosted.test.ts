@@ -580,3 +580,50 @@ describe('measured session client', () => {
     expect(client.canReuse()).toBe(false); expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
 });
+
+describe('measured partial memory evidence', () => {
+  const sample = { kind: 'naidan-llama-cpp-memory', instanceId: 'core-one', profile: 'cpu-wasm32', checkpoint: 'model-load-failed', capacityBytes: 65536, timestamp: 100 };
+
+  it.each(['failure', 'dispose', 'timeout'] as const)('preserves received memory after %s without a terminal summary', async mode => {
+    vi.useFakeTimers();
+    const client = createLlamaCppWorkerClient(), control = new AbortController(), receive = vi.fn();
+    let late: ((args: { diagnostic: Diagnostic }) => void) | undefined;
+    transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, diagnostic) => {
+      late = diagnostic;
+      TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
+      diagnostic({ diagnostic: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 12.25 } });
+      if (mode === 'failure') throw new LlamaCppBrowserError({ code: 'missing-model' });
+      return new Promise(() => {});
+    });
+    const pending = client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onMemoryDiagnostics: receive, signal: control.signal });
+    const rejected = expect(pending).rejects.toThrow();
+    if (mode === 'dispose') client.dispose();
+    if (mode === 'timeout') {
+      control.abort(); await vi.advanceTimersByTimeAsync(5000);
+    }
+    await rejected;
+    expect(receive).toHaveBeenCalledOnce();
+    const memory = receive.mock.calls[0]![0].memory;
+    expect(memory.samples).toEqual([sample]); expect(memory.nativeAllocations).toMatchObject([{ nativeMetric: 'model_buffer_mib', nativeValue: 12.25 }]);
+    late!({ diagnostic: { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 99 } });
+    TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
+    expect(memory.samples).toHaveLength(1); expect(memory.nativeAllocations).toHaveLength(1); client.dispose();
+  });
+
+  it('does not let an observer failure replace success or the original load failure', async () => {
+    const client = createLlamaCppWorkerClient();
+    const args = {
+      request: { ...generationInput(), measurement: { sequence: 'fresh' as const } },
+      onEvent: () => {},
+      onProgress: () => {},
+      onMemoryDiagnostics: () => {
+        throw new Error('observer');
+      },
+      signal: undefined,
+    };
+    transport.remote.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await expect(client.generate(args)).resolves.toMatchObject({ finishReason: 'stop' });
+    transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'missing-model' }));
+    await expect(client.generate(args)).rejects.toThrow('missing-model'); client.dispose();
+  });
+});

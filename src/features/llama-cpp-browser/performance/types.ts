@@ -1,3 +1,4 @@
+import { memoryDiagnosticsSchema } from './memory-schema';
 import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import { generationResultSchema, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
@@ -62,6 +63,7 @@ export const trialSchema = z.object({
   maximumDeliveryGapMs: milliseconds.optional(),
   hiddenObserved: z.boolean(),
   summary: diagnosticSchema.optional(),
+  memoryDiagnostics: memoryDiagnosticsSchema.optional(),
   error: z.string().optional(),
   warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete'])),
   exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented'])),

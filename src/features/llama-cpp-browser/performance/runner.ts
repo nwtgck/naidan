@@ -183,6 +183,9 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                             trial.lastProgress = { ...progress };
                             trial.lastProgressMs = Math.max(0, now() - started);
                           },
+                          onMemoryDiagnostics: ({ memory }) => {
+                            if (accepting) trial.memoryDiagnostics = memory;
+                          },
                           onSummary: ({ diagnostic }) => {
                             if (accepting) trial.summary = diagnostic;
                           },

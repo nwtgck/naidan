@@ -6,12 +6,53 @@ import { summarizePerformance, performanceFindings, trialRates } from './summary
 const readme = `# Naidan llama.cpp browser performance / ${performanceProtocol}
 
 ## Start here
+- manifest.json: collection status, export time, and model-level errors; completed
+  means collection ended, not that every model or attempt succeeded.
+- environment.json: browser/build environment and available runtime asset provenance.
+- execution.json: runner wall time and orchestration intervals; null means unavailable.
 - plan.json: exact models, order, settings, per-call output limits, and fixtures.
 - findings.json: same-workload before/after comparisons; observations, not causes.
 - summary.json: uninstrumented measurements partitioned by effective conditions.
 - trials.jsonl: all attempts, timings, exclusions, diagnostics, and partial failures.
+- memory/: canonical bounded raw memory observations, including partial failures;
+  trials.jsonl links each available file and summarizes its retained/dropped counts.
 - backend-placement.json: operation metadata from separate diagnostic calls.
 - outputs/: actual input, output, and reasoning for each attempt.
+- summary.csv: one row per attempt, including failures and exclusions; unlike
+  summary.json, this is not an aggregate or a list of only valid speed samples.
+
+## Join records and check coverage
+modelIndex is the zero-based index into plan.models. Join trial.stepId to
+plan.steps[].id for scenario, order, repetition, sequence, parent and output limit.
+Use trials.jsonl IDs for canonical joins: summary.csv prefixes cells beginning
+with =, +, -, @, tab or carriage return with an apostrophe for spreadsheet safety.
+For attempt IDs, only a leading apostrophe followed by a hyphen is this escape;
+remove that apostrophe only when the resulting ID matches trials.jsonl.
+Join attemptId/beforeAttempt/afterAttempt to trials.jsonl record id; its exact
+input and output are in outputs/<id>.json. Raw memory histories live only in
+memoryDiagnosticsFile; trials.jsonl contains a reference and retained/dropped
+counts, not a second copy of the raw records.
+Compare planned steps with recorded attempts before concluding that all work ran.
+A missing attempt is unobserved/not run, never a zero-duration successful call.
+Inspect status, exclusion, modelErrors and dropped counts before using summaries.
+For before/after findings, observed model reloads or context retries suppress the
+ratio. Missing positive model-reuse evidence or preparation evidence reaching its
+64-event cap is listed under uncertainties; any remaining ratio is conditional
+on those unknowns. These checks do not certify unchanged model bytes.
+Requested plan/trial options and observed native settings are distinct; use the
+terminal performance summary for effective conditions when available. An absent
+terminal summary leaves final effective conditions unknown.
+This ZIP is a self-describing investigation handoff, not a stable API. Layout and
+fields may change on every commit; use this README and this run's actual plan.
+
+Raw memory histories appear only in the referenced memory/<attemptId>.json file,
+not a second copy in trials.jsonl. If memoryDiagnosticsFile is absent, that attempt
+has no captured raw memory history; inspect summary.performance.memoryObservation
+separately for any terminal heap/checkpoint measurements. Missing evidence is not
+zero memory use. Coverage
+counts describe retained and discarded records, not uninterrupted sampling.
+The 128 MiB archive-output limit is not a cap on live export memory: validation,
+JSON strings, ZIP output chunks and final Blob can coexist while exporting.
 
 ## What changed in this protocol
 The default is one block: initial short (up to 8 output tokens), short before
@@ -20,6 +61,8 @@ same fresh short input after (up to 64). The initial call doubles as warm-up;
 there is no additional full-length warm-up or regenerated continuation parent.
 An optional final diagnostic generates up to 2 tokens. Thus the default is
 6 calls with an output ceiling of 162 tokens, rather than 15 calls of 128 each.
+That describes the default UI settings only; plan.steps is authoritative for this
+archive, including custom output limits, disabled diagnostics and extra blocks.
 The short before/after results stay separate. The first long input can include
 first-use graph/pipeline work; it is NOT a warmed-prefill claim. Increase blocks
 only when a specific comparison needs confirmation, not to hide chronological drift.
@@ -56,22 +99,96 @@ created for diagnostics is freed before returning to an ordinary context; loaded
 weights can be retained. The final model cleanup releases the diagnostic context.
 
 ## Interpreting timings
-The initial call starts after native runtime release, not after clearing OS or
-browser caches. Fresh requests reset the sequence; reusedTokens must be zero.
+Each model uses a new physical Worker. The previous Worker is terminated before
+starting the next model; fresh/continuation trials within one model intentionally
+reuse that model's Worker. Initial setup retires any preceding chat/probe Worker.
+This resets Worker-owned state, not OS/browser caches or a physical RAM guarantee. Fresh requests reset the sequence; reusedTokens must be zero.
 Continuation uses the actual parent output, even if it reached the output cap.
 An incomplete-parent warning describes this condition; it does not erase the data.
 Reasoning-only parents are not fabricated into complete visible answers.
+trial.elapsedMs is main-thread elapsed time around the generate request, including
+its settlement. trial.summary.elapsedMs is the worker's measured request duration.
+performance.stages contains exclusive wall-time buckets accumulated across visits;
+the stage list is not a chronological trace. These buckets partition the worker
+measurement, so do not add them to summary.elapsedMs or trial.elapsedMs. Nested
+preparation, checkpoint and decode/delivery observations describe work inside those
+intervals, not additional elapsed time. Differences across clocks are not a
+measurement of messaging overhead, CPU work, or GPU time.
+Trial firstReceivedMs/firstTextMs/firstReasoningMs/lastProgressMs are relative to
+the main-thread trial start. Worker firstSampleMs/firstDeliveryMs and sample-window
+firstMs/lastMs are relative to the worker measurement start; they have no shared
+zero with trial.startedMs (runner-relative) or memory sample timestamp.
 Main-thread receipt is not display completion. Native stage durations are elapsed
 wall time, not GPU kernel time. Overlapped decode/delivery must not be decomposed
 into independent CPU and GPU time by subtraction.
+deliveryDecode.decodeWaitMs and deliveryWaitMs measure elapsed native-decode and
+main-thread callback delivery waits in overlap mode; jointWaitMs measures their
+joint settling interval. These clocks are enabled for investigation requests even
+with debug logging off. They overlap each other and generation-overlap; never add
+them to stage totals or infer CPU arithmetic/GPU kernel time by subtraction.
+Serial mode does not time these child waits, so their duration fields are absent
+(pairedSteps is zero); its stage wall times remain the evidence. A measured zero
+can occur in overlap mode, but still does not represent GPU kernel time.
 Generation rate = (non-EOG samples - 1) / seconds between first and last sample.
 EOG means End Of Generation. Sample counts are not chunk counts or decode counts.
+Use summary.json/findings.json/summary.csv generation rates for that definition.
+The raw performance.postFirstSample rate instead uses all sampled tokens after
+the first, including an EOG sample when present, and the first-to-last interval.
+It is a different diagnostic rate and must not replace the non-EOG generation rate.
 Input rate uses actually decoded tokens and excludes reused tokens.
 sampleWindows groups up to 16 already-timestamped samples per window, adding no
 per-token clock reads. Each window's rate uses its own first/last sample interval;
 partial windows and gaps between windows must not be silently averaged together.
 memoryObservation describes WebAssembly linear-heap capacity and retained native
 checkpoint bytes. Neither is GPU allocation, resident physical memory, or pressure.
+Each referenced memory file includes the original Wasm instance/profile/checkpoint and
+source timestamp for each received sample. capacityBytes is linear-heap capacity,
+not live heap usage or resident RAM. gpuRequests are cumulative buffer-creation
+and queue-write API requests for that runtime instance, not live GPU allocation,
+physical VRAM, transfer completion or execution time. Never sum these snapshots.
+gpuRequests.metadata is metadata exposed by the actual selected adapter/device,
+not a second diagnostic GPU probe. Missing or browser-redacted fields remain absent.
+gpuRequests.queue differs from lifetime buffer/write totals: submit and completion
+wait counters belong to this measured request only. They observe existing submit()
+and onSubmittedWorkDone() calls; no extra submit, fence, wait or timestamp query is
+issued. At most 256 unresolved completion observers are attached per runtime,
+including waits started in closed requests. completionWaitCount includes all
+existing returned promises; completionWaitUnobserved counts waits omitted when the
+observer budget is full or an observer cannot attach. completionWaitPending counts
+only attached, still-unsettled observations. completionWaitResolved and
+completionWaitRejected count attached observers that settled before the request
+closed. Skipped observations are not completed
+waits. Slots return only on actual settlement or when the runtime is destroyed.
+completionWaitDurationMs sums settled promise wall times that can overlap;
+longestCompletionWaitDurationMs is the longest such observed wait. Neither is GPU
+kernel time or GPU busy time, nor additive to decode/stage wall time. Pending waits
+at the last sample are incomplete observations, not proof of a hung device. Late
+settlement after a request closes cannot mutate that request or the next one.
+Completion promises can span checkpoints; differences between checkpoint snapshots
+do not isolate pure per-phase GPU work or permit deriving CPU time by subtraction.
+Native model/KV/recurrent-state/compute values are upstream allocation-log attempts rounded to
+hundredths of MiB. A present 0.00 MiB can be a small nonzero allocation rounded
+by the native formatted log, not proof that nothing was allocated. These are not
+exact byte counts; multiplying rounded MiB by 2^20 does not recover exact bytes.
+Retries and repeated allocations remain separate; adding them
+would not measure live residency. Missing records/counters mean unavailable, not zero.
+nativeSettings preserves native context/batch/sequence sizes (token/count units)
+and graph node/split counts in observed order, including retry attempts. Graph
+batchTokens and nativeSingleTokenValue retain the upstream comparison where present.
+These records are observations, not an assurance that an attempted configuration
+became the final effective one; compare the terminal summary and preparation events.
+Each history retains its first 16 and latest 112 records, with dropped counts.
+Collection follows each measured request, including graceful failures and cleanup.
+On forced Worker termination, received partial observations survive even without a
+terminal summary. Unreceived messages and final model/runtime release outside the
+request are not reconstructed. Native observedMs is main-thread receipt time relative
+to request start; sample timestamp is producer Date.now() in Unix epoch
+milliseconds, not the same clock. Bytes are integer bytes; MiB means 2^20 bytes.
+Memory instanceId identifies a Wasm runtime instance, not a process ID or a
+physical GPU allocation. Decode memory checkpoints are rate-limited to at most
+one per second, plus lifecycle checkpoints; these are not continuous peak-memory
+samples. A zero droppedSamples count does not establish that all peaks or all
+Worker messages were captured.
 checkpoint.phases separates boundary tokenization, state sizing/allocation, readback,
 restore upload, trim and validation. These child wall times overlap the existing
 cache-checkpoint stage; never add them to the stage sum or label them GPU kernel
@@ -92,6 +209,8 @@ Export happens only after measuring; there is no ZIP compression during generati
 Hidden-page attempts remain recorded but are excluded; the next call waits for
 visibility. Cancellation and failed attempts retain available partial output.
 Model IDs, names, sizes, and import timestamps are identifiers, not content hashes.
+Architecture/quantization are not inferred from filenames; no extra full-model
+reread or hashing is performed. Missing model metadata is unavailable.
 runtimeBuild records the supplied bicore source revision and original asset
 SHA-256 digests (Secure Hash Algorithm, 256 bits), not a rehash of transformed
 JavaScript or the actual loaded bytes. Record the Naidan commit and environment
@@ -109,6 +228,10 @@ function csvCell({ value }: { value: string | number | undefined }): string {
   if (/^[=+@\-\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
+// This ZIP is an ephemeral, self-describing investigation artifact for humans/GPT,
+// not a stable API or persisted application state. Its shape may change each
+// commit: keep the README/field semantics current instead of adding migrations
+// or old-format readers that obscure the evidence from the measured build.
 export async function performanceArchive({ snapshot: input }: { snapshot: PerformanceSnapshot }): Promise<Blob> {
   const snapshot = snapshotSchema.parse(input);
   switch (snapshot.status) {
@@ -143,9 +266,21 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       await add({ name: 'summary.json', text: json({ value: summarizePerformance({ snapshot }) }) });
       await add({ name: 'findings.json', text: json({ value: performanceFindings({ snapshot }) }) });
       await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
-      await add({ name: 'trials.jsonl', text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, ...record }) => JSON.stringify(record)).join('\n') + '\n' });
+      await add({
+        name: 'trials.jsonl',
+        text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record }) => {
+          const coverage = (() => {
+            if (!memoryDiagnostics) return undefined;
+            const { samples, droppedSamples, nativeAllocations, droppedNativeAllocations, nativeSettings, droppedNativeSettings, ...unhandled } = memoryDiagnostics;
+            unhandled satisfies Record<PropertyKey, never>;
+            return { samples: samples.length, droppedSamples, nativeAllocations: nativeAllocations.length, droppedNativeAllocations, nativeSettings: nativeSettings.length, droppedNativeSettings };
+          })();
+          return JSON.stringify({ ...record, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
+        }).join('\n') + '\n',
+      });
       const rows: (string | number | undefined)[][] = [['attempt', 'model', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error']];
       for (const trial of snapshot.trials) {
+        if (trial.memoryDiagnostics) await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, ...trial.memoryDiagnostics } }) });
         const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
         rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.name, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,

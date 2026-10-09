@@ -10,7 +10,7 @@ const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'aud
 export type DiagnosticStage = z.infer<typeof stageSchema>;
 const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
   'webgpu-dispatch-limit', 'webgpu-validation', 'webgpu-device-error', 'webgpu-device-lost', 'native-graph-error', 'native-output-mismatch', 'validation-error', 'abort-error', 'javascript-error', 'unknown-exception']);
-const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib']);
+const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib']);
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
   'load-start', 'file-read-performance', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-performance', 'generation-progress', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
@@ -481,6 +481,25 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
   if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
   return { event: 'native-info', nativeMetric: buffer[1] ? 'compute_buffer_mib' : 'model_buffer_mib', nativeValue, nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]) };
 }
+/** Actual per-backend allocation, rounded by upstream to hundredths of MiB.
+ * Each record belongs to one allocation attempt; retries must not be summed or
+ * interpreted as current residency. Never retain backend/device names from logs.
+ */
+function nativeStateAllocationDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
+  if (typeof message !== 'string' || message.length > 256) return undefined;
+  const line = message.replace(/\r?\n$/, '');
+  if (/[\r\n\u2028\u2029]/.test(line)) return undefined;
+  const buffer = /^(?:llama_kv_cache:[ \t]+(CPU|CPU_Mapped|WebGPU) KV|llama_memory_recurrent:[ \t]+(CPU|CPU_Mapped|WebGPU) RS) buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
+  if (!buffer) return undefined;
+  const nativeValue = Number(buffer[3]);
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  return {
+    event: 'native-info',
+    nativeMetric: buffer[1] ? 'kv_buffer_mib' : 'recurrent_buffer_mib',
+    nativeValue,
+    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]),
+  };
+}
 /** Image internals expose dimensions and counts, never tensors or input text. */
 function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -585,6 +604,12 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
     if (output) {
       logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: Number(output[1]), tokens: Number(output[2]) } }); return;
     }
+  }
+  const allocation = nativeStateAllocationDiagnostic({ message });
+  if (allocation) {
+    // Normal prepareModel has no diagnostic subscription. Keep this small,
+    // sanitized allocation record visible even without a debug-enabled request.
+    logDiagnostic({ diagnostic: allocation }); return;
   }
   const progress = nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
   if (progress) {
