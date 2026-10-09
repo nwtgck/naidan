@@ -8,13 +8,13 @@ import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Pinned browser variant artifact commit: 675d3b50e9efcb1aaf52b279daaa9357d2818f4e.
+// Pinned browser variant artifact commit: c72a0239dd816eb4982ce6ce9026143699ccc840.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
 // Publication digests identify the inputs; the adapter boundaries must still match.
 const coreHashes = {
-  'webgpu-wasm64-jspi': 'cba20d06a397a013b3c8432e672bb1838d7c0018de0c7c0f23fc5cb9c5871fc6',
-  'webgpu-wasm32-jspi': '617c7cde7d1fd76bde4792f05a076ce1618c6cfa102973ecb4f8ec8d6d6fc5d4',
-  'webgpu-wasm32-asyncify': '31363f0ba8060c4ab96186f564b7298a70faee33c8caad7081c848b51d8ce760',
+  'webgpu-wasm64-jspi': '2423a85b8c406879c8fc19a51f5eae798c35b6b5a6e33e8369d28470a26877f0',
+  'webgpu-wasm32-jspi': 'b94a35c8928ddd8aacdb3b76be30694b98a99d1fc60d5ad27ec85f341caf8761',
+  'webgpu-wasm32-asyncify': 'f854d3bdadb1ed78f9f2a35d00d896335477c6e5665db15532598e43b942a13b',
   'cpu-wasm64': '86f7e5153cb7b412274d191c0231fa8e5873651751e9ada17d7354be8a9eace7',
   'cpu-wasm32': '97ffddef2947614778926c2db75bdd2ce54ef3a86e3934a24741eca512ee7dfc',
 } as const satisfies Record<LlamaCppProfile, string>;
@@ -22,8 +22,8 @@ const coreHashes = {
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'de921a5dacee8c533415beb98a4d53ba399cdf53571a73e33bff9bfc04420154' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: '55f5b5990bc1f8cb8565cd8dd6fdeed1839a51686ba862ee0eb89a0226e4994b' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'b3fc3d1e2979d51995c3e8b0b6d87825a0dc6d0b8b21602fdcf52ec5674e5bdd' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'd98f0cc8d8c3bc566a7d9b5d8e3471bd3dbbda071c3be58501fce737f6dc500c' },
 } as const;
 
 /** Version-bound adapter for the browser variant, which has no upstream version guards. */
