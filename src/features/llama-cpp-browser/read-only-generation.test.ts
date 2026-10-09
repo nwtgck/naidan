@@ -9,7 +9,7 @@ const fixture = vi.hoisted(() => ({
   canReuse: vi.fn(() => true),
   resolve: vi.fn(async () => 'cpu-wasm32'),
 }));
-vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: () => fixture }));
+vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: () => ({ ...fixture }) }));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ resolveRuntimeProfile: fixture.resolve }));
 vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ listStoredModels: vi.fn(async () => []), removeStoredModel: vi.fn(), withModelMutationLock: vi.fn() }));
 let module: typeof import('./index-hosted');
@@ -118,4 +118,91 @@ it('retirement failures remain failures and do not strand the shared operation l
   await next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
   reader = next;
   await next.dispose(); expect(fixture.generate).toHaveBeenCalledTimes(2);
+});
+
+it.each(['resolve', 'reject'] as const)('waits for asynchronous retirement to %s before admitting the next owner', async settlement => {
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const disposal = Promise.withResolvers<void>();
+  fixture.dispose.mockReturnValueOnce(disposal.promise);
+  const closing = reader.dispose();
+  const observed = closing.then(() => undefined, error => error);
+  expect(reader.dispose()).toBe(closing);
+  await vi.waitFor(() => expect(fixture.dispose).toHaveBeenCalledOnce());
+  const next = module.createReadOnlyLlamaCppClient();
+  await expect(next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('busy');
+  expect(fixture.generate).toHaveBeenCalledOnce();
+  const failure = new Error('asynchronous native disposal failed');
+  if (settlement === 'reject') disposal.reject(failure);
+  else disposal.resolve();
+  expect(await observed).toBe(settlement === 'reject' ? failure : undefined);
+  expect(reader.dispose()).toBe(closing);
+  await next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  reader = next;
+  await next.dispose();
+  expect(fixture.generate).toHaveBeenCalledTimes(2);
+});
+
+it.each(['resolve', 'reject'] as const)('awaits detached retirement after cancellation until it can %s', async settlement => {
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const generation = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>();
+  const disposal = Promise.withResolvers<void>();
+  fixture.generate.mockReturnValueOnce(generation.promise);
+  const generating = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const generated = expect(generating).rejects.toThrow('aborted');
+  await vi.waitFor(() => expect(fixture.generate).toHaveBeenCalledTimes(2));
+  fixture.canReuse.mockReturnValue(false);
+  fixture.dispose.mockReturnValueOnce(disposal.promise);
+  const closing = reader.dispose();
+  let closed = false;
+  const observed = closing.then(() => {
+    closed = true;
+  }, error => {
+    closed = true;
+    return error;
+  });
+  generation.reject(new DOMException('cancelled', 'AbortError'));
+  await generated;
+  await vi.waitFor(() => expect(fixture.dispose).toHaveBeenCalledOnce());
+  await Promise.resolve(); await Promise.resolve();
+  expect(closed).toBe(false);
+  expect(reader.dispose()).toBe(closing);
+  const failure = new Error('detached native disposal failed');
+  if (settlement === 'reject') disposal.reject(failure);
+  else disposal.resolve();
+  expect(await observed).toBe(settlement === 'reject' ? failure : undefined);
+  const next = module.createReadOnlyLlamaCppClient();
+  fixture.canReuse.mockReturnValue(true);
+  await next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  reader = next;
+});
+
+it('does not await retirement belonging to a reader that took over the cache', async () => {
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const next = module.createReadOnlyLlamaCppClient();
+  await next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const disposal = Promise.withResolvers<void>();
+  fixture.dispose.mockReturnValueOnce(disposal.promise);
+  const closing = next.dispose();
+  await vi.waitFor(() => expect(fixture.dispose).toHaveBeenCalledOnce());
+  await reader.dispose();
+  expect(fixture.dispose).toHaveBeenCalledOnce();
+  disposal.resolve();
+  await closing;
+  reader = next;
+});
+
+it('does not queue completed detached retirement behind another reader operation', async () => {
+  fixture.generate.mockRejectedValueOnce(new Error('generation failed'));
+  await expect(reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('runtime-error');
+  expect(fixture.dispose).toHaveBeenCalledOnce();
+  const next = module.createReadOnlyLlamaCppClient();
+  const generation = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>();
+  fixture.generate.mockReturnValueOnce(generation.promise);
+  const generating = next.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  await vi.waitFor(() => expect(fixture.generate).toHaveBeenCalledTimes(2));
+  await reader.dispose();
+  expect(fixture.dispose).toHaveBeenCalledOnce();
+  generation.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+  await generating;
+  reader = next;
 });

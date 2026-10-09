@@ -14,24 +14,34 @@ import { logDiagnostic, logFailure } from './debug-log';
 let state: EngineState = { status: 'idle' };
 let options: RuntimeOptions = defaultRuntimeOptions();
 let client: LlamaCppWorkerClient | undefined;
-const retiringWorkers = new WeakMap<LlamaCppWorkerClient, Promise<void>>();
+type WorkerRetirement = { outcome: Promise<void>, completed: Promise<void> };
+const retiringWorkers = new WeakMap<LlamaCppWorkerClient, WorkerRetirement>();
 let workerRetirement = Promise.resolve();
-function retireWorker({ worker }: { worker: LlamaCppWorkerClient }): Promise<void> {
+function retireWorker({ worker }: { worker: LlamaCppWorkerClient }): WorkerRetirement {
   const existing = retiringWorkers.get(worker);
   if (existing) return existing;
-  const completion = Promise.withResolvers<void>();
-  retiringWorkers.set(worker, completion.promise);
-  workerRetirement = Promise.all([workerRetirement, completion.promise]).then(() => {});
+  const outcome = Promise.withResolvers<void>();
+  // Explicit disposal callers receive the original failure. Background cleanup
+  // and the shared retirement barrier still settle without poisoning the lane.
+  const completed = outcome.promise.catch(error => {
+    try {
+      logFailure({ stage: 'cleanup', error });
+    } catch { /* Diagnostics cannot strand retirement. */ }
+  });
+  const retirement = { outcome: outcome.promise, completed };
+  retiringWorkers.set(worker, retirement);
+  workerRetirement = Promise.all([workerRetirement, completed]).then(() => {});
   try {
-    void Promise.resolve(worker.dispose()).catch(error => logFailure({ stage: 'cleanup', error })).finally(completion.resolve);
+    void Promise.resolve(worker.dispose()).then(outcome.resolve, outcome.reject);
   } catch (error) {
-    logFailure({ stage: 'cleanup', error }); completion.resolve();
+    outcome.reject(error);
   }
-  return completion.promise;
+  return retirement;
 }
 // A native cache belongs to the last model operation, not to the UI that once
 // created the Worker. Probing capabilities does not transfer model ownership.
-let cacheOwner: symbol | undefined;
+type ReadOnlyOwner = { worker: LlamaCppWorkerClient | undefined };
+let cacheOwner: ReadOnlyOwner | undefined;
 let profileState: ProfileState = { status: 'idle' };
 let profileOwner: LlamaCppWorkerClient | undefined;
 let profileProbe: Promise<ProfileCapabilities> | undefined;
@@ -104,7 +114,7 @@ function progress({ progress }: { progress: Progress }): void {
   publish({ next: { status: 'working', progress } });
 }
 async function run<T>({ signal, operation, kind, owner }: {
-  owner: symbol | undefined,
+  owner: ReadOnlyOwner | undefined,
   kind: 'operation' | 'probe' | 'read-only' | 'measurement',
   signal: AbortSignal | undefined,
   operation: ({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal }) => Promise<T>,
@@ -139,7 +149,7 @@ async function run<T>({ signal, operation, kind, owner }: {
       case 'measurement':
         if (client) {
           const retired = client; client = undefined; invalidateProfiles();
-          await retireWorker({ worker: retired });
+          await retireWorker({ worker: retired }).completed;
         }
         await workerRetirement; controller.signal.throwIfAborted();
         break;
@@ -162,10 +172,16 @@ async function run<T>({ signal, operation, kind, owner }: {
           },
         });
       }
+      // A real ownership handoff releases the previous reader's claim. A probe
+      // keeps it; failure/cancellation detachment retains its retirement handle.
+      if (kind !== 'probe' && cacheOwner && cacheOwner !== owner) cacheOwner.worker = undefined;
       switch (kind) {
       case 'measurement': measuredWorker = client; cacheOwner = undefined; break;
       case 'operation': cacheOwner = undefined; break;
-      case 'read-only': cacheOwner = owner; break;
+      case 'read-only':
+        cacheOwner = owner;
+        if (owner) owner.worker = client;
+        break;
       case 'probe': break;
       default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
       }
@@ -215,7 +231,7 @@ async function run<T>({ signal, operation, kind, owner }: {
         }
         // Always retire the physical Worker, including failure and Stop, while
         // still holding the lane. Native release alone can retain mapped pools.
-        await retireWorker({ worker: measuredWorker });
+        await retireWorker({ worker: measuredWorker }).completed;
       }
       signal?.removeEventListener('abort', forwardAbort); activeController = undefined;
     }
@@ -578,7 +594,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
  * capability probe. Model lookup inside generate is read-only; this entry point
  * never imports/downloads weights, changes settings or writes chat history. */
 async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgress }: Parameters<LlamaCppBrowserService['generate']>[0] & {
-  owner: symbol,
+  owner: ReadOnlyOwner,
   onProgress({ progress }: { progress: Progress }): void,
 }): Promise<GenerationResult> {
   if (laneReservations !== 0) throw new LlamaCppBrowserError({ code: 'busy' });
@@ -608,16 +624,19 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
 /** Releasing is serialized with model operations but never acquires a Worker.
  * An operation queued before retirement may have taken over its cache by the
  * time we reach the lane; in that case that operation is its new owner. */
-function retireReadOnlyCache({ owner }: { owner: symbol }): Promise<void> {
+function retireReadOnlyCache({ owner }: { owner: ReadOnlyOwner }): Promise<void> {
   laneReservations++;
   const predecessor = queue;
   const retiring = predecessor.then(() => {
-    if (cacheOwner !== owner) return;
+    // Cancellation may already have detached this owner's Worker. Await only
+    // its registered retirement; never retire a cache handed to another owner.
+    if (cacheOwner !== owner) return owner.worker ? retiringWorkers.get(owner.worker)?.outcome : undefined;
     const retired = client;
     client = undefined;
     invalidateProfiles();
-    if (retired) void retireWorker({ worker: retired });
+    const retirement = retired ? retireWorker({ worker: retired }).outcome : undefined;
     publish({ next: { status: 'idle' } });
+    return retirement;
   }).finally(() => {
     laneReservations--;
   });
@@ -630,7 +649,7 @@ function retireReadOnlyCache({ owner }: { owner: symbol }): Promise<void> {
 /** A local read-only owner, not a new RPC capability. Construction is lazy;
  * disposal aborts only this owner's calls and retires only its native cache. */
 export function createReadOnlyLlamaCppClient() {
-  const owner = Symbol('read-only-llama');
+  const owner: ReadOnlyOwner = { worker: undefined };
   const lifetime = new AbortController();
   let pending = 0;
   let closing: Promise<void> | undefined;
@@ -656,7 +675,9 @@ export function createReadOnlyLlamaCppClient() {
       lifetime.abort();
       // No import, probe, Worker creation or wait for unrelated work if this
       // owner never acquired (or already handed over) the native cache.
-      const retirement = pending > 0 || cacheOwner === owner ? retireReadOnlyCache({ owner }) : Promise.resolve();
+      const retirement = pending > 0 || cacheOwner === owner
+        ? retireReadOnlyCache({ owner })
+        : owner.worker ? retiringWorkers.get(owner.worker)?.outcome ?? Promise.resolve() : Promise.resolve();
       void retirement.then(completed.resolve, completed.reject);
       return closing;
     },
