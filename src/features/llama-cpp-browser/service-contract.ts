@@ -1,3 +1,4 @@
+import type { MemoryDiagnostics } from './performance/memory-schema';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
 import type { AudioGenerationInput, AudioGenerationResult } from '@/features/audio-generation/types';
@@ -47,12 +48,13 @@ export interface LlamaCppGenerationScope {
 export interface LlamaCppPerformanceScope {
   readonly signal: AbortSignal;
   readonly options: RuntimeOptions;
-  generate({ input, sequence, observation, onEvent, onSummary, onProgress, signal }: {
+  generate({ input, sequence, observation, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }: {
     input: Omit<GenerateInput, 'options'>,
     sequence: 'fresh' | 'continue',
     observation?: 'placement',
     onEvent: GenerationCallback,
     onSummary: ({ diagnostic }: { diagnostic: Diagnostic }) => void,
+    onMemoryDiagnostics?: ({ memory }: { memory: MemoryDiagnostics }) => void,
     onProgress?: ({ progress }: { progress: Progress }) => void,
     signal: AbortSignal,
   }): Promise<GenerationResult>;

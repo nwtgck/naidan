@@ -57,6 +57,18 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     }),
   }));
 }
+/** A successful request can reload changed local files or retry allocation.
+ * Preserve its measurements, but do not treat it as an unchanged warm sample.
+ * The recorder has no dropped count: reaching its cap cannot certify coverage. */
+function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial, position: 'before' | 'after' }) {
+  const events = trial.summary?.performance?.preparationEvents;
+  const reasons: string[] = [], uncertainties: string[] = [];
+  if (events === undefined || !events.some(event => event.event === 'model-reused')) uncertainties.push(`${position}-model-reuse-unconfirmed`);
+  if (events !== undefined && events.length >= 64) uncertainties.push(`${position}-preparation-evidence-at-cap`);
+  if (events?.some(event => event.event === 'load-start' || event.event === 'load-complete')) reasons.push(`${position}-model-reloaded`);
+  if (events?.some(event => event.event === 'context-retry')) reasons.push(`${position}-context-retried`);
+  return { reasons, uncertainties };
+}
 /** An exploratory comparison, never a causal or significance claim. Preserve
  * both attempts and explain every rejected comparison instead of filtering by
  * which direction a result moved. */
@@ -65,9 +77,12 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
     const afterStep = snapshot.plan.steps.find(step => step.modelIndex === beforeStep.modelIndex && step.repetition === beforeStep.repetition && step.position === 'after');
     const before = snapshot.trials.find(trial => trial.stepId === beforeStep.id);
     const after = snapshot.trials.find(trial => trial.stepId === afterStep?.id);
-    const reasons: string[] = [];
+    const reasons: string[] = [], uncertainties: string[] = [];
     if (!before || !after) reasons.push('missing-attempt');
     if (before && after) {
+      for (const preparation of [warmPreparationEvidence({ trial: before, position: 'before' }), warmPreparationEvidence({ trial: after, position: 'after' })]) {
+        reasons.push(...preparation.reasons); uncertainties.push(...preparation.uncertainties);
+      }
       if (before.status !== 'succeeded' || after.status !== 'succeeded') reasons.push('unsuccessful-attempt');
       if (before.exclusion.length || after.exclusion.length) reasons.push('excluded-attempt');
       const a = before.summary?.performance, b = after.summary?.performance;
@@ -89,6 +104,7 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       afterAttempt: after?.id,
       meaning: 'chronological-same-workload-comparison-not-a-causal-estimate',
       reasons,
+      uncertainties,
       beforeTokensPerSecond: a,
       afterTokensPerSecond: b,
       afterToBeforeRatio: !reasons.length && a !== undefined && b !== undefined ? b / a : undefined,

@@ -1,3 +1,4 @@
+import type { MemoryDiagnostics } from '@/features/llama-cpp-browser/performance/memory-schema';
 import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
 import { audioGenerationInputSchema, type AudioPreviewEvent, type AudioGenerationInput, type AudioGenerationResult } from '@/features/audio-generation/types';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
@@ -55,8 +56,8 @@ export interface LlamaCppWorkerClient {
   importModel({ file, onProgress, signal }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   importDirectory({ directory, onProgress, signal }: { directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
-  generate({ request, onEvent, onProgress, signal, onSummary }: { request: GenerateInput & Pick<WorkerGenerateInput, 'measurement'>, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void }): Promise<GenerationResult>;
-  dispose(): void;
+  generate({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }: { request: GenerateInput & Pick<WorkerGenerateInput, 'measurement'>, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void, onMemoryDiagnostics?: ({ memory }: { memory: MemoryDiagnostics }) => void }): Promise<GenerationResult>;
+  dispose(): void | Promise<void>;
 }
 export const TEST_ONLY = {
 };

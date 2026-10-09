@@ -7,7 +7,7 @@ import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
 const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
-const factory = vi.hoisted(() => vi.fn(() => worker));
+const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 let service: LlamaCppBrowserService;
@@ -492,7 +492,7 @@ describe('preparation progress ownership', () => {
 });
 
 describe('measured generation operation ownership', () => {
-  it('releases native state before and after, passes fresh/continue, and leaves ordinary options unchanged', async () => {
+  it('uses one fresh Worker per measured model, preserves within-model continuation, and leaves ordinary options unchanged', async () => {
     const order: string[] = [];
     worker.releaseRuntime.mockImplementation(async () => {
       order.push('release');
@@ -511,7 +511,8 @@ describe('measured generation operation ownership', () => {
         }
       },
     });
-    expect(order).toEqual(['release', 'fresh', 'continue', 'release']);
+    expect(order).toEqual(['fresh', 'continue', 'release']);
+    expect(worker.dispose).toHaveBeenCalledOnce();
     expect(service.getOptions()).toEqual({ profile: 'auto' });
   });
 
@@ -590,14 +591,14 @@ describe('investigation and read-only cache ownership', () => {
     const retired = reader.dispose();
     try {
       await Promise.resolve();
-      expect(worker.dispose).not.toHaveBeenCalled();
+      expect(worker.dispose).toHaveBeenCalledOnce();
     } finally {
       finish.resolve();
       await measured;
       await retired;
     }
-    expect(worker.dispose).not.toHaveBeenCalled();
-    expect(worker.releaseRuntime).toHaveBeenCalledTimes(2);
+    expect(worker.dispose).toHaveBeenCalledTimes(2);
+    expect(worker.releaseRuntime).toHaveBeenCalledOnce();
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual([undefined, 'fresh', undefined]);
   });

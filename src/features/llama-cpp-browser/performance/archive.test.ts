@@ -129,6 +129,7 @@ it('keeps chronological drift distinct from output changes, missing data, and ex
   const before = source.plan.steps.find(step => step.position === 'before')!;
   const after = source.plan.steps.find(step => step.position === 'after')!;
   source.trials = [before, after].map((step, index) => ({ ...base, id: `attempt_${index}`, stepId: step.id, summary: performanceReport() }));
+  for (const trial of source.trials) trial.summary!.performance!.preparationEvents = [{ event: 'model-reused', observedMs: 0 }];
   source.trials[1]!.summary!.performance!.lastNonEogSampleMs = 300;
   expect(performanceFindings({ snapshot: source })).toMatchObject([{ reasons: [], afterToBeforeRatio: 0.5 }]);
   source.trials[1]!.exclusion = ['page-hidden'];
@@ -136,4 +137,41 @@ it('keeps chronological drift distinct from output changes, missing data, and ex
   source.trials[1]!.exclusion = []; source.trials[1]!.output = { ...base.output!, content: 'different' };
   expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('different-generated-output');
   source.trials.pop(); expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('missing-attempt');
+});
+
+it('exports partial memory evidence with model attribution even without a terminal summary', async () => {
+  const source = snapshot(), trial = source.trials[0]!;
+  trial.status = 'failed'; trial.summary = undefined;
+  trial.memoryDiagnostics = {
+    samples: [{ kind: 'naidan-llama-cpp-memory', instanceId: 'core-one', profile: 'cpu-wasm32', checkpoint: 'model-load-failed', capacityBytes: 65536, timestamp: 10 }],
+    droppedSamples: 2,
+    nativeAllocations: [{ observedMs: 4, nativeMetric: 'recurrent_buffer_mib', nativeBackend: 'CPU', nativeValue: 8.25 }],
+    droppedNativeAllocations: 0,
+    nativeSettings: [],
+    droppedNativeSettings: 0,
+  };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const record = JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim());
+  expect(record.memoryDiagnosticsFile).toBe(`memory/${trial.id}.json`);
+  const observations = JSON.parse(await zip.file(record.memoryDiagnosticsFile)!.async('string'));
+  expect(observations).toEqual({ attemptId: trial.id, modelIndex: 0, status: 'failed', ...trial.memoryDiagnostics });
+  expect(record.memoryDiagnostics).toBeUndefined();
+  expect(record.memoryDiagnosticsCoverage).toEqual({ samples: 1, droppedSamples: 2, nativeAllocations: 1, droppedNativeAllocations: 0, nativeSettings: 0, droppedNativeSettings: 0 });
+  expect(zip.file('memory-diagnostics.json')).toBeNull();
+  expect(Object.keys(zip.files).filter(path => path.startsWith('memory/'))).toEqual([`memory/${trial.id}.json`]);
+  expect(await zip.file('README.md')!.async('string')).toContain('Missing records/counters mean unavailable, not zero');
+  expect(await zip.file('README.md')!.async('string')).toContain('not live GPU allocation');
+});
+
+it.each([
+  ['-formula_safe', "'-formula_safe"],
+  ['_ordinary_id', '_ordinary_id'],
+  ['ordinary_id', 'ordinary_id'],
+])('keeps JSON/file joins canonical when the CSV attempt ID is %s', async (id, csvId) => {
+  const source = snapshot(); source.trials[0]!.id = id;
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  expect(JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim()).id).toBe(id);
+  expect(zip.file(`outputs/${id}.json`)).not.toBeNull();
+  expect((await zip.file('summary.csv')!.async('string')).split('\r\n')[1]!.startsWith(`"${csvId}",`)).toBe(true);
+  expect(await zip.file('README.md')!.async('string')).toContain('only when the resulting ID matches trials.jsonl');
 });

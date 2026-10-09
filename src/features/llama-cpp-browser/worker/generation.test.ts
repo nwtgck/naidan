@@ -3105,6 +3105,7 @@ describe('measurement contracts with supplied native Wasm', () => {
   });
 
   it.each(['attention', 'recurrent'] as const)('measures fresh and continued %s inference without changing output or logits', async kind => {
+    const deliveryFactory = vi.spyOn(deliveryDecodeModule, 'createDeliveryDecode');
     host.bytes = Uint8Array.from(kind === 'attention'
       ? createInputSensitiveGguf({ chatTemplate: 'chatml' })
       : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
@@ -3130,6 +3131,18 @@ describe('measurement contracts with supplied native Wasm', () => {
     expect(first.output).toEqual(reference);
     expect(await readNativeLogits()).toEqual(referenceLogits);
     expect(first.metrics.reusedTokens).toBe(0);
+    // Investigation supplies the existing clocks even with debug off. Serial
+    // native test execution does not pretend those overlap waits were measured.
+    expect(deliveryFactory.mock.calls.at(-1)?.[0].now).toBeTypeOf('function');
+    expect(first.metrics.deliveryDecode).toBeDefined();
+    const delivery = first.metrics.deliveryDecode!;
+    switch (delivery.mode) {
+    case 'serial':
+      expect(delivery.decodeWaitMs).toBeUndefined(); expect(delivery.deliveryWaitMs).toBeUndefined(); expect(delivery.jointWaitMs).toBeUndefined(); break;
+    case 'overlap':
+      expect(delivery.decodeWaitMs).toBeTypeOf('number'); expect(delivery.deliveryWaitMs).toBeTypeOf('number'); expect(delivery.jointWaitMs).toBeTypeOf('number'); break;
+    default: { const exhaustive: never = delivery.mode; throw new Error(String(exhaustive)); }
+    }
     expect(first.metrics.prefillDecodedTokens).toBe(first.metrics.promptTokens);
     expect(first.metrics.nonEogTokens).toBeGreaterThan(0);
     expect(first.metrics.nonEogTokens).toBeLessThanOrEqual(8);

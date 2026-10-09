@@ -222,3 +222,15 @@ describe('delivery/decode error identity during cancellation', () => {
     expect(pair.counters.settledPairs).toBe(1);
   });
 });
+
+it('keeps serial child waits unavailable while preserving genuine measured overlap zeros', async () => {
+  const now = vi.fn(() => 10);
+  const serial = createDeliveryDecode({ mode: 'serial', signal: undefined, now });
+  await serial.run({ deliver: () => {}, decode: async () => {} });
+  expect(serial.counters).toMatchObject({ serialSteps: 1, pairedSteps: 0, deliveryWaitMs: undefined, decodeWaitMs: undefined, jointWaitMs: undefined });
+  expect(now).not.toHaveBeenCalled();
+  const overlap = createDeliveryDecode({ mode: 'overlap', signal: undefined, now });
+  await overlap.run({ deliver: () => {}, decode: async () => {} });
+  expect(overlap.counters).toMatchObject({ serialSteps: 0, settledPairs: 1, deliveryWaitMs: 0, decodeWaitMs: 0, jointWaitMs: 0 });
+  expect(now).toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import { beginGpuMeasurement } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { createProgressQueue } from './progress-queue';
 import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
 import { generateAudio } from './audio-generation';
@@ -231,6 +232,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       const progressQueue = createProgressQueue({ signal: controller.signal, deliver: ({ progress }) => onProgress(progress) });
+      const stopGpuMeasurement = accepted.measurement ? beginGpuMeasurement({ now: () => performance.now() }) : undefined;
       const unsubscribe = subscribeDiagnostics({
         debug: accepted.debug ?? 'off',
         listener: ({ diagnostic }) => {
@@ -253,7 +255,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
             default: break;
             }
           }
-          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
+          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && (diagnostic.nativeOperation !== undefined || (accepted.measurement !== undefined && diagnostic.nativeMetric !== undefined))))) return Promise.resolve(onDiagnostic({ diagnostic }));
           return undefined;
         },
       });
@@ -297,6 +299,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         return generationResultSchema.parse(result);
       } finally {
         unsubscribe();
+        stopGpuMeasurement?.();
         if (summary && onSummary && accepted.measurement) {
           const value: Diagnostic = {
             ...summary,

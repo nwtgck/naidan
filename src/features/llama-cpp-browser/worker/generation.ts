@@ -511,7 +511,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       now: (() => {
         switch (request.debug) {
         case 'on': return () => performance.now();
-        case 'off': case undefined: return undefined;
+        case 'off': case undefined: return request.measurement ? () => performance.now() : undefined;
         default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
         }
       })(),

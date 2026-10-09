@@ -9,14 +9,21 @@ export function createDeliveryDecode({ mode, signal, now }: {
   now: (() => number) | undefined,
 }) {
   let active = false;
+  const observeWaits = (() => {
+    switch (mode) {
+    case 'serial': return false;
+    case 'overlap': return now !== undefined;
+    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    }
+  })();
   const counters = {
     mode,
     pairedSteps: 0,
     settledPairs: 0,
     serialSteps: 0,
-    deliveryWaitMs: now ? 0 : undefined,
-    decodeWaitMs: now ? 0 : undefined,
-    jointWaitMs: now ? 0 : undefined,
+    deliveryWaitMs: observeWaits ? 0 : undefined,
+    decodeWaitMs: observeWaits ? 0 : undefined,
+    jointWaitMs: observeWaits ? 0 : undefined,
   };
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
