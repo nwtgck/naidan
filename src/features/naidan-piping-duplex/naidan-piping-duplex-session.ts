@@ -1,8 +1,9 @@
+import { preparePinnedKeys } from '@/features/naidan-piping-duplex/pinned-contact';
 import { ownBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
 import type { ReceiveLimits } from '@/features/naidan-piping-duplex/batch-wire';
 import { validateReceiveLimits } from '@/features/naidan-piping-duplex/batch-wire';
 import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
-import { connectPinnedKeys, pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
+import { pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
 import type { NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import type { NaidanPipingConnectionEnd } from '@/features/naidan-piping-duplex/lifetime';
@@ -25,9 +26,14 @@ type ConnectionInput = {
   piping: NaidanPipingDuplexOptions; identity: NaidanPipingIdentity; signal: AbortSignal;
   publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
 };
-type Authentication =
-  | { kind: 'pinned'; expectedPeer: Uint8Array; purpose: string }
-  | { kind: 'pair'; code: string; role: NaidanPipingRole | undefined; verifyPeer: NaidanPipingPeerVerifier };
+export type PreparedPinnedConnection = {
+  readonly kind: 'candidate';
+  readonly peerPublicHandshakeData: Uint8Array;
+  assertAvailable(): void;
+  finish(): Promise<NaidanPipingDuplexSession>;
+  dispose(): Promise<void>;
+};
+
 
 /** A single finite-body, authenticated connection. Never reconnects or replaces itself. */
 export class NaidanPipingDuplexSession {
@@ -48,8 +54,8 @@ export class NaidanPipingDuplexSession {
     });
     void this.closed.catch(() => {});
   }
-  private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, authentication }: ConnectionInput & {
-    authentication: Authentication;
+  private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, code, role, verifyPeer }: ConnectionInput & {
+    code: string; role: NaidanPipingRole | undefined; verifyPeer: NaidanPipingPeerVerifier;
   }): Promise<NaidanPipingDuplexSession> {
     signal.throwIfAborted();
     // Snapshot caller-owned settings and bytes before the first asynchronous step.
@@ -65,22 +71,11 @@ export class NaidanPipingDuplexSession {
     // ownership counters and are both validated before any network operation.
     const bootstrap = new FiniteTransferEndpoint({ ...endpointOptions, timeoutMs: Math.min(piping.requestTimeoutMs, responseTimeoutMs) });
     const traffic = new FiniteTransferEndpoint(endpointOptions);
-    const pinned = (() => {
-      switch (authentication.kind) {
-      case 'pinned': return ownBytes({ bytes: authentication.expectedPeer, maxBytes: 32 });
-      case 'pair': return undefined;
-      default: { const exhaustive: never = authentication; throw new Error(String(exhaustive)); }
-      }
-    })();
-    let established: Awaited<ReturnType<typeof connectPinnedKeys>> | undefined;
+    let established: Awaited<ReturnType<typeof pairKeys>> | undefined;
     let connection: OrderedSession | undefined;
     try {
       const common = { endpoint: bootstrap, identity: local, signal, responseTimeoutMs, publicHandshakeData: publicData, handshakeData: privateData };
-      switch (authentication.kind) {
-      case 'pinned': established = await connectPinnedKeys({ ...common, expectedPeer: pinned!, purpose: authentication.purpose }); break;
-      case 'pair': established = await pairKeys({ ...common, code: authentication.code, role: authentication.role, verifyPeer: authentication.verifyPeer }); break;
-      default: { const exhaustive: never = authentication; throw new Error(String(exhaustive)); }
-      }
+      established = await pairKeys({ ...common, code, role, verifyPeer });
       signal.throwIfAborted();
       connection = await OrderedSession.create({ keys: established.keys, endpoint: traffic, signal, limits, liveness });
       signal.throwIfAborted();
@@ -97,18 +92,86 @@ export class NaidanPipingDuplexSession {
       established?.peerPublicHandshakeData.fill(0); established?.peerHandshakeData.fill(0);
       throw error;
     } finally {
-      publicData.fill(0); privateData.fill(0); pinned?.fill(0);
+      publicData.fill(0); privateData.fill(0);
     }
   }
-  static connectPinned({ expectedPeer, purpose = 'naidan-piping-duplex/v1', ...input }: ConnectionInput & {
-    expectedPeer: Uint8Array; purpose?: string;
-  }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ ...input, authentication: { kind: 'pinned', expectedPeer, purpose } });
+  /** One bounded authentication candidate. Its signal must belong to the
+   * connection intent, not to the DATA session that it may replace. */
+  static async preparePinnedContact({ piping, identity, expectedPeer, purpose = 'naidan-piping-duplex/v1', signal, publicHandshakeData, handshakeData, heldContext }: ConnectionInput & {
+    expectedPeer: Uint8Array; purpose?: string; heldContext: Uint8Array | undefined;
+  }): Promise<PreparedPinnedConnection | { kind: 'same-connection' }> {
+    signal.throwIfAborted();
+    const limits = validateReceiveLimits({ limits: piping.receiveLimits ?? DEFAULT_RECEIVE_LIMITS });
+    const liveness = validateLiveness({ liveness: piping.liveness ?? DEFAULT_LIVENESS });
+    const configuredDeadline = piping.handshakeResponseTimeoutMs;
+    requireValue({ condition: Number.isInteger(configuredDeadline) && configuredDeadline > 0 && configuredDeadline <= 2147483647, message: 'Invalid handshake response deadline' });
+    const responseTimeoutMs = Math.min(5000, configuredDeadline);
+    const options = { baseUrl: piping.baseUrl, policy: piping.policy, timeoutMs: piping.requestTimeoutMs, headers: piping.headers };
+    const bootstrap = new FiniteTransferEndpoint({ ...options, timeoutMs: Math.min(options.timeoutMs, responseTimeoutMs) });
+    const traffic = new FiniteTransferEndpoint(options);
+    const prepared = await preparePinnedKeys({
+      endpoint: bootstrap,
+      identity,
+      expectedPeer,
+      purpose,
+      signal,
+      responseTimeoutMs,
+      publicHandshakeData: publicHandshakeData ?? new Uint8Array(),
+      handshakeData: handshakeData ?? new Uint8Array(),
+      heldContext,
+    });
+    switch (prepared.kind) {
+    case 'same-connection': return prepared;
+    case 'candidate': break;
+    default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+    }
+    return {
+      kind: 'candidate',
+      assertAvailable: () => prepared.assertAvailable(),
+      get peerPublicHandshakeData() {
+        return prepared.peerPublicHandshakeData;
+      },
+      dispose: () => prepared.dispose(),
+      finish: async () => {
+        const established = await prepared.finish();
+        // READY is still connection setup, not a potentially slow bulk DATA body.
+        const readyStop = new AbortController(), readySignal = AbortSignal.any([signal, readyStop.signal]);
+        const readyDeadline = setTimeout(() => readyStop.abort(new Error('Contact READY deadline exceeded')), responseTimeoutMs);
+        let connection: OrderedSession | undefined;
+        try {
+          signal.throwIfAborted();
+          connection = await OrderedSession.create({ keys: established.keys, endpoint: traffic, signal: readySignal, limits, liveness });
+          signal.throwIfAborted();
+          return new NaidanPipingDuplexSession({ connection, publicData: established.peerPublicHandshakeData, privateData: established.peerHandshakeData });
+        } catch (error) {
+          if (connection) {
+            connection.abort({ reason: 'Contact publication cancelled' });
+            try {
+              await connection.closed;
+            } catch (cause) {
+              throw new PipingRetirementError({ cause, logicalError: error });
+            }
+          } else established.keys.dispose();
+          established.peerPublicHandshakeData.fill(0); established.peerHandshakeData.fill(0);
+          throw error;
+        } finally {
+          clearTimeout(readyDeadline);
+        }
+      },
+    };
+  }
+  static async connectPinned({ ...input }: ConnectionInput & { expectedPeer: Uint8Array; purpose?: string }): Promise<NaidanPipingDuplexSession> {
+    const prepared = await this.preparePinnedContact({ ...input, heldContext: undefined });
+    switch (prepared.kind) {
+    case 'candidate': return prepared.finish();
+    case 'same-connection': throw new Error('New contact unexpectedly retained a connection');
+    default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+    }
   }
   static pair({ code, role, verifyPeer, ...input }: ConnectionInput & {
     code: string; role?: NaidanPipingRole; verifyPeer: NaidanPipingPeerVerifier;
   }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ ...input, authentication: { kind: 'pair', code, role, verifyPeer } });
+    return this.connectInternal({ ...input, code, role, verifyPeer });
   }
   get peerPublicHandshakeData(): Uint8Array {
     requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.publicData.slice();

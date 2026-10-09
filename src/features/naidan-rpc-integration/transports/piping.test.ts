@@ -4,9 +4,9 @@ import { PipingRetirementError } from '@/features/naidan-piping-duplex';
 import { openPipingRpc, describePipingRpcProtocolFailure } from './piping';
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
-const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn(), session: vi.fn() }));
+const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn(), prepare: vi.fn(), session: vi.fn() }));
 vi.mock('@/features/naidan-piping-duplex/naidan-piping-duplex-session', () => ({
-  NaidanPipingDuplexSession: { pair: calls.pair, connectPinned: calls.connect },
+  NaidanPipingDuplexSession: { pair: calls.pair, connectPinned: calls.connect, preparePinnedContact: calls.prepare },
 }));
 
 type ConnectionStub = { peerPublicHandshakeData: Uint8Array; abort(): void; closed: Promise<void>; peerIdentity?: Uint8Array };
@@ -16,6 +16,7 @@ function sessionFor({ connection }: { connection: ConnectionStub }) {
       return connection.peerPublicHandshakeData;
     },
     peerIdentity: connection.peerIdentity ?? b.publicKey,
+    contextId: new Uint8Array(32).fill(91),
     incomingStreams: { async *[Symbol.asyncIterator]() {} },
     ended: Promise.withResolvers<never>().promise,
     closed: connection.closed,
@@ -32,6 +33,7 @@ function sessionFor({ connection }: { connection: ConnectionStub }) {
 }
 
 beforeEach(() => {
+  calls.prepare.mockReset();
   const connection = { peerPublicHandshakeData: new Uint8Array(), abort: vi.fn(), closed: Promise.resolve() };
   calls.session.mockImplementation(async ({ expectedPeer }: { expectedPeer: Uint8Array }) => ({ ...connection, peerIdentity: expectedPeer }));
   calls.connect.mockImplementation(async args => sessionFor({ connection: await calls.session(args) }));
@@ -187,4 +189,51 @@ it.each([400, 408, 429, 500, 503])('retains bounded retry for HTTP %s without cl
   const error = new PipingStatusError({ status }); calls.connect.mockRejectedValueOnce(error);
   const failure: unknown = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal }).catch(error => error);
   expect(failure).toBeInstanceOf(RpcTransportInterruptedError); expect(describePipingRpcProtocolFailure({ error: failure })).toBeUndefined();
+});
+
+it('rejects an incompatible authenticated candidate without stopping the live connection', async () => {
+  const oldClosed = Promise.withResolvers<void>(), oldAbort = vi.fn();
+  calls.session.mockResolvedValueOnce({ peerPublicHandshakeData: new Uint8Array(), abort: oldAbort, closed: oldClosed.promise });
+  const link = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
+  const bytes = createRpcProtocolAdvertisement(); new DataView(bytes.buffer).setUint32(9, 0x80000002, true);
+  const reclaimed = Promise.withResolvers<void>(), dispose = vi.fn(() => reclaimed.promise), finish = vi.fn();
+  calls.prepare.mockResolvedValueOnce({ kind: 'candidate', assertAvailable() {}, peerPublicHandshakeData: bytes, finish, dispose });
+  const opening = link.session!.prepareReplacement!({ signal: new AbortController().signal });
+  void opening.catch(() => {});
+  await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+  expect(oldAbort).not.toHaveBeenCalled(); expect(finish).not.toHaveBeenCalled();
+  reclaimed.resolve(); const error: unknown = await opening.catch(error => error);
+  expect(describePipingRpcProtocolFailure({ error })).toContain('experimental revision 2');
+  expect(calls.prepare.mock.calls[0]![0].heldContext).toEqual(new Uint8Array(32).fill(91));
+  oldClosed.resolve();
+});
+
+it('claims a candidate once without aborting the adopted successor on double disposal', async () => {
+  const oldClosed = Promise.withResolvers<void>(), nextClosed = Promise.withResolvers<void>();
+  calls.session.mockResolvedValueOnce({ peerPublicHandshakeData: new Uint8Array(), abort: vi.fn(), closed: oldClosed.promise });
+  const link = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
+  const nextAbort = vi.fn(), dispose = vi.fn(), finish = vi.fn(async () => sessionFor({ connection: { peerPublicHandshakeData: createRpcProtocolAdvertisement(), abort: nextAbort, closed: nextClosed.promise } }));
+  calls.prepare.mockResolvedValueOnce({ kind: 'candidate', assertAvailable() {}, peerPublicHandshakeData: createRpcProtocolAdvertisement(), finish, dispose });
+  const intent = new AbortController(), candidate = await link.session!.prepareReplacement!({ signal: intent.signal });
+  const physical: AbortSignal = calls.prepare.mock.calls[0]![0].signal;
+  const successor = await candidate!.finish(); successor.session!.adopt(); intent.abort();
+  await expect(candidate!.dispose()).rejects.toThrow('already consumed');
+  await expect(candidate!.finish()).rejects.toThrow('already consumed');
+  expect(finish).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled();
+  expect(physical.aborted).toBe(false); expect(nextAbort).not.toHaveBeenCalled();
+  nextClosed.resolve(); oldClosed.resolve();
+});
+
+it('retires a candidate that arrives after its connection intent was cancelled', async () => {
+  const oldClosed = Promise.withResolvers<void>(), oldAbort = vi.fn();
+  calls.session.mockResolvedValueOnce({ peerPublicHandshakeData: new Uint8Array(), abort: oldAbort, closed: oldClosed.promise });
+  const link = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
+  const ready = Promise.withResolvers<{ kind: 'candidate'; assertAvailable(): void; peerPublicHandshakeData: Uint8Array; finish: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>();
+  calls.prepare.mockReturnValueOnce(ready.promise);
+  const intent = new AbortController(), opening = link.session!.prepareReplacement!({ signal: intent.signal });
+  void opening.catch(() => {}); intent.abort(new Error('Disconnect'));
+  const dispose = vi.fn(async () => {}), finish = vi.fn();
+  ready.resolve({ kind: 'candidate', assertAvailable() {}, peerPublicHandshakeData: createRpcProtocolAdvertisement(), dispose, finish });
+  await expect(opening).rejects.toThrow('Disconnect'); expect(dispose).toHaveBeenCalledOnce();
+  expect(finish).not.toHaveBeenCalled(); expect(oldAbort).not.toHaveBeenCalled(); oldClosed.resolve();
 });

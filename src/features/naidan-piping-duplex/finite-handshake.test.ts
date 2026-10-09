@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { expect, it, onTestFinished, vi } from 'vitest';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
-import { connectPinnedKeys, pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
+import { pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
+import { connectPinnedKeys } from '@/features/naidan-piping-duplex/pinned-contact';
 import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
 import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
@@ -95,4 +96,28 @@ it('waits for human comparison longer than the automatic response timeout withou
   }));
   f.jobs.push(...jobs); await entered.promise; await new Promise(resolve => setTimeout(resolve, 180)); approval.resolve(true);
   const [a, b] = await Promise.all(jobs); expect(a!.keys.contextId).toEqual(b!.keys.contextId);
+});
+
+it('initial pairing never sends advertisements before both human approvals', async () => {
+  const f = await fixture(), entered = Promise.withResolvers<void>(), approval = Promise.withResolvers<boolean>(); let count = 0;
+  const publicHandshakeData = new Uint8Array(256).fill(73), handshakeData = new Uint8Array(1024).fill(28);
+  const jobs = [0, 1].map(index => pairKeys({
+    ...f.options,
+    responseTimeoutMs: 200,
+    publicHandshakeData,
+    handshakeData,
+    endpoint: f.endpoint(),
+    identity: f.identities[index]!,
+    code: '1234-5678',
+    role: index === 0 ? 'initiator' : 'responder',
+    verifyPeer: async () => {
+      if (++count === 2) entered.resolve(); return index === 0 ? true : approval.promise;
+    },
+  }));
+  f.jobs.push(...jobs); for (const job of jobs) void job.catch(error => entered.reject(error));
+  await entered.promise; await new Promise(resolve => setTimeout(resolve, 250));
+  expect(f.relay.posts.every(post => post.bytes.length <= 110)).toBe(true);
+  approval.resolve(true); const [a, b] = await Promise.all(jobs);
+  expect(a!.peerPublicHandshakeData).toEqual(publicHandshakeData); expect(b!.peerHandshakeData).toEqual(handshakeData);
+  expect(f.relay.posts.some(post => post.bytes.length > 1024)).toBe(true);
 });

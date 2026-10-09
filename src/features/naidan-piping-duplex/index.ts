@@ -2,7 +2,7 @@ export type { NaidanPipingConnectionEnd, NaidanPipingConnectionEndKind } from '@
 export { HandshakeResponseUnconfirmedError, ResponseUnconfirmedError, RecordExhaustedError, PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 export type { NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 export { NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex/naidan-piping-duplex-session';
-export type { NaidanPipingDuplexOptions } from '@/features/naidan-piping-duplex/naidan-piping-duplex-session';
+export type { NaidanPipingDuplexOptions, PreparedPinnedConnection } from '@/features/naidan-piping-duplex/naidan-piping-duplex-session';
 export type { MultiplexedStream as NaidanPipingDuplexStream } from '@/features/naidan-piping-duplex/stream-mux';
 export { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 export type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';

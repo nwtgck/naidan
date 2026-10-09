@@ -3,9 +3,8 @@ import { AttemptError, sleep } from '@/features/naidan-piping-duplex/finite';
 import { PipingStatusError } from '@/features/naidan-piping-duplex/finite-transfer';
 import type { FiniteTransfer } from '@/features/naidan-piping-duplex/finite-transfer';
 import { establishVerifiedNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
-import type { NaidanPipingHandshakeChannel, NaidanPipingKeyContext, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
+import type { NaidanPipingHandshakeChannel, NaidanPipingKeyContext, NaidanPipingPeerVerifier, PinnedContactStatus } from '@/features/naidan-piping-duplex/key-context';
 import { HandshakeResponseUnconfirmedError } from '@/features/naidan-piping-duplex/lifetime';
-import { pinnedPeerRoutes } from '@/features/naidan-piping-duplex/peer-routes';
 import { normalizeRendezvousCode } from '@/features/naidan-piping-duplex/rendezvous';
 import { encodeProtocolHeader, inspectProtocolHeader } from '@/features/naidan-piping-duplex/protocol-header';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
@@ -15,18 +14,15 @@ import { isInitiator } from '@/features/naidan-piping-duplex/role';
 const HANDSHAKE_BODY_BYTES = 65549;
 const PUBLIC_BYTES = 256;
 const PRIVATE_BYTES = 16384;
-type Result = { keys: NaidanPipingKeyContext; peerPublicHandshakeData: Uint8Array; peerHandshakeData: Uint8Array };
-type Material = { entry: string; secret: Uint8Array; role?: NaidanPipingRole };
+export type HandshakeResult = { keys: NaidanPipingKeyContext; peerPublicHandshakeData: Uint8Array; peerHandshakeData: Uint8Array };
+type Material = { entry: string; secret: Uint8Array | CryptoKey; role?: NaidanPipingRole };
 function base64url({ bytes }: { bytes: Uint8Array }): string {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-}
-function decodeBase64url({ value }: { value: string }): Uint8Array {
-  return Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - value.length % 4) % 4)), c => c.charCodeAt(0));
 }
 async function digest({ bytes }: { bytes: Uint8Array }): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)));
 }
-function offer({ bytes }: { bytes: Uint8Array }): { attempt: Uint8Array; first: Uint8Array } {
+export function readOffer({ bytes }: { bytes: Uint8Array }): { attempt: Uint8Array; first: Uint8Array } {
   requireValue({ condition: bytes.length === 78 && bytes[13] === 0x21 && inspectProtocolHeader({ bytes, maxBytes: 78 }).kind === 'supported', message: 'Invalid connection OFFER' });
   const attempt = bytes.slice(14, 46); requireValue({ condition: attempt.some(Boolean), message: 'Empty attempt' });
   return { attempt, first: bytes.slice(46) };
@@ -45,21 +41,21 @@ function readAdvertisement({ bytes }: { bytes: Uint8Array }): { peerPublicHandsh
 
 /** The first Noise flight is created once by key-context and carried by OFFER.
  * Later flights use one-use paths; no cumulative journal is constructed. */
-async function attempt({ material, role, endpoint, identity, expectedPeer, verifyPeer, signal, responseTimeoutMs, data, owner }: {
+export async function runHandshakeAttempt({ material, role, endpoint, identity, expectedPeer, verifyPeer, signal, responseTimeoutMs, data, owner, incoming, contact }: {
   material: Material; role: NaidanPipingRole; endpoint: FiniteTransfer; identity: NaidanPipingIdentity;
   expectedPeer: Uint8Array | undefined; verifyPeer: NaidanPipingPeerVerifier | undefined; signal: AbortSignal;
-  responseTimeoutMs: number; data: Uint8Array; owner?: Uint8Array;
-}): Promise<Result> {
+  responseTimeoutMs: number; data: Uint8Array; owner?: Uint8Array; incoming?: { attempt: Uint8Array; first: Uint8Array }; contact?: PinnedContactStatus;
+}): Promise<HandshakeResult> {
   let first: Uint8Array | undefined, selected: Uint8Array;
   if (isInitiator({ role })) {
     selected = crypto.getRandomValues(new Uint8Array(32)); if (owner) selected.set(owner, 0);
   } else {
-    const received = offer({ bytes: await endpoint.receive({ route: material.entry, maximum: 78, signal }) });
+    const received = incoming ?? readOffer({ bytes: await endpoint.receive({ route: material.entry, maximum: 78, signal }) });
     selected = received.attempt; first = received.first;
     if (owner && equalBytes({ left: selected.subarray(0, 16), right: owner })) throw new AttemptError({ kind: 'transient' });
   }
   signal.throwIfAborted();
-  const routeKey = await crypto.subtle.importKey('raw', new Uint8Array(material.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const routeKey = material.secret instanceof Uint8Array ? await crypto.subtle.importKey('raw', new Uint8Array(material.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']) : material.secret;
   const binding = await digest({ bytes: fields({ parts: [ascii({ text: 'naidan-piping-duplex/v1/handshake' }), ascii({ text: endpoint.origin }), ascii({ text: material.entry }), selected] }) });
   signal.throwIfAborted();
   const path = async ({ direction, number }: { direction: number; number: number }): Promise<string> => {
@@ -100,9 +96,10 @@ async function attempt({ material, role, endpoint, identity, expectedPeer, verif
     responseTimeoutMs,
     onResponseFailure: undefined,
     handshakeData: data,
+    contact,
   });
   try {
-    signal.throwIfAborted(); return { keys: result.keys, ...readAdvertisement({ bytes: result.peerHandshakeData }) };
+    signal.throwIfAborted(); return { keys: result.keys, ...(contact ? { peerPublicHandshakeData: new Uint8Array(), peerHandshakeData: result.peerHandshakeData.slice() } : readAdvertisement({ bytes: result.peerHandshakeData })) };
   } catch (error) {
     result.keys.dispose(); throw error;
   } finally {
@@ -110,28 +107,11 @@ async function attempt({ material, role, endpoint, identity, expectedPeer, verif
   }
 }
 
-export async function connectPinnedKeys({ endpoint, identity, expectedPeer, purpose, signal, responseTimeoutMs, publicHandshakeData, handshakeData }: {
-  endpoint: FiniteTransfer; identity: NaidanPipingIdentity; expectedPeer: Uint8Array; purpose: string; signal: AbortSignal; responseTimeoutMs: number;
-  publicHandshakeData: Uint8Array; handshakeData: Uint8Array;
-}): Promise<Result> {
-  const data = advertisement({ publicData: publicHandshakeData, privateData: handshakeData });
-  const routes = await pinnedPeerRoutes({ identity, expectedPeer, origin: endpoint.origin, purpose, signal });
-  const material: Material = {
-    entry: isInitiator({ role: routes.role }) ? routes.send : routes.receive,
-    secret: decodeBase64url({ value: isInitiator({ role: routes.role }) ? routes.receive : routes.send }),
-  };
-  try {
-    return await attempt({ material, role: routes.role, endpoint, identity, expectedPeer, verifyPeer: undefined, signal, responseTimeoutMs, data });
-  } finally {
-    data.fill(0); material.secret.fill(0);
-  }
-}
-
 /** Only initial code pairing elects roles. A 400 never authenticates the other participant. */
 export async function pairKeys({ endpoint, identity, code, role, verifyPeer, signal, responseTimeoutMs, publicHandshakeData, handshakeData }: {
   endpoint: FiniteTransfer; identity: NaidanPipingIdentity; code: string; role?: NaidanPipingRole; verifyPeer: NaidanPipingPeerVerifier;
   signal: AbortSignal; responseTimeoutMs: number; publicHandshakeData: Uint8Array; handshakeData: Uint8Array;
-}): Promise<Result> {
+}): Promise<HandshakeResult> {
   const normalized = normalizeRendezvousCode({ code });
   const room = await digest({ bytes: fields({ parts: [ascii({ text: 'naidan-piping-duplex/v1/pair' }), ascii({ text: endpoint.origin }), ascii({ text: normalized })] }) });
   const material = { entry: base64url({ bytes: await digest({ bytes: fields({ parts: [room, ascii({ text: 'offer' })] }) }) }), secret: room };
@@ -141,7 +121,7 @@ export async function pairKeys({ endpoint, identity, code, role, verifyPeer, sig
     for (;;) {
       signal.throwIfAborted();
       try {
-        return await attempt({
+        return await runHandshakeAttempt({
           material,
           role: selectedRole,
           endpoint,

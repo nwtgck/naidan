@@ -24,7 +24,8 @@ import { RpcOwnerBusyError } from './owner';
 import { AttemptError } from '@/features/naidan-piping-duplex/finite';
 
 type Names = readonly NaidanPeerControlledMethodName[];
-export type RpcLink = NaidanRpcTransport & { readonly peerIdentity: Uint8Array, readonly session?: { adopt(): void; close(): Promise<void>; readonly health: RpcLinkHealth; subscribeHealth({ listener }: { listener({ health }: { health: RpcLinkHealth }): void }): () => void }, abort({ reason }: { reason: string }): void };
+export type RpcPreparedLink = { assertAvailable(): void; finish(): Promise<RpcLink>; dispose(): Promise<void> };
+export type RpcLink = NaidanRpcTransport & { readonly peerIdentity: Uint8Array, readonly session?: { prepareReplacement?({ signal }: { signal: AbortSignal }): Promise<RpcPreparedLink | undefined>; adopt(): void; close(): Promise<void>; readonly health: RpcLinkHealth; subscribeHealth({ listener }: { listener({ health }: { health: RpcLinkHealth }): void }): () => void }, abort({ reason }: { reason: string }): void };
 /** A caller is pinned to one authenticated session, never a reconnecting lookup.
  * Labels are display metadata; peerPublicKey is the identity used for provenance. */
 export type RpcClientBinding = {
@@ -614,7 +615,53 @@ export class NaidanPeerManager {
       if (this.entries.get(entry.registration.id) === entry && entry.link === link) entry.waitingForPeer = outcome.error instanceof RpcPeerClosedError;
       return outcome;
     });
-    return { value: link, ended, retire: () => this.closeEntry({ id: entry.registration.id }) };
+    return {
+      value: link,
+      ended,
+      retire: ({ replacement }) => this.closeEntry({ id: entry.registration.id, notifyPeer: !replacement }),
+      ...(link.session?.prepareReplacement ? {
+        prepareReplacement: async ({ signal }: { signal: AbortSignal }) => {
+          // A verified temporary pairing is usable, but it is not persisted
+          // authority for the stable contact listener until Remember succeeds.
+          if (!isSaved({ persistence: entry.persistence }) || entry.change !== 'idle') return undefined;
+          const candidate = await link.session!.prepareReplacement!({ signal });
+          if (!candidate) return undefined;
+          const current = () => {
+            signal.throwIfAborted();
+            if (!this.enabled || this.retirementFailure || this.entries.get(entry.registration.id) !== entry || entry.link !== link || entry.stale || entry.removed || entry.change !== 'idle')
+              throw new Error('Obsolete connection candidate');
+          };
+          try {
+            current(); await this.revalidate(); current(); candidate.assertAvailable();
+          } catch (error) {
+            await candidate.dispose(); throw error;
+          }
+          return {
+            assertAvailable: () => {
+              current(); candidate.assertAvailable();
+            },
+            dispose: () => candidate.dispose(),
+            finish: async ({ signal: nextSignal }: { signal: AbortSignal }) => {
+              let consumed = false;
+              try {
+                return await this.connectEntry({
+                  id: entry.registration.id,
+                  signal: nextSignal,
+                  mode: 'background',
+                  prepared: {
+                    finish: () => {
+                      consumed = true; return candidate.finish();
+                    },
+                  },
+                });
+              } finally {
+                if (!consumed) await candidate.dispose();
+              }
+            },
+          };
+        },
+      } : {}),
+    };
   }
   async connect({ id }: { id: NaidanRpcRegistrationId }): Promise<void> {
     if (!this.enabled) throw new Error('Naidan RPC is disabled');
@@ -624,7 +671,7 @@ export class NaidanPeerManager {
       throw new Error('Connection request was superseded');
     await entry.maintenance.connect({ mode: 'explicit' });
   }
-  private async connectEntry({ id, signal: requestedSignal, mode }: { id: NaidanRpcRegistrationId; signal: AbortSignal; mode: ConnectionInitiation }): Promise<ConnectionLease<RpcLink>> {
+  private async connectEntry({ id, signal: requestedSignal, mode, prepared }: { id: NaidanRpcRegistrationId; signal: AbortSignal; mode: ConnectionInitiation; prepared?: Pick<RpcPreparedLink, 'finish'> }): Promise<ConnectionLease<RpcLink>> {
     const entry = this.requireEntry({ id });
     await entry.mutation?.catch(() => {}); requestedSignal.throwIfAborted();
     if (entry.stale) throw new Error('Reload the changed RPC registration before reconnecting');
@@ -653,7 +700,7 @@ export class NaidanPeerManager {
         const identity = entry.persistence === 'temporary' && entry.identity ? entry.identity : await this.dependencies.identity(); signal.throwIfAborted();
         if (encodePeerKey({ bytes: identity.publicKey }) !== entry.registration.localPublicKey) throw new Error('This registration belongs to a different local identity');
         entry.identity = identity;
-        link = await this.dependencies.open({
+        link = prepared ? await prepared.finish() : await this.dependencies.open({
           settings: copyRegistration({ registration: entry.registration }).transport,
           identity,
           peerKey: idToRaw({ id: entry.registration.peerPublicKey }),
@@ -832,7 +879,7 @@ export class NaidanPeerManager {
       this.changed();
     });
   }
-  private closeEntry({ id }: { id: NaidanRpcRegistrationId }): Promise<void> {
+  private closeEntry({ id, notifyPeer = true }: { id: NaidanRpcRegistrationId; notifyPeer?: boolean }): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry) return Promise.resolve();
     switch (entry.phase) {
@@ -851,7 +898,7 @@ export class NaidanPeerManager {
     entry.phase = 'stopping';
     let notification: Promise<void> | undefined;
     const stopOperations = [() => {
-      if (entry.link?.session && !entry.maintenance.blocked) {
+      if (notifyPeer && entry.link?.session && !entry.maintenance.blocked) {
         notification = entry.link.session.close(); void notification.catch(() => {});
       }
     }, () => entry.stop.abort(), () => entry.access.close(),

@@ -125,8 +125,17 @@ async function peer({ identity, other, startup, connectOnStartup }: { identity: 
   if (startup === 'run') await manager.startAutomaticConnections();
   return { manager, id, open, storage };
 }
-async function setup() {
-  const a = await createNaidanPipingIdentity(), b = await createNaidanPipingIdentity();
+async function setup({ localRole }: { localRole?: 'initiator' | 'responder' } = {}) {
+  let a = await createNaidanPipingIdentity(), b = await createNaidanPipingIdentity();
+  if (localRole) {
+    const ordered = [a, b].sort((left, right) => {
+      for (let index = 0; index < 32; index++) {
+        const delta = left.publicKey[index]! - right.publicKey[index]!; if (delta) return delta;
+      }
+      return 0;
+    });
+    [a, b] = localRole === 'initiator' ? [ordered[0]!, ordered[1]!] : [ordered[1]!, ordered[0]!];
+  }
   const local = await peer({ identity: a, other: b, startup: 'run', connectOnStartup: 'disabled' }), remote = await peer({ identity: b, other: a, startup: 'run', connectOnStartup: 'disabled' });
   bridge.manager = local.manager;
   const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); await flushPromises();
@@ -209,8 +218,9 @@ it.each(['startup-first', 'panel-first'] as const)('connects on startup with Set
   await vi.waitFor(() => expect(local.manager.list()[0]?.phase).toBe('disconnected'));
 });
 
-it('reconnects with fresh data paths after only p2 restarts, without replaying its old RPC binding', async () => {
-  const { local, remote, identities } = await setup();
+it.each(['initiator', 'responder'] as const)('reconnects before default liveness when p2 restarts (survivor %s), without replaying the old RPC binding', async localRole => {
+  vi.mocked(NaidanPipingDuplexSession.connectPinned).mockRestore();
+  const { local, remote, identities } = await setup({ localRole });
   await Promise.all([local.manager.connect({ id: local.id }), remote.manager.connect({ id: remote.id })]);
   const oldToken = local.manager.list()[0]?.connectionToken, oldBinding = local.manager.bindClient({ id: local.id });
   const paths = [...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))].sort();
@@ -218,13 +228,15 @@ it('reconnects with fresh data paths after only p2 restarts, without replaying i
   // Abrupt one-shot connection loss precedes app disposal: no graceful CLOSE.
   remoteLink.abort({ reason: 'Simulated page reload' });
   await remoteLink.closed; await remote.manager.setEnabled({ enabled: false });
+  const started = performance.now();
   const restarted = await peer({ identity: identities.b, other: identities.a, startup: 'run', connectOnStartup: 'enabled' });
   await vi.waitFor(() => {
     expect(restarted.manager.list()[0]?.phase).toBe('connected');
     expect(local.manager.list()[0]?.phase).toBe('connected');
     expect(local.manager.list()[0]?.connectionToken).not.toBe(oldToken);
-  }, { timeout: 8000 });
-  expect(oldBinding.signal.aborted).toBe(true); expect(local.open).toHaveBeenCalledTimes(2); expect(restarted.open).toHaveBeenCalledOnce();
+  }, { timeout: 3000 });
+  expect(performance.now() - started).toBeLessThan(3000);
+  expect(oldBinding.signal.aborted).toBe(true); expect(local.open).toHaveBeenCalledOnce(); expect(restarted.open).toHaveBeenCalledOnce();
   const reconnectedPaths = [...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))];
   expect(reconnectedPaths.some(path => !paths.includes(path))).toBe(true);
   await expect(local.manager.getPeerProvidedMethods({ id: local.id, signal: new AbortController().signal })).resolves.toBeDefined();

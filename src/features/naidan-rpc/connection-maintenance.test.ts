@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { ConnectionMaintenance, ConnectionOpenPermits } from './connection-maintenance';
-import type { ConnectionLease, MaintenanceFailure } from './connection-maintenance';
+import type { ConnectionLease, ConnectionReplacement, MaintenanceFailure } from './connection-maintenance';
 
 async function flush(): Promise<void> {
   for (let turn = 0; turn < 12; turn++) await Promise.resolve();
@@ -353,4 +353,102 @@ it('only a stable live interval resets backoff, not a short connection or slow c
   const stable = connection({ value: 2 }); state.openings[2]!.result.resolve(stable.lease); await flush();
   state.advance({ milliseconds: 30000 }); stable.ended.resolve({ error: 'offline' }); await flush();
   expect(state.retryDelay).toHaveBeenLastCalledWith({ attempt: 1 }); await state.owner.disconnect();
+});
+
+it('continues an authenticated replacement after old wire retirement without releasing its permit or restarting the factory', async () => {
+  const permits = new ConnectionOpenPermits({ capacity: 1, maximumWaiting: 8 });
+  const state = fixture({ permits }), pending = Promise.withResolvers<ConnectionReplacement<number>>();
+  const old = connection({ value: 1, held: true }), next = connection({ value: 2 });
+  let contactSignal: AbortSignal | undefined, finishedSignal: AbortSignal | undefined;
+  const prepareReplacement = vi.fn(({ signal }: { signal: AbortSignal }) => {
+    contactSignal = signal; return pending.promise;
+  });
+  const first = state.owner.connect({ mode: 'explicit' }); await flush(); state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement }); await first;
+  const token = state.owner.token, other = fixture({ permits }); const waiting = other.owner.connect({ mode: 'explicit' }); void waiting.catch(() => {});
+  const finish = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      finishedSignal = signal; return next.lease;
+    }), dispose = vi.fn(async () => {});
+  pending.resolve({ assertAvailable() {}, finish, dispose }); await old.stopped.promise;
+  expect(old.retire).toHaveBeenCalledWith({ replacement: true }); expect(finish).not.toHaveBeenCalled(); expect(other.factory).not.toHaveBeenCalled();
+  expect(contactSignal!.aborted).toBe(false);
+  old.closed.resolve(); await flush();
+  expect(state.owner.value).toBe(2); expect(state.owner.token).not.toBe(token); expect(finishedSignal!.aborted).toBe(false);
+  expect(contactSignal!.aborted).toBe(true); expect(state.factory).toHaveBeenCalledOnce(); expect(state.retryDelay).not.toHaveBeenCalled();
+  expect(other.factory).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
+  await other.owner.disconnect(); await state.owner.disconnect(); expect(next.retire).toHaveBeenCalledOnce();
+});
+
+it('joins and disposes a late contact after Disconnect without allowing it to replace the current lease', async () => {
+  const state = fixture(), pending = Promise.withResolvers<ConnectionReplacement<number>>();
+  const old = connection({ value: 1 }), disposal = Promise.withResolvers<void>();
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: () => pending.promise }); await first;
+  let stopped = false; const closing = state.owner.disconnect().then(() => {
+    stopped = true;
+  }); await flush(); expect(stopped).toBe(false);
+  const finish = vi.fn(async () => connection({ value: 2 }).lease), dispose = vi.fn(() => disposal.promise);
+  pending.resolve({ assertAvailable() {}, finish, dispose }); await flush(); expect(dispose).toHaveBeenCalledOnce(); expect(stopped).toBe(false);
+  disposal.resolve(); await closing; expect(finish).not.toHaveBeenCalled(); expect(state.owner.value).toBeUndefined();
+});
+
+it('Disconnect during replacement retirement discards the candidate and never starts its continuation', async () => {
+  const state = fixture(), old = connection({ value: 1, held: true });
+  const finish = vi.fn(async () => connection({ value: 2 }).lease), dispose = vi.fn(async () => {});
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: async () => ({ assertAvailable() {}, finish, dispose }) }); await first; await old.stopped.promise;
+  const stopped = state.owner.disconnect(); old.closed.resolve(); await stopped;
+  expect(finish).not.toHaveBeenCalled(); expect(dispose).toHaveBeenCalledOnce(); expect(state.owner.phase).toBe('idle');
+});
+
+it('authentication failures and same-session confirmations leave the data lease live and rate-limit the next attempt', async () => {
+  const state = fixture(), old = connection({ value: 1 }), contact = vi.fn<NonNullable<ConnectionLease<number>['prepareReplacement']>>();
+  contact.mockRejectedValueOnce('fatal').mockResolvedValueOnce(undefined).mockImplementation(({ signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
+  const first = state.owner.connect({ mode: 'explicit' }); await flush(); state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: contact }); await first; await flush();
+  expect(state.owner.value).toBe(1); expect(state.owner.blocked).toBeUndefined(); expect(old.retire).not.toHaveBeenCalled(); expect(contact).toHaveBeenCalledOnce();
+  expect(state.timers[0]!.milliseconds).toBe(1000); state.advance({ milliseconds: 1000 }); state.timers[0]!.callback(); await flush();
+  expect(contact).toHaveBeenCalledTimes(2); expect(old.retire).not.toHaveBeenCalled(); expect(state.timers[1]!.milliseconds).toBe(1000);
+  await state.owner.disconnect();
+});
+
+it.each([undefined, null, new Error('unclassified cleanup')])('failed late candidate disposal retains ownership even for an opaque error %s', async error => {
+  const state = fixture(), old = connection({ value: 1 }), pending = Promise.withResolvers<ConnectionReplacement<number>>();
+  const first = state.owner.connect({ mode: 'explicit' }); await flush(); state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: () => pending.promise }); await first;
+  const closing = state.owner.disconnect();
+  pending.resolve({ assertAvailable() {}, finish: async () => connection({ value: 2 }).lease, dispose: () => Promise.reject(error) });
+  await expect(closing).rejects.toBe(error); expect(state.owner.blocked).toEqual({ kind: 'retirement', error });
+  await expect(state.owner.connect({ mode: 'explicit' })).rejects.toBe(error); expect(state.factory).toHaveBeenCalledOnce();
+});
+
+it('a continuation returning after cancellation is retired without publishing its RPC value', async () => {
+  const state = fixture(), old = connection({ value: 1 }), next = connection({ value: 2, held: true }), pending = Promise.withResolvers<ConnectionLease<number>>();
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  const finish = vi.fn(() => pending.promise), dispose = vi.fn(async () => {});
+  state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: async () => ({ assertAvailable() {}, finish, dispose }) }); await first; await flush();
+  expect(finish).toHaveBeenCalledOnce(); const closing = state.owner.disconnect(); pending.resolve(next.lease); await next.stopped.promise;
+  expect(state.owner.value).toBeUndefined(); next.closed.resolve(); await closing; expect(dispose).not.toHaveBeenCalled();
+});
+
+it('an expired prepared proposal is disposed without retiring the healthy DATA lease', async () => {
+  const state = fixture(), old = connection({ value: 1 }), disposal = Promise.withResolvers<void>();
+  const finish = vi.fn(async () => connection({ value: 2 }).lease), dispose = vi.fn(() => disposal.promise);
+  const assertAvailable = vi.fn(() => {
+    throw new Error('Candidate expired during authority check');
+  });
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement: async () => ({ assertAvailable, finish, dispose }) }); await first; await flush();
+  expect(dispose).toHaveBeenCalledOnce(); expect(old.retire).not.toHaveBeenCalled(); expect(state.owner.value).toBe(1);
+  disposal.resolve(); await flush(); expect(finish).not.toHaveBeenCalled(); expect(state.timers[0]!.milliseconds).toBe(1000);
+  await state.owner.disconnect();
+});
+
+it('rechecks candidate eligibility in the adoption turn before stopping old DATA', async () => {
+  const state = fixture(), old = connection({ value: 1 });
+  const assertAvailable = vi.fn().mockImplementationOnce(() => {}).mockImplementation(() => {
+    throw new Error('Expired');
+  });
+  const finish = vi.fn(async () => connection({ value: 2 }).lease), dispose = vi.fn(async () => {});
+  const prepareReplacement = vi.fn<NonNullable<ConnectionLease<number>['prepareReplacement']>>().mockResolvedValueOnce({ assertAvailable, finish, dispose }).mockImplementation(({ signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
+  const first = state.owner.connect({ mode: 'explicit' }); await flush(); state.openings[0]!.result.resolve({ ...old.lease, prepareReplacement }); await first; await flush();
+  expect(assertAvailable).toHaveBeenCalledTimes(2); expect(dispose).toHaveBeenCalledOnce(); expect(finish).not.toHaveBeenCalled();
+  expect(old.retire).not.toHaveBeenCalled(); expect(state.owner.value).toBe(1); await state.owner.disconnect();
 });

@@ -1,10 +1,19 @@
 import { deferred } from '@/features/naidan-rpc/primitives';
 
+export type ConnectionReplacement<Value> = {
+  /** Synchronous final check before the live DATA lease is stopped. */
+  assertAvailable(): void;
+  /** Continues the already-authenticated candidate after the old wire retires. */
+  finish({ signal }: { signal: AbortSignal }): Promise<ConnectionLease<Value>>;
+  dispose(): Promise<void>;
+};
 export type ConnectionLease<Value> = {
   readonly value: Value;
   readonly ended: Promise<Readonly<{ error: unknown }>>;
   /** Initiates shutdown immediately, then joins every resource owned by this lease. */
-  retire(): Promise<void>;
+  retire({ replacement }: { replacement: boolean }): Promise<void>;
+  /** One authentication attempt; undefined means keep the existing connection. */
+  prepareReplacement?({ signal }: { signal: AbortSignal }): Promise<ConnectionReplacement<Value> | undefined>;
 };
 export type MaintenanceClock = {
   now(): number;
@@ -25,7 +34,7 @@ type PermitAdmission = { ready: Promise<() => void>; promote(): void };
 export type ConnectionInitiation = 'explicit' | 'background';
 type Slot<Value> = {
   mode: ConnectionInitiation; admission: PermitAdmission | undefined;
-  generation: number; stop: AbortController; retired: ReturnType<typeof deferred<void>>;
+  generation: number; binding: object; stop: AbortController; retired: ReturnType<typeof deferred<void>>;
   lease: ConnectionLease<Value> | undefined; retirement: Promise<void> | undefined;
 };
 
@@ -133,7 +142,7 @@ export class ConnectionMaintenance<Value> {
     return this.isConnected() ? this.slot?.lease?.value : undefined;
   }
   get token(): object {
-    return this.slot?.generation === this.generation ? this.slot : this.intentToken;
+    return this.slot?.generation === this.generation ? this.slot.binding : this.intentToken;
   }
   private isConnected(): boolean {
     const phase = this.status;
@@ -223,7 +232,7 @@ export class ConnectionMaintenance<Value> {
   }
   private start(): void {
     if (this.desired !== 'connected' || this.slot || this.timer || this.blockState) return;
-    const slot: Slot<Value> = { mode: this.nextMode, admission: undefined, generation: this.generation, stop: new AbortController(), retired: deferred<void>(), lease: undefined, retirement: undefined };
+    const slot: Slot<Value> = { mode: this.nextMode, admission: undefined, generation: this.generation, binding: {}, stop: new AbortController(), retired: deferred<void>(), lease: undefined, retirement: undefined };
     this.nextMode = 'background'; this.slot = slot; this.status = 'queued'; this.notify();
     void this.run({ slot });
   }
@@ -251,23 +260,58 @@ export class ConnectionMaintenance<Value> {
       this.status = 'opening'; this.notify(); slot.stop.signal.throwIfAborted();
       slot.lease = await this.factory({ signal: slot.stop.signal, mode: slot.mode });
       void slot.lease.ended.catch(() => {});
-      if (this.current({ slot })) {
+      while (this.current({ slot })) {
         const connectedAt = this.clock.now();
         this.status = 'connected';
         const request = this.request;
         if (request && !request.settled && request.generation === slot.generation) {
-          request.settled = true; request.result.resolve(slot.lease.value);
+          request.settled = true; request.result.resolve(slot.lease!.value);
         }
         this.notify();
         if (this.current({ slot })) {
-          const ended = await this.waitForEnd({ slot, lease: slot.lease });
-          if (ended && this.current({ slot })) {
-            // Briefly successful handshakes must not reset repeated failures.
-            // Measure the live interval, never slow retirement after it ended.
-            const connectedFor = this.clock.now() - connectedAt;
-            if (Number.isFinite(connectedFor) && connectedFor >= 30000) this.attempts = 0;
-            outcome = { error: ended.error, decision: this.decision({ error: ended.error, source: 'connection' }) };
+          const update = await this.waitForUpdate({ slot, lease: slot.lease! });
+          if (!update) break;
+          switch (update.kind) {
+          case 'replacement': {
+            let consumed = false;
+            try {
+              if (!this.current({ slot })) break;
+              try {
+                update.candidate.assertAvailable();
+              } catch (error) {
+                if (this.contactRetirementFailed({ error })) throw error;
+                continue; // An expired proposal cannot terminate the live lease.
+              }
+              this.status = 'retiring'; this.notify();
+              // Keep the intent scope and its permit. Only the old DATA lease
+              // retires; aborting the slot here would destroy the candidate.
+              this.beginRetirement({ slot, replacement: true }); await slot.retirement;
+              if (!this.current({ slot })) break;
+              slot.lease = undefined; slot.retirement = undefined; slot.binding = {};
+              this.status = 'opening'; this.notify();
+              slot.stop.signal.throwIfAborted();
+              consumed = true; slot.lease = await update.candidate.finish({ signal: slot.stop.signal });
+              void slot.lease.ended.catch(() => {});
+            } finally {
+              try {
+                if (!consumed) await this.disposeCandidate({ candidate: update.candidate });
+              } finally {
+                update.stop();
+              }
+            }
+            continue;
           }
+          case 'ended': {
+            if (this.current({ slot })) {
+              const connectedFor = this.clock.now() - connectedAt;
+              if (Number.isFinite(connectedFor) && connectedFor >= 30000) this.attempts = 0;
+              outcome = { error: update.error, decision: this.decision({ error: update.error, source: 'connection' }) };
+            }
+            break;
+          }
+          default: { const exhaustive: never = update; throw new Error(String(exhaustive)); }
+          }
+          break;
         }
       }
     } catch (error) {
@@ -304,23 +348,106 @@ export class ConnectionMaintenance<Value> {
     }
     this.notify();
   }
-  private beginRetirement({ slot }: { slot: Slot<Value> }): void {
+  private beginRetirement({ slot, replacement = false }: { slot: Slot<Value>; replacement?: boolean }): void {
     if (!slot.lease || slot.retirement) return;
     // Reserve the join before shutdown can synchronously reenter the owner.
     const retiring = deferred<void>(); slot.retirement = retiring.promise;
     try {
-      Promise.resolve(slot.lease.retire()).then(retiring.resolve, retiring.reject);
+      Promise.resolve(slot.lease.retire({ replacement })).then(retiring.resolve, retiring.reject);
     } catch (error) {
       retiring.reject(error);
     }
   }
-  private async waitForEnd({ slot, lease }: { slot: Slot<Value>; lease: ConnectionLease<Value> }): Promise<{ error: unknown } | undefined> {
+  private async waitForUpdate({ slot, lease }: { slot: Slot<Value>; lease: ConnectionLease<Value> }): Promise<
+    | { kind: 'ended'; error: unknown }
+    | { kind: 'replacement'; candidate: ConnectionReplacement<Value>; stop(): void }
+    | undefined
+  > {
     const stopped = deferred<undefined>(), cancel = () => stopped.resolve(undefined);
     slot.stop.signal.addEventListener('abort', cancel, { once: true }); if (slot.stop.signal.aborted) cancel();
+    const contactStop = new AbortController(), signal = AbortSignal.any([slot.stop.signal, contactStop.signal]);
+    const contact = lease.prepareReplacement ? (async () => {
+      for (;;) {
+        signal.throwIfAborted(); const started = this.clock.now();
+        if (!Number.isFinite(started)) throw new Error('Invalid contact clock');
+        try {
+          const candidate = await lease.prepareReplacement!({ signal });
+          if (candidate) {
+            try {
+              candidate.assertAvailable();
+            } catch (error) {
+              await this.disposeCandidate({ candidate }); throw error;
+            }
+            return { kind: 'replacement' as const, candidate, stop: () => contactStop.abort() };
+          }
+        } catch (error) {
+          if (signal.aborted || this.contactRetirementFailed({ error })) throw error;
+          // Unauthenticated input cannot terminate the current data connection.
+        }
+        signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            try {
+              cancelTimer();
+            } catch (error) {
+              this.failRetirement({ error }); reject(error); return;
+            }
+            reject(signal.reason);
+          };
+          const cancelTimer = this.clock.schedule({
+            milliseconds: Math.max(1, Math.ceil(1000 - (this.clock.now() - started))),
+            callback: () => {
+              signal.removeEventListener('abort', abort); resolve();
+            },
+          });
+          signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort();
+        });
+      }
+    })() : undefined;
+    let result: { kind: 'ended'; error: unknown } | { kind: 'replacement'; candidate: ConnectionReplacement<Value>; stop(): void } | undefined;
+    let failure: { error: unknown } | undefined;
     try {
-      return await Promise.race([lease.ended, stopped.promise]);
-    } finally {
-      slot.stop.signal.removeEventListener('abort', cancel);
+      result = await Promise.race([
+        lease.ended.then(({ error }) => ({ kind: 'ended' as const, error })), stopped.promise,
+        ...(contact ? [contact] : []),
+      ]);
+    } catch (error) {
+      failure = { error };
+    }
+    slot.stop.signal.removeEventListener('abort', cancel);
+    if (result) {
+      switch (result.kind) {
+      case 'replacement': return result;
+      case 'ended': break;
+      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      }
+    }
+    contactStop.abort();
+    // The losing operation can return late. It remains owned until disposal.
+    let late: Awaited<NonNullable<typeof contact>> | undefined;
+    try {
+      late = await contact;
+    } catch (error) {
+      if (this.contactRetirementFailed({ error })) failure = { error };
+    }
+    if (late) await this.disposeCandidate({ candidate: late.candidate });
+    if (failure) throw failure.error;
+    return result;
+  }
+  private contactRetirementFailed({ error }: { error: unknown }): boolean {
+    const decision = this.decision({ error, source: 'connection' });
+    switch (decision) {
+    case 'retirement-failed': return true;
+    case 'retry': case 'blocked': return false;
+    default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
+    }
+  }
+  private async disposeCandidate({ candidate }: { candidate: ConnectionReplacement<Value> }): Promise<void> {
+    try {
+      await candidate.dispose();
+    } catch (error) {
+      // Disposal failure is ownership failure, independent of retryable peer errors.
+      this.failRetirement({ error }); throw error;
     }
   }
   private scheduleRetry(): void {

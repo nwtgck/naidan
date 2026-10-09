@@ -160,8 +160,28 @@ export class NaidanPipingKeyContext {
     this.internalRoot = undefined;
   }
 }
+/** Pinned-only, authenticated admission barrier. It does not expose split ciphers. */
+export type PinnedContactStatus = {
+  heldContext: Uint8Array | undefined;
+  publicHandshakeData: Uint8Array;
+  confirm({ peerHeldContext, peerPublicHandshakeData, signal }: {
+    peerHeldContext: Uint8Array | undefined; peerPublicHandshakeData: Uint8Array; signal: AbortSignal;
+  }): Promise<void>;
+};
+function contactStatus({ binding, heldContext, publicData }: { binding: Uint8Array; heldContext: Uint8Array | undefined; publicData: Uint8Array }): Uint8Array {
+  const size = new Uint8Array(2); new DataView(size.buffer).setUint16(0, publicData.length);
+  return joinBytes({ parts: [new Uint8Array([8, 1]), binding, new Uint8Array([heldContext ? 1 : 0]), ...(heldContext ? [heldContext] : []), size, publicData] });
+}
+function readContactStatus({ bytes, binding }: { bytes: Uint8Array; binding: Uint8Array }): { peerHeldContext: Uint8Array | undefined; peerPublicHandshakeData: Uint8Array } {
+  requireValue({ condition: bytes.length >= 37 && bytes.length <= 325 && bytes[0] === 8 && bytes[1] === 1 && equalBytes({ left: bytes.subarray(2, 34), right: binding }) && (bytes[34] === 0 || bytes[34] === 1), message: 'Invalid pinned contact status' });
+  const offset = bytes[34] === 1 ? 67 : 35;
+  requireValue({ condition: bytes.length >= offset + 2, message: 'Truncated pinned contact status' });
+  const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(offset);
+  requireValue({ condition: size <= 256 && bytes.length === offset + 2 + size, message: 'Invalid pinned contact advertisement' });
+  return { peerHeldContext: bytes[34] === 1 ? bytes.slice(35, 67) : undefined, peerPublicHandshakeData: bytes.slice(offset + 2) };
+}
 export type EstablishedPipingKeys = { keys: NaidanPipingKeyContext; peerHandshakeData: Uint8Array };
-export async function establishVerifiedNaidanPipingKeys({ role, identity, expectedPeer, verifyPeer, binding, channel, signal: parent, responseTimeoutMs, onResponseFailure, handshakeData = new Uint8Array() }: {
+export async function establishVerifiedNaidanPipingKeys({ role, identity, expectedPeer, verifyPeer, binding, channel, signal: parent, responseTimeoutMs, onResponseFailure, handshakeData = new Uint8Array(), contact }: {
     role: NaidanPipingRole;
     identity: NaidanPipingIdentity;
     expectedPeer: Uint8Array | undefined;
@@ -172,9 +192,15 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     responseTimeoutMs: number;
     onResponseFailure: (({ error }: { error: unknown }) => void) | undefined;
     handshakeData?: Uint8Array;
+    contact?: PinnedContactStatus;
 }): Promise<EstablishedPipingKeys> {
   const localData = ownBytes({ bytes: handshakeData, maxBytes: 16642 });
   let peerData = new Uint8Array();
+  const heldContext = contact?.heldContext === undefined ? undefined : ownBytes({ bytes: contact.heldContext, maxBytes: 32 });
+  const publicData = ownBytes({ bytes: contact?.publicHandshakeData ?? new Uint8Array(), maxBytes: 256 });
+  requireValue({ condition: heldContext === undefined || heldContext.length === 32, message: 'Contact context size' });
+  requireValue({ condition: !contact || expectedPeer !== undefined, message: 'Contact requires a trusted pin' });
+  let statusBinding = new Uint8Array();
   requireValue({ condition: isInitiator({ role: role }) || !isInitiator({ role: role }), message: 'Invalid role' });
   const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 }), sharedBinding = ownBytes({ bytes: binding, maxBytes: 32 });
   const local: NaidanPipingIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
@@ -260,32 +286,54 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
         await Promise.allSettled([sending, receiving]);
       }
     };
-    const trustFlag = pin ? 1 : 0;
-    const { sent: statusWindow, received: status } = await mutual({
-      sending: request({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }), stage: 'status' }),
-      receiving: receive(),
-    });
-    requireValue({
-      condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
-      equalBytes({ left: status.subarray(2), right: sessionBinding }),
-      message: 'Authentication status mismatch',
-    });
-    requireValue({ condition: responses.accept({ window: statusWindow }), message: 'Stale trust status' });
-    if (trustFlag === 0 || status[1] === 0) {
-      if (!verifyPeer) throw new Error('This connection needs an explicit peer comparison');
-      // The full 256-bit channel binding is compared over an already authenticated external path.
-      // Never truncate this to the short, public rendezvous number or reuse it across attempts.
-      const verified = await verifyComparison({ verifyPeer, peerIdentity: established.peerIdentity, comparison: sessionBinding, signal });
+    if (contact) {
+      const localStatus = contactStatus({ binding: sessionBinding, heldContext, publicData });
+      sensitive.push(localStatus);
+      // Only one control HTTP operation per endpoint while old DATA remains live.
+      let peerStatus: Uint8Array;
+      if (isInitiator({ role })) {
+        const window = await request({ bytes: localStatus, stage: 'status' });
+        peerStatus = await receive();
+        readContactStatus({ bytes: peerStatus, binding: sessionBinding });
+        requireValue({ condition: responses.accept({ window }), message: 'Stale contact response' });
+      } else {
+        peerStatus = await receive();
+        readContactStatus({ bytes: peerStatus, binding: sessionBinding });
+        const window = await request({ bytes: localStatus, stage: 'status' });
+        requireValue({ condition: responses.accept({ window }), message: 'Stale contact response' });
+      }
+      sensitive.push(peerStatus);
+      statusBinding = fields({ parts: isInitiator({ role }) ? [localStatus, peerStatus] : [peerStatus, localStatus] });
+      await contact.confirm({ ...readContactStatus({ bytes: peerStatus, binding: sessionBinding }), signal });
       signal.throwIfAborted();
-      requireValue({ condition: verified === true, message: 'Peer comparison rejected' });
-      const { received: approval } = await mutual({
-        sending: send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }), human: true }),
-        receiving: receive({ human: true }),
+    } else {
+      const trustFlag = pin ? 1 : 0;
+      const { sent: statusWindow, received: status } = await mutual({
+        sending: request({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }), stage: 'status' }),
+        receiving: receive(),
       });
       requireValue({
-        condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
-        message: 'Peer did not approve this connection',
+        condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
+        equalBytes({ left: status.subarray(2), right: sessionBinding }),
+        message: 'Authentication status mismatch',
       });
+      requireValue({ condition: responses.accept({ window: statusWindow }), message: 'Stale trust status' });
+      if (trustFlag === 0 || status[1] === 0) {
+        if (!verifyPeer) throw new Error('This connection needs an explicit peer comparison');
+        // The full 256-bit channel binding is compared over an already authenticated external path.
+        // Never truncate this to the short, public rendezvous number or reuse it across attempts.
+        const verified = await verifyComparison({ verifyPeer, peerIdentity: established.peerIdentity, comparison: sessionBinding, signal });
+        signal.throwIfAborted();
+        requireValue({ condition: verified === true, message: 'Peer comparison rejected' });
+        const { received: approval } = await mutual({
+          sending: send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }), human: true }),
+          receiving: receive({ human: true }),
+        });
+        requireValue({
+          condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
+          message: 'Peer did not approve this connection',
+        });
+      }
     }
     const seed = crypto.getRandomValues(new Uint8Array(32));
     sensitive.push(seed);
@@ -307,7 +355,7 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       info: fields({ parts: [ascii({ text: 'peer-key-export/v1' })] }),
     }, imported, 256));
     sensitive.push(rootBytes);
-    const contextId = await digest({ bytes: fields({ parts: [ascii({ text: 'peer-key-context/v1' }), sessionBinding, await digest({ bytes: material }), ...(isInitiator({ role }) ? [localData, peerData] : [peerData, localData])] }) });
+    const contextId = await digest({ bytes: fields({ parts: [ascii({ text: 'peer-key-context/v1' }), sessionBinding, await digest({ bytes: material }), ...(isInitiator({ role }) ? [localData, peerData] : [peerData, localData]), ...(contact ? [statusBinding] : [])] }) });
     seed.fill(0);
     peerSeed.fill(0);
     material.fill(0);
@@ -340,7 +388,7 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     responses.fail({ error: failure.error });
   } finally {
     responses.dispose();
-    localData.fill(0);
+    localData.fill(0); publicData.fill(0); heldContext?.fill(0); statusBinding.fill(0);
     for (const bytes of sensitive)
       bytes.fill(0);
     for (const dispose of [() => state?.dispose(), () => noise?.send.dispose(), () => noise?.receive.dispose()]) {
