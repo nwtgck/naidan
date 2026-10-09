@@ -15,7 +15,6 @@ const listeners = new Set<() => void>();
 let control: ReturnType<typeof createRpcStopControl> | undefined;
 let channel: BroadcastChannel | undefined;
 let automaticRegistration: object | undefined;
-let startupConsumed = false;
 let automaticEpoch = 0;
 let automaticScheduled: ScheduledIdleTask | undefined;
 function cancelAutomaticCheck(): void {
@@ -40,7 +39,7 @@ function scheduleAutomaticCheck(): void {
         if (current()) await manager.startAutomaticConnections();
       } catch {
       // Failed reads/identity checks are not absence and are not retried in a
-      // tight loop. Startup is consumed; later hints only wake existing desires.
+      // tight loop. A later readiness/registry hint may try again.
         notifyRpcState();
       }
     },
@@ -52,9 +51,7 @@ export function startRpcAutomaticConnections(): () => void {
   const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: revalidate });
   const resume = () => revalidate();
   window.addEventListener('focus', resume); window.addEventListener('pageshow', resume); window.addEventListener('online', resume);
-  if (!startupConsumed) {
-    startupConsumed = true; scheduleAutomaticCheck();
-  }
+  scheduleAutomaticCheck();
   return () => {
     unsubscribe(); window.removeEventListener('focus', resume); window.removeEventListener('pageshow', resume); window.removeEventListener('online', resume);
     if (automaticRegistration !== registration) return;
@@ -65,9 +62,15 @@ export function startRpcAutomaticConnections(): () => void {
   };
 }
 function revalidate(): void {
-  if (enabled && loaded) void loaded.then(async manager => {
-    await manager.revalidate(); if (enabled) manager.wakeDesiredConnections();
+  if (!enabled) return;
+  if (loaded) void loaded.then(async manager => {
+    await manager.revalidate();
+    if (enabled) {
+      manager.wakeDesiredConnections();
+      if (automaticRegistration) await manager.startAutomaticConnections();
+    }
   }).catch(notifyRpcState);
+  else if (automaticRegistration) scheduleAutomaticCheck();
 }
 function controls(): ReturnType<typeof createRpcStopControl> {
   if (control) return control;
@@ -122,13 +125,14 @@ export function notifyRpcState(): void {
     } catch { /* Observation only. */ }
   }
 }
-/** Hydration/enable never seeds connection intent. Only the app-ready binding
- * consumes startup preferences; OFF invalidates any still-pending seed. */
+/** Settings hydration cannot connect before app-ready. Enabling after ready
+ * retries startup readiness; the manager owns the once-per-registry decision. */
 export function configureRpcFeature({ status, settings }: { status: 'enabled' | 'disabled', settings(): Settings }): Promise<void> {
-  const nextEnabled = status === 'enabled';
+  const nextEnabled = status === 'enabled', wasEnabled = enabled;
   if (nextEnabled && !enabled) control?.clearRequest();
   enabled = nextEnabled; readSettings = settings;
   if (!nextEnabled) cancelAutomaticCheck();
+  else if (!wasEnabled) scheduleAutomaticCheck();
   notifyRpcState();
   if (!loaded) return Promise.resolve();
   const desired = enabled;
@@ -147,8 +151,8 @@ export async function getRpcManager(): Promise<NaidanPeerManager> {
     }));
     loaded = initializing;
     // Share pending/successful initialization, but do not permanently poison
-    // explicit use after a failed import or factory. Passive hydration and focus
-    // still cannot retry initialization. An existing manager's teardown failures
+    // later opt-in use after a failed import or factory. Passive hydration
+    // still does not import runtime; app-ready hints require saved opt-in. An existing manager's teardown failures
     // are deliberately not cleared here: it continues to own its resources.
     void initializing.catch(() => {
       if (loaded === initializing) loaded = undefined;

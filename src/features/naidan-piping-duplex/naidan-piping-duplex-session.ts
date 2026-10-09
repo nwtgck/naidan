@@ -1,305 +1,149 @@
-import type { LivenessPolicy } from '@/features/naidan-piping-duplex/private-responses';
+import { ownBytes, requireValue } from '@/features/naidan-piping-duplex/bytes';
+import type { ReceiveLimits } from '@/features/naidan-piping-duplex/batch-wire';
+import { validateReceiveLimits } from '@/features/naidan-piping-duplex/batch-wire';
+import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
+import { connectPinnedKeys, pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
+import type { NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import type { NaidanPipingConnectionEnd } from '@/features/naidan-piping-duplex/lifetime';
-import { z } from 'zod';
-import { restrictedFetchHeadersSchema } from '@/utils/restricted-fetch-headers';
-import { ascii, ownBytes } from '@/features/naidan-piping-duplex/bytes';
-import { startPinnedConnection } from '@/features/naidan-piping-duplex/connection';
-import type { PinnedConnectionTask } from '@/features/naidan-piping-duplex/connection';
-import type { FiniteTransport } from './finite';
-import { FiniteEndpoint } from '@/features/naidan-piping-duplex/finite';
-import type { NaidanPipingKeyContext, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
+import { DEFAULT_LIVENESS, DEFAULT_RECEIVE_LIMITS, OrderedSession, validateLiveness } from '@/features/naidan-piping-duplex/ordered-session';
+import type { ConnectionHealth, LivenessOptions } from '@/features/naidan-piping-duplex/ordered-session';
 import type { NaidanPipingRole } from '@/features/naidan-piping-duplex/role';
-import { runDuplex, validatePacing } from '@/features/naidan-piping-duplex/runner';
-import type { NaidanPipingDuplexPacing } from '@/features/naidan-piping-duplex/runner';
-import { StreamSession } from '@/features/naidan-piping-duplex/session';
-import type { NaidanPipingDuplexStream } from '@/features/naidan-piping-duplex/session';
+import type { MultiplexedStream } from '@/features/naidan-piping-duplex/stream-mux';
 
 export type NaidanPipingDuplexOptions = {
   baseUrl: string;
   policy: 'https-only' | 'allow-loopback-http';
   requestTimeoutMs: number;
-  repairTimeoutMs: number;
-  candidateConfirmationTimeoutMs: number;
   handshakeResponseTimeoutMs: number;
-  liveness: LivenessPolicy;
   headers?: { name: string; value: string }[];
-  pacing: NaidanPipingDuplexPacing;
+  liveness?: LivenessOptions;
+  receiveLimits?: ReceiveLimits;
 };
+type ConnectionInput = {
+  piping: NaidanPipingDuplexOptions; identity: NaidanPipingIdentity; signal: AbortSignal;
+  publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
+};
+type Authentication =
+  | { kind: 'pinned'; expectedPeer: Uint8Array; purpose: string }
+  | { kind: 'pair'; code: string; role: NaidanPipingRole | undefined; verifyPeer: NaidanPipingPeerVerifier };
 
-const duration = z.number().int().min(1).max(2147483647);
-const optionsSchema = z.strictObject({
-  baseUrl: z.string(),
-  policy: z.enum(['https-only', 'allow-loopback-http']),
-  requestTimeoutMs: duration,
-  repairTimeoutMs: duration,
-  candidateConfirmationTimeoutMs: duration,
-  handshakeResponseTimeoutMs: duration,
-  liveness: z.strictObject({ intervalMs: duration, responseTimeoutMs: duration }),
-  headers: restrictedFetchHeadersSchema.optional(),
-  pacing: z.strictObject({
-    minimumMs: duration,
-    idleResendIntervalMs: duration,
-    retryBaseMs: duration,
-    retryMaximumMs: duration,
-  }),
-});
-
-export function validateDuplexOptions({ piping }: { piping: NaidanPipingDuplexOptions }): NaidanPipingDuplexOptions {
-  const settings = optionsSchema.parse(piping); validatePacing({ pacing: settings.pacing }); return settings;
-}
-
-/** An owned, pinned-peer Piping connection. It does not trust peers based on a short code alone. */
+/** A single finite-body, authenticated connection. Never reconnects or replaces itself. */
 export class NaidanPipingDuplexSession {
-  private readonly streams: StreamSession;
-  private readonly keys: NaidanPipingKeyContext;
-  private readonly stop: AbortController;
+  private readonly connection: OrderedSession;
   private readonly publicData: Uint8Array;
   private readonly privateData: Uint8Array;
-  /** Settles after all locally owned I/O has stopped. It is not a peer-delivery acknowledgement. */
-  readonly closed: Promise<void>;
+  private retired = false;
   readonly ended: Promise<NaidanPipingConnectionEnd>;
+  readonly closed: Promise<void>;
 
-  private constructor({ streams, keys, stop, endpoint, pacing, bootstrapClosed, signal, forward, liveness, peerPublicHandshakeData, peerHandshakeData }: {
-    liveness: LivenessPolicy;
-    peerPublicHandshakeData: Uint8Array; peerHandshakeData: Uint8Array;
-    streams: StreamSession;
-    keys: NaidanPipingKeyContext;
-    stop: AbortController;
-    endpoint: FiniteTransport;
-    pacing: NaidanPipingDuplexPacing;
-    bootstrapClosed: Promise<void>;
-    signal: AbortSignal;
-    forward: () => void;
+  private constructor({ connection, publicData, privateData }: {
+    connection: OrderedSession; publicData: Uint8Array; privateData: Uint8Array;
   }) {
-    this.publicData = peerPublicHandshakeData; this.privateData = peerHandshakeData;
-    this.streams = streams;
-    this.ended = streams.ended;
-    this.keys = keys;
-    this.stop = stop;
-    const failures: unknown[] = [];
-    const stopStreams = () => {
-      // Abort listeners must not throw out of event dispatch and lose cleanup failures.
-      try {
-        streams.fail({ kind: 'local-stop', error: stop.signal.reason });
-      } catch (error) {
-        failures.push(error);
-      }
-      try {
-        keys.dispose();
-      } catch (error) {
-        failures.push(error);
-      }
-    };
-    stop.signal.addEventListener('abort', stopStreams, { once: true });
-    if (stop.signal.aborted) stopStreams();
-    streams.startResponses({ policy: liveness });
-    const traffic = runDuplex({ session: streams, endpoint, signal: stop.signal, pacing, onEvent: () => {} });
-    this.closed = (async () => {
-      try {
-        await traffic;
-      } catch (error) {
-        // runDuplex has already joined its jobs. Preserve logical failure in
-        // ended; only an explicit retirement failure poisons this barrier.
-        if (error instanceof PipingRetirementError) failures.push(error);
-        try {
-          streams.fail({ kind: 'transport-fatal', error });
-        } catch (failure) {
-          failures.push(failure);
-        }
-      }
-      try {
-        stop.abort(streams.failureReason);
-      } catch (error) {
-        failures.push(error);
-      }
-      try {
-        await bootstrapClosed;
-      } catch (error) {
-        failures.push(error);
-      }
-      try {
-        stopStreams();
-      } catch (error) {
-        failures.push(error);
-      }
-      try {
-        streams.retireResponses();
-      } catch (error) {
-        failures.push(error);
-      }
-      peerPublicHandshakeData.fill(0); peerHandshakeData.fill(0);
-      stop.signal.removeEventListener('abort', stopStreams);
-      signal.removeEventListener('abort', forward);
-      if (failures.length) throw new PipingRetirementError({ cause: failures[0], logicalError: streams.failureReason });
-    })();
-    // Observing the separate lifetime promise is optional; never create an unhandled rejection.
+    this.connection = connection; this.publicData = publicData; this.privateData = privateData;
+    this.ended = connection.ended;
+    this.closed = connection.closed.finally(() => {
+      this.retired = true; publicData.fill(0); privateData.fill(0);
+    });
     void this.closed.catch(() => {});
   }
-
-  private static async connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer, signal, publicHandshakeData, handshakeData, transports, onStreams }: {
-    transports?: { bootstrap: FiniteTransport; traffic: FiniteTransport };
-    onStreams?: ({ streams }: { streams: StreamSession }) => void;
-    publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
-    piping: NaidanPipingDuplexOptions;
-    code: string;
-    role: NaidanPipingRole | undefined;
-    identity: NaidanPipingIdentity;
-    expectedPeer: Uint8Array | undefined;
-    verifyPeer: NaidanPipingPeerVerifier | undefined;
-    signal: AbortSignal;
+  private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, authentication }: ConnectionInput & {
+    authentication: Authentication;
   }): Promise<NaidanPipingDuplexSession> {
-    const publicData = ownBytes({ bytes: publicHandshakeData === undefined ? new Uint8Array() : publicHandshakeData, maxBytes: 256 });
-    const privateData = ownBytes({ bytes: handshakeData === undefined ? new Uint8Array() : handshakeData, maxBytes: 463 });
     signal.throwIfAborted();
-    // Zod returns a private options snapshot before the first asynchronous boundary.
-    const settings = validateDuplexOptions({ piping });
-    const localIdentity = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
-    const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 });
-    const endpointOptions = {
-      baseUrl: settings.baseUrl,
-      policy: settings.policy,
-      timeoutMs: settings.requestTimeoutMs,
-      repairTimeoutMs: settings.repairTimeoutMs,
-      headers: settings.headers,
-    };
-    // The final handshake flight and application traffic have independent POST ownership.
-    const bootstrapEndpoint = transports?.bootstrap ?? new FiniteEndpoint(endpointOptions);
-    const trafficEndpoint = transports?.traffic ?? new FiniteEndpoint(endpointOptions);
-    const stop = new AbortController();
-    const forward = () => stop.abort(signal.reason);
-    signal.addEventListener('abort', forward, { once: true });
-    if (signal.aborted) forward();
-    let bootstrap: PinnedConnectionTask | undefined;
-    let keys: NaidanPipingKeyContext | undefined;
-    let streams: StreamSession | undefined;
-    let connection: NaidanPipingDuplexSession | undefined;
-    let peerPublicData: Uint8Array | undefined, peerPrivateData: Uint8Array | undefined;
+    // Snapshot caller-owned settings and bytes before the first asynchronous step.
+    const local = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
+    const publicData = ownBytes({ bytes: publicHandshakeData ?? new Uint8Array(), maxBytes: 256 });
+    const privateData = ownBytes({ bytes: handshakeData ?? new Uint8Array(), maxBytes: 16384 });
+    const limits = validateReceiveLimits({ limits: piping.receiveLimits ?? DEFAULT_RECEIVE_LIMITS });
+    const liveness = validateLiveness({ liveness: piping.liveness ?? DEFAULT_LIVENESS });
+    const responseTimeoutMs = piping.handshakeResponseTimeoutMs;
+    requireValue({ condition: Number.isInteger(responseTimeoutMs) && responseTimeoutMs > 0 && responseTimeoutMs <= 2147483647, message: 'Invalid handshake response deadline' });
+    const endpointOptions = { baseUrl: piping.baseUrl, policy: piping.policy, timeoutMs: piping.requestTimeoutMs, headers: piping.headers };
+    // Handshake and traffic never overlap. Separate endpoints have no shared
+    // ownership counters and are both validated before any network operation.
+    const bootstrap = new FiniteTransferEndpoint({ ...endpointOptions, timeoutMs: Math.min(piping.requestTimeoutMs, responseTimeoutMs) });
+    const traffic = new FiniteTransferEndpoint(endpointOptions);
+    const pinned = (() => {
+      switch (authentication.kind) {
+      case 'pinned': return ownBytes({ bytes: authentication.expectedPeer, maxBytes: 32 });
+      case 'pair': return undefined;
+      default: { const exhaustive: never = authentication; throw new Error(String(exhaustive)); }
+      }
+    })();
+    let established: Awaited<ReturnType<typeof connectPinnedKeys>> | undefined;
+    let connection: OrderedSession | undefined;
     try {
-      bootstrap = await startPinnedConnection({
-        publicHandshakeData: publicData,
-        handshakeData: privateData,
-        role,
-        identity: localIdentity,
-        expectedPeer: pin,
-        verifyPeer,
-        code,
-        endpoint: bootstrapEndpoint,
-        signal: stop.signal,
-        responseTimeoutMs: settings.handshakeResponseTimeoutMs,
-        confirmationTimeoutMs: settings.candidateConfirmationTimeoutMs,
-        intervalMs: settings.pacing.minimumMs,
-        // A different stream profile must fail authentication, not silently produce two idle routes.
-        purpose: ascii({ text: 'naidan-piping-streams/v3' }),
-      });
-      const established = await bootstrap.ready;
-      keys = established.keys; peerPublicData = established.peerPublicHandshakeData; peerPrivateData = established.peerHandshakeData;
-      stop.signal.throwIfAborted();
-      streams = await StreamSession.create({ keys });
-      onStreams?.({ streams });
-      stop.signal.throwIfAborted();
-      connection = new NaidanPipingDuplexSession({
-        streams,
-        keys,
-        stop,
-        endpoint: trafficEndpoint,
-        pacing: settings.pacing,
-        bootstrapClosed: bootstrap.closed,
-        signal,
-        forward,
-        liveness: settings.liveness,
-        peerPublicHandshakeData: peerPublicData,
-        peerHandshakeData: peerPrivateData,
-      });
-      await streams.firstResponse;
-      await bootstrap.retire();
-      stop.signal.throwIfAborted();
-      if (streams.failureReason) throw streams.failureReason;
-      return connection;
+      const common = { endpoint: bootstrap, identity: local, signal, responseTimeoutMs, publicHandshakeData: publicData, handshakeData: privateData };
+      switch (authentication.kind) {
+      case 'pinned': established = await connectPinnedKeys({ ...common, expectedPeer: pinned!, purpose: authentication.purpose }); break;
+      case 'pair': established = await pairKeys({ ...common, code: authentication.code, role: authentication.role, verifyPeer: authentication.verifyPeer }); break;
+      default: { const exhaustive: never = authentication; throw new Error(String(exhaustive)); }
+      }
+      signal.throwIfAborted();
+      connection = await OrderedSession.create({ keys: established.keys, endpoint: traffic, signal, limits, liveness });
+      signal.throwIfAborted();
+      return new NaidanPipingDuplexSession({ connection, publicData: established.peerPublicHandshakeData, privateData: established.peerHandshakeData });
     } catch (error) {
-      // Once keys are owned, a parent stop may precede a late local setup error.
-      const original = streams?.failureReason ?? (keys !== undefined && stop.signal.aborted ? stop.signal.reason : error);
-      const failures: unknown[] = [];
-      for (const dispose of [() => stop.abort(original), () => streams?.fail({ kind: 'local-stop', error: original }), () => keys?.dispose()]) {
+      if (connection) {
+        connection.abort({ reason: 'Connection publication cancelled' });
         try {
-          dispose();
-        } catch (failure) {
-          failures.push(failure);
+          await connection.closed;
+        } catch (cause) {
+          throw new PipingRetirementError({ cause, logicalError: error });
         }
-      }
-      try {
-        if (connection) await connection.closed; else await bootstrap?.closed;
-      } catch (failure) {
-        failures.push(failure);
-      }
-      try {
-        if (!connection) streams?.retireResponses();
-      } catch (failure) {
-        failures.push(failure);
-      }
-      signal.removeEventListener('abort', forward);
-      peerPublicData?.fill(0); peerPrivateData?.fill(0);
-      if (failures.length) throw new PipingRetirementError({ cause: failures[0], logicalError: original instanceof PipingRetirementError ? original.logicalError : original });
-      throw original;
+      } else established?.keys.dispose();
+      established?.peerPublicHandshakeData.fill(0); established?.peerHandshakeData.fill(0);
+      throw error;
     } finally {
-      publicData.fill(0); privateData.fill(0);
+      publicData.fill(0); privateData.fill(0); pinned?.fill(0);
     }
   }
-
-  /** Internal pinned-peer adapter: virtual transports share one physical mailbox. */
-  static connectWithTransport({ piping, code, role, identity, expectedPeer, signal, publicHandshakeData, handshakeData, transports, onStreams }: {
-    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole; identity: NaidanPipingIdentity;
-    expectedPeer: Uint8Array; signal: AbortSignal; publicHandshakeData: Uint8Array | undefined; handshakeData: Uint8Array | undefined;
-    transports: { bootstrap: FiniteTransport; traffic: FiniteTransport }; onStreams({ streams }: { streams: StreamSession }): void;
+  static connectPinned({ expectedPeer, purpose = 'naidan-piping-duplex/v1', ...input }: ConnectionInput & {
+    expectedPeer: Uint8Array; purpose?: string;
   }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer: undefined, signal, publicHandshakeData, handshakeData, transports, onStreams });
+    return this.connectInternal({ ...input, authentication: { kind: 'pinned', expectedPeer, purpose } });
   }
-
-  static connect({ piping, code, role, identity, expectedPeer, signal, publicHandshakeData, handshakeData }: {
-    publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
-    piping: NaidanPipingDuplexOptions; code: string; role: NaidanPipingRole;
-    identity: NaidanPipingIdentity; expectedPeer: Uint8Array; signal: AbortSignal;
+  static pair({ code, role, verifyPeer, ...input }: ConnectionInput & {
+    code: string; role?: NaidanPipingRole; verifyPeer: NaidanPipingPeerVerifier;
   }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ piping, code, role, identity, expectedPeer, verifyPeer: undefined, signal, publicHandshakeData, handshakeData });
+    return this.connectInternal({ ...input, authentication: { kind: 'pair', code, role, verifyPeer } });
   }
-  static pair({ piping, code, identity, verifyPeer, signal, publicHandshakeData, handshakeData }: {
-    publicHandshakeData?: Uint8Array; handshakeData?: Uint8Array;
-    piping: NaidanPipingDuplexOptions; code: string;
-    identity: NaidanPipingIdentity; verifyPeer: NaidanPipingPeerVerifier; signal: AbortSignal;
-  }): Promise<NaidanPipingDuplexSession> {
-    return this.connectInternal({ piping, code, role: undefined, identity, expectedPeer: undefined, verifyPeer, signal, publicHandshakeData, handshakeData });
-  }
-  /** Authenticated opaque bytes. Each read returns a copy; unavailable after shutdown. */
   get peerPublicHandshakeData(): Uint8Array {
-    this.stop.signal.throwIfAborted(); return this.publicData.slice();
+    requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.publicData.slice();
   }
   get peerHandshakeData(): Uint8Array {
-    this.stop.signal.throwIfAborted(); return this.privateData.slice();
+    requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.privateData.slice();
   }
   get contextId(): Uint8Array {
-    return this.keys.contextId;
+    return this.connection.contextId;
   }
   get peerIdentity(): Uint8Array {
-    return this.keys.peerIdentity;
+    return this.connection.peerIdentity;
   }
-  get incomingStreams(): AsyncIterable<NaidanPipingDuplexStream> {
-    return this.streams.incomingStreams;
+  get health(): ConnectionHealth {
+    return this.connection.health;
   }
-  openStream({ signal }: { signal: AbortSignal | undefined }): Promise<NaidanPipingDuplexStream> {
-    return this.streams.openStream({ signal });
+  subscribeHealth({ listener }: { listener({ health }: { health: ConnectionHealth }): void }): () => void {
+    return this.connection.subscribeHealth({ listener });
   }
-  /** Stop new streams, then wait for local protocol termination; unread data is preserved. */
+  get incomingStreams(): AsyncIterable<MultiplexedStream> {
+    return this.connection.incomingStreams;
+  }
+  openStream({ signal }: { signal: AbortSignal | undefined }): Promise<MultiplexedStream> {
+    return this.connection.openStream({ signal });
+  }
   drain({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
-    return this.streams.drain({ signal });
+    return this.connection.drain({ signal });
   }
-  /** Abort all streams and transports. Await closed to observe completion of local cleanup. */
+  close({ noticeTimeoutMs, signal }: { noticeTimeoutMs?: number; signal: AbortSignal | undefined }): Promise<{ notification: 'acknowledged' | 'unconfirmed' }> {
+    return this.connection.close({ noticeTimeoutMs, signal });
+  }
   abort({ reason }: { reason: string }): void {
-    this.stop.abort(new Error(reason));
+    this.connection.abort({ reason });
   }
 }
 
-// Export internal state and logic used only for testing here. Do not reference these in production logic.
-// ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
 };

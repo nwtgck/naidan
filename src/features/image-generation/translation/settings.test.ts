@@ -1,4 +1,3 @@
-import { UnavailableRpcValue } from '@/01-models/unavailable-rpc-value';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { describe, expect, it } from 'vitest';
 import type { Endpoint } from '@/01-models/types';
@@ -48,14 +47,13 @@ it('merges LM fields independently through all three layers without turning inhe
 });
 
 it('clones an unavailable session RPC value without inheriting another peer', () => {
-  const raw = { type: 'naidan_rpc', registrationId: 'unavailable-A', future: { marker: 'A' } };
-  const endpoint: Endpoint = { type: 'unsupported_experimental_endpoint', persistedType: 'naidan_rpc', unavailableRpc: new UnavailableRpcValue({ raw }) };
+  const endpoint: Endpoint = { type: 'unsupported_experimental_endpoint', persistedType: 'naidan_rpc' };
   const session = { endpoint, modelId: 'explicit-model', lmParameters: undefined };
   const workspace = { endpoint: { type: 'naidan_rpc' as const, registrationId: toNaidanRpcRegistrationId({ raw: 'peer-B' }) }, modelId: 'other-model', lmParameters: undefined };
   const cloned = cloneImagePromptTranslationOverride({ value: session });
   const target = resolveImagePromptTranslation({ session: cloned, workspace, global });
   expect(target.endpointSource).toBe('session'); expect(target.modelId).toBe('explicit-model');
   if (target.endpoint.type !== 'unsupported_experimental_endpoint') throw new Error('Unavailable endpoint was replaced');
-  expect(target.endpoint.unavailableRpc?.read()).toEqual(raw);
-  expect(target.endpoint).not.toBe(endpoint); expect(target.endpoint.unavailableRpc).not.toBe(endpoint.unavailableRpc);
+  expect(target.endpoint.persistedType).toBe('naidan_rpc');
+  expect(target.endpoint).not.toBe(endpoint);
 });

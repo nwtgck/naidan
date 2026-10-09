@@ -1,5 +1,4 @@
 import { UnavailableRpcRecordError } from './unavailable-record';
-import { stringifyStorageDto } from '@/00-storage/service/serialize';
 import { z } from 'zod';
 import type { ImageGenerationReadResult, ImageGenerationReadWarning } from '@/01-models/image-generation';
 
@@ -240,7 +239,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
   }): Promise<void> {
     const snapshot = recordSchema.parse(record);
     validateRecord({ record: snapshot });
-    const text = stringifyStorageDto({ value: snapshot, space: undefined });
+    const text = JSON.stringify(snapshot);
     const id = imageGenerationRawIdSchema.parse(recordId({ record: snapshot }));
     if (!directory) throw new Error('Image Generation table is unavailable.');
     const shard = id.slice(-2).toLowerCase();
@@ -250,7 +249,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     assertCurrent({ current });
     await beforeCommit();
     await writeImageGenerationText({ directory: shardDirectory, name: 'index.dirty', text: 'record-first' });
-    if (current === undefined || stringifyStorageDto({ value: current, space: undefined }) !== text) {
+    if (current === undefined || JSON.stringify(current) !== text) {
       switch (layout) {
       case 'files': await writeImageGenerationText({ directory: shardDirectory, name: `${id}.json`, text }); break;
       case 'session-directories': {
@@ -278,7 +277,7 @@ export function createImageGenerationTable<R, S>({ directory, layout, recordSche
     }
     const summaries = index.items.filter(summary => summaryId({ summary }) !== id);
     summaries.push(summarize({ record: snapshot }));
-    await writeImageGenerationText({ directory: shardDirectory, name: 'index.json', text: stringifyStorageDto({ value: indexSchema.parse({ items: summaries }), space: undefined }) });
+    await writeImageGenerationText({ directory: shardDirectory, name: 'index.json', text: JSON.stringify(indexSchema.parse({ items: summaries })) });
     await shardDirectory.removeEntry('index.dirty');
   }
 

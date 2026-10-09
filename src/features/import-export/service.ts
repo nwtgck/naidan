@@ -1,5 +1,3 @@
-import { UnrepresentableRpcValueError } from '@/01-models/unavailable-rpc-value';
-import { stringifyStorageDto } from '@/00-storage/service/serialize';
 import { ensureStrings } from '@/strings';
 import { generateId } from '@/01-models/id';
 import type {
@@ -527,7 +525,7 @@ export class ImportExportService {
         });
         await addTextFile({
           path: `${rootPath}settings.json`,
-          text: stringifyStorageDto({ value: SettingsSchemaDto.parse(settingsToDto({ domain: snapshot.structure.settings })), space: 2 }),
+          text: JSON.stringify(SettingsSchemaDto.parse(settingsToDto({ domain: snapshot.structure.settings })), undefined, 2),
         });
 
         if (excludeFlags.chat) {
@@ -551,7 +549,7 @@ export class ImportExportService {
         for (const group of snapshot.structure.chatGroups) {
           await addTextFile({
             path: `${rootPath}chat-groups/${idToRaw({ id: group.id })}.json`,
-            text: stringifyStorageDto({ value: ChatGroupSchemaDto.parse(chatGroupToDto({ domain: group })), space: 2 }),
+            text: JSON.stringify(ChatGroupSchemaDto.parse(chatGroupToDto({ domain: group })), undefined, 2),
           });
         }
 
@@ -559,7 +557,7 @@ export class ImportExportService {
           const metasDto = snapshot.structure.chatMetas.map(domain => chatMetaToDto({ domain }));
           await addTextFile({
             path: `${rootPath}chat-metas.json`,
-            text: stringifyStorageDto({ value: { entries: metasDto.map(dto => ChatMetaSchemaDto.parse(dto)) }, space: 2 }),
+            text: JSON.stringify({ entries: metasDto.map(dto => ChatMetaSchemaDto.parse(dto)) }, undefined, 2),
           });
         }
 
@@ -626,13 +624,13 @@ export class ImportExportService {
               }
               await addTextFile({
                 path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-                text: stringifyStorageDto({ value: currentThreadExport.chatDto, space: 2 }),
+                text: JSON.stringify(currentThreadExport.chatDto, undefined, 2),
               });
               break;
             }
             await addTextFile({
               path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-              text: stringifyStorageDto({ value: normalizeChatDtoTree({ chatDto: chunk.data }), space: 2 }),
+              text: JSON.stringify(normalizeChatDtoTree({ chatDto: chunk.data }), undefined, 2),
             });
             break;
           }
@@ -866,7 +864,6 @@ export class ImportExportService {
     } catch (error) {
       // Retained RPC values cannot be silently skipped by a destructive import.
       // Keep the legacy policy for unrelated malformed settings unchanged.
-      if (error instanceof UnrepresentableRpcValueError) throw error;
     }
   }
 
@@ -929,7 +926,6 @@ export class ImportExportService {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
           } catch (error) {
-            if (error instanceof UnrepresentableRpcValueError) throw error;
             // Preserve the existing policy for unrelated legacy corruption.
           }
         }
@@ -943,7 +939,6 @@ export class ImportExportService {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
           } catch (error) {
-            if (error instanceof UnrepresentableRpcValueError) throw error;
             // Preserve the existing policy for unrelated legacy corruption.
           }
         }
@@ -1051,7 +1046,6 @@ export class ImportExportService {
           }
         }
       } catch (error) {
-        if (error instanceof UnrepresentableRpcValueError) throw error;
         // Preserve the existing policy for unrelated legacy corruption.
       }
     }
@@ -1064,7 +1058,6 @@ export class ImportExportService {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) groupsDto.push(result.data);
         } catch (error) {
-          if (error instanceof UnrepresentableRpcValueError) throw error;
           // Preserve the existing policy for unrelated legacy corruption.
         }
       }
@@ -1165,7 +1158,6 @@ export class ImportExportService {
             importedGroupsDto.push(dto);
           }
         } catch (error) {
-          if (error instanceof UnrepresentableRpcValueError) throw error;
           // Preserve the existing policy for unrelated legacy corruption.
         }
       }
@@ -1190,7 +1182,6 @@ export class ImportExportService {
           }
         }
       } catch (error) {
-        if (error instanceof UnrepresentableRpcValueError) throw error;
         // Preserve the existing policy for unrelated legacy corruption.
       }
     }

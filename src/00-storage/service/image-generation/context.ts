@@ -1,4 +1,3 @@
-import { stringifyStorageDto } from '@/00-storage/service/serialize';
 import { z } from 'zod';
 import { generateId } from '@/01-models/id';
 import { idToRaw, type ImageGenerationStoreId } from '@/01-models/ids';
@@ -61,7 +60,7 @@ export async function openImageGenerationCatalogDto({ storageType, creation }: {
       directory ??= await imageGenerationRoot({ create: true });
       if (!directory) throw new Error('Image Generation directory is unavailable.');
       const catalog = ExperimentalImageGenerationCatalogSchemaDto.parse({ version: 1, id: idToRaw({ id: generateId<ImageGenerationStoreId>() }), revision: 0, createdAt: Date.now(), tags: [], preferences: { generationMonitorPresentation: 'visual', experimentalNoticeDismissedAt: undefined, assistantLayout: 'floating', assistantVisibility: 'closed', translation: undefined } });
-      await writeImageGenerationText({ directory, name: 'catalog.json', text: stringifyStorageDto({ value: catalog, space: undefined }) });
+      await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(catalog) });
       return catalog;
     },
   });
@@ -91,7 +90,7 @@ export function assertImageGenerationReplacement<T extends { revision: number }>
   const nextRevision = expectedRevision === undefined ? 0 : expectedRevision + 1;
   revisionSchema.parse(nextRevision);
   if (next.revision !== nextRevision) throw new Error('Invalid Image Generation successor revision.');
-  if (current && stringifyStorageDto({ value: current, space: undefined }) === stringifyStorageDto({ value: next, space: undefined })) return;
+  if (current && JSON.stringify(current) === JSON.stringify(next)) return;
   if (expectedRevision === undefined ? current !== undefined : current === undefined || current.revision !== expectedRevision) {
     throw new Error('Image Generation revision conflict. Reload instead of overwriting another edit.');
   }

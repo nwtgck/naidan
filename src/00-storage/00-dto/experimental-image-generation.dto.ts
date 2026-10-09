@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { EndpointSchemaDto, LmParametersSchemaDto, ReasoningSchemaDto } from './dto';
 import {
-  exactRpcObject,
   ExperimentalBrowserImageModelSelectionSchemaDto,
   ExperimentalImageGenerationPathSchemaDto,
   ExperimentalImageInferenceLocationPreferenceSchemaDto,
@@ -24,17 +23,15 @@ export const ExperimentalImageGenerationRuntimeSchemaDto = z.union([
     weightResidency: z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']),
     gpuBudgetMiB: missingAsUndefined(z.number().finite().nonnegative()),
   })),
-  exactRpcObject({
-    schema: resolveMissingAsUndefined(z.strictObject({
-      profile: z.literal('naidan-rpc'),
-      registrationId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),
-      peerPublicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-      label: z.string().max(100),
-      // An unfinished draft can exist before a model is selected. Actual
-      // generation requires an explicit model selection at the RPC boundary.
-      modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
-    })),
-  }),
+  resolveMissingAsUndefined(z.object({
+    profile: z.literal('naidan-rpc'),
+    registrationId: z.string(),
+    peerPublicKey: z.string(),
+    label: z.string(),
+    // An unfinished draft can exist before a model is selected. Actual
+    // generation requires an explicit model selection at the RPC boundary.
+    modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
+  })),
 ]);
 export type ExperimentalImageGenerationRuntimeDto = z.infer<typeof ExperimentalImageGenerationRuntimeSchemaDto>;
 
@@ -380,7 +377,7 @@ export type ExperimentalImageGenerationRunDto = z.infer<typeof ExperimentalImage
 
 const UnavailableRpcRuntimeCommonSchemaDto = resolveMissingAsUndefined(z.object({
   profile: z.literal('naidan-rpc'),
-  label: z.string().max(100),
+  label: z.string(),
   modelSelection: missingAsUndefined(ExperimentalRemoteImageModelSelectionSchemaDto),
 }));
 const UnavailableDirectRecordSchemaDto = ExperimentalImageGenerationSchemaDto.extend({

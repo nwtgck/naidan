@@ -94,7 +94,6 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     return {
       type: 'unsupported_experimental_endpoint',
       persistedType: endpoint.persistedType,
-      unavailableRpc: endpoint.unavailableRpc?.copy(),
     };
   default: {
     const _ex: never = endpoint;
@@ -239,14 +238,14 @@ export function areEndpointModelNamespacesEqual({
     }
   }
   case 'unsupported_experimental_endpoint': {
-    const { type: _leftType, persistedType: leftPersistedType, unavailableRpc: leftRaw, ...unhandledLeft } = left;
+    const { type: _leftType, persistedType: leftPersistedType, ...unhandledLeft } = left;
     unhandledLeft satisfies Record<PropertyKey, never>;
 
     switch (right.type) {
     case 'unsupported_experimental_endpoint': {
-      const { type: _rightType, persistedType: rightPersistedType, unavailableRpc: rightRaw, ...unhandledRight } = right;
+      const { type: _rightType, persistedType: rightPersistedType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return leftPersistedType === rightPersistedType && (leftRaw === undefined ? rightRaw === undefined : rightRaw !== undefined && leftRaw.equals({ other: rightRaw }));
+      return leftPersistedType === rightPersistedType;
     }
     case 'openai':
     case 'ollama':
@@ -372,14 +371,14 @@ export function areEndpointsEqual({
     }
   }
   case 'unsupported_experimental_endpoint': {
-    const { type: _leftType, persistedType: leftPersistedType, unavailableRpc: leftRaw, ...unhandledLeft } = left;
+    const { type: _leftType, persistedType: leftPersistedType, ...unhandledLeft } = left;
     unhandledLeft satisfies Record<PropertyKey, never>;
 
     switch (right.type) {
     case 'unsupported_experimental_endpoint': {
-      const { type: _rightType, persistedType: rightPersistedType, unavailableRpc: rightRaw, ...unhandledRight } = right;
+      const { type: _rightType, persistedType: rightPersistedType, ...unhandledRight } = right;
       unhandledRight satisfies Record<PropertyKey, never>;
-      return leftPersistedType === rightPersistedType && (leftRaw === undefined ? rightRaw === undefined : rightRaw !== undefined && leftRaw.equals({ other: rightRaw }));
+      return leftPersistedType === rightPersistedType;
     }
     case 'openai':
     case 'ollama':

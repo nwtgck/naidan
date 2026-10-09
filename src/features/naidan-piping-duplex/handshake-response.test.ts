@@ -31,7 +31,7 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure }: {
   const sends = { a: 0, b: 0 }, reads = { a: 0, b: 0 };
   const waiting = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
   const send = ({ side, queue }: { side: 'a' | 'b'; queue: Uint8Array[] }) => async ({ bytes }: { bytes: Uint8Array }) => {
-    sends[side]++;
+    sends[side]++; waiting.get(`send/${side}/${sends[side]}`)?.resolve();
     if (!(side === dropFrom && sends[side] === dropAt)) queue.push(bytes.slice());
     pulse.fire();
   };
@@ -73,6 +73,10 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure }: {
     sends,
     stopA,
     stopB,
+    whenSending({ side, count }: { side: 'a' | 'b'; count: number }) {
+      if (sends[side] >= count) return Promise.resolve();
+      const gate = Promise.withResolvers<void>(); waiting.set(`send/${side}/${count}`, gate); return gate.promise;
+    },
     whenReading({ side, count }: { side: 'a' | 'b'; count: number }) {
       if (reads[side] >= count) return Promise.resolve();
       const gate = Promise.withResolvers<void>(); waiting.set(`${side}/${count}`, gate); return gate.promise;
@@ -81,17 +85,19 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure }: {
 }
 
 it.each([
-  { side: 'a', dropFrom: 'b', dropAt: 1, read: 1, stage: 'noise-2' },
-  { side: 'b', dropFrom: 'a', dropAt: 2, read: 2, stage: 'noise-3' },
-  { side: 'a', dropFrom: 'b', dropAt: 2, read: 2, stage: 'status' },
-  { side: 'b', dropFrom: 'a', dropAt: 3, read: 3, stage: 'status' },
-  { side: 'a', dropFrom: 'b', dropAt: 3, read: 3, stage: 'seed' },
-  { side: 'b', dropFrom: 'a', dropAt: 4, read: 4, stage: 'seed' },
-  { side: 'a', dropFrom: 'b', dropAt: 4, read: 4, stage: 'confirmation' },
-  { side: 'b', dropFrom: 'a', dropAt: 5, read: 5, stage: 'confirmation' },
-] as const)('expires only the expected $stage response at peer $side', async ({ side, dropFrom, dropAt, read, stage }) => {
+  { side: 'a', dropFrom: 'b', dropAt: 1, read: 1, sent: 1, stage: 'noise-2' },
+  { side: 'b', dropFrom: 'a', dropAt: 2, read: 2, sent: 1, stage: 'noise-3' },
+  { side: 'a', dropFrom: 'b', dropAt: 2, read: 2, sent: 3, stage: 'status' },
+  { side: 'b', dropFrom: 'a', dropAt: 3, read: 3, sent: 2, stage: 'status' },
+  { side: 'a', dropFrom: 'b', dropAt: 3, read: 3, sent: 4, stage: 'seed' },
+  { side: 'b', dropFrom: 'a', dropAt: 4, read: 4, sent: 3, stage: 'seed' },
+  { side: 'a', dropFrom: 'b', dropAt: 4, read: 4, sent: 5, stage: 'confirmation' },
+  { side: 'b', dropFrom: 'a', dropAt: 5, read: 5, sent: 4, stage: 'confirmation' },
+] as const)('expires only the expected $stage response at peer $side', async ({ side, dropFrom, dropAt, read, sent, stage }) => {
   const pair = await start({ known: true, dropFrom, dropAt, verifyA: undefined, verifyB: undefined, onFailure: undefined });
-  await pair.whenReading({ side, count: read });
+  // Receive now starts concurrently with local encryption. The response clock
+  // begins only after encryption, at channel.send registration, not at receive.
+  await promiseAllKeyed({ reading: pair.whenReading({ side, count: read }), sending: pair.whenSending({ side, count: sent }) });
   await vi.advanceTimersByTimeAsync(1000);
   await expect(pair[side]).rejects.toMatchObject({ name: 'HandshakeResponseUnconfirmedError', stage });
 });

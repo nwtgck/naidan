@@ -43,7 +43,7 @@ export async function pinnedPeerRoutes({ identity, expectedPeer, origin, purpose
     const version = new Uint8Array(4); new DataView(version.buffer).setUint32(0, PROTOCOL_VERSION, true);
     const salt = new Uint8Array(await crypto.subtle.digest('SHA-256', fields({
       parts: [
-        ascii({ text: 'naidan-piping-pinned-route-context/v2' }), version, ascii({ text: url.origin }), purposeBytes,
+        ascii({ text: 'naidan-piping-pinned-route-context/v1' }), version, ascii({ text: url.origin }), purposeBytes,
         ...(ordering < 0 ? [local, peer] : [peer, local]),
       ],
     })));
@@ -53,7 +53,7 @@ export async function pinnedPeerRoutes({ identity, expectedPeer, origin, purpose
         name: 'HKDF',
         hash: 'SHA-256',
         salt,
-        info: fields({ parts: [ascii({ text: 'naidan-piping-pinned-route-only/v2' }), ascii({ text: direction })] }),
+        info: fields({ parts: [ascii({ text: 'naidan-piping-pinned-route-only/v1' }), ascii({ text: direction })] }),
       }, key, 256));
       signal.throwIfAborted();
       return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');

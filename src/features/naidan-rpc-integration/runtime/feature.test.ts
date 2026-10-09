@@ -105,12 +105,12 @@ it('fences an automatic registry read that finishes after feature OFF', async ()
   expect(fixture.create).not.toHaveBeenCalled();
 });
 
-it('registry hints do not seed newly enabled startup preferences in the current page', async () => {
+it('a registry hint can discover a saved opt-in after an initially empty catalogue', async () => {
   vi.useFakeTimers(); const feature = await import('./feature');
   await feature.configureRpcFeature({ status: 'enabled', settings }); automaticDisposers.push(feature.startRpcAutomaticConnections());
   await vi.advanceTimersByTimeAsync(60000); expect(fixture.list).toHaveBeenCalledOnce();
   fixture.list.mockResolvedValue(automaticRegistry()); for (const listener of fixture.registryListeners) listener();
-  await vi.advanceTimersByTimeAsync(100); expect(fixture.startAutomaticConnections).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(100); expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
 });
 
 it('passive hydration and enabling alone create no control channel, identity or manager', async () => {
@@ -197,7 +197,7 @@ it('does not replace an initialized manager when its resource retirement has fai
   }
 });
 
-it('app-ready OFF then ON does not reseed saved startup intent after idle timers run', async () => {
+it('delegates repeated readiness to the same manager instead of owning another consumed flag', async () => {
   vi.useFakeTimers(); const feature = await import('./feature');
   fixture.list.mockResolvedValue(automaticRegistry());
   await feature.configureRpcFeature({ status: 'enabled', settings });
@@ -209,17 +209,17 @@ it('app-ready OFF then ON does not reseed saved startup intent after idle timers
   await vi.advanceTimersByTimeAsync(1000);
   window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online'));
   await vi.advanceTimersByTimeAsync(1000);
-  expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
+  expect(fixture.startAutomaticConnections.mock.calls.length).toBeGreaterThan(1); expect(fixture.create).toHaveBeenCalledOnce();
 });
 
-it('disabled app-ready consumes startup intent and later enable or passive hints do not seed it', async () => {
+it('disabled app-ready retains readiness so later enable starts the saved policy', async () => {
   vi.useFakeTimers(); const feature = await import('./feature'); fixture.list.mockResolvedValue(automaticRegistry());
   await feature.configureRpcFeature({ status: 'disabled', settings }); automaticDisposers.push(feature.startRpcAutomaticConnections());
   await vi.advanceTimersByTimeAsync(1000); await feature.configureRpcFeature({ status: 'enabled', settings });
   for (const name of ['focus', 'pageshow', 'online']) window.dispatchEvent(new Event(name));
   for (const listener of fixture.registryListeners) listener();
   await vi.advanceTimersByTimeAsync(1000);
-  expect(fixture.startAutomaticConnections).not.toHaveBeenCalled(); expect(fixture.create).not.toHaveBeenCalled(); expect(fixture.list).not.toHaveBeenCalled();
+  expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce(); expect(fixture.create).toHaveBeenCalledOnce();
 });
 
 it('OFF invalidates an awaiting startup read even if ON returns before that read resolves', async () => {
@@ -229,4 +229,24 @@ it('OFF invalidates an awaiting startup read even if ON returns before that read
   await feature.configureRpcFeature({ status: 'disabled', settings }); await feature.configureRpcFeature({ status: 'enabled', settings });
   listed.resolve(automaticRegistry()); await vi.advanceTimersByTimeAsync(1000);
   expect(fixture.startAutomaticConnections).not.toHaveBeenCalled(); expect(fixture.create).not.toHaveBeenCalled();
+});
+
+it('retries failed startup catalogue reads on a later hint without polling', async () => {
+  vi.useFakeTimers(); const feature = await import('./feature');
+  fixture.list.mockRejectedValueOnce(new Error('not ready')).mockResolvedValue(automaticRegistry());
+  await feature.configureRpcFeature({ status: 'enabled', settings }); automaticDisposers.push(feature.startRpcAutomaticConnections());
+  await vi.advanceTimersByTimeAsync(60000); expect(fixture.list).toHaveBeenCalledOnce(); expect(fixture.create).not.toHaveBeenCalled();
+  window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(1000);
+  expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce(); expect(fixture.list).toHaveBeenCalledTimes(2);
+});
+
+it('starts only from the fresh ON generation when an older startup read completes late', async () => {
+  vi.useFakeTimers(); const feature = await import('./feature'), old = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  fixture.list.mockReturnValueOnce(old.promise).mockResolvedValue(automaticRegistry());
+  await feature.configureRpcFeature({ status: 'enabled', settings }); automaticDisposers.push(feature.startRpcAutomaticConnections());
+  await vi.advanceTimersByTimeAsync(100);
+  await feature.configureRpcFeature({ status: 'disabled', settings }); await feature.configureRpcFeature({ status: 'enabled', settings });
+  await vi.advanceTimersByTimeAsync(1000); expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
+  old.resolve(automaticRegistry()); await vi.advanceTimersByTimeAsync(1000);
+  expect(fixture.startAutomaticConnections).toHaveBeenCalledOnce();
 });

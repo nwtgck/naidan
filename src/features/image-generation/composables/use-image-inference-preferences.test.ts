@@ -1,4 +1,3 @@
-import { isAvailableRemoteImageEditor } from '@/01-models/image-generation-preferences';
 import { afterEach, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { DEFAULT_SETTINGS, type Settings, type BrowserImageGenerationSettings } from '@/01-models/types';
@@ -89,8 +88,8 @@ it('persists explicit clearing while retaining concurrent settings and another p
   h.inferenceLocation.choosePrimary({ id: '' }); await settle();
   const actual = h.settings.value.experimental?.browserImageGeneration;
   expect(actual).toMatchObject({ width: 768, height: 1024 }); expect(h.settings.value.experimental?.locale).toBe('ja');
-  expect(actual?.remoteModelEditors?.filter(isAvailableRemoteImageEditor).find(item => item.registrationId === preference({ name: 'one' }).registrationId)?.editor.primary).toBeUndefined();
-  expect(actual?.remoteModelEditors?.filter(isAvailableRemoteImageEditor).find(item => item.registrationId === two.registrationId)).toEqual(two);
+  expect(actual?.remoteModelEditors?.find(item => item.registrationId === preference({ name: 'one' }).registrationId)?.editor.primary).toBeUndefined();
+  expect(actual?.remoteModelEditors?.find(item => item.registrationId === two.registrationId)).toEqual(two);
   const reopened = harness({ preferences: actual! }); await settle(); expect(reopened.inferenceLocation.editor.value.primary).toBeUndefined();
 });
 
@@ -156,19 +155,4 @@ it('drains accepted edits after leaving the view when storage still belongs to i
   h.inferenceLocation.setKind({ value: 'local' }); await settle();
   h.inferenceLocation.changeLora({ index: 0, enabled: 'enabled', strength: 0.9 }); await settle(); h.scope.stop(); gate.resolve(); await settle();
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ inferenceLocation: { kind: 'local' }, remoteModelEditors: [{ editor: { loras: [{ enabled: 'enabled', strength: 0.9 }] } }] });
-});
-
-it('keeps unavailable editor entries in position while editing a valid peer between them', async () => {
-  const { UnavailableRpcValue } = await import('@/01-models/unavailable-rpc-value');
-  const a = { registrationId: 'old-A', future: { value: [1] } }, c = { registrationId: 'old-C', future: { value: [3] } };
-  const one = preference({ name: 'one' });
-  const h = harness({ preferences: { ...saved(), remoteModelEditors: [{ unavailableRpc: new UnavailableRpcValue({ raw: a }) }, one, { unavailableRpc: new UnavailableRpcValue({ raw: c }) }] } });
-  await settle(); h.inferenceLocation.choosePrimary({ id: '' }); await settle();
-  const values = h.settings.value.experimental?.browserImageGeneration?.remoteModelEditors;
-  expect(values).toHaveLength(3);
-  expect(values?.[0] && !isAvailableRemoteImageEditor(values[0]) && values[0].unavailableRpc.read()).toEqual(a);
-  expect(values?.[2] && !isAvailableRemoteImageEditor(values[2]) && values[2].unavailableRpc.read()).toEqual(c);
-  expect(values?.[1] && isAvailableRemoteImageEditor(values[1]) && values[1].editor.primary).toBeUndefined();
-  expect(h.inferenceLocation.capturePreferences().remoteModelEditors).toHaveLength(3);
-  expect(rpc.bind).not.toHaveBeenCalled();
 });

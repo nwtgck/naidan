@@ -114,11 +114,11 @@ it('reads concurrently with a held preamble write and joins that write during re
 
 it.each(['resolved', 'rejected'] as const)('commits incompatible state before reentrant stop and a late %s write', async outcome => {
   const release = Promise.withResolvers<void>(), writes: Uint8Array[] = [], wrong = encodeProtocolHeader(); wrong[0] = 1;
-  let retirement: Promise<void> | undefined, primary: NaidanRpcProtocolError | undefined;
+  let retirement: Promise<void> | undefined, primary: NaidanRpcProtocolError | undefined, observedFinish: Promise<unknown> | undefined;
   const framed = new FramedDuplex({
     onProtocolFailure: ({ error }) => {
       primary = error; retirement = framed.stop({ error: new Error('Secondary stop') });
-      void expect(framed.finish()).rejects.toBe(error);
+      observedFinish = expect(framed.finish()).rejects.toBe(error);
     },
     duplex: {
       readable: new ReadableStream({
@@ -138,7 +138,7 @@ it.each(['resolved', 'rejected'] as const)('commits incompatible state before re
   const queued = framed.send({ frame: { type: 'ack' } }); void queued.catch(() => {});
   await expect(framed.read()).rejects.toBeInstanceOf(NaidanRpcProtocolError); await expect(queued).rejects.toBe(primary);
   if (outcome === 'resolved') release.resolve(); else release.reject(new Error('Late write failure'));
-  await retirement; expect(writes).toEqual([encodeProtocolHeader()]);
+  await retirement; await observedFinish; expect(writes).toEqual([encodeProtocolHeader()]);
   await expect(framed.send({ frame: { type: 'ack' } })).rejects.toBe(primary);
 });
 

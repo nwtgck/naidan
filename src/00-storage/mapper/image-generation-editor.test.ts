@@ -22,7 +22,7 @@ it('round trips a remote editor separately from the local selection without rewr
   const actual = settingsToDomain({ dto: SettingsSchemaDto.parse(settingsToDto({ domain: settings })) });
   expect(actual.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
   const remote = actual.experimental?.browserImageGeneration?.remoteModelEditors?.[0];
-  expect(remote && !('unavailableRpc' in remote) ? remote.editor.primary : undefined).toBeUndefined();
+  expect(remote?.editor.primary).toBeUndefined();
 });
 
 it('accepts future object fields without mutating the known editor values', () => {

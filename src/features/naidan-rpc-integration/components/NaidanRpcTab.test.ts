@@ -371,3 +371,12 @@ it('keeps an explicit Connect action available while waiting after a peer close'
   expect(fixture.connect).toHaveBeenCalledOnce();
   expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true);
 });
+
+it('shows connection-capacity waiting and still allows an explicit Disconnect', async () => {
+  fixture.rows = [{ ...row({ phase: 'disconnected', persistence: 'saved' }), desiredConnection: 'connected', recoveryStatus: 'waiting-capacity' }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-capacity-wait"]').text()).toBe('naidanRpc__waiting_for_capacity');
+  expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click'); await flushPromises();
+  expect(fixture.disconnect).toHaveBeenCalledWith({ id }); expect(fixture.connect).not.toHaveBeenCalled();
+});

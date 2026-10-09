@@ -106,14 +106,13 @@ describe('session draft checkpoints', () => {
 it('keeps unavailable draft routes through the real publication snapshot and queued save', async () => {
   const { StorageService } = await import('./index');
   const { OPFSStorageProvider } = await import('./opfs-storage');
-  const { UnavailableRpcValue } = await import('@/01-models/unavailable-rpc-value');
   const { LOCK_METADATA } = await import('@/constants');
   const init = vi.spyOn(OPFSStorageProvider.prototype, 'init').mockResolvedValue();
   const storage = new StorageService(); await storage.init({ type: 'opfs' }); init.mockRestore();
   const h = await setup();
-  const rawA = { kind: 'naidan_rpc', registration: { registrationId: 'old-A' }, future: { nested: [1] } };
-  const rawB = { kind: 'naidan_rpc', registration: { registrationId: 'old-A' }, future: { nested: [2] } };
-  h.draft.inferenceLocation = { kind: 'naidan_rpc', registration: undefined, unavailableRpc: new UnavailableRpcValue({ raw: rawA }) };
+  const rawA = { kind: 'unavailable' as const };
+  const rawB = { kind: 'local' as const };
+  h.draft.inferenceLocation = rawA;
   h.draft.request.runtime = undefined;
   h.draft.request.imageInputs = { ...h.draft.request.imageInputs, initImage: undefined, referenceImages: [] };
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -124,12 +123,12 @@ it('keeps unavailable draft routes through the real publication snapshot and que
   const publishing = storage.publishImageGeneration({ store: h.store, publication: { type: 'draft', draft: h.draft, expectedRevision: undefined }, files: [] });
   void publishing.catch(() => {});
   h.draft.request.parameters.prompt = 'later caller mutation';
-  h.draft.inferenceLocation = { kind: 'naidan_rpc', registration: undefined, unavailableRpc: new UnavailableRpcValue({ raw: rawB }) };
+  h.draft.inferenceLocation = rawB;
   release.resolve(); await held; await publishing;
   const first = JSON.parse((await fs.file({ path: h.path })).text);
   expect(first.inferenceLocation).toEqual(rawA); expect(first.request.parameters.prompt).not.toBe('later caller mutation');
   const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
-  expect(loaded?.inferenceLocation?.kind === 'naidan_rpc' && loaded.inferenceLocation.unavailableRpc?.read()).toEqual(rawA);
+  expect(loaded?.inferenceLocation).toEqual(rawA);
   await storage.publishImageGeneration({ store: h.store, publication: { type: 'draft', draft: { ...h.draft, revision: 1 }, expectedRevision: 0 }, files: [] });
   expect(JSON.parse((await fs.file({ path: h.path })).text).inferenceLocation).toEqual(rawB);
 });

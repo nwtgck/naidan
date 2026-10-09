@@ -6,7 +6,7 @@ import { contract, procedure, expose, rpc, NaidanRpcPeer, NaidanRpcPublicError }
 import type { NaidanRpcExposure } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { promiseAllKeyed } from '@/utils/promise';
-import { VALUE_BYTES } from './primitives';
+import { VALUE_BYTES, BYTE_PULL_BYTES } from './primitives';
 
 const stops: (() => void)[] = [];
 
@@ -277,7 +277,7 @@ it('raw byte streams transfer large source chunks through bounded item frames', 
   // Keep the external test-runner bound, without an ordinary-work RPC deadline.
   const call = a.client({ contract: definition }).echo({ input: { data: source({ items: [input] }) }, on: {}, signal: undefined, timeoutMs: undefined });
   const values = await collect({ stream: await call.result });
-  expect(Buffer.concat(values)).toEqual(Buffer.from(input)); expect(values.every(value => value.length <= 16384)).toBe(true);
+  expect(Buffer.concat(values)).toEqual(Buffer.from(input)); expect(values.every(value => value.length <= BYTE_PULL_BYTES)).toBe(true);
   await call.closed; expect(transport.stats().total).toBe(1);
 });
 

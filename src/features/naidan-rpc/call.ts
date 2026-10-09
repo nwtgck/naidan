@@ -1,29 +1,33 @@
+import { NaidanRpcByteBudget, type RpcByteOwner } from './byte-budget';
 import { cancelReader, releaseLocks, RpcRetirementError } from '@/features/naidan-rpc/stream-retirement';
 import { decode, encode } from '@/features/naidan-rpc/codec';
 import type { Reference, WireValue } from '@/features/naidan-rpc/codec';
 import { FramedDuplex, wireValue } from '@/features/naidan-rpc/framing';
 import type { Frame } from '@/features/naidan-rpc/framing';
-import { compile, pack, project, references, isStream } from '@/features/naidan-rpc/schema';
+import { compile, pack, project, references, isStream, returnedStreams } from '@/features/naidan-rpc/schema';
 import type { Capability, Packed, Plan, Source } from '@/features/naidan-rpc/schema';
-import { CALLBACK_LIMIT, check, deferred, duration, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
+import { CALLBACK_LIMIT, check, deferred, duration, BYTE_PULL_BYTES, ITEM_FRAGMENT_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
 import type { NaidanRpcErrorCode } from '@/features/naidan-rpc/primitives';
 import type { PreparedMethod } from '@/features/naidan-rpc/contract';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
 import { ByteAssembly } from '@/features/naidan-rpc/assembly';
 
 type Scope = 'input' | 'result';
-const BYTE_SEGMENT = TRANSFER_BYTES;
+const BYTE_SEGMENT = BYTE_PULL_BYTES;
 type Phase = 'offered' | 'accepted' | 'pulling' | 'stopping' | 'terminal';
-type Exported = Source & { scope: Scope; phase: Phase; sequence: number; reader: ReadableStreamDefaultReader<unknown> | undefined;
+type Exported = Source & { memory: RpcByteOwner; scope: Scope; phase: Phase; sequence: number; reader: ReadableStreamDefaultReader<unknown> | undefined;
   pendingBytes: Uint8Array | undefined; offset: number; sending: Promise<void> | undefined; stopRequested: boolean };
 type Imported = { scope: Scope; capability: Capability; phase: Phase; sequence: number;
   controller: ReadableStreamDefaultController<unknown> | undefined; granted: boolean; pending: ReturnType<typeof deferred<void>> | undefined;
   fragment: { bytes: ByteAssembly | undefined; total: number; offset: number } | undefined };
-type PendingCallback = { result: ReturnType<typeof deferred<unknown>>; plan: Plan };
+type PendingCallback = { memory: RpcByteOwner; result: ReturnType<typeof deferred<unknown>>; plan: Plan };
 export type Observer = ({ value }: { value: unknown }) => void | Promise<void>;
 
 /** One lower duplex owns one root call, its stream references and its reverse invocations. */
 export class RpcConversation {
+  private readonly memory: RpcByteOwner;
+  private readonly values: RpcByteOwner;
+  private dispatchMemory: RpcByteOwner | undefined;
   readonly result = deferred<unknown>();
   readonly closed = deferred<void>();
   readonly retired = deferred<void>();
@@ -45,8 +49,8 @@ export class RpcConversation {
   private readonly imports = new Map<number, Imported>();
   private partialBytes = 0;
   private readonly invocations = new Map<number, PendingCallback>();
-  private readonly notices = new Map<string, WireValue>();
-  private readonly observed = new Map<string, { running: boolean; latest: WireValue | undefined; present: boolean }>();
+  private readonly notices = new Map<string, { value: WireValue; memory: RpcByteOwner }>();
+  private readonly observed = new Map<string, { running: boolean; latest: WireValue | undefined; present: boolean; memory: RpcByteOwner | undefined }>();
   private noticeSending = false;
   private inputOffered = false;
   private inputAccepted = false;
@@ -65,20 +69,25 @@ export class RpcConversation {
   private callbacksRunning = 0;
   private finishing = false;
   private readRetired = false;
+  private readonly reading: Promise<void>;
+  private networkRetirement: Promise<void> | undefined;
 
   private readonly onRetirementFailure: ({ error }: { error: unknown }) => void;
-  constructor({ duplex, role, timeoutMs, resolveMethod, onRetirementFailure, onProtocolFailure }: {
+  constructor({ duplex, role, timeoutMs, resolveMethod, onRetirementFailure, onProtocolFailure, memory }: {
+    memory?: RpcByteOwner;
     onRetirementFailure: ({ error }: { error: unknown }) => void;
     onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void;
     duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined;
     resolveMethod: ({ contract, method }: { contract: string; method: string }) => PreparedMethod;
   }) {
     if (timeoutMs !== undefined) duration({ milliseconds: timeoutMs });
+    this.memory = memory ?? new NaidanRpcByteBudget().owner(); this.values = this.memory.fork();
     this.onRetirementFailure = onRetirementFailure;
     this.duplex = duplex; this.role = role; this.resolveMethod = resolveMethod; this.maxTimeoutMs = timeoutMs;
     this.nextReference = isCaller({ role }) ? 1 : 2;
     this.channel = new FramedDuplex({
       duplex,
+      memory: this.memory,
       onProtocolFailure: ({ error }) => {
         if (this.wireEnded) return;
         this.failure ??= error;
@@ -94,9 +103,18 @@ export class RpcConversation {
     void duplex.closed.catch(() => this.abort({ code: 'TRANSPORT_ERROR' }));
     // The read loop is separate from cleanup jobs: cleanup may unblock it but
     // must never await itself through the conversation retirement barrier.
-    void this.read().finally(() => {
+    this.reading = this.read().finally(() => {
       this.readRetired = true; this.maybeRetire();
     });
+  }
+  /** Stop protocol I/O, independently of user handlers and source cleanup.
+   * Full retired still owns those jobs and their shared reservations. */
+  retireNetwork(): Promise<void> {
+    if (this.networkRetirement) return this.networkRetirement;
+    this.abort({ code: 'CANCELLED' });
+    const closing = this.failure ? this.channel.stop({ error: this.failure }) : this.channel.retire();
+    this.networkRetirement = Promise.all([this.reading, closing]).then(() => {});
+    void this.networkRetirement.catch(() => {}); return this.networkRetirement;
   }
   private active(): boolean {
     return !this.failure && !this.finishSent && !this.finishReceived && !this.wireEnded;
@@ -119,14 +137,14 @@ export class RpcConversation {
     });
     return pending;
   }
-  private task({ run, retirement = false }: { run: () => Promise<void>; retirement?: boolean }): void {
+  private task({ run, retirement = false, memory }: { run: () => Promise<void>; retirement?: boolean; memory?: RpcByteOwner }): void {
     this.jobs++;
     void Promise.resolve().then(run).catch(error => {
       if (retirement && error instanceof RpcRetirementError) {
         this.recordRetirementFailure({ error: error.cause });
       } else if (this.active()) this.reject({ error: error instanceof NaidanRpcError ? error : new NaidanRpcError({ code: 'HANDLER_FAILED' }) });
     }).finally(() => {
-      this.jobs--; this.maybeFinish(); this.maybeRetire();
+      memory?.clear(); this.jobs--; this.maybeFinish(); this.maybeRetire();
     });
   }
   private recordRetirementFailure({ error }: { error: unknown }): void {
@@ -139,13 +157,15 @@ export class RpcConversation {
   }
   private maybeRetire(): void {
     if (!this.wireEnded || !this.readRetired || this.jobs !== 0) return;
-    this.exports.clear(); this.imports.clear(); this.partialBytes = 0; this.notices.clear(); this.observed.clear(); this.method = undefined; this.observers = {};
-    if (this.retirementFailure) this.retired.reject(this.retirementFailure.error); else this.retired.resolve();
+    this.exports.clear(); this.imports.clear(); this.partialBytes = 0; this.clearNotices(); this.observed.clear(); this.method = undefined; this.observers = {};
+    if (this.retirementFailure) this.retired.reject(this.retirementFailure.error); else {
+      this.memory.clear(); this.retired.resolve();
+    }
   }
   private register({ packed, scope }: { packed: Packed; scope: Scope }): void {
     for (const [id, source] of packed.sources) {
       check({ condition: !this.exports.has(id) && this.exports.size < 16, code: 'RESOURCE_EXHAUSTED' });
-      this.exports.set(id, { ...source, scope, phase: 'offered', sequence: 0, reader: undefined, pendingBytes: undefined, offset: 0, sending: undefined, stopRequested: false });
+      this.exports.set(id, { ...source, memory: this.memory.fork(), scope, phase: 'offered', sequence: 0, reader: undefined, pendingBytes: undefined, offset: 0, sending: undefined, stopRequested: false });
     }
   }
   start({ contract, method, prepared, packed, on, timeoutMs }: {
@@ -187,19 +207,21 @@ export class RpcConversation {
       return async (input: unknown): Promise<unknown> => {
         check({ condition: this.active() && state.phase === 'accepted', code: 'CANCELLED' });
         check({ condition: this.invocations.size < CALLBACK_LIMIT && this.nextInvocation <= 1024, code: 'RESOURCE_EXHAUSTED' });
-        const packed = pack({
-          plan: inputPlan,
-          value: input,
-          allocate: () => {
-            throw new Error('Finite callback input required');
-          },
-        });
+        const memory = this.memory.fork();
         const invocation = this.nextInvocation++, result = deferred<unknown>();
-        this.invocations.set(invocation, { result, plan: resultPlan });
         try {
+          const packed = pack({
+            memory,
+            plan: inputPlan,
+            value: input,
+            allocate: () => {
+              throw new Error('Finite callback input required');
+            },
+          });
+          this.invocations.set(invocation, { result, plan: resultPlan, memory });
           await this.send({ frame: { type: 'invoke', id: reference.id, invocation, value: packed.value } }); return await result.promise;
         } finally {
-          this.invocations.delete(invocation); this.maybeFinish();
+          this.invocations.delete(invocation); memory.clear(); this.maybeFinish();
         }
       };
     }
@@ -211,7 +233,7 @@ export class RpcConversation {
     for (const [id] of offered) {
       check({ condition: id % 2 === (isCaller({ role: this.role }) ? 0 : 1) && !this.imports.has(id), code: 'PROTOCOL_ERROR' });
     }
-    const projected = project({ plan, value, proxy: ({ reference, capability }) => this.proxy({ reference, capability, scope }) });
+    const projected = project({ plan, value, memory: this.values, proxy: ({ reference, capability }) => this.proxy({ reference, capability, scope }) });
     for (const id of projected.accepted) {
       check({ condition: offered.has(id), code: 'PROTOCOL_ERROR' });
       const state = this.imports.get(id); if (!state) throw new Error('Missing projected reference'); state.phase = 'accepted';
@@ -272,6 +294,7 @@ export class RpcConversation {
           const first = failures[0];
           throw first instanceof RpcRetirementError ? first : new RpcRetirementError({ cause: first });
         }
+        state.memory.clear();
         // Sending an acknowledgement is ordinary wire work, not source cleanup.
         if (acknowledge && this.active()) void this.send({ frame: { type: 'stopped', id } });
       },
@@ -284,7 +307,7 @@ export class RpcConversation {
     check({ condition: isStream(state.capability), code: 'PROTOCOL_ERROR' });
     state.phase = 'stopping'; state.pending?.resolve();
     if (state.fragment?.bytes) {
-      this.partialBytes -= state.fragment.bytes.byteLength; state.fragment.bytes = undefined;
+      this.partialBytes -= state.fragment.bytes.byteLength; state.fragment.bytes.dispose(); state.fragment.bytes = undefined;
     }
     const completion = deferred<void>(); state.pending = completion;
     if (this.active()) void this.send({ frame: { type: 'stop', id } }); else completion.reject(this.failure);
@@ -296,7 +319,9 @@ export class RpcConversation {
     if (!state || state.capability.kind !== 'stream') throw new Error('Unknown stream');
     const capability = state.capability, previousSend = state.sending;
     state.phase = 'pulling'; state.sequence = sequence;
+    const memory = this.memory.fork();
     this.task({
+      memory,
       run: async () => {
         if (previousSend) await previousSend;
         if (!this.active() || state.phase !== 'pulling') return;
@@ -305,6 +330,7 @@ export class RpcConversation {
         if (capability.mode === 'bytes' && state.pendingBytes && state.offset < state.pendingBytes.length) {
           item = state.pendingBytes.subarray(state.offset, state.offset + BYTE_SEGMENT); state.offset += (item as Uint8Array).length;
         } else {
+          if (state.pendingBytes) state.memory.release({ bytes: state.pendingBytes });
           state.pendingBytes = undefined; state.offset = 0;
           let next = await state.reader.read();
           let skipped = 0;
@@ -320,7 +346,7 @@ export class RpcConversation {
             check({ condition: item instanceof Uint8Array && item.buffer instanceof ArrayBuffer && item.length > 0, code: 'INVALID_ARGUMENT' });
             const bytes = item as Uint8Array;
             // Retain one source-owned chunk, never concatenate an unbounded stream.
-            state.pendingBytes = bytes; item = bytes.subarray(0, BYTE_SEGMENT); state.offset = (item as Uint8Array).length;
+            state.memory.retain({ bytes }); state.pendingBytes = bytes; item = bytes.subarray(0, BYTE_SEGMENT); state.offset = (item as Uint8Array).length;
           }
         }
         if (!this.active() || state.phase !== 'pulling') return;
@@ -335,20 +361,23 @@ export class RpcConversation {
         }
         const parsed = capability.item.parse(item);
         if (!this.active() || state.phase !== 'pulling') return;
-        const value = decode({ bytes: encode({ value: parsed, limit: VALUE_BYTES }) });
+        const value = decode({ bytes: encode({ value: parsed, limit: VALUE_BYTES, memory }), memory });
         check({ condition: references({ value }).size === 0, code: 'INVALID_ARGUMENT' });
         state.phase = 'accepted';
-        const bytes = encode({ value, limit: VALUE_BYTES });
+        const bytes = encode({ value, limit: VALUE_BYTES, memory });
         const sent = Promise.resolve().then(async () => {
-          if (capability.mode === 'bytes' || bytes.length <= TRANSFER_BYTES) {
+          if (capability.mode === 'bytes' || bytes.length <= ITEM_FRAGMENT_BYTES) {
             await this.send({ frame: { type: 'item', id, sequence, value } }); return;
           }
-          for (let offset = 0; offset < bytes.length; offset += TRANSFER_BYTES) {
+          for (let offset = 0; offset < bytes.length; offset += ITEM_FRAGMENT_BYTES) {
             if (!this.active() || phaseIs({ phase: state.phase, expected: 'stopping' }) || phaseIs({ phase: state.phase, expected: 'terminal' })) return;
-            await this.send({ frame: { type: 'item-fragment', id, sequence, total: bytes.length, offset, data: bytes.subarray(offset, offset + TRANSFER_BYTES) } });
+            await this.send({ frame: { type: 'item-fragment', id, sequence, total: bytes.length, offset, data: bytes.subarray(offset, offset + ITEM_FRAGMENT_BYTES) } });
           }
         }); state.sending = sent;
         await sent; if (state.sending === sent) state.sending = undefined;
+        if (state.pendingBytes && state.offset >= state.pendingBytes.length) {
+          state.memory.release({ bytes: state.pendingBytes }); state.pendingBytes = undefined; state.offset = 0;
+        }
       },
     });
   }
@@ -358,7 +387,8 @@ export class RpcConversation {
     if (!state || state.capability.kind !== 'stream') throw new Error('Unknown stream');
     check({ condition: state.granted && (state.phase === 'pulling' || phaseIs({ phase: state.phase, expected: 'stopping' })), code: 'PROTOCOL_ERROR' });
     check({ condition: state.fragment === undefined, code: 'PROTOCOL_ERROR' });
-    encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+    if (!ended && state.capability.mode === 'bytes') check({ condition: value instanceof Uint8Array && value.length > 0 && value.length <= BYTE_PULL_BYTES, code: 'PROTOCOL_ERROR' });
+    const validation = encode({ value, limit: VALUE_BYTES, memory: this.dispatchMemory }); this.dispatchMemory?.release({ bytes: validation }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     state.granted = false;
     if (phaseIs({ phase: state.phase, expected: 'stopping' })) return; // At most the single previously granted item may still arrive.
     const pending = state.pending; state.pending = undefined;
@@ -380,9 +410,9 @@ export class RpcConversation {
     });
     if (!state) throw new Error('Missing item stream');
     if (!state.fragment) {
-      check({ condition: offset === 0 && total > TRANSFER_BYTES, code: 'PROTOCOL_ERROR' });
+      check({ condition: offset === 0 && total > ITEM_FRAGMENT_BYTES, code: 'PROTOCOL_ERROR' });
       const discarded = phaseIs({ phase: state.phase, expected: 'stopping' });
-      state.fragment = { bytes: discarded ? undefined : new ByteAssembly({ limit: total }), total, offset: 0 };
+      state.fragment = { bytes: discarded ? undefined : new ByteAssembly({ limit: total, memory: this.memory }), total, offset: 0 };
     }
     const partial = state.fragment;
     check({ condition: total === partial.total && offset === partial.offset && offset + data.length <= total, code: 'PROTOCOL_ERROR' });
@@ -395,7 +425,11 @@ export class RpcConversation {
     state.fragment = undefined;
     if (partial.bytes) {
       this.partialBytes -= total;
-      this.receiveItem({ id, sequence, value: decode({ bytes: partial.bytes.finish() }), ended: false });
+      try {
+        this.receiveItem({ id, sequence, value: decode({ bytes: partial.bytes.finish(), memory: this.dispatchMemory }), ended: false });
+      } finally {
+        partial.bytes.dispose();
+      }
     } else state.granted = false;
   }
   private invoke({ id, invocation, value }: { id: number; invocation: number; value: WireValue }): void {
@@ -413,21 +447,30 @@ export class RpcConversation {
     const inputPlan = compile({ schema: target.capability.input, capabilitiesAllowed: false, callbacksAllowed: false });
     const resultPlan = compile({ schema: target.capability.result, capabilitiesAllowed: false, callbacksAllowed: false });
     check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+    const memory = this.memory.fork();
+    let input: unknown;
+    try {
+      input = project({
+        plan: inputPlan,
+        value,
+        memory,
+        proxy: () => {
+          throw new Error('No nested capabilities');
+        },
+      }).value;
+    } catch (error) {
+      memory.clear(); throw error;
+    }
     this.callbacksRunning++;
     this.task({
+      memory,
       run: async () => {
         try {
-          const input = project({
-            plan: inputPlan,
-            value,
-            proxy: () => {
-              throw new Error('No nested capabilities');
-            },
-          }).value;
           // eslint-disable-next-line local-rules-named-args/require-named-args -- Invoke the locally registered callback with the one argument defined by its schema, not an extra wrapper object.
           const result: unknown = await (target.value as (input: unknown) => unknown)(input);
           if (!this.active()) return;
           const packed = pack({
+            memory,
             plan: resultPlan,
             value: result,
             allocate: () => {
@@ -443,54 +486,83 @@ export class RpcConversation {
       },
     });
   }
+  private clearNotices(): void {
+    for (const pending of this.notices.values()) pending.memory.clear();
+    this.notices.clear();
+  }
   private notify({ name, value }: { name: string; value: unknown }): void {
     if (!this.active()) return;
     const plan = this.method?.notifications.get(name); if (!plan) throw new Error('Undeclared notification');
-    const packed = pack({
-      plan,
-      value,
-      allocate: () => {
-        throw new Error('Finite notification required');
-      },
-    });
-    encode({ value: packed.value, limit: VALUE_BYTES }); this.notices.set(name, packed.value);
+    const memory = this.memory.fork();
+    try {
+      const packed = pack({
+        plan,
+        value,
+        memory,
+        allocate: () => {
+          throw new Error('Finite notification required');
+        },
+      });
+      this.notices.get(name)?.memory.clear(); this.notices.set(name, { value: packed.value, memory });
+    } catch (error) {
+      memory.clear(); throw error;
+    }
     if (this.noticeSending) return; this.noticeSending = true;
     this.task({
       run: async () => {
         try {
           while (this.active() && this.notices.size) {
             const [key, item] = this.notices.entries().next().value!; this.notices.delete(key);
-            await this.send({ frame: { type: 'notice', name: key, value: item } });
+            try {
+              await this.send({ frame: { type: 'notice', name: key, value: item.value } });
+            } finally {
+              item.memory.clear();
+            }
           }
         } finally {
-          this.noticeSending = false; this.notices.clear();
+          this.noticeSending = false; this.clearNotices();
         }
       },
     });
   }
   private notice({ name, value }: { name: string; value: WireValue }): void {
     check({ condition: isCaller({ role: this.role }), code: 'PROTOCOL_ERROR' });
-    encode({ value, limit: VALUE_BYTES }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+    check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
     const plan = this.method?.notifications.get(name); if (!plan) return;
-    const output = project({
-      plan,
-      value,
-      proxy: () => {
-        throw new Error('No capabilities in notifications');
-      },
-    }).value;
-    const observer = this.observers[name]; if (!observer) return;
-    const slot = this.observed.get(name) ?? { running: false, latest: undefined, present: false };
-    slot.latest = output as WireValue; slot.present = true; this.observed.set(name, slot);
+    const memory = this.memory.fork();
+    let output: unknown;
+    try {
+      output = project({
+        plan,
+        value,
+        memory,
+        proxy: () => {
+          throw new Error('No capabilities in notifications');
+        },
+      }).value;
+    } catch (error) {
+      memory.clear(); throw error;
+    }
+    const observer = this.observers[name];
+    if (!observer) {
+      memory.clear(); return;
+    }
+    const slot = this.observed.get(name) ?? { running: false, latest: undefined, present: false, memory: undefined };
+    slot.memory?.clear(); slot.memory = memory; slot.latest = output as WireValue; slot.present = true; this.observed.set(name, slot);
     if (slot.running) return; slot.running = true;
     this.task({
       run: async () => {
         try {
           while (slot.present && this.active()) {
-            const value = slot.latest; slot.latest = undefined; slot.present = false; await observer({ value });
+            const value = slot.latest, owned = slot.memory; slot.memory = undefined; slot.latest = undefined; slot.present = false;
+            try {
+              await observer({ value });
+            } finally {
+              owned?.clear();
+            }
           }
         } finally {
-          slot.running = false; slot.latest = undefined; slot.present = false;
+          slot.memory?.clear(); slot.memory = undefined; slot.running = false; slot.latest = undefined; slot.present = false;
         }
       },
     });
@@ -511,16 +583,16 @@ export class RpcConversation {
     try {
       for (const [id, state] of this.imports) if (isStream(state.capability) && state.phase !== 'terminal') void this.stopImport({ id }).catch(() => {});
       if (!this.streamsTerminal({ scope: 'input', direction: 'import' })) return;
-      this.finishSent = 'success'; this.notices.clear();
+      this.finishSent = 'success'; this.clearNotices();
       void this.send({ frame: { type: 'finish', code: undefined, details: undefined } }).then(() => this.channel.finish()).catch(() => this.abort({ code: 'TRANSPORT_ERROR' }));
     } finally {
       this.finishing = false;
     }
   }
   private cancelCapabilities({ error }: { error: unknown }): void {
-    this.controller.abort(error); this.notices.clear();
+    this.controller.abort(error); this.clearNotices();
     for (const state of this.imports.values()) {
-      state.fragment = undefined;
+      state.fragment?.bytes?.dispose(); state.fragment = undefined;
       state.phase = 'terminal'; state.controller?.error(error); state.pending?.reject(error); state.pending = undefined;
     }
     this.partialBytes = 0;
@@ -559,6 +631,28 @@ export class RpcConversation {
       },
     });
     this.closed.reject(this.failure); this.maybeRetire();
+  }
+  private async discardResult({ plan, value }: { plan: Plan; value: unknown }): Promise<void> {
+    let streams: ReadonlySet<ReadableStream<unknown>>;
+    try {
+      streams = returnedStreams({ plan, value });
+    } catch (error) {
+      this.recordRetirementFailure({ error }); return;
+    }
+    await Promise.all([...streams].map(async stream => {
+      let reader: ReadableStreamDefaultReader<unknown> | undefined;
+      try {
+        reader = stream.getReader(); await cancelReader({ reader, reason: this.failure });
+      } catch (error) {
+        this.recordRetirementFailure({ error: error instanceof RpcRetirementError ? error.cause : error });
+      } finally {
+        try {
+          releaseLocks({ reader, writer: undefined });
+        } catch (error) {
+          this.recordRetirementFailure({ error });
+        }
+      }
+    }));
   }
   private async handle({ frame }: { frame: Frame }): Promise<void> {
     switch (frame.type) {
@@ -603,19 +697,25 @@ export class RpcConversation {
       this.method = method;
       let input: unknown;
       try {
-        input = this.receiveValue({ plan: method.input, value: wireValue({ value: frame.value }), scope: 'input' });
-      } catch {
-        this.reject({ error: new NaidanRpcError({ code: 'INVALID_ARGUMENT' }) }); return;
+        input = this.receiveValue({ plan: method.input, value: wireValue({ value: frame.value, memory: this.dispatchMemory }), scope: 'input' });
+      } catch (error) {
+        this.reject({ error: error instanceof NaidanRpcPublicError && error.code === 'RESOURCE_EXHAUSTED' ? error : new NaidanRpcError({ code: 'INVALID_ARGUMENT' }) }); return;
       }
+      const contractName = frame.contract, methodName = frame.method;
       this.task({
         run: async () => {
           if (!this.active()) return;
           this.controller.signal.throwIfAborted();
-          this.resolveMethod({ contract: frame.contract, method: frame.method });
+          this.resolveMethod({ contract: contractName, method: methodName });
           if (!method.handler) throw new Error('Missing handler');
           const notify = Object.fromEntries([...method.notifications.keys()].map(name => [name, ({ value }: { value: unknown }) => this.notify({ name, value })]));
           const result = await method.handler({ input, notify, signal: this.controller.signal });
-          const packed = pack({ plan: method.result, value: result, allocate: () => this.allocate() });
+          let packed: Packed;
+          try {
+            packed = pack({ plan: method.result, value: result, memory: this.values, allocate: () => this.allocate() });
+          } catch (error) {
+            await this.discardResult({ plan: method.result, value: result }); throw error;
+          }
           this.register({ packed, scope: 'result' });
           if (!this.active()) {
           // A handler may settle after cancellation/revocation. Its returned
@@ -632,12 +732,12 @@ export class RpcConversation {
     case 'result': {
       check({ condition: isCaller({ role: this.role }) && this.inputAccepted && !this.resultReceived && this.method, code: 'PROTOCOL_ERROR' });
       if (!this.method) throw new Error('Method missing');
-      const value = this.receiveValue({ plan: this.method.result, value: wireValue({ value: frame.value }), scope: 'result' });
+      const value = this.receiveValue({ plan: this.method.result, value: wireValue({ value: frame.value, memory: this.dispatchMemory }), scope: 'result' });
       this.resultReceived = true; this.result.resolve(value); return;
     }
     case 'accept': this.accept({ scope: frame.scope, ids: frame.ids }); return;
     case 'pull': this.pullExport({ id: frame.id, sequence: frame.sequence }); return;
-    case 'item': this.receiveItem({ id: frame.id, sequence: frame.sequence, value: wireValue({ value: frame.value }), ended: false }); return;
+    case 'item': this.receiveItem({ id: frame.id, sequence: frame.sequence, value: wireValue({ value: frame.value, memory: this.dispatchMemory }), ended: false }); return;
     case 'item-fragment': this.receiveFragment({ id: frame.id, sequence: frame.sequence, total: frame.total, offset: frame.offset, data: frame.data }); return;
     case 'end': this.receiveItem({ id: frame.id, sequence: frame.sequence, value: undefined, ended: true }); return;
     case 'stop': this.stopExport({ id: frame.id, acknowledge: true }); return;
@@ -645,12 +745,14 @@ export class RpcConversation {
       const state = this.imports.get(frame.id);
       check({ condition: state?.phase === 'stopping', code: 'PROTOCOL_ERROR' });
       if (!state) throw new Error('Missing stopped stream');
-      if (state.fragment?.bytes) this.partialBytes -= state.fragment.bytes.byteLength;
+      if (state.fragment?.bytes) {
+        this.partialBytes -= state.fragment.bytes.byteLength; state.fragment.bytes.dispose();
+      }
       state.fragment = undefined; state.granted = false;
       state.phase = 'terminal'; state.pending?.resolve(); state.pending = undefined;
       this.maybeFinish(); return;
     }
-    case 'invoke': this.invoke({ id: frame.id, invocation: frame.invocation, value: wireValue({ value: frame.value }) }); return;
+    case 'invoke': this.invoke({ id: frame.id, invocation: frame.invocation, value: wireValue({ value: frame.value, memory: this.dispatchMemory }) }); return;
     case 'returned': case 'raised': {
       const pending = this.invocations.get(frame.invocation);
       check({ condition: pending !== undefined, code: 'PROTOCOL_ERROR' });
@@ -660,9 +762,10 @@ export class RpcConversation {
         this.invocations.delete(frame.invocation);
         pending.result.reject(new NaidanRpcError({ code: 'HANDLER_FAILED' })); break;
       case 'returned': {
-        const value = wireValue({ value: frame.value }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
+        const value = wireValue({ value: frame.value, memory: this.dispatchMemory }); check({ condition: references({ value }).size === 0, code: 'PROTOCOL_ERROR' });
         const projected = project({
           plan: pending.plan,
+          memory: pending.memory,
           value,
           proxy: () => {
             throw new Error('Finite callback result');
@@ -677,7 +780,7 @@ export class RpcConversation {
       }
       this.maybeFinish(); return;
     }
-    case 'notice': this.notice({ name: frame.name, value: wireValue({ value: frame.value }) }); return;
+    case 'notice': this.notice({ name: frame.name, value: wireValue({ value: frame.value, memory: this.dispatchMemory }) }); return;
     default: { const unreachable: never = frame; throw new Error(String(unreachable)); }
     }
   }
@@ -690,7 +793,12 @@ export class RpcConversation {
         if (this.wireEnded) return;
         if (!frame) break;
         // Dispatch never awaits application handlers, source reads, callbacks or response writes.
-        await this.handle({ frame });
+        this.dispatchMemory = this.memory.fork();
+        try {
+          await this.handle({ frame });
+        } finally {
+          this.dispatchMemory.clear(); this.dispatchMemory = undefined;
+        }
         if (++processed % 64 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
       }
       if (this.wireEnded) return;

@@ -7,8 +7,8 @@ type Queued = {
   reject: ReturnType<typeof Promise.withResolvers<Response>>['reject'];
   removeAbort(): void;
 };
-/** Test-only FIFO connection pool. FiniteEndpoint creates its deadline before
- * this queue, and MemoryRelay returns only completely transferred finite bodies. */
+/** Test-only FIFO pool: headers do not release a socket. The response body
+ * must finish or cancel before another operation can use its slot. */
 export function createPipingFetchPool({ capacity, request }: {
   capacity: number;
   request({ input, init }: FetchArguments): Promise<Response>;
@@ -22,11 +22,39 @@ export function createPipingFetchPool({ capacity, request }: {
         item.state = 'settled'; item.removeAbort(); item.reject(item.signal.reason); continue;
       }
       item.state = 'active'; item.removeAbort(); active++; peak = Math.max(peak, active);
-      // The relay owns active abort cleanup; do not release the slot early.
+      const release = () => {
+        switch (item.state) {
+        case 'active': break;
+        case 'queued': case 'settled': return;
+        default: { const exhaustive: never = item.state; throw new Error(String(exhaustive)); }
+        } item.state = 'settled'; active--; drain();
+      };
       void Promise.resolve().then(() => request(item.args)).then(response => {
-        item.state = 'settled'; active--; item.resolve(response); drain();
+        if (!response.body) {
+          release(); item.resolve(response); return;
+        }
+        const reader = response.body.getReader();
+        item.resolve(new Response(new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const part = await reader.read();
+              if (part.done) {
+                reader.releaseLock(); release(); controller.close();
+              } else controller.enqueue(part.value);
+            } catch (error) {
+              reader.releaseLock(); release(); controller.error(error);
+            }
+          },
+          async cancel(reason) {
+            try {
+              await reader.cancel(reason);
+            } finally {
+              reader.releaseLock(); release();
+            }
+          },
+        }, { highWaterMark: 0 }), { status: response.status, headers: response.headers }));
       }, error => {
-        item.state = 'settled'; active--; item.reject(error); drain();
+        release(); item.reject(error);
       });
     }
   };

@@ -31,6 +31,7 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
   if (value === undefined) return { access: { providerGeneration, persistence, registryId: undefined }, registrations: [] };
   const { version: _version, id, registrations, ...rest } = ExperimentalNaidanRpcRegistrySchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
+  validateRegistry({ id, registrations });
   return {
     access: { providerGeneration, persistence, registryId: toNaidanRpcRegistryId({ raw: id }) },
     registrations: registrations.map(value => rpcRegistrationFromDto({ value })),
@@ -42,11 +43,17 @@ export async function writeNaidanRpcRegistry({ provider, current, registrations 
   provider: IStorageProvider, current: NaidanRpcRegistrySnapshot, registrations: readonly NaidanRpcRegistration[],
 }): Promise<NaidanRpcRegistryAccess> {
   const id = current.access.registryId ?? toNaidanRpcRegistryId({ raw: nanoid() });
-  const registry = ExperimentalNaidanRpcRegistrySchemaDto.parse({ version: 2, id: idToRaw({ id }), registrations: registrations.map(registration => rpcRegistrationToDto({ registration })) });
+  const registry = ExperimentalNaidanRpcRegistrySchemaDto.parse({ version: 1, id: idToRaw({ id }), registrations: registrations.map(registration => rpcRegistrationToDto({ registration })) });
+  validateRegistry({ id: registry.id, registrations: registry.registrations });
   await provider.saveNaidanRpcRegistry({ registry });
   // Retain the registry ID when its last registration is removed. A recreated
   // document after clearAll must not share authority with the old document.
   return { ...current.access, registryId: id };
+}
+function validateRegistry({ id, registrations }: { id: string; registrations: readonly { id: string }[] }): void {
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw new Error('Invalid RPC registry identity');
+  if (registrations.length > 32) throw new Error('RPC registry capacity exceeded');
+  if (new Set(registrations.map(registration => registration.id)).size !== registrations.length) throw new Error('Duplicate RPC registration');
 }
 export const TEST_ONLY = {
 };

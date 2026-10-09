@@ -6,10 +6,10 @@ import NaidanRpcTab from './NaidanRpcTab.vue';
 import { NaidanPeerManager } from '@/features/naidan-rpc-integration/runtime/manager';
 import { openPipingRpc } from '@/features/naidan-rpc-integration/transports/piping';
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
-import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex';
+import { createNaidanPipingIdentity, NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
 import { createPipingFetchPool } from '@/features/naidan-rpc-integration/runtime/test-support/piping-pool';
-import { MemoryRelay } from '@/features/naidan-piping-duplex/memory-relay.test-support';
+import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import type { NaidanRpcStorage } from '@/00-storage/service/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toNaidanRpcRegistryId } from '@/01-models/ids';
@@ -28,7 +28,7 @@ vi.mock('../runtime/feature', () => ({
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: async () => true }) }));
 const managers: NaidanPeerManager[] = [];
 const wrappers: ReturnType<typeof mount>[] = [];
-let relay: MemoryRelay;
+let relay: FiniteMemoryRelay;
 let pool: ReturnType<typeof createPipingFetchPool>;
 
 beforeEach(async () => {
@@ -52,8 +52,13 @@ beforeEach(async () => {
       };
     },
   }));
-  relay = new MemoryRelay();
-  pool = createPipingFetchPool({ capacity: 6, request: ({ input, init }) => relay.request({ input, init }) });
+  const connect = NaidanPipingDuplexSession.connectPinned;
+  vi.spyOn(NaidanPipingDuplexSession, 'connectPinned').mockImplementation(args => connect.call(NaidanPipingDuplexSession, {
+    ...args,
+    piping: { ...args.piping, requestTimeoutMs: 5000, liveness: { intervalMs: 100, checkingMs: 200, responseTimeoutMs: 1500, busyTimeoutMs: 2000 } },
+  }));
+  relay = new FiniteMemoryRelay();
+  pool = createPipingFetchPool({ capacity: 6, request: ({ input, init }) => relay.fetch(input, init) });
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => pool.request({ input, init }));
 });
 
@@ -204,24 +209,24 @@ it.each(['startup-first', 'panel-first'] as const)('connects on startup with Set
   await vi.waitFor(() => expect(local.manager.list()[0]?.phase).toBe('disconnected'));
 });
 
-it('reconnects after only p2 restarts on the same stable paths, without replacing p1 physical owner or replaying its RPC binding', async () => {
+it('reconnects with fresh data paths after only p2 restarts, without replaying its old RPC binding', async () => {
   const { local, remote, identities } = await setup();
   await Promise.all([local.manager.connect({ id: local.id }), remote.manager.connect({ id: remote.id })]);
   const oldToken = local.manager.list()[0]?.connectionToken, oldBinding = local.manager.bindClient({ id: local.id });
   const paths = [...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))].sort();
   const remoteLink = await remote.open.mock.results[0]!.value;
-  if (!remoteLink.persistent) throw new Error('Expected the production persistent endpoint');
-  // Abrupt endpoint loss precedes app disposal, so no graceful CLOSE is sent.
-  const abrupt = remoteLink.persistent.owner.stop({ reason: 'Simulated page reload', notice: 'abort' });
-  await remote.manager.setEnabled({ enabled: false }); await abrupt;
+  // Abrupt one-shot connection loss precedes app disposal: no graceful CLOSE.
+  remoteLink.abort({ reason: 'Simulated page reload' });
+  await remoteLink.closed; await remote.manager.setEnabled({ enabled: false });
   const restarted = await peer({ identity: identities.b, other: identities.a, startup: 'run', connectOnStartup: 'enabled' });
   await vi.waitFor(() => {
     expect(restarted.manager.list()[0]?.phase).toBe('connected');
     expect(local.manager.list()[0]?.phase).toBe('connected');
     expect(local.manager.list()[0]?.connectionToken).not.toBe(oldToken);
-  });
-  expect(oldBinding.signal.aborted).toBe(true); expect(local.open).toHaveBeenCalledOnce(); expect(restarted.open).toHaveBeenCalledOnce();
-  expect([...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))].sort()).toEqual(paths);
+  }, { timeout: 8000 });
+  expect(oldBinding.signal.aborted).toBe(true); expect(local.open).toHaveBeenCalledTimes(2); expect(restarted.open).toHaveBeenCalledOnce();
+  const reconnectedPaths = [...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))];
+  expect(reconnectedPaths.some(path => !paths.includes(path))).toBe(true);
   await expect(local.manager.getPeerProvidedMethods({ id: local.id, signal: new AbortController().signal })).resolves.toBeDefined();
 });
 
@@ -242,10 +247,10 @@ it('keeps manual stop final, lets the peer wait, and reconnects only after expli
   await vi.waitFor(() => expect({ local: local.manager.list()[0]?.phase, remote: remote.manager.list()[0]?.phase }).toEqual({ local: 'connected', remote: 'connected' }), { timeout: 3000 });
   await reconnecting; await resumed;
   expect(local.manager.list()[0]?.phase).toBe('connected'); expect(remote.manager.list()[0]?.phase).toBe('connected');
-  expect(local.open).toHaveBeenCalledTimes(2); expect(remote.open).toHaveBeenCalledOnce();
+  expect(local.open).toHaveBeenCalledTimes(2); expect(remote.open).toHaveBeenCalledTimes(2);
 });
 
-it('hands a human-verified first pairing to the pinned endpoint before exposing RPC under six shared fetch slots', async () => {
+it('hands the human-verified pairing itself to RPC under six shared fetch slots', async () => {
   const a = await createNaidanPipingIdentity(), b = await createNaidanPipingIdentity();
   const local = await peer({ identity: a, other: b, startup: 'run', connectOnStartup: 'disabled' });
   const remote = await peer({ identity: b, other: a, startup: 'run', connectOnStartup: 'disabled' });
@@ -278,7 +283,7 @@ it('hands a human-verified first pairing to the pinned endpoint before exposing 
   expect(localView).toMatchObject({ phase: 'connected', persistence: 'temporary', health: { state: 'healthy' } });
   expect(remoteView).toMatchObject({ phase: 'connected', persistence: 'temporary', health: { state: 'healthy' } });
   const opened = await local.open.mock.results[0]!.value;
-  expect(opened.persistent).toBeDefined();
+  expect(opened.session).toBeDefined(); expect(local.open).toHaveBeenCalledOnce(); expect(remote.open).toHaveBeenCalledOnce();
   await expect(local.manager.getPeerProvidedMethods({ id: localId, signal })).resolves.toBeDefined();
   expect(pool.stats.peak).toBeLessThanOrEqual(6);
 });

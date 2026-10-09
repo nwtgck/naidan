@@ -1,4 +1,4 @@
-import { areImageInferenceLocationsEqual, isAvailableRemoteImageEditor } from '@/01-models/image-generation-preferences';
+import { areImageInferenceLocationsEqual } from '@/01-models/image-generation-preferences';
 import { onScopeDispose, watch, type Ref } from 'vue';
 import { idToRaw } from '@/01-models/ids';
 import type { Settings } from '@/01-models/types';
@@ -39,10 +39,9 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
         isCurrent: owner,
         updater: ({ experimental }) => {
           const base = experimental?.browserImageGeneration;
-          const editors = new Map((base?.remoteModelEditors ?? []).filter(isAvailableRemoteImageEditor).map(preference => [key({ preference }), preference]));
+          const editors = new Map((base?.remoteModelEditors ?? []).map(preference => [key({ preference }), preference]));
           for (const [id, preference] of changedEditors) editors.set(id, preference);
           const merged = (base?.remoteModelEditors ?? []).map(preference => {
-            if (!isAvailableRemoteImageEditor(preference)) return preference;
             const id = key({ preference }), next = editors.get(id)!; editors.delete(id); return next;
           });
           merged.push(...editors.values());
@@ -92,8 +91,8 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
       invalidate({ owner: isCurrent }); return;
     }
     if (!areImageInferenceLocationsEqual({ left: value.inferenceLocation, right: previous.inferenceLocation })) pendingLocation = value.inferenceLocation;
-    const oldEditors = new Map(previous.remoteModelEditors.filter(isAvailableRemoteImageEditor).map(preference => [key({ preference }), preference]));
-    for (const preference of value.remoteModelEditors.filter(isAvailableRemoteImageEditor)) {
+    const oldEditors = new Map(previous.remoteModelEditors.map(preference => [key({ preference }), preference]));
+    for (const preference of value.remoteModelEditors) {
       const id = key({ preference });
       if (JSON.stringify(preference) !== JSON.stringify(oldEditors.get(id))) pendingEditors.set(id, preference);
     }

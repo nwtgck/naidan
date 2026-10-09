@@ -155,35 +155,22 @@ it('history reuse resets adapters rather than merging another editor into a past
 export const TEST_ONLY = {
 };
 
-it('keeps an unavailable RPC location distinct from unselected and never binds another available peer', async () => {
-  const { UnavailableRpcValue } = await import('@/01-models/unavailable-rpc-value');
+it('keeps unavailable distinct from unselected and never binds another available peer', async () => {
   const h = setup(); await h.inferenceLocation.refresh({ fromStorage: false });
-  const raw = { kind: 'naidan_rpc', registration: { registrationId: 'old-registration' } };
-  h.inferenceLocation.restoreLocation({ location: { kind: 'naidan_rpc', registration: undefined, unavailableRpc: new UnavailableRpcValue({ raw }) }, modelEditor: undefined });
-  const captured = h.inferenceLocation.capturePreferences().inferenceLocation;
-  expect(captured.kind).toBe('naidan_rpc');
-  expect(captured.kind === 'naidan_rpc' && captured.unavailableRpc?.read()).toEqual(raw);
+  h.inferenceLocation.restoreLocation({ location: { kind: 'unavailable' }, modelEditor: undefined });
+  expect(h.inferenceLocation.capturePreferences().inferenceLocation).toEqual({ kind: 'unavailable' });
   await expect(h.inferenceLocation.prepare({ seed: '42', createdAt: 1, signal: new AbortController().signal })).rejects.toThrow();
   expect(h.bindClient).not.toHaveBeenCalled(); expect(h.unexpected).not.toHaveBeenCalled();
   h.inferenceLocation.chooseRegistration({ id: h.second.id });
-  const selected = h.inferenceLocation.captureLocation();
-  expect(selected.kind === 'naidan_rpc' && selected.unavailableRpc).toBeUndefined();
+  expect(h.inferenceLocation.captureLocation()).toMatchObject({ kind: 'naidan_rpc', registration: { registrationId: h.second.id } });
 });
 
-it('selecting valid peer B preserves unavailable editor A and C around it', async () => {
-  const { UnavailableRpcValue } = await import('@/01-models/unavailable-rpc-value');
+it('restoring unavailable clears the previous live selection and model editor', async () => {
   const h = setup(); await h.inferenceLocation.refresh({ fromStorage: false });
-  const a = new UnavailableRpcValue({ raw: { registrationId: 'old-A' } }), c = new UnavailableRpcValue({ raw: { registrationId: 'old-C' } });
-  h.inferenceLocation.restorePreferences({
-    inferenceLocation: { kind: 'naidan_rpc', registration: undefined },
-    remoteModelEditors: [
-      { unavailableRpc: a }, { registrationId: h.second.id, peerPublicKey: h.second.peerPublicKey, editor: { primary: undefined, components: [], loras: [] } }, { unavailableRpc: c },
-    ],
-  });
   h.inferenceLocation.chooseRegistration({ id: h.second.id });
-  const values = h.inferenceLocation.capturePreferences().remoteModelEditors;
-  expect(values).toHaveLength(3);
-  expect(values[0] && 'unavailableRpc' in values[0] && values[0].unavailableRpc.equals({ other: a })).toBe(true);
-  expect(values[2] && 'unavailableRpc' in values[2] && values[2].unavailableRpc.equals({ other: c })).toBe(true);
+  h.inferenceLocation.restoreLocation({ location: { kind: 'unavailable' }, modelEditor: undefined });
+  expect(h.inferenceLocation.captureLocation()).toEqual({ kind: 'unavailable' });
+  expect(h.inferenceLocation.editor.value.primary).toBeUndefined();
+  await expect(h.inferenceLocation.prepare({ seed: '42', createdAt: 1, signal: new AbortController().signal })).rejects.toThrow();
   expect(h.bindClient).not.toHaveBeenCalled();
 });

@@ -248,7 +248,7 @@ it.each(['wrong-id', 'wrong-session', 'invalid-width', 'invalid-seeds'] as const
   expect([...binaries.children.keys()]).toEqual(['input-aa']);
 });
 
-it('keeps opaque translation endpoints distinct while preserving activity ordering and new LM parameters', async () => {
+it('keeps unsupported translation endpoints non-executable and preserves revisions for actual model changes', async () => {
   const h = await setup(), catalogDto = imageGenerationCatalogToDto({ catalog: h.catalog });
   const translation = ({ marker }: { marker: string }) => imageGenerationCatalogToDomain({
     dto: ExperimentalImageGenerationCatalogSchemaDto.parse({
@@ -257,8 +257,8 @@ it('keeps opaque translation endpoints distinct while preserving activity orderi
         ...catalogDto.preferences,
         generationMonitorPresentation: 'compact-progress',
         translation: {
-          endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'naidan_rpc', registrationId: 'saved-peer', future: marker } } },
-          modelId: 'translation-model',
+          endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'future-rpc', registrationId: 'saved-peer', future: marker } } },
+          modelId: `translation-model-${marker}`,
           lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } },
         },
       },
@@ -274,7 +274,8 @@ it('keeps opaque translation endpoints distinct while preserving activity orderi
   expect(fs.writes).toHaveLength(writes); expect(activity.text).toBe(beforeRetry); expect(record.text).toBe(firstBytes);
   const second = await service.saveImageGenerationSession({ store: h.store, session: { ...first, revision: 2, translation: translation({ marker: 'B' }) }, expectedRevision: 1 });
   expect(second.activityOrder).toBe(first.activityOrder! + 1);
-  expect(JSON.parse(record.text).translation.endpoint.experimental.endpoint.future).toBe('B');
+  expect(JSON.parse(record.text).translation.endpoint).toEqual({ type: 'experimental_type' });
+  expect(second.translation?.modelId).toBe('translation-model-B');
   expect(second.translation?.endpoint?.type).toBe('unsupported_experimental_endpoint');
   expect(second.translation?.lmParameters).toMatchObject({ temperature: 0, stop: [], reasoning: { effort: 'none' } });
 });

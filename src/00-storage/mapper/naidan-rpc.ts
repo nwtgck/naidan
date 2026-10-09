@@ -9,33 +9,44 @@ export function rpcRegistrationToDto({ registration }: { registration: NaidanRpc
   rest satisfies Record<PropertyKey, never>;
   const { type, serverUrl, headers, ...transportRest } = normalizeNaidanRpcTransport({ transport });
   transportRest satisfies Record<PropertyKey, never>;
+  validateRegistrationIdentity({ id: idToRaw({ id }), peerPublicKey: idToRaw({ id: peerPublicKey }), localPublicKey, revision });
   // Explicit projection also accepts Vue's nested reactive forms. Never pass
   // their proxies to persistence or structuredClone.
   return ExperimentalNaidanRpcRegistrationSchemaDto.parse({
-    version: 2,
     id: idToRaw({ id }),
     peerPublicKey: idToRaw({ id: peerPublicKey }),
     localPublicKey,
     label: normalizeNaidanRpcLabel({ label }),
     transport: { type, serverUrl, headers: headers.map(({ name, value }) => ({ name, value })) },
-    inboundAllowedMethods: [...inboundAllowedMethods],
+    inboundAllowedMethods: [...new Set(inboundAllowedMethods)],
     connectOnStartup,
     revision,
   });
 }
 export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpcRegistration {
-  const { version: _version, id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = ExperimentalNaidanRpcRegistrationSchemaDto.parse(value);
+  const { id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = ExperimentalNaidanRpcRegistrationSchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
+  validateRegistrationIdentity({ id, peerPublicKey, localPublicKey, revision });
   return {
     id: toNaidanRpcRegistrationId({ raw: id }),
     peerPublicKey: toNaidanRpcPeerPublicKey({ raw: peerPublicKey }),
     localPublicKey,
     label: normalizeNaidanRpcLabel({ label }),
     transport: normalizeNaidanRpcTransport({ transport }),
-    inboundAllowedMethods,
+    inboundAllowedMethods: [...new Set(inboundAllowedMethods)],
     connectOnStartup,
     revision,
   };
+}
+/** These are requirements for using identities and revision arithmetic, not
+ * additional promises made by the serialized TypeScript shape. Method names
+ * remain untrusted strings until the active contract checks local authority. */
+function validateRegistrationIdentity({ id, peerPublicKey, localPublicKey, revision }: {
+  id: string; peerPublicKey: string; localPublicKey: string; revision: number;
+}): void {
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw new Error('Invalid RPC registration identity');
+  if (![peerPublicKey, localPublicKey].every(key => /^[A-Za-z0-9_-]{43}$/.test(key))) throw new Error('Invalid RPC public key');
+  if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid RPC registration revision');
 }
 export const TEST_ONLY = {
 };

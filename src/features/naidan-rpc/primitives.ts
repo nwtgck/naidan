@@ -5,8 +5,10 @@ import type { ProtocolHeaderResult } from './protocol-header';
 /** Finite values have an explicit memory budget; stream length is unbounded. */
 export const VALUE_BYTES = 64 * 1024 * 1024;
 export const FRAME_BYTES = VALUE_BYTES + 1024;
-/** Internal transfer pieces, never a constraint on a producer's chunk or item. */
-export const TRANSFER_BYTES = 16 * 1024;
+/** Independent limits: transport batching is not a wire item or source limit. */
+export const WRITE_BATCH_BYTES = 1024 * 1024 + 4096;
+export const BYTE_PULL_BYTES = 1024 * 1024;
+export const ITEM_FRAGMENT_BYTES = 1024 * 1024;
 export const REFERENCE_LIMIT = 16;
 export const CALLBACK_LIMIT = 8;
 export const QUEUE_BYTES = 2 * FRAME_BYTES;

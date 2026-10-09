@@ -1,6 +1,5 @@
 import { applyImageGenerationActivity, finishImageGenerationActivity, recoverImageGenerationActivities, reserveImageGenerationActivity } from './image-generation/activity';
 import { compareImageGenerationSessions } from '@/01-models/image-generation';
-import { stringifyStorageDto } from './serialize';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
@@ -34,7 +33,7 @@ export async function loadImageGenerationCatalog({ store }: { store: ImageGenera
 /** Rename/archive tags by stable ID. Definitions are never physically removed. */
 export async function saveImageGenerationCatalog({ store, catalog, expectedRevision }: { store: ImageGenerationStoreAccess, catalog: ImageGenerationCatalog, expectedRevision: number }): Promise<void> {
   const next = ExperimentalImageGenerationCatalogSchemaDto.parse(imageGenerationCatalogToDto({ catalog }));
-  const serialized = stringifyStorageDto({ value: next, space: undefined });
+  const serialized = JSON.stringify(next);
   await withImageGenerationStore({
     store,
     operation: async ({ directory, catalog: current }) => {
@@ -45,7 +44,7 @@ export async function saveImageGenerationCatalog({ store, catalog, expectedRevis
         if (tag.createdAt !== previous.createdAt) throw new Error('Tag creation time is immutable.');
       }
       assertImageGenerationReplacement({ current, next, expectedRevision });
-      if (stringifyStorageDto({ value: current, space: undefined }) !== serialized) await writeImageGenerationText({ directory, name: 'catalog.json', text: serialized });
+      if (JSON.stringify(current) !== serialized) await writeImageGenerationText({ directory, name: 'catalog.json', text: serialized });
     },
   });
 }
@@ -77,7 +76,7 @@ export async function loadImageGenerationSession({ store, sessionId }: { store: 
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
   const requested = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
   // Validate retained leaves before creating directories or reserving activity.
-  stringifyStorageDto({ value: requested, space: undefined });
+  JSON.stringify(requested);
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -91,7 +90,7 @@ export async function saveImageGenerationSession({ store, session, expectedRevis
       const candidate = { ...requested, activityOrder: current?.activityOrder };
       assertImageGenerationReplacement({ current, next: candidate, expectedRevision });
       await table.preflightWrite({ id: requested.id });
-      const next = current && stringifyStorageDto({ value: current, space: undefined }) === stringifyStorageDto({ value: candidate, space: undefined }) ? current
+      const next = current && JSON.stringify(current) === JSON.stringify(candidate) ? current
         : { ...candidate, activityOrder: await reserveImageGenerationActivity({ directory, run: undefined }) };
       await table.write({ record: next, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next, expectedRevision }), async beforeCommit() {} });
       return imageGenerationSessionToDomain({ dto: next });
@@ -194,7 +193,7 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
   store: ImageGenerationStoreAccess, draft: ImageGenerationSessionDraft, expectedRevision: number | undefined, writeInputs: () => Promise<void>,
 }): Promise<void> {
   const next = ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft }));
-  const serialized = stringifyStorageDto({ value: next, space: undefined });
+  const serialized = JSON.stringify(next);
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -308,7 +307,7 @@ export async function updateImageGenerationRunExecution({ store, sessionId, runI
       if (!current) throw new Error('Image Generation run does not exist.');
       const next = ExperimentalImageGenerationRunSchemaDto.parse({ ...current, revision: expectedRevision + 1, execution: accepted });
       assertImageGenerationReplacement({ current, next, expectedRevision });
-      if (stringifyStorageDto({ value: current, space: undefined }) !== stringifyStorageDto({ value: next, space: undefined }) && !canTransitionImageGenerationRun({ from: current.execution.type, to: next.execution.type })) throw new Error('Invalid Image Generation execution transition.');
+      if (JSON.stringify(current) !== JSON.stringify(next) && !canTransitionImageGenerationRun({ from: current.execution.type, to: next.execution.type })) throw new Error('Invalid Image Generation execution transition.');
       switch (accepted.type) {
       case 'completed': {
         const assets = await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).list();
@@ -355,7 +354,7 @@ export async function commitImageGenerationAsset({ store, asset, writeImages }: 
       await table.write({
         record: next,
         assertCurrent({ current }) {
-          if (current && stringifyStorageDto({ value: current, space: undefined }) !== stringifyStorageDto({ value: next, space: undefined })) throw new Error('Image Generation assets are immutable.');
+          if (current && JSON.stringify(current) !== JSON.stringify(next)) throw new Error('Image Generation assets are immutable.');
         },
         beforeCommit: async () => {
           await assertImageGenerationBinariesNotDeleted({ directory, ids: [next.result.binaryObjectId, ...next.previews.map(preview => preview.binaryObjectId)] });

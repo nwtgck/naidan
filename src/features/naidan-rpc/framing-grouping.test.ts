@@ -4,7 +4,7 @@ import { encode } from './codec';
 import { FramedDuplex, frameSchema, TEST_ONLY } from './framing';
 import type { Frame } from './framing';
 import { encodeProtocolHeader } from './protocol-header';
-import { FRAME_BYTES, QUEUE_FRAMES, TRANSFER_BYTES } from './primitives';
+import { FRAME_BYTES, QUEUE_FRAMES, WRITE_BATCH_BYTES } from './primitives';
 
 function wireBytes({ frame }: { frame: Frame }): Uint8Array {
   const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES }), bytes = new Uint8Array(payload.length + 4);
@@ -85,7 +85,7 @@ it('groups only already-queued finite frames behind a held write and preserves F
   const header = await writeAt({ index: 0 }); expect(writes).toHaveLength(1); expect(completed).toEqual([]);
   header.release.resolve(); const batch = await writeAt({ index: 1 });
   expect(batch.bytes).toEqual(joined({ parts: frames.map(frame => wireBytes({ frame })) }));
-  expect(batch.bytes.length).toBeLessThanOrEqual(TRANSFER_BYTES); expect(completed).toEqual([]); expect(close).not.toHaveBeenCalled();
+  expect(batch.bytes.length).toBeLessThanOrEqual(WRITE_BATCH_BYTES); expect(completed).toEqual([]); expect(close).not.toHaveBeenCalled();
   const owned = TEST_ONLY.writeOwnership({ framed });
   expect(owned.retainedBytes).toBe(batch.bytes.length); expect(owned.scratchBytes).toBe(batch.bytes.buffer.byteLength);
   batch.release.resolve(); await Promise.all(sends); await finished.settled; await framed.retire();
@@ -97,12 +97,12 @@ it('groups only already-queued finite frames behind a held write and preserves F
 
 it.each([1, 2, 3])('preserves a length prefix split after %s bytes, partial-entry ownership, and promise boundaries', async prefixBytes => {
   const { framed, writeAt, writes } = heldWriter();
-  const first = sizedFrame({ length: TRANSFER_BYTES - prefixBytes }), second: Frame = { type: 'ack' };
+  const first = sizedFrame({ length: WRITE_BATCH_BYTES - prefixBytes }), second: Frame = { type: 'ack' };
   const firstWire = wireBytes({ frame: first }), secondWire = wireBytes({ frame: second });
   const firstSent = outcome({ promise: framed.send({ frame: first }) }), secondSent = outcome({ promise: framed.send({ frame: second }) });
   (await writeAt({ index: 0 })).release.resolve(); const batch = await writeAt({ index: 1 });
-  expect(batch.bytes.length).toBe(TRANSFER_BYTES);
-  expect(batch.bytes).toEqual(joined({ parts: [firstWire, secondWire.subarray(0, prefixBytes)] }));
+  expect(batch.bytes.length).toBe(WRITE_BATCH_BYTES);
+  expect(Buffer.from(batch.bytes).equals(Buffer.from(joined({ parts: [firstWire, secondWire.subarray(0, prefixBytes)] })))).toBe(true);
   expect(TEST_ONLY.writeOwnership({ framed }).queue.map(entry => entry.offset)).toEqual([0, 0]);
   expect(firstSent.state.kind).toBe('pending'); expect(secondSent.state.kind).toBe('pending');
   batch.release.resolve(); const suffix = await writeAt({ index: 2 }); await firstSent.settled;
@@ -110,12 +110,12 @@ it.each([1, 2, 3])('preserves a length prefix split after %s bytes, partial-entr
   expect(suffix.bytes).toEqual(secondWire.subarray(prefixBytes)); expect(suffix.bytes.buffer.byteLength).toBe(secondWire.length);
   expect(TEST_ONLY.writeOwnership({ framed })).toEqual({ retainedBytes: secondWire.length, scratchBytes: 0, queue: [{ offset: prefixBytes, backingBytes: secondWire.length }], inFlightEntries: 1 });
   suffix.release.resolve(); await secondSent.settled; await framed.finish(); await framed.retire();
-  expect(joined({ parts: writes.map(write => write.bytes) })).toEqual(joined({ parts: [encodeProtocolHeader(), firstWire, secondWire] }));
-  expect(writes.every(write => write.bytes.length <= TRANSFER_BYTES)).toBe(true);
+  expect(Buffer.from(joined({ parts: writes.map(write => write.bytes) })).equals(Buffer.from(joined({ parts: [encodeProtocolHeader(), firstWire, secondWire] })))).toBe(true);
+  expect(writes.every(write => write.bytes.length <= WRITE_BATCH_BYTES)).toBe(true);
 });
 
 it('retains a large entry in full through grouped and direct slices, without copying a single-entry prefix', async () => {
-  const { framed, writeAt, writes } = heldWriter(), first: Frame = { type: 'ack' }, second = sizedFrame({ length: 3 * TRANSFER_BYTES + 7 });
+  const { framed, writeAt, writes } = heldWriter(), first: Frame = { type: 'ack' }, second = sizedFrame({ length: 3 * WRITE_BATCH_BYTES + 7 });
   const firstWire = wireBytes({ frame: first }), secondWire = wireBytes({ frame: second });
   const firstSent = outcome({ promise: framed.send({ frame: first }) }), secondSent = outcome({ promise: framed.send({ frame: second }) });
   (await writeAt({ index: 0 })).release.resolve(); (await writeAt({ index: 1 })).release.resolve();
@@ -125,21 +125,21 @@ it('retains a large entry in full through grouped and direct slices, without cop
     expect(firstSent.state.kind).toBe('resolved'); expect(secondSent.state.kind).toBe('pending');
     const owned = TEST_ONLY.writeOwnership({ framed });
     expect(owned.retainedBytes).toBe(secondWire.length); expect(owned.scratchBytes).toBe(0);
-    expect(owned.queue).toEqual([{ offset: (index - 1) * TRANSFER_BYTES - firstWire.length, backingBytes: secondWire.length }]);
+    expect(owned.queue).toEqual([{ offset: (index - 1) * WRITE_BATCH_BYTES - firstWire.length, backingBytes: secondWire.length }]);
     expect(write.bytes.buffer.byteLength).toBe(secondWire.length);
     if (backing) expect(write.bytes.buffer).toBe(backing); else backing = write.bytes.buffer;
     write.release.resolve();
   }
   await secondSent.settled; await framed.finish(); await framed.retire();
-  expect(writes.every(write => write.bytes.length <= TRANSFER_BYTES)).toBe(true);
-  expect(joined({ parts: writes.map(write => write.bytes) })).toEqual(joined({ parts: [encodeProtocolHeader(), firstWire, secondWire] }));
+  expect(writes.every(write => write.bytes.length <= WRITE_BATCH_BYTES)).toBe(true);
+  expect(Buffer.from(joined({ parts: writes.map(write => write.bytes) })).equals(Buffer.from(joined({ parts: [encodeProtocolHeader(), firstWire, secondWire] })))).toBe(true);
   expect(TEST_ONLY.writeOwnership({ framed }).retainedBytes).toBe(0);
 });
 
 it.each([undefined, null, false, 0, ''])('retains the exact first stop cause %s and active scratch through late success and failure', async original => {
   for (const result of ['success', 'failure'] as const) {
     const { framed, writeAt, writes, readable, writable } = heldWriter();
-    const first = sizedFrame({ length: TRANSFER_BYTES - 7 }), second = sizedFrame({ length: TRANSFER_BYTES + 21 });
+    const first = sizedFrame({ length: WRITE_BATCH_BYTES - 7 }), second = sizedFrame({ length: WRITE_BATCH_BYTES + 21 });
     const sends = [first, second, { type: 'ack' } as const].map(frame => outcome({ promise: framed.send({ frame }) }));
     const finished = outcome({ promise: framed.finish() });
     (await writeAt({ index: 0 })).release.resolve(); const batch = await writeAt({ index: 1 });
@@ -148,7 +148,7 @@ it.each([undefined, null, false, 0, ''])('retains the exact first stop cause %s 
     await Promise.all(sends.map(send => send.settled)); await finished.settled;
     for (const send of sends) expect(send.state).toEqual({ kind: 'rejected', reason: original });
     expect(finished.state).toEqual({ kind: 'rejected', reason: original }); expect(retired.state.kind).toBe('pending');
-    expect(TEST_ONLY.writeOwnership({ framed })).toEqual({ retainedBytes: wireBytes({ frame: first }).length + wireBytes({ frame: second }).length, scratchBytes: TRANSFER_BYTES, queue: [], inFlightEntries: 2 });
+    expect(TEST_ONLY.writeOwnership({ framed })).toEqual({ retainedBytes: wireBytes({ frame: first }).length + wireBytes({ frame: second }).length, scratchBytes: WRITE_BATCH_BYTES, queue: [], inFlightEntries: 2 });
     expect(readable.locked).toBe(true); expect(writable.locked).toBe(true);
     switch (result) {
     case 'success': batch.release.resolve(); break;
@@ -195,7 +195,7 @@ it('preserves the existing frame-count admission limit while the first write is 
 
 it('graceful retirement and close wait for every grouped and partial write', async () => {
   const { framed, writeAt, close, readable, writable } = heldWriter();
-  const first = framed.send({ frame: { type: 'ack' } }), second = framed.send({ frame: sizedFrame({ length: 2 * TRANSFER_BYTES }) });
+  const first = framed.send({ frame: { type: 'ack' } }), second = framed.send({ frame: sizedFrame({ length: 2 * WRITE_BATCH_BYTES }) });
   const finished = outcome({ promise: framed.finish() }), retired = outcome({ promise: framed.retire() });
   (await writeAt({ index: 0 })).release.resolve(); (await writeAt({ index: 1 })).release.resolve();
   const middle = await writeAt({ index: 2 }); await first;

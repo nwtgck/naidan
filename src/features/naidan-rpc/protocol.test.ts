@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { NaidanRpcPeer, contract, expose, procedure, rpc } from '@/features/naidan-rpc';
 import { FramedDuplex, frameSchema } from '@/features/naidan-rpc/framing';
 import { encode, Reference } from '@/features/naidan-rpc/codec';
-import { FRAME_BYTES, TRANSFER_BYTES, VALUE_BYTES } from './primitives';
+import { FRAME_BYTES, ITEM_FRAGMENT_BYTES, BYTE_PULL_BYTES, VALUE_BYTES } from './primitives';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 
 const cleanups: (() => void)[] = [];
@@ -26,7 +26,7 @@ it('bounds public failure details and rejects details on successful completion',
 });
 
 async function opened() {
-  const transport = transportPair({ capacity: 1, fragmentBytes: 3 }), controller = new AbortController();
+  const transport = transportPair({ capacity: 1, fragmentBytes: 1031 }), controller = new AbortController();
   const peer = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 1, maxCallTimeoutMs: 1000 }, signal: controller.signal });
   const iterator = transport.b.incomingStreams[Symbol.asyncIterator]();
   cleanups.push(() => {
@@ -140,9 +140,9 @@ it('a stalled maximum-sized item declaration does not reserve its sibling stream
   const large = result.large.getReader(), sibling = result.sibling.getReader();
   const waiting = large.read(), reading = sibling.read(); await wire.read(); await wire.read();
   await wire.send({ frame: { type: 'item-fragment', id: 2, sequence: 1, total: VALUE_BYTES, offset: 0, data: new Uint8Array([1]) } });
-  const text = 's'.repeat(TRANSFER_BYTES * 2), body = encode({ value: text, limit: VALUE_BYTES });
-  for (let offset = 0; offset < body.length; offset += TRANSFER_BYTES) {
-    await wire.send({ frame: { type: 'item-fragment', id: 4, sequence: 1, total: body.length, offset, data: body.subarray(offset, offset + TRANSFER_BYTES) } });
+  const text = 's'.repeat(ITEM_FRAGMENT_BYTES * 2), body = encode({ value: text, limit: VALUE_BYTES });
+  for (let offset = 0; offset < body.length; offset += ITEM_FRAGMENT_BYTES) {
+    await wire.send({ frame: { type: 'item-fragment', id: 4, sequence: 1, total: body.length, offset, data: body.subarray(offset, offset + ITEM_FRAGMENT_BYTES) } });
   }
   expect((await reading).value).toBe(text);
   const cancellation = large.cancel(); expect((await waiting).done).toBe(true); await wire.read();
@@ -261,17 +261,39 @@ it('permits a sibling item and STOP while a large typed item is only partly deli
   const result = await call.result; await wire.read();
   const large = result.large.getReader(), small = result.small.getReader();
   const pending = large.read(), reading = small.read(); await wire.read(); await wire.read();
-  const body = encode({ value: 'x'.repeat(TRANSFER_BYTES * 4), limit: FRAME_BYTES });
-  await wire.send({ frame: { type: 'item-fragment', id: 2, sequence: 1, total: body.length, offset: 0, data: body.subarray(0, TRANSFER_BYTES) } });
+  const body = encode({ value: 'x'.repeat(ITEM_FRAGMENT_BYTES * 4), limit: FRAME_BYTES });
+  await wire.send({ frame: { type: 'item-fragment', id: 2, sequence: 1, total: body.length, offset: 0, data: body.subarray(0, ITEM_FRAGMENT_BYTES) } });
   await wire.send({ frame: { type: 'item', id: 4, sequence: 1, value: 7 } });
   expect((await reading).value).toBe(7);
   const cancellation = large.cancel(); expect((await pending).done).toBe(true); expect(await wire.read()).toEqual({ type: 'stop', id: 2 });
   // A single already granted logical item may finish or be abandoned, never
   // allocate new discarded payloads or consume a second pull's credit.
-  await wire.send({ frame: { type: 'item-fragment', id: 2, sequence: 1, total: body.length, offset: TRANSFER_BYTES, data: body.subarray(TRANSFER_BYTES, TRANSFER_BYTES * 2) } });
+  await wire.send({ frame: { type: 'item-fragment', id: 2, sequence: 1, total: body.length, offset: ITEM_FRAGMENT_BYTES, data: body.subarray(ITEM_FRAGMENT_BYTES, ITEM_FRAGMENT_BYTES * 2) } });
   await wire.send({ frame: { type: 'stopped', id: 2 } }); await cancellation;
   const ended = small.read(); expect(await wire.read()).toEqual({ type: 'pull', id: 4, sequence: 2 });
   await wire.send({ frame: { type: 'end', id: 4, sequence: 2 } }); expect((await ended).done).toBe(true);
   await wire.send({ frame: { type: 'finish', code: undefined, details: undefined } }); expect(await wire.read()).toEqual({ type: 'ack' });
   await wire.finish(); await call.closed; await peer.retire(); wire.release();
+});
+
+it('rejects a byte source that exceeds its granted per-pull limit', async () => {
+  const bytesContract = contract({ name: 'raw.bytes', methods: { get: procedure({ input: z.object({}), result: rpc.byteStream(), notifications: {} }) } });
+  const transport = transportPair({ capacity: 1, fragmentBytes: 8191 }), controller = new AbortController();
+  const peer = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 1, maxCallTimeoutMs: undefined }, signal: controller.signal });
+  cleanups.push(() => {
+    controller.abort(); transport.close();
+  });
+  const incoming = transport.b.incomingStreams[Symbol.asyncIterator]().next();
+  const call = peer.client({ contract: bytesContract }).get({ input: {}, on: {}, signal: controller.signal, timeoutMs: undefined });
+  const next = await incoming; if (next.done) throw new Error('Expected a stream');
+  const wire = new FramedDuplex({ duplex: next.value, onProtocolFailure: () => {} });
+  await wire.read(); await wire.send({ frame: { type: 'accept', scope: 'input', ids: [] } });
+  await wire.send({ frame: { type: 'result', value: new Reference({ id: 2, mode: 'bytes' }) } });
+  const reader = (await call.result).getReader(); await wire.read();
+  const reading = reader.read(); const rejectedRead = expect(reading).rejects.toBeDefined();
+  const rejectedCall = expect(call.closed).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });
+  expect(await wire.read()).toMatchObject({ type: 'pull' });
+  await wire.send({ frame: { type: 'item', id: 2, sequence: 1, value: new Uint8Array(BYTE_PULL_BYTES + 1) } }).catch(() => {});
+  await rejectedRead; await rejectedCall; reader.releaseLock();
+  await wire.stop({ error: new Error('Test complete') }); await peer.retire();
 });

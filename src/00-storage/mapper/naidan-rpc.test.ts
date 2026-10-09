@@ -22,24 +22,18 @@ it('projects nested Vue proxies to a cloneable persistence record without losing
   const restored = rpcRegistrationFromDto({ value: dto }); expect(restored).toEqual(registration);
 });
 
-it('rejects unknown own keys at every stored authority boundary', () => {
+it('projects declared storage fields without adding RPC-only property retention', () => {
   const dto = rpcRegistrationToDto({ registration });
-  for (const key of ['future', '__proto__', 'constructor', 'prototype', 'peerId', 'allowedMethods', 'autoConnect']) {
-    const extra = Object.fromEntries([[key, undefined]]);
-    expect(() => rpcRegistrationFromDto({ value: { ...dto, ...extra } })).toThrow();
-    expect(() => rpcRegistrationFromDto({ value: { ...dto, transport: { ...dto.transport, ...extra } } })).toThrow();
-    expect(() => rpcRegistrationFromDto({ value: { ...dto, transport: { ...dto.transport, headers: [{ ...dto.transport.headers[0], ...extra }] } } })).toThrow();
-  }
+  const extra = JSON.parse('{"future":true,"__proto__":{"untrusted":true},"constructor":42}');
+  expect(rpcRegistrationFromDto({ value: { ...dto, ...extra } })).toEqual(registration);
+  expect(Object.prototype).not.toHaveProperty('untrusted');
 });
 
-it('writes registration version two and rejects old or mixed records without migration', () => {
-  const dto = rpcRegistrationToDto({ registration });
-  expect(dto.version).toBe(2);
-  expect(() => rpcRegistrationFromDto({ value: { ...dto, version: 1 } })).toThrow();
+it('has no redundant registration version and requires the new declared fields', () => {
+  const dto = rpcRegistrationToDto({ registration }); expect(dto).not.toHaveProperty('version');
   const { peerPublicKey, inboundAllowedMethods, connectOnStartup, ...rest } = dto;
-  const old = { ...rest, version: 1, peerId: peerPublicKey, allowedMethods: inboundAllowedMethods, autoConnect: connectOnStartup };
+  const old = { ...rest, peerId: peerPublicKey, allowedMethods: inboundAllowedMethods, autoConnect: connectOnStartup };
   expect(() => rpcRegistrationFromDto({ value: old })).toThrow();
-  expect(() => rpcRegistrationFromDto({ value: { ...old, ...dto } })).toThrow();
 });
 
 it('RPC endpoints clone only a registration reference, never a live proxy transport', () => {
@@ -49,10 +43,17 @@ it('RPC endpoints clone only a registration reference, never a live proxy transp
   expect(areEndpointsEqual({ left: endpoint, right: { type: 'naidan_rpc', registrationId: toNaidanRpcRegistrationId({ raw: 'another-registration' }) } })).toBe(false);
 });
 
-it('does not accept wildcard authority or silently discard duplicate methods', () => {
+it('keeps method strings structural and normalizes duplicate names', () => {
   const dto = rpcRegistrationToDto({ registration });
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.safeParse({ ...dto, inboundAllowedMethods: ['*'] }).success).toBe(false);
-  expect(ExperimentalNaidanRpcRegistrationSchemaDto.safeParse({ ...dto, inboundAllowedMethods: ['generateChat', 'generateChat'] }).success).toBe(false);
+  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse({ ...dto, inboundAllowedMethods: ['*'] }).inboundAllowedMethods).toEqual(['*']);
+  expect(rpcRegistrationFromDto({ value: { ...dto, inboundAllowedMethods: ['generateChat', 'generateChat'] } }).inboundAllowedMethods).toEqual(['generateChat']);
+});
+
+it.each([-1, 0.5, Number.MAX_SAFE_INTEGER])('keeps numeric DTO shape separate from safe revision arithmetic (%s)', revision => {
+  const dto = { ...rpcRegistrationToDto({ registration }), revision };
+  expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(dto).revision).toBe(revision);
+  expect(() => rpcRegistrationFromDto({ value: dto })).toThrow('revision');
+  expect(() => rpcRegistrationToDto({ registration: { ...registration, revision } })).toThrow('revision');
 });
 
 it('rejects credential-bearing, remote HTTP and path-bearing relay URLs', () => {

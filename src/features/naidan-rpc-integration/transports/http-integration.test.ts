@@ -62,7 +62,7 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
   return { manager, resources, store, release, answer, inputBudget, deliveryBudget, observed };
 }
 
-it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects explicitly over real loopback fetch', async () => {
+it('pairs, denies, streams and reconnects explicitly over real loopback fetch', async () => {
   const relay = await createHttpRelay();
   const lifetime = new AbortController();
   const watchdog = setTimeout(() => lifetime.abort(new Error('Loopback integration watchdog')), 25000);
@@ -89,7 +89,6 @@ it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects expli
     await expect(denied.closed).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
     expect(b.resources.listChatModels).not.toHaveBeenCalled();
     await b.manager.updateInboundAllowedMethods({ id: paired.bId, inboundAllowedMethods: ['listChatModels', 'generateChat', 'generateImage'] });
-    relay.dropNextAcknowledgement();
     const input = {
       model: 'models/test.gguf',
       messages: [{ role: 'user' as const, content: 'Private question.' }],
@@ -104,7 +103,7 @@ it('pairs, denies, streams, retries an HTTP acknowledgement and reconnects expli
     const output = await chat.result;
     const answer = await receiveEvents({ readable: output.events, onEvent: () => {}, signal: lifetime.signal });
     await chat.closed;
-    expect(answer.content).toBe(b.answer); expect(b.resources.generateChat).toHaveBeenCalledOnce(); expect(relay.stats().dropped).toBe(1);
+    expect(answer.content).toBe(b.answer); expect(b.resources.generateChat).toHaveBeenCalledOnce(); expect(relay.stats().dropped).toBe(0);
     const job = startPeerImage({
       client,
       input: {

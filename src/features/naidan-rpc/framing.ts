@@ -1,10 +1,11 @@
+import { NaidanRpcByteBudget, type RpcByteOwner } from './byte-budget';
 import { encodeProtocolHeader, ProtocolHeaderReader } from './protocol-header';
 import type { ProtocolHeaderResult } from './protocol-header';
 import { abortWriter, cancelReader, releaseLocks, RetirementFailures } from '@/features/naidan-rpc/stream-retirement';
 import { z } from 'zod';
 import { decode, encode } from '@/features/naidan-rpc/codec';
 import type { WireValue } from '@/features/naidan-rpc/codec';
-import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, TRANSFER_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, publicErrorDetailsSchema, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
+import { check, codes, deferred, FRAME_BYTES, QUEUE_BYTES, QUEUE_FRAMES, WRITE_BATCH_BYTES, ITEM_FRAGMENT_BYTES, VALUE_BYTES, NaidanRpcError, NaidanRpcPublicError, publicErrorDetailsSchema, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
 import { references } from './schema';
 import { ByteAssembly } from './assembly';
 import type { NaidanRpcDuplex } from '@/features/naidan-rpc/transport';
@@ -17,7 +18,7 @@ export const frameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('accept'), scope, ids: z.array(id).max(16) }),
   z.object({ type: z.literal('pull'), id, sequence }),
   z.object({ type: z.literal('item'), id, sequence, value: z.unknown() }),
-  z.object({ type: z.literal('item-fragment'), id, sequence, total: z.number().int().min(1).max(VALUE_BYTES), offset: z.number().int().nonnegative().max(VALUE_BYTES), data: z.instanceof(Uint8Array).refine(bytes => bytes.length > 0 && bytes.length <= TRANSFER_BYTES) }),
+  z.object({ type: z.literal('item-fragment'), id, sequence, total: z.number().int().min(1).max(VALUE_BYTES), offset: z.number().int().nonnegative().max(VALUE_BYTES), data: z.instanceof(Uint8Array).refine(bytes => bytes.length > 0 && bytes.length <= ITEM_FRAGMENT_BYTES) }),
   z.object({ type: z.literal('end'), id, sequence }),
   z.object({ type: z.literal('stop'), id }),
   z.object({ type: z.literal('stopped'), id }),
@@ -30,9 +31,12 @@ export const frameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ack') }),
 ]);
 export type Frame = z.output<typeof frameSchema>;
-type Pending = { bytes: Uint8Array; offset: number; settled: ReturnType<typeof deferred<void>> };
+type Pending = { bytes: Uint8Array; memory: RpcByteOwner; offset: number; settled: ReturnType<typeof deferred<void>> };
 
 export class FramedDuplex {
+  private readonly memory: RpcByteOwner;
+  private frameMemory: RpcByteOwner | undefined;
+  private chunkMemory: RpcByteOwner | undefined;
   readonly preambleSent: Promise<void>;
   private preambleRead: Promise<void> | undefined;
   private readonly onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void;
@@ -42,7 +46,7 @@ export class FramedDuplex {
   // Entries own distinct backing buffers. Offsets never refund retained capacity;
   // an active write keeps its entries charged even after logical queue rejection.
   private retainedBytes = 0;
-  private inFlight: { entries: Pending[]; bytes: Uint8Array; scratchBytes: number } | undefined;
+  private inFlight: { entries: Pending[]; bytes: Uint8Array; scratchBytes: number; memory: RpcByteOwner } | undefined;
   private sending = false;
   private sendWork: Promise<void> = Promise.resolve();
   private closing = false;
@@ -56,18 +60,24 @@ export class FramedDuplex {
   private retirement: Promise<void> | undefined;
   private readonly reads = new Set<Promise<Frame | undefined>>();
   private readonly onRetirementFailure: (({ error }: { error: unknown }) => void) | undefined;
-  constructor({ duplex, onRetirementFailure, onProtocolFailure }: { duplex: NaidanRpcDuplex; onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void; onRetirementFailure?: ({ error }: { error: unknown }) => void }) {
+  constructor({ duplex, onRetirementFailure, onProtocolFailure, memory }: { memory?: RpcByteOwner; duplex: NaidanRpcDuplex; onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void; onRetirementFailure?: ({ error }: { error: unknown }) => void }) {
+    this.memory = memory?.fork() ?? new NaidanRpcByteBudget().owner();
     this.onRetirementFailure = onRetirementFailure; this.onProtocolFailure = onProtocolFailure;
     this.reader = duplex.readable.getReader();
     try {
       this.writer = duplex.writable.getWriter();
     } catch (error) {
-      releaseLocks({ reader: this.reader, writer: undefined });
+      releaseLocks({ reader: this.reader, writer: undefined }); this.memory.clear();
       throw error;
     }
-    const settled = deferred<void>(), bytes = encodeProtocolHeader();
+    const settled = deferred<void>(), bytes = encodeProtocolHeader(), initial = this.memory.fork();
     this.preambleSent = settled.promise;
-    this.queue.push({ bytes, offset: 0, settled }); this.retainedBytes = bytes.buffer.byteLength;
+    try {
+      initial.retain({ bytes });
+    } catch (error) {
+      this.memory.clear(); releaseLocks({ reader: this.reader, writer: this.writer }); throw error;
+    }
+    this.queue.push({ bytes, memory: initial, offset: 0, settled }); this.retainedBytes = bytes.buffer.byteLength;
     this.kick();
   }
   send({ frame }: { frame: Frame }): Promise<void> {
@@ -82,20 +92,22 @@ export class FramedDuplex {
         observed: this.queue.length + 1,
       },
     });
-    const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES });
-    const bytes = new Uint8Array(payload.length + 4); new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
-    if (this.retainedBytes + bytes.buffer.byteLength > QUEUE_BYTES) throw new NaidanRpcPublicError({
-      code: 'RESOURCE_EXHAUSTED',
-      details: {
-        scope: 'rpc-frame',
-        constraint: 'queued-bytes',
-        limit: QUEUE_BYTES,
-        observed: this.retainedBytes + bytes.buffer.byteLength,
-      },
-    });
-    const settled = deferred<void>(); this.queue.push({ bytes, offset: 0, settled }); this.retainedBytes += bytes.buffer.byteLength;
-    this.kick(); return settled.promise;
+    const memory = this.memory.fork();
+    try {
+      const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES, memory });
+      const bytes = memory.allocate({ bytes: payload.length + 4 }); new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
+      memory.release({ bytes: payload });
+      if (this.retainedBytes + bytes.buffer.byteLength > QUEUE_BYTES) throw new NaidanRpcPublicError({
+        code: 'RESOURCE_EXHAUSTED',
+        details: { scope: 'rpc-frame', constraint: 'queued-bytes', limit: QUEUE_BYTES, observed: this.retainedBytes + bytes.buffer.byteLength },
+      });
+      const settled = deferred<void>(); this.queue.push({ bytes, memory, offset: 0, settled }); this.retainedBytes += bytes.buffer.byteLength;
+      this.kick(); return settled.promise;
+    } catch (error) {
+      memory.clear(); throw error;
+    }
   }
+
   private kick(): void {
     if (this.sending) return;
     // Publish ownership before a lower write/close can synchronously reenter stop.
@@ -115,16 +127,18 @@ export class FramedDuplex {
             const size = Math.min(remaining, entry.bytes.length - entry.offset);
             entry.offset += size; remaining -= size;
             if (entry.offset === entry.bytes.length) {
-              this.queue.shift(); this.retainedBytes -= entry.bytes.buffer.byteLength; entry.settled.resolve();
+              this.queue.shift(); this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear(); entry.settled.resolve();
             }
           }
         } finally {
           // A rejected queue transferred these still-owned buffers to this write.
           // Neither stop nor a late success/rejection can release them twice.
           if (this.stopped || this.failure) {
-            for (const entry of prefix.entries) this.retainedBytes -= entry.bytes.buffer.byteLength;
+            for (const entry of prefix.entries) {
+              this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear();
+            }
           }
-          this.inFlight = undefined;
+          prefix.memory.clear(); this.inFlight = undefined;
         }
       }
       if (this.closing) {
@@ -136,22 +150,23 @@ export class FramedDuplex {
       this.sending = false;
     }
   }
-  private readyPrefix(): { entries: Pending[]; bytes: Uint8Array; scratchBytes: number } {
+  private readyPrefix(): { entries: Pending[]; bytes: Uint8Array; scratchBytes: number; memory: RpcByteOwner } {
+    const memory = this.memory.fork();
     const entries: Pending[] = []; let length = 0;
     for (const entry of this.queue) {
-      entries.push(entry); length += Math.min(TRANSFER_BYTES - length, entry.bytes.length - entry.offset);
-      if (length === TRANSFER_BYTES) break;
+      entries.push(entry); length += Math.min(WRITE_BATCH_BYTES - length, entry.bytes.length - entry.offset);
+      if (length === WRITE_BATCH_BYTES) break;
     }
     const first = entries[0]!;
-    if (entries.length === 1) return { entries, bytes: first.bytes.subarray(first.offset, first.offset + length), scratchBytes: 0 };
+    if (entries.length === 1) return { entries, bytes: first.bytes.subarray(first.offset, first.offset + length), scratchBytes: 0, memory };
     // One independent, bounded scratch allowance; never wait for queue capacity
     // in the pump that must drain that queue. No delay to create a larger batch.
-    const bytes = new Uint8Array(length); let offset = 0;
+    const bytes = memory.allocate({ bytes: length }); let offset = 0;
     for (const entry of entries) {
       const size = Math.min(length - offset, entry.bytes.length - entry.offset);
       bytes.set(entry.bytes.subarray(entry.offset, entry.offset + size), offset); offset += size;
     }
-    return { entries, bytes, scratchBytes: bytes.buffer.byteLength };
+    return { entries, bytes, scratchBytes: bytes.buffer.byteLength, memory };
   }
   finish(): Promise<void> {
     if (this.stopped || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
@@ -163,7 +178,9 @@ export class FramedDuplex {
   private rejectQueue({ error }: { error: unknown }): void {
     for (const entry of this.queue.splice(0)) {
       entry.settled.reject(error);
-      if (!this.inFlight?.entries.includes(entry)) this.retainedBytes -= entry.bytes.buffer.byteLength;
+      if (!this.inFlight?.entries.includes(entry)) {
+        this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear();
+      }
     }
     this.drained.reject(error);
   }
@@ -197,7 +214,7 @@ export class FramedDuplex {
       } catch (error) {
         failures.add({ error });
       }
-      failures.check();
+      failures.check(); this.memory.clear();
     })().then(retired.resolve, retired.reject);
     return retired.promise;
   }
@@ -205,9 +222,10 @@ export class FramedDuplex {
     if (this.released) return;
     releaseLocks({ reader: this.reader, writer: this.writer });
     this.released = true; this.chunk = new Uint8Array();
+    if (!this.retirement) this.memory.clear();
   }
   private async bytes({ length, allowEnd }: { length: number; allowEnd: boolean }): Promise<Uint8Array | undefined> {
-    const bytes = new ByteAssembly({ limit: length }); let written = 0;
+    const bytes = new ByteAssembly({ limit: length, memory: this.frameMemory }); let written = 0;
     while (written < length) {
       if (this.cursor === this.chunk.length) {
         let next: ReadableStreamReadResult<Uint8Array>;
@@ -222,6 +240,7 @@ export class FramedDuplex {
           throw new NaidanRpcError({ code: 'PROTOCOL_ERROR' });
         }
         check({ condition: next.value instanceof Uint8Array && next.value.buffer instanceof ArrayBuffer && next.value.length > 0, code: 'PROTOCOL_ERROR' });
+        this.chunkMemory?.clear(); this.chunkMemory = this.memory.fork(); this.chunkMemory.retain({ bytes: next.value });
         this.chunk = next.value; this.cursor = 0;
       }
       const size = Math.min(length - written, this.chunk.length - this.cursor);
@@ -231,6 +250,7 @@ export class FramedDuplex {
   }
   read(): Promise<Frame | undefined> {
     if (this.retirement || this.released || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    check({ condition: this.reads.size === 0, code: 'INVALID_ARGUMENT' });
     const work = this.readFrame(); this.reads.add(work);
     void work.then(() => this.reads.delete(work), () => this.reads.delete(work));
     return work;
@@ -269,6 +289,7 @@ export class FramedDuplex {
           }
         }
         check({ condition: next.value instanceof Uint8Array && next.value.buffer instanceof ArrayBuffer && next.value.length > 0, code: 'PROTOCOL_ERROR' });
+        this.chunkMemory?.clear(); this.chunkMemory = this.memory.fork(); this.chunkMemory.retain({ bytes: next.value });
         this.chunk = next.value; this.cursor = 0;
       }
       const { consumedBytes, result } = header.push({ chunk: this.chunk.subarray(this.cursor) }); this.cursor += consumedBytes;
@@ -281,6 +302,7 @@ export class FramedDuplex {
     }
   }
   private async readFrame(): Promise<Frame | undefined> {
+    this.frameMemory?.clear(); this.frameMemory = this.memory.fork();
     await (this.preambleRead ??= this.readPreamble());
     this.checkReadActive();
     const header = await this.bytes({ length: 4, allowEnd: true }); if (!header) return undefined;
@@ -288,20 +310,25 @@ export class FramedDuplex {
     check({ condition: length > 0 && length <= FRAME_BYTES, code: 'PROTOCOL_ERROR' });
     const body = await this.bytes({ length, allowEnd: false });
     if (!body) throw new Error('Missing frame');
-    const raw = decode({ bytes: body });
+    const raw = decode({ bytes: body, memory: this.frameMemory });
     // Inspect before stripping extensions: hidden/duplicate capabilities must
     // not escape direction, ownership or acceptance checks.
     const all = references({ value: raw });
     const frame = frameSchema.parse(raw);
-    const payload = 'value' in frame ? wireValue({ value: frame.value }) : undefined;
+    const payload = 'value' in frame ? wireValue({ value: frame.value, memory: this.frameMemory }) : undefined;
     const allowed = references({ value: payload });
     check({ condition: all.size === allowed.size && [...all].every(([id, reference]) => allowed.get(id)?.mode === reference.mode), code: 'PROTOCOL_ERROR' });
     return frame;
   }
 }
-export function wireValue({ value }: { value: unknown }): WireValue {
+export function wireValue({ value, memory }: { value: unknown; memory?: RpcByteOwner }): WireValue {
   // Parsed frames contain only this codec's closed value set. Clone through it at application boundaries.
-  return decode({ bytes: encode({ value, limit: FRAME_BYTES }) });
+  const bytes = encode({ value, limit: FRAME_BYTES, memory });
+  try {
+    return decode({ bytes, memory });
+  } finally {
+    memory?.release({ bytes });
+  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

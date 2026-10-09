@@ -2,83 +2,40 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createRpcProtocolAdvertisement, NaidanRpcProtocolError } from '@/features/naidan-rpc';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex';
 import { openPipingRpc, describePipingRpcProtocolFailure } from './piping';
-import { rendezvousRoom, rendezvousRoute } from '@/features/naidan-piping-duplex/rendezvous';
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
 const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn(), session: vi.fn() }));
-vi.mock('@/features/naidan-piping-duplex', async importOriginal => ({
-  ...(await importOriginal<typeof import('@/features/naidan-piping-duplex')>()),
-  NaidanPipingDuplexSession: { pair: calls.pair },
-  NaidanPipingPeerEndpoint: { create: calls.connect },
+vi.mock('@/features/naidan-piping-duplex/naidan-piping-duplex-session', () => ({
+  NaidanPipingDuplexSession: { pair: calls.pair, connectPinned: calls.connect },
 }));
 
 type ConnectionStub = { peerPublicHandshakeData: Uint8Array; abort(): void; closed: Promise<void>; peerIdentity?: Uint8Array };
-function endpointFor({ connection }: { connection: ConnectionStub }) {
-  const physical = Promise.withResolvers<void>(), waiting = Promise.withResolvers<IteratorResult<unknown>>();
-  let offered = false, activated = false, rejected = false;
-  const reject = () => {
-    if (rejected) return; rejected = true; connection.abort();
-  };
-  const candidate = {
-    get peerIdentity() {
-      return connection.peerIdentity ?? b.publicKey;
-    },
+function sessionFor({ connection }: { connection: ConnectionStub }) {
+  return {
     get peerPublicHandshakeData() {
       return connection.peerPublicHandshakeData;
     },
-    peerHandshakeData: new Uint8Array(),
-    contextId: new Uint8Array(32),
+    peerIdentity: connection.peerIdentity ?? b.publicKey,
+    incomingStreams: { async *[Symbol.asyncIterator]() {} },
+    ended: Promise.withResolvers<never>().promise,
     closed: connection.closed,
-    reject,
-    activate: async () => {
-      activated = true;
-      return {
-        peerIdentity: connection.peerIdentity ?? b.publicKey,
-        peerPublicHandshakeData: connection.peerPublicHandshakeData,
-        peerHandshakeData: new Uint8Array(),
-        incomingStreams: { async *[Symbol.asyncIterator]() {} },
-        ended: Promise.withResolvers<never>().promise,
-        closed: connection.closed,
-        openStream: async () => {
-          throw new Error('Unused test stream');
-        },
-        abort: reject,
-        close: async () => {
-          reject(); await connection.closed; return { notification: 'acknowledged' as const };
-        },
-        health: { state: 'healthy' as const },
-        subscribeHealth: () => () => {},
-      };
+    abort: () => connection.abort(),
+    close: async () => {
+      connection.abort(); await connection.closed; return { notification: 'acknowledged' as const };
     },
-  };
-  void physical.promise.catch(() => {});
-  return {
-    beginCycle: vi.fn(),
-    candidates: {
-      [Symbol.asyncIterator]: () => ({
-        next: () => {
-          if (offered) return waiting.promise;
-          offered = true; return Promise.resolve({ done: false, value: candidate });
-        },
-      }),
+    openStream: async () => {
+      throw new Error('Unused test stream');
     },
-    pause: async () => {
-      if (!activated) {
-        reject(); await connection.closed;
-      }
-    },
-    stop: () => {
-      waiting.resolve({ done: true, value: undefined }); void connection.closed.then(physical.resolve, physical.reject);
-    },
-    closed: physical.promise,
+    health: { state: 'healthy' as const },
+    subscribeHealth: () => () => {},
   };
 }
 
 beforeEach(() => {
   const connection = { peerPublicHandshakeData: new Uint8Array(), abort: vi.fn(), closed: Promise.resolve() };
   calls.session.mockImplementation(async ({ expectedPeer }: { expectedPeer: Uint8Array }) => ({ ...connection, peerIdentity: expectedPeer }));
-  calls.connect.mockImplementation(async args => endpointFor({ connection: await calls.session(args) }));
-  calls.pair.mockImplementation(async ({ identity }: { identity: NaidanPipingIdentity }) => ({ ...connection, peerIdentity: identity === a ? b.publicKey : a.publicKey }));
+  calls.connect.mockImplementation(async args => sessionFor({ connection: await calls.session(args) }));
+  calls.pair.mockImplementation(async ({ identity }: { identity: NaidanPipingIdentity }) => sessionFor({ connection: { ...connection, peerIdentity: identity === a ? b.publicKey : a.publicKey } }));
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -98,8 +55,8 @@ it('passes reciprocal pinned identities and one stable purpose to the endpoint o
   });
   const first = calls.connect.mock.calls[0]![0], second = calls.connect.mock.calls[1]![0];
   expect(first.piping.handshakeResponseTimeoutMs).toBe(75_000);
-  expect(first.piping.liveness).toEqual({ intervalMs: 15_000, responseTimeoutMs: 75_000 });
-  expect(first.purpose).toBe('naidan-rpc/registered-peer/v2'); expect(second.purpose).toBe(first.purpose);
+  expect(first.piping.liveness).toBeUndefined();
+  expect(first.purpose).toBe('naidan-rpc/registered-peer/v1'); expect(second.purpose).toBe(first.purpose);
   expect(first.identity).toBe(a); expect(first.expectedPeer).toEqual(b.publicKey);
   expect(second.identity).toBe(b); expect(second.expectedPeer).toEqual(a.publicKey);
   expect(calls.pair).not.toHaveBeenCalled();
@@ -129,12 +86,9 @@ it('uses reciprocal discovery routes for normalized Unicode meeting codes withou
   const first = calls.pair.mock.calls[0]![0], second = calls.pair.mock.calls[1]![0];
   expect(first.code).toMatch(/^peer-[0-9a-f]{64}$/); expect(first.code).toBe(second.code);
   expect(first.verifyPeer).toBe(verifyPeer); expect(second.verifyPeer).toBe(verifyPeer);
-  const left = await rendezvousRoom({ code: first.code, origin: settings.serverUrl });
-  const right = await rendezvousRoom({ code: second.code, origin: settings.serverUrl });
-  expect(await rendezvousRoute({ room: left, kind: 'offer', attempts: [] })).toBe(await rendezvousRoute({ room: right, kind: 'offer', attempts: [] }));
-  expect(first.piping.liveness).toEqual({ intervalMs: 15_000, responseTimeoutMs: 75_000 });
+  expect(first.piping.liveness).toBeUndefined();
   expect(first).not.toHaveProperty('role'); expect(second).not.toHaveProperty('role');
-  expect(calls.connect).toHaveBeenCalledTimes(2);
+  expect(calls.connect).not.toHaveBeenCalled();
 });
 
 it('treats input resembling a pinned route as an ordinary meeting code requiring comparison', async () => {
@@ -143,7 +97,7 @@ it('treats input resembling a pinned route as an ordinary meeting code requiring
   expect(calls.pair).toHaveBeenCalledOnce();
   expect(calls.pair.mock.calls[0]![0].code).not.toBe(code);
   expect(calls.pair.mock.calls[0]![0].verifyPeer).toBe(verifyPeer);
-  expect(calls.connect).toHaveBeenCalledOnce();
+  expect(calls.connect).not.toHaveBeenCalled();
 });
 
 it.each(['connect', 'pair'] as const)('%s advertises public RPC identity and accepts authenticated absence', async mode => {
@@ -205,4 +159,32 @@ it('arbitrary errors and metadata-getter lookalikes do not acquire authenticated
   });
   const opening = openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
   await expect(opening).rejects.toBe(lookalike); expect(abort).toHaveBeenCalledOnce(); expect(describePipingRpcProtocolFailure({ error: lookalike })).toBeUndefined();
+});
+
+it('forwards cancellation before adoption and detaches only after recording the session owner', async () => {
+  const retirement = Promise.withResolvers<void>();
+  calls.session.mockImplementation(async () => ({ peerPublicHandshakeData: new Uint8Array(), abort: vi.fn(), closed: retirement.promise }));
+  const first = new AbortController();
+  const held = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: first.signal });
+  const physical: AbortSignal = calls.connect.mock.calls[0]![0].signal;
+  held.session!.adopt(); first.abort(); expect(physical.aborted).toBe(false);
+  const second = new AbortController();
+  await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: second.signal });
+  const pending: AbortSignal = calls.connect.mock.calls[1]![0].signal;
+  second.abort(); expect(pending.aborted).toBe(true); retirement.resolve();
+});
+
+it.each([401, 403, 404])('does not turn HTTP %s configuration failures into retryable peer failures', async status => {
+  const { PipingStatusError } = await import('@/features/naidan-piping-duplex/finite-transfer');
+  const error = new PipingStatusError({ status }); calls.connect.mockRejectedValueOnce(error);
+  await expect(openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal })).rejects.toBe(error);
+  expect(describePipingRpcProtocolFailure({ error })).toBeUndefined();
+});
+
+it.each([400, 408, 429, 500, 503])('retains bounded retry for HTTP %s without claiming peer authentication', async status => {
+  const { PipingStatusError } = await import('@/features/naidan-piping-duplex/finite-transfer');
+  const { RpcTransportInterruptedError } = await import('./piping');
+  const error = new PipingStatusError({ status }); calls.connect.mockRejectedValueOnce(error);
+  const failure: unknown = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal }).catch(error => error);
+  expect(failure).toBeInstanceOf(RpcTransportInterruptedError); expect(describePipingRpcProtocolFailure({ error: failure })).toBeUndefined();
 });

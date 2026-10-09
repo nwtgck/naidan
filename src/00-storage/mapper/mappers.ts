@@ -1,4 +1,3 @@
-import { retainRpcEndpoint, retainedRpcEndpoint } from '@/00-storage/00-dto/retained-rpc';
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
@@ -874,6 +873,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       case 'naidan_rpc': {
         const { type, registrationId, ...rest } = endpoint;
         rest satisfies Record<PropertyKey, never>;
+        if (registrationId !== undefined && !/^[A-Za-z0-9_-]{8,128}$/.test(registrationId)) return { type: 'unsupported_experimental_endpoint', persistedType: type };
         return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
           type,
           registrationId: registrationId === undefined ? undefined : toNaidanRpcRegistrationId({ raw: registrationId }),
@@ -902,7 +902,6 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
       type: 'unsupported_experimental_endpoint',
       persistedType,
-      unavailableRpc: retainedRpcEndpoint({ value: experimental })?.copy(),
     });
   }
   default: {
@@ -975,7 +974,6 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
     const {
       type: _type,
       persistedType: _persistedType,
-      unavailableRpc,
       ...unhandled
     } = endpoint;
 
@@ -983,10 +981,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
 
     return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
-      experimental: unavailableRpc === undefined ? undefined : retainRpcEndpoint({
-        value: { endpoint: undefined },
-        raw: unavailableRpc,
-      }),
+      experimental: undefined,
     });
   }
   default: {
@@ -2167,7 +2162,9 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }),
     preview: mappedPreview,
     inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
-    remoteModelEditors: remoteModelEditors?.map(dto => remoteImageModelEditorPreferenceToDomain({ dto })),
+    remoteModelEditors: remoteModelEditors?.flatMap(dto => {
+      const value = remoteImageModelEditorPreferenceToDomain({ dto }); return value === undefined ? [] : [value];
+    }),
     keepPreviews,
     maxPreviews,
     maxResults,
@@ -2303,7 +2300,11 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
-      browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
+      // A structurally unreadable saved image block is not an absent location.
+      // Preserve only the non-executable state, never its unknown raw fields.
+      browserImageGeneration: browserImageGeneration === undefined && typeof unreadable?.browserImageGeneration === 'object' && unreadable.browserImageGeneration !== null && Object.hasOwn(unreadable.browserImageGeneration, 'inferenceLocation')
+        ? { inferenceLocation: { kind: 'unavailable' } }
+        : browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
         unhandledDirectory satisfies Record<PropertyKey, never>;

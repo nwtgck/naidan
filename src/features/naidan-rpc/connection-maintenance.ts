@@ -17,8 +17,8 @@ export const maintenanceClock: MaintenanceClock = {
     const timer = setTimeout(callback, milliseconds); return () => clearTimeout(timer);
   },
 };
-export type MaintenanceFailure = 'retry' | 'replace' | 'blocked' | 'retirement-failed';
-export type MaintenancePhase = 'idle' | 'opening' | 'connected' | 'retiring' | 'backoff' | 'blocked';
+export type MaintenanceFailure = 'retry' | 'blocked' | 'retirement-failed';
+export type MaintenancePhase = 'idle' | 'queued' | 'opening' | 'connected' | 'retiring' | 'backoff' | 'blocked';
 type Block = Readonly<{ kind: 'terminal' | 'retirement'; error: unknown }>;
 type Request<Value> = { generation: number; result: ReturnType<typeof deferred<Value>>; settled: boolean };
 type PermitAdmission = { ready: Promise<() => void>; promote(): void };
@@ -29,23 +29,24 @@ type Slot<Value> = {
   lease: ConnectionLease<Value> | undefined; retirement: Promise<void> | undefined;
 };
 
-/** Four-background-style admission, with separately accounted explicit work.
- * Explicit actions never wait behind untimed background discovery. Each caller
- * maintenance owner still has one slot, and the integration bounds registrations. */
+/** A hard bound for complete connection lifetimes, including queued explicit
+ * requests. Promotion changes ordering only; it cannot create extra capacity. */
 export class ConnectionOpenPermits {
   private readonly capacity: number;
   private readonly maximumWaiting: number;
-  private backgroundActive = 0;
-  private explicitActive = 0;
-  private readonly waiting: { signal: AbortSignal; grant({ mode }: { mode: ConnectionInitiation }): void; cancel(): void }[] = [];
+  private active = 0;
+  private readonly waiting: { signal: AbortSignal; mode: ConnectionInitiation; grant(): void; cancel(): void }[] = [];
   constructor({ capacity, maximumWaiting }: { capacity: number; maximumWaiting: number }) {
     if (!Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(maximumWaiting) || maximumWaiting < 0)
-      throw new RangeError('Invalid connection opening capacity');
+      throw new RangeError('Invalid connection capacity');
     this.capacity = capacity; this.maximumWaiting = maximumWaiting;
+  }
+  get idle(): boolean {
+    return this.active === 0 && this.waiting.length === 0;
   }
   acquire({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }): PermitAdmission {
     signal.throwIfAborted();
-    if (!isExplicit({ mode }) && this.backgroundActive >= this.capacity && this.waiting.length >= this.maximumWaiting)
+    if (this.active >= this.capacity && this.waiting.length >= this.maximumWaiting)
       throw new Error('Connection opening queue is full');
     const result = deferred<() => void>(); let pending = true;
     const remove = () => {
@@ -54,13 +55,11 @@ export class ConnectionOpenPermits {
     };
     const request = {
       signal,
-      grant: ({ mode }: { mode: ConnectionInitiation }) => {
-        if (!pending) return; pending = false; remove();
-        this.count({ mode, delta: 1 });
+      mode,
+      grant: () => {
+        if (!pending) return; pending = false; remove(); this.active++;
         let held = true; result.resolve(() => {
-          if (!held) return; held = false;
-          this.count({ mode, delta: -1 });
-          this.drain();
+          if (!held) return; held = false; this.active--; this.drain();
         });
       },
       cancel: () => {
@@ -69,28 +68,24 @@ export class ConnectionOpenPermits {
     };
     signal.addEventListener('abort', request.cancel, { once: true });
     if (signal.aborted) request.cancel();
-    else if (isExplicit({ mode })) request.grant({ mode });
     else {
       this.waiting.push(request); this.drain();
     }
     return {
       ready: result.promise,
       promote: () => {
-        if (signal.aborted) request.cancel(); else request.grant({ mode: 'explicit' });
+        if (!pending) return;
+        if (signal.aborted) request.cancel();
+        else {
+          request.mode = 'explicit'; this.drain();
+        }
       },
     };
   }
-  private count({ mode, delta }: { mode: ConnectionInitiation; delta: 1 | -1 }): void {
-    switch (mode) {
-    case 'background': this.backgroundActive += delta; break;
-    case 'explicit': this.explicitActive += delta; break;
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
-    }
-  }
   private drain(): void {
-    while (this.backgroundActive < this.capacity && this.waiting.length) {
-      const request = this.waiting[0]!;
-      if (request.signal.aborted) request.cancel(); else request.grant({ mode: 'background' });
+    while (this.active < this.capacity && this.waiting.length) {
+      const request = this.waiting.find(request => isExplicit({ mode: request.mode })) ?? this.waiting[0]!;
+      if (request.signal.aborted) request.cancel(); else request.grant();
     }
   }
 }
@@ -99,7 +94,7 @@ export class ConnectionOpenPermits {
  * responsible for fresh authority validation and joining failed establishment;
  * a failure that cannot prove retirement must be classified retirement-failed. */
 export class ConnectionMaintenance<Value> {
-  private readonly permits: ConnectionOpenPermits;
+  private readonly permits: Pick<ConnectionOpenPermits, 'acquire'>;
   private readonly factory: ({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }) => Promise<ConnectionLease<Value>>;
   private readonly classify: ({ error, source }: { error: unknown; source: 'factory' | 'connection' }) => MaintenanceFailure;
   private readonly retryDelay: ({ attempt }: { attempt: number }) => number;
@@ -117,7 +112,7 @@ export class ConnectionMaintenance<Value> {
   private nextMode: ConnectionInitiation = 'background';
 
   constructor({ factory, classify, retryDelay, clock, changed, permits }: {
-    permits: ConnectionOpenPermits;
+    permits: Pick<ConnectionOpenPermits, 'acquire'>;
     factory({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }): Promise<ConnectionLease<Value>>;
     classify({ error, source }: { error: unknown; source: 'factory' | 'connection' }): MaintenanceFailure;
     retryDelay({ attempt }: { attempt: number }): number;
@@ -144,7 +139,7 @@ export class ConnectionMaintenance<Value> {
     const phase = this.status;
     switch (phase) {
     case 'connected': return true;
-    case 'idle': case 'opening': case 'retiring': case 'backoff': case 'blocked': return false;
+    case 'idle': case 'queued': case 'opening': case 'retiring': case 'backoff': case 'blocked': return false;
     default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
     }
   }
@@ -229,14 +224,14 @@ export class ConnectionMaintenance<Value> {
   private start(): void {
     if (this.desired !== 'connected' || this.slot || this.timer || this.blockState) return;
     const slot: Slot<Value> = { mode: this.nextMode, admission: undefined, generation: this.generation, stop: new AbortController(), retired: deferred<void>(), lease: undefined, retirement: undefined };
-    this.nextMode = 'background'; this.slot = slot; this.status = 'opening'; this.notify();
+    this.nextMode = 'background'; this.slot = slot; this.status = 'queued'; this.notify();
     void this.run({ slot });
   }
   private decision({ error, source }: { error: unknown; source: 'factory' | 'connection' }): MaintenanceFailure {
     try {
       const decision = this.classify({ error, source });
       switch (decision) {
-      case 'retry': case 'replace': case 'blocked': case 'retirement-failed': return decision;
+      case 'retry': case 'blocked': case 'retirement-failed': return decision;
       default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
       }
     } catch (failure) {
@@ -253,11 +248,12 @@ export class ConnectionMaintenance<Value> {
       slot.admission = this.permits.acquire({ signal: slot.stop.signal, mode: slot.mode });
       release = await slot.admission.ready;
       slot.stop.signal.throwIfAborted();
+      this.status = 'opening'; this.notify(); slot.stop.signal.throwIfAborted();
       slot.lease = await this.factory({ signal: slot.stop.signal, mode: slot.mode });
       void slot.lease.ended.catch(() => {});
       if (this.current({ slot })) {
+        const connectedAt = this.clock.now();
         this.status = 'connected';
-        release(); release = undefined;
         const request = this.request;
         if (request && !request.settled && request.generation === slot.generation) {
           request.settled = true; request.result.resolve(slot.lease.value);
@@ -265,7 +261,13 @@ export class ConnectionMaintenance<Value> {
         this.notify();
         if (this.current({ slot })) {
           const ended = await this.waitForEnd({ slot, lease: slot.lease });
-          if (ended && this.current({ slot })) outcome = { error: ended.error, decision: this.decision({ error: ended.error, source: 'connection' }) };
+          if (ended && this.current({ slot })) {
+            // Briefly successful handshakes must not reset repeated failures.
+            // Measure the live interval, never slow retirement after it ended.
+            const connectedFor = this.clock.now() - connectedAt;
+            if (Number.isFinite(connectedFor) && connectedFor >= 30000) this.attempts = 0;
+            outcome = { error: ended.error, decision: this.decision({ error: ended.error, source: 'connection' }) };
+          }
         }
       }
     } catch (error) {
@@ -294,7 +296,6 @@ export class ConnectionMaintenance<Value> {
       switch (decision) {
       case 'blocked': this.blockState = Object.freeze({ kind: 'terminal', error: outcome?.error }); this.status = 'blocked'; break;
       case 'retry': this.scheduleRetry(); break;
-      case 'replace': this.start(); break;
       case undefined: this.start(); break;
       default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
       }

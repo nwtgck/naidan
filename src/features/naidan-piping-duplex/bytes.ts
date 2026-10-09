@@ -1,10 +1,4 @@
 export const MAX_OFFSET = (1n << 48n) - 1n;
-export const CAPSULE_BYTES = 65536;
-export const RECORD_OVERHEAD_BYTES = 38;
-export const RECORD_PLAINTEXT_BYTES = CAPSULE_BYTES - RECORD_OVERHEAD_BYTES;
-export const SEGMENT_BYTES = 16384;
-export const RECEIVE_WINDOW = 65536n;
-export const RETAINED_STREAMS = 32;
 export function requireValue({ condition, message }: {
     condition: unknown;
     message: string;
@@ -68,19 +62,6 @@ export function equalBytes({ left, right }: {
 }): boolean {
   // Used only for public identities / framing. Secret MACs use SubtleCrypto.verify.
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-export function bitHas({ bitmap, id }: {
-    bitmap: Uint8Array;
-    id: number;
-}): boolean {
-  return ((bitmap[id >> 3] ?? 0) & (1 << (id & 7))) !== 0;
-}
-export function bitSet({ bitmap, id }: {
-    bitmap: Uint8Array;
-    id: number;
-}): void {
-  requireValue({ condition: id >= 0 && id <= 65535 && Number.isInteger(id), message: 'Stream ID' });
-  bitmap[id >> 3] = (bitmap[id >> 3] ?? 0) | (1 << (id & 7));
 }
 export class Pulse {
   private internalRevision = 0;

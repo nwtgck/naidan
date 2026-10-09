@@ -1,11 +1,9 @@
-import { isAvailableRemoteImageEditor } from '@/01-models/image-generation-preferences';
-import type { UnavailableRpcValue } from '@/01-models/unavailable-rpc-value';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { generateId } from '@/01-models/id';
 import { idToRaw, type BinaryObjectId, type NaidanRpcRegistrationId, type NaidanRpcPeerPublicKey, type ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationDraftRequest } from '@/01-models/image-generation';
 import type { ImageGenerationRemoteRuntime } from '@/01-models/image-generation-history';
-import type { ImageInferenceLocationPreference, RemoteImageModelEditor, RemoteImageModelEditorPreference, RemoteImageModelEditorPreferenceValue } from '@/01-models/image-generation-preferences';
+import type { ImageInferenceLocationPreference, RemoteImageModelEditor, RemoteImageModelEditorPreference } from '@/01-models/image-generation-preferences';
 import type { createImageForm } from '@/features/image-generation/form';
 import type { ImageGenerationSnapshot, HistoryBinaryFile } from '@/features/image-generation/history/snapshot';
 import { copyImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
@@ -26,7 +24,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   identifyInput({ file }: { file: File }): BinaryObjectId,
 }) {
   const kind = ref<'local' | 'naidan_rpc'>('local');
-  const unavailableRpc = shallowRef<UnavailableRpcValue>();
+  const unavailable = ref(false);
   const isRemote = computed(() => {
     switch (kind.value) {
     case 'local': return false;
@@ -39,7 +37,6 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   const label = ref('');
   const editor = shallowRef<RemoteImageModelEditor>(emptyRemoteImageModelEditor());
   const editors = shallowRef<RemoteImageModelEditorPreference[]>([]);
-  const editorOrder = shallowRef<RemoteImageModelEditorPreferenceValue[]>([]);
   const durableReferences = new Set<string>();
   const selection = computed(() => remoteImageSelectionFromEditor({ editor: editor.value }));
   const ready = computed(() => remoteImageEditorReady({ editor: editor.value }));
@@ -63,7 +60,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   }
   function chooseRegistration({ id }: { id: NaidanRpcRegistrationId | undefined }): void {
     if (blocked()) return;
-    discardCatalog(); unavailableRpc.value = undefined; registrationId.value = id;
+    discardCatalog(); unavailable.value = false; registrationId.value = id;
     const next = entries.value.find(item => item.registration.id === id);
     peerPublicKey.value = next?.registration.peerPublicKey; label.value = next?.registration.label ?? '';
     const saved = editors.value.find(item => item.registrationId === id && item.peerPublicKey === peerPublicKey.value);
@@ -191,7 +188,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   function removeLora({ index }: { index: number }): void {
     if (!blocked()) setEditor({ value: { ...editor.value, loras: editor.value.loras.filter((_item, position) => position !== index) } });
   }
-  function capturePreferences(): { inferenceLocation: ImageInferenceLocationPreference, remoteModelEditors: RemoteImageModelEditorPreferenceValue[] } {
+  function capturePreferences(): { inferenceLocation: ImageInferenceLocationPreference, remoteModelEditors: RemoteImageModelEditorPreference[] } {
     const durable = ({ id, peer }: { id: NaidanRpcRegistrationId, peer: NaidanRpcPeerPublicKey }): boolean => {
       const entry = entries.value.find(item => item.registration.id === id && item.registration.peerPublicKey === peer);
       return entry ? entry.persistence === 'saved' && entry.registryPersistence === 'durable' : durableReferences.has(`${idToRaw({ id })}:${idToRaw({ id: peer })}`);
@@ -201,31 +198,25 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const location = (() => {
       switch (kind.value) {
       case 'local': return { kind: 'local' as const };
-      case 'naidan_rpc': return unavailableRpc.value ? { kind: 'naidan_rpc' as const, registration: undefined, unavailableRpc: unavailableRpc.value.copy() } : { kind: 'naidan_rpc' as const, registration };
+      case 'naidan_rpc': return unavailable.value ? { kind: 'unavailable' as const } : { kind: 'naidan_rpc' as const, registration };
       default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
       }
     })();
     const active = new Map(editors.value.filter(item => durable({ id: item.registrationId, peer: item.peerPublicKey }))
       .map(item => [`${idToRaw({ id: item.registrationId })}:${idToRaw({ id: item.peerPublicKey })}`, { ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) }]));
-    const values = editorOrder.value.flatMap<RemoteImageModelEditorPreferenceValue>(item => {
-      if (!isAvailableRemoteImageEditor(item)) return [{ unavailableRpc: item.unavailableRpc.copy() }];
-      const key = `${idToRaw({ id: item.registrationId })}:${idToRaw({ id: item.peerPublicKey })}`, value = active.get(key);
-      active.delete(key); return value === undefined ? [] : [value];
-    });
-    return { inferenceLocation: location, remoteModelEditors: [...values, ...active.values()] };
+    return { inferenceLocation: location, remoteModelEditors: [...active.values()] };
   }
   function restorePreferences({ inferenceLocation, remoteModelEditors }: {
-    inferenceLocation: ImageInferenceLocationPreference | undefined, remoteModelEditors: readonly RemoteImageModelEditorPreferenceValue[] | undefined,
+    inferenceLocation: ImageInferenceLocationPreference | undefined, remoteModelEditors: readonly RemoteImageModelEditorPreference[] | undefined,
   }): void {
-    editorOrder.value = (remoteModelEditors ?? []).map(item => isAvailableRemoteImageEditor(item) ? { ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) } : { unavailableRpc: item.unavailableRpc.copy() });
-    editors.value = (remoteModelEditors ?? []).filter(isAvailableRemoteImageEditor).map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) }));
+    editors.value = (remoteModelEditors ?? []).map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) }));
     durableReferences.clear();
     for (const item of editors.value) durableReferences.add(`${idToRaw({ id: item.registrationId })}:${idToRaw({ id: item.peerPublicKey })}`);
     discardCatalog();
     const location = inferenceLocation ?? { kind: 'local' as const };
     const modelEditor = (() => {
       switch (location.kind) {
-      case 'local': return undefined;
+      case 'local': case 'unavailable': return undefined;
       case 'naidan_rpc':
         if (location.registration) durableReferences.add(`${idToRaw({ id: location.registration.registrationId })}:${idToRaw({ id: location.registration.peerPublicKey })}`);
         return editors.value.find(item => item.registrationId === location.registration?.registrationId && item.peerPublicKey === location.registration?.peerPublicKey)?.editor;
@@ -237,16 +228,19 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   function captureLocation(): ImageInferenceLocationPreference {
     switch (kind.value) {
     case 'local': return { kind: 'local' };
-    case 'naidan_rpc': return unavailableRpc.value ? { kind: 'naidan_rpc', registration: undefined, unavailableRpc: unavailableRpc.value.copy() } : { kind: 'naidan_rpc', registration: registrationId.value && peerPublicKey.value ? { registrationId: registrationId.value, peerPublicKey: peerPublicKey.value } : undefined };
+    case 'naidan_rpc': return unavailable.value ? { kind: 'unavailable' } : { kind: 'naidan_rpc', registration: registrationId.value && peerPublicKey.value ? { registrationId: registrationId.value, peerPublicKey: peerPublicKey.value } : undefined };
     default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
     }
   }
   function restoreLocation({ location, modelEditor }: { location: ImageInferenceLocationPreference, modelEditor: RemoteImageModelEditor | undefined }): void {
     discardCatalog();
     switch (location.kind) {
-    case 'local': unavailableRpc.value = undefined; kind.value = 'local'; break;
+    case 'local': unavailable.value = false; kind.value = 'local'; break;
+    case 'unavailable':
+      unavailable.value = true; kind.value = 'naidan_rpc'; registrationId.value = undefined; peerPublicKey.value = undefined; label.value = '';
+      setEditor({ value: emptyRemoteImageModelEditor() }); break;
     case 'naidan_rpc':
-      unavailableRpc.value = location.unavailableRpc?.copy();
+      unavailable.value = false;
       kind.value = 'naidan_rpc'; registrationId.value = location.registration?.registrationId; peerPublicKey.value = location.registration?.peerPublicKey; label.value = '';
       setEditor({ value: modelEditor ?? emptyRemoteImageModelEditor() }); break;
     default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
@@ -325,14 +319,14 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     };
   }
   function restore({ value, modelEditor }: { value: ImageGenerationRemoteRuntime, modelEditor: RemoteImageModelEditor | undefined }): void {
-    discardCatalog(); unavailableRpc.value = undefined; kind.value = 'naidan_rpc'; registrationId.value = value.registrationId; peerPublicKey.value = value.peerPublicKey;
+    discardCatalog(); unavailable.value = false; kind.value = 'naidan_rpc'; registrationId.value = value.registrationId; peerPublicKey.value = value.peerPublicKey;
     label.value = value.label;
     setEditor({ value: modelEditor ?? (value.modelSelection ? remoteImageEditorFromSelection({ selection: imageModelSelectionSchema.parse(value.modelSelection), family: undefined }) : emptyRemoteImageModelEditor()) });
     // Caller triggers this after local input restoration; it never reconnects.
   }
   function setKind({ value }: { value: 'local' | 'naidan_rpc' }): void {
     if (!blocked()) {
-      unavailableRpc.value = undefined; kind.value = value;
+      unavailable.value = false; kind.value = value;
     }
   }
   return {

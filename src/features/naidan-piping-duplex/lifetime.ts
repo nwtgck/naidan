@@ -1,6 +1,6 @@
 /** A local decision, never a peer-provided terminal-reason frame. */
 export type NaidanPipingConnectionEndKind = 'local-stop' | 'peer-closed' | 'response-unconfirmed' | 'record-exhausted'
-  | 'authenticated-protocol-error' | 'authentication-budget-exhausted' | 'transport-fatal';
+  | 'authenticated-protocol-error' | 'transport-fatal';
 export type NaidanPipingConnectionEnd = Readonly<{
   kind: NaidanPipingConnectionEndKind;
   error: Error;
@@ -36,14 +36,6 @@ export class AuthenticatedProtocolError extends Error {
   constructor({ cause }: { cause: unknown }) {
     super(cause instanceof Error ? cause.message : 'Authenticated record payload failed', { cause });
     this.name = 'AuthenticatedProtocolError';
-  }
-}
-
-/** Exhaustion of the local bounded unauthenticated verification budget. */
-export class AuthenticationBudgetExhaustedError extends Error {
-  constructor() {
-    super('Authentication verification budget exhausted');
-    this.name = 'AuthenticationBudgetExhaustedError';
   }
 }
 

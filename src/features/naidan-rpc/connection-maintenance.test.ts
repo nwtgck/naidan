@@ -14,11 +14,12 @@ function fixture({ permits = new ConnectionOpenPermits({ capacity: 4, maximumWai
     const result = Promise.withResolvers<ConnectionLease<number>>(); openings.push({ signal, result }); return result.promise;
   });
   const classify = vi.fn(({ error }: { error: unknown; source: 'factory' | 'connection' }): MaintenanceFailure => error === 'fatal' ? 'blocked' : error === 'cleanup' ? 'retirement-failed' : 'retry');
+  const retryDelay = vi.fn(() => 10);
   const owner = new ConnectionMaintenance({
     permits,
     factory,
     classify,
-    retryDelay: () => 10,
+    retryDelay,
     clock: {
       now: () => now,
       schedule({ milliseconds, callback }) {
@@ -33,6 +34,7 @@ function fixture({ permits = new ConnectionOpenPermits({ capacity: 4, maximumWai
     owner,
     factory,
     classify,
+    retryDelay,
     openings,
     timers,
     advance({ milliseconds }: { milliseconds: number }) {
@@ -144,13 +146,14 @@ it('a shared opening permit remains held through a canceled late product retirem
   const live = connection({ value: 2 }); b.openings[0]!.result.resolve(live.lease); await second; await b.owner.disconnect();
 });
 
-it('the shared opening cap is four and canceled queued attempts do not consume a later permit', async () => {
+it('the hard cap includes healthy connections and canceled requests consume no later permit', async () => {
   const permits = new ConnectionOpenPermits({ capacity: 4, maximumWaiting: 32 }), states = Array.from({ length: 6 }, () => fixture({ permits }));
   const requests = states.map(state => state.owner.connect({ mode: 'background' })); for (const request of requests) void request.catch(() => {}); await flush();
   expect(states.map(state => state.factory.mock.calls.length)).toEqual([1, 1, 1, 1, 0, 0]);
   await states[4]!.owner.disconnect();
   const live = connection({ value: 0 }); states[0]!.openings[0]!.result.resolve(live.lease); await requests[0]; await flush();
-  expect(states[4]!.factory).not.toHaveBeenCalled(); expect(states[5]!.factory).toHaveBeenCalledOnce();
+  expect(states[4]!.factory).not.toHaveBeenCalled(); expect(states[5]!.factory).not.toHaveBeenCalled();
+  await states[0]!.owner.disconnect(); await flush(); expect(states[5]!.factory).toHaveBeenCalledOnce();
   const cleanup = states.map(state => state.owner.disconnect());
   for (const [index, state] of states.entries()) if (state.openings[0] && index !== 0) state.openings[0].result.resolve(connection({ value: index }).lease);
   await Promise.all(cleanup);
@@ -249,28 +252,31 @@ it('a thrown failure classifier cannot turn an uncertain failed factory into a r
   await expect(owner.disconnect()).rejects.toBe(classification); await expect(owner.connect({ mode: 'explicit' })).rejects.toBe(classification);
 });
 
-it('explicit action bypasses four untimed background openings and repeated requests remain coalesced', async () => {
-  const permits = new ConnectionOpenPermits({ capacity: 4, maximumWaiting: 32 }), background = Array.from({ length: 4 }, () => fixture({ permits }));
-  const requests = background.map(state => state.owner.connect({ mode: 'background' })); for (const request of requests) void request.catch(() => {});
-  await flush(); const explicit = fixture({ permits }), opening = explicit.owner.connect({ mode: 'explicit' });
+it('explicit requests cannot bypass occupied capacity and share their queued outcome', async () => {
+  const permits = new ConnectionOpenPermits({ capacity: 1, maximumWaiting: 2 });
+  const background = fixture({ permits }), explicit = fixture({ permits });
+  const first = background.owner.connect({ mode: 'background' }); await flush();
+  const live = connection({ value: 1, held: true }); background.openings[0]!.result.resolve(live.lease); await first;
+  const opening = explicit.owner.connect({ mode: 'explicit' });
   for (let index = 0; index < 100; index++) expect(explicit.owner.connect({ mode: 'explicit' })).toBe(opening);
-  await flush(); expect(explicit.factory).toHaveBeenCalledOnce();
-  const live = connection({ value: 9 }); explicit.openings[0]!.result.resolve(live.lease); await opening;
-  live.ended.resolve({ error: 'transient' }); await flush(); explicit.advance({ milliseconds: 10 }); explicit.timers[0]!.callback(); await flush();
-  expect(explicit.factory).toHaveBeenCalledOnce(); // Its later automatic retry uses background admission.
-  const all = [...background, explicit], closing = all.map(state => state.owner.disconnect());
-  for (const state of background) state.openings[0]!.result.resolve(connection({ value: 0 }).lease);
-  await Promise.all(closing);
+  await flush(); expect(explicit.factory).not.toHaveBeenCalled(); expect(explicit.owner.phase).toBe('queued');
+  const stopping = background.owner.disconnect(); await live.stopped.promise; await flush();
+  expect(explicit.factory).not.toHaveBeenCalled();
+  live.closed.resolve(); await stopping; await flush(); expect(explicit.factory).toHaveBeenCalledOnce();
+  explicit.openings[0]!.result.resolve(connection({ value: 2 }).lease); await opening; await explicit.owner.disconnect();
 });
 
-it('manual promotion of a queued background attempt shares its existing outcome and starts one factory', async () => {
-  const permits = new ConnectionOpenPermits({ capacity: 1, maximumWaiting: 2 }), a = fixture({ permits }), b = fixture({ permits });
-  const first = a.owner.connect({ mode: 'background' }); void first.catch(() => {}); await flush();
-  const queued = b.owner.connect({ mode: 'background' }); await flush(); expect(b.factory).not.toHaveBeenCalled();
-  expect(b.owner.connect({ mode: 'explicit' })).toBe(queued); await flush(); expect(b.factory).toHaveBeenCalledOnce();
-  const live = connection({ value: 2 }); b.openings[0]!.result.resolve(live.lease); await queued;
-  const closingA = a.owner.disconnect(); a.openings[0]!.result.resolve(connection({ value: 1 }).lease);
-  await Promise.all([closingA, b.owner.disconnect()]);
+it('promotion changes queue ordering without bypassing a live lease', async () => {
+  const permits = new ConnectionOpenPermits({ capacity: 1, maximumWaiting: 2 });
+  const a = fixture({ permits }), b = fixture({ permits }), c = fixture({ permits });
+  const first = a.owner.connect({ mode: 'background' }); await flush();
+  a.openings[0]!.result.resolve(connection({ value: 1 }).lease); await first;
+  const queuedB = b.owner.connect({ mode: 'background' }), queuedC = c.owner.connect({ mode: 'background' });
+  expect(c.owner.connect({ mode: 'explicit' })).toBe(queuedC); await flush();
+  expect(b.factory).not.toHaveBeenCalled(); expect(c.factory).not.toHaveBeenCalled();
+  await a.owner.disconnect(); await flush(); expect(c.factory).toHaveBeenCalledOnce(); expect(b.factory).not.toHaveBeenCalled();
+  c.openings[0]!.result.resolve(connection({ value: 3 }).lease); await queuedC; await c.owner.disconnect(); await flush();
+  b.openings[0]!.result.resolve(connection({ value: 2 }).lease); await queuedB; await b.owner.disconnect();
 });
 
 it('background initiation cannot clear an authority block or change its generation before explicit revalidation', async () => {
@@ -284,14 +290,14 @@ it('background initiation cannot clear an authority block or change its generati
 });
 
 it('explicit promotion survives waiting for an older generation to finish retirement', async () => {
-  const permits = new ConnectionOpenPermits({ capacity: 1, maximumWaiting: 4 }), occupied = fixture({ permits }), state = fixture({ permits });
+  const permits = new ConnectionOpenPermits({ capacity: 2, maximumWaiting: 4 }), occupied = fixture({ permits }), state = fixture({ permits });
   const holding = occupied.owner.connect({ mode: 'background' }); void holding.catch(() => {}); await flush();
   const old = state.owner.connect({ mode: 'explicit' }); void old.catch(() => {}); await flush();
   const stopping = state.owner.disconnect(), next = state.owner.connect({ mode: 'background' });
   expect(state.owner.connect({ mode: 'explicit' })).toBe(next);
   const late = connection({ value: 1, held: true }); state.openings[0]!.result.resolve(late.lease); await late.stopped.promise;
   expect(state.factory).toHaveBeenCalledOnce(); late.closed.resolve(); await stopping; await flush();
-  expect(state.factory).toHaveBeenCalledTimes(2); // Unrelated background discovery still holds its permit.
+  expect(state.factory).toHaveBeenCalledTimes(2); // The other background owner still holds one of the two leases.
   state.openings[1]!.result.resolve(connection({ value: 2 }).lease); await next;
   const stopHolding = occupied.owner.disconnect(); occupied.openings[0]!.result.resolve(connection({ value: 0 }).lease);
   await Promise.all([stopHolding, state.owner.disconnect()]);
@@ -321,13 +327,30 @@ it('disconnect initiates the returned lease shutdown synchronously and reserves 
   gate.resolve(); await stopping;
 });
 
-it('an authenticated replacement joins the old lease before reopening without failure backoff', async () => {
-  const state = fixture(); state.classify.mockReturnValue('replace');
+it('a peer close joins the old lease and backs off instead of replacing in a tight loop', async () => {
+  const state = fixture();
   const first = state.owner.connect({ mode: 'explicit' }); await flush();
   const old = connection({ value: 1, held: true }); state.openings[0]!.result.resolve(old.lease); await first;
-  old.ended.resolve({ error: 'authenticated replacement' }); await old.stopped.promise;
+  old.ended.resolve({ error: 'peer closed' }); await old.stopped.promise;
   expect(state.factory).toHaveBeenCalledOnce(); expect(state.timers).toHaveLength(0);
-  old.closed.resolve(); await flush(); expect(state.factory).toHaveBeenCalledTimes(2); expect(state.timers).toHaveLength(0);
+  old.closed.resolve(); await flush(); expect(state.factory).toHaveBeenCalledOnce(); expect(state.timers).toHaveLength(1);
+  state.advance({ milliseconds: 10 }); state.timers[0]!.callback(); await flush();
   const next = connection({ value: 2 }); state.openings[1]!.result.resolve(next.lease); await flush();
   expect(state.owner.value).toBe(2); await state.owner.disconnect();
+});
+
+it('only a stable live interval resets backoff, not a short connection or slow cleanup', async () => {
+  const state = fixture();
+  const first = state.owner.connect({ mode: 'explicit' }); await flush();
+  state.openings[0]!.result.reject(new Error('offline')); await expect(first).rejects.toThrow('offline'); await flush();
+  expect(state.retryDelay).toHaveBeenLastCalledWith({ attempt: 1 });
+  state.advance({ milliseconds: 10 }); state.timers.at(-1)!.callback(); await flush();
+  const brief = connection({ value: 1, held: true }); state.openings[1]!.result.resolve(brief.lease); await flush();
+  state.advance({ milliseconds: 1000 }); brief.ended.resolve({ error: 'offline' }); await brief.stopped.promise;
+  state.advance({ milliseconds: 60000 }); brief.closed.resolve(); await flush();
+  expect(state.retryDelay).toHaveBeenLastCalledWith({ attempt: 2 });
+  state.advance({ milliseconds: 10 }); state.timers.at(-1)!.callback(); await flush();
+  const stable = connection({ value: 2 }); state.openings[2]!.result.resolve(stable.lease); await flush();
+  state.advance({ milliseconds: 30000 }); stable.ended.resolve({ error: 'offline' }); await flush();
+  expect(state.retryDelay).toHaveBeenLastCalledWith({ attempt: 1 }); await state.owner.disconnect();
 });

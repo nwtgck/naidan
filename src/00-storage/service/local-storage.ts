@@ -1,5 +1,3 @@
-import { UnrepresentableRpcValueError } from '@/01-models/unavailable-rpc-value';
-import { stringifyStorageDto } from './serialize';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -140,7 +138,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    const serialized = stringifyStorageDto({ value: ChatMetaSchemaDto.parse(dto), space: undefined });
+    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
     localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, serialized);
   }
 
@@ -218,7 +216,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    const serialized = stringifyStorageDto({ value: ChatGroupSchemaDto.parse(dto), space: undefined });
+    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
     localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, serialized);
   }
 
@@ -258,7 +256,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    localStorage.setItem(KEY_SETTINGS, stringifyStorageDto({ value: SettingsSchemaDto.parse(dto), space: undefined }));
+    localStorage.setItem(KEY_SETTINGS, JSON.stringify(SettingsSchemaDto.parse(dto)));
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -268,7 +266,6 @@ export class LocalStorageProvider extends IStorageProvider {
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
     } catch (error) {
       // Unavailable RPC bytes must not masquerade as absent settings.
-      if (error instanceof UnrepresentableRpcValueError) throw error;
       return null;
     }
   }

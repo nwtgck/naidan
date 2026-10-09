@@ -1,4 +1,3 @@
-import { stringifyStorageDto } from './serialize';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -118,7 +117,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    stringifyStorageDto({ value: ChatMetaSchemaDto.parse(dto), space: undefined });
+    JSON.stringify(ChatMetaSchemaDto.parse(dto));
     this.chatMetas.set(meta.id, dto);
   }
 
@@ -199,7 +198,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    stringifyStorageDto({ value: ChatGroupSchemaDto.parse(dto), space: undefined });
+    JSON.stringify(ChatGroupSchemaDto.parse(dto));
     this.chatGroups.set(chatGroup.id, dto);
   }
 
@@ -228,7 +227,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    stringifyStorageDto({ value: SettingsSchemaDto.parse(dto), space: undefined });
+    JSON.stringify(SettingsSchemaDto.parse(dto));
     this.settings = settings;
   }
 

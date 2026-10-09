@@ -1,3 +1,4 @@
+import { promiseAllKeyed } from '@/utils/promise';
 import type { HandshakeResponseStage } from '@/features/naidan-piping-duplex/lifetime';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import { HandshakeResponses, systemResponseClock } from '@/features/naidan-piping-duplex/response-window';
@@ -11,9 +12,12 @@ export type NaidanPipingDirection = 1 | 2;
 const authenticated = Symbol('authenticated peer context');
 export interface NaidanPipingHandshakeChannel {
     send({ bytes }: {
+        signal?: AbortSignal;
+        human?: boolean;
         bytes: Uint8Array;
     }): Promise<void>;
     receive({ signal }: {
+        human?: boolean;
         signal: AbortSignal;
     }): Promise<Uint8Array>;
 }
@@ -57,6 +61,24 @@ export class NaidanPipingKeyDomain {
     const scope = `${direction}/${usage}`;
     requireValue({ condition: !this.recordOwners.has(scope), message: 'Record ownership already consumed' });
     this.recordOwners.add(scope);
+  }
+  private batchRouteKey: Promise<CryptoKey> | undefined;
+  async batchRoute({ direction, number }: { direction: NaidanPipingDirection; number: bigint }): Promise<string> {
+    this.internalLive();
+    requireValue({ condition: (direction === 1 || direction === 2) && number >= 0n && number < (1n << 48n), message: 'Data route scope' });
+    this.batchRouteKey ??= crypto.subtle.deriveKey({
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: this.internalContext,
+      info: fields({ parts: [this.internalDomain, ascii({ text: 'finite-data-route/v1' })] }),
+    }, this.internalRoot, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign']);
+    const key = await this.batchRouteKey;
+    this.internalLive();
+    const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, fields({
+      parts: [ascii({ text: 'finite-data-path/v1' }), this.internalContext, new Uint8Array([direction]), u64({ value: number })],
+    })));
+    this.internalLive();
+    return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
   }
   assertActive(): void {
     this.internalLive();
@@ -151,7 +173,7 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     onResponseFailure: (({ error }: { error: unknown }) => void) | undefined;
     handshakeData?: Uint8Array;
 }): Promise<EstablishedPipingKeys> {
-  const localData = ownBytes({ bytes: handshakeData, maxBytes: 463 });
+  const localData = ownBytes({ bytes: handshakeData, maxBytes: 16642 });
   let peerData = new Uint8Array();
   requireValue({ condition: isInitiator({ role: role }) || !isInitiator({ role: role }), message: 'Invalid role' });
   const pin = expectedPeer === undefined ? undefined : ownBytes({ bytes: expectedPeer, maxBytes: 32 }), sharedBinding = ownBytes({ bytes: binding, maxBytes: 32 });
@@ -183,7 +205,7 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
         signal.throwIfAborted();
         // Prepared bytes exist before the registration-relative clock begins.
         if (flight < 2) noiseWindow = responses.arm({ stage: flight === 0 ? 'noise-2' : 'noise-3' });
-        await channel.send({ bytes });
+        await channel.send({ bytes, signal });
         if (noiseWindow !== undefined) requireValue({ condition: responses.check({ window: noiseWindow }), message: 'Stale Noise registration' });
       } else {
         const payload = await state.exchange({ operation: 'read', bytes: await channel.receive({ signal }) });
@@ -211,25 +233,38 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       signal.throwIfAborted();
       return ciphertext;
     };
-    const send = async ({ bytes }: { bytes: Uint8Array }) => channel.send({ bytes: await encrypt({ bytes }) });
+    const send = async ({ bytes, human = false }: { bytes: Uint8Array; human?: boolean }) => channel.send({ bytes: await encrypt({ bytes }), signal, human });
     const request = async ({ bytes, stage }: { bytes: Uint8Array; stage: HandshakeResponseStage }): Promise<ResponseWindow> => {
       const ciphertext = await encrypt({ bytes });
       const window = responses.arm({ stage });
       // Include registration and any uncooperative send wait, never prior crypto prep.
-      await channel.send({ bytes: ciphertext });
+      await channel.send({ bytes: ciphertext, signal });
       requireValue({ condition: responses.check({ window }), message: 'Stale response registration' });
       return window;
     };
-    const receive = async () => {
-      const encrypted = await channel.receive({ signal });
+    const receive = async ({ human = false }: { human?: boolean } = {}) => {
+      const encrypted = await channel.receive({ signal, human });
       const bytes = await established.receive.crypt({ operation: 'decrypt', bytes: encrypted, aad: new Uint8Array() });
       if (signal.aborted) bytes.fill(0);
       signal.throwIfAborted();
       return bytes;
     };
+    // Finite POST completion requires a concurrent peer GET. Both operations
+    // remain owned until settled, including when either native operation fails.
+    const mutual = async <Sent>({ sending, receiving }: { sending: Promise<Sent>; receiving: Promise<Uint8Array<ArrayBuffer>> }) => {
+      void sending.catch(error => responses.fail({ error })); void receiving.catch(error => responses.fail({ error }));
+      try {
+        const { sent, received } = await promiseAllKeyed({ sent: sending, received: receiving });
+        signal.throwIfAborted(); return { sent, received };
+      } finally {
+        await Promise.allSettled([sending, receiving]);
+      }
+    };
     const trustFlag = pin ? 1 : 0;
-    const statusWindow = await request({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }), stage: 'status' });
-    const status = await receive();
+    const { sent: statusWindow, received: status } = await mutual({
+      sending: request({ bytes: joinBytes({ parts: [new Uint8Array([1, trustFlag]), sessionBinding] }), stage: 'status' }),
+      receiving: receive(),
+    });
     requireValue({
       condition: status.length === 34 && status[0] === 1 && (status[1] === 0 || status[1] === 1) &&
       equalBytes({ left: status.subarray(2), right: sessionBinding }),
@@ -243,8 +278,10 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       const verified = await verifyComparison({ verifyPeer, peerIdentity: established.peerIdentity, comparison: sessionBinding, signal });
       signal.throwIfAborted();
       requireValue({ condition: verified === true, message: 'Peer comparison rejected' });
-      await send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) });
-      const approval = await receive();
+      const { received: approval } = await mutual({
+        sending: send({ bytes: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }), human: true }),
+        receiving: receive({ human: true }),
+      });
       requireValue({
         condition: equalBytes({ left: approval, right: joinBytes({ parts: [new Uint8Array([2]), sessionBinding] }) }),
         message: 'Peer did not approve this connection',
@@ -252,10 +289,12 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     }
     const seed = crypto.getRandomValues(new Uint8Array(32));
     sensitive.push(seed);
-    const seedWindow = await request({ bytes: joinBytes({ parts: [new Uint8Array([6]), seed, localData] }), stage: 'seed' });
-    const peerSeed = await receive();
+    const { sent: seedWindow, received: peerSeed } = await mutual({
+      sending: request({ bytes: joinBytes({ parts: [new Uint8Array([6]), seed, localData] }), stage: 'seed' }),
+      receiving: receive(),
+    });
     sensitive.push(peerSeed);
-    requireValue({ condition: peerSeed.length >= 33 && peerSeed.length <= 496 && peerSeed[0] === 6, message: 'Export seed' });
+    requireValue({ condition: peerSeed.length >= 33 && peerSeed.length <= 16675 && peerSeed[0] === 6, message: 'Export seed' });
     requireValue({ condition: responses.accept({ window: seedWindow }), message: 'Stale export seed' });
     peerData = peerSeed.slice(33);
     const material = joinBytes({ parts: isInitiator({ role: role }) ? [seed, peerSeed.subarray(1, 33)] : [peerSeed.subarray(1, 33), seed] });
@@ -286,8 +325,10 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const receiveKey = await confirmation({ direction: isInitiator({ role: role }) ? 2 : 1 });
     const confirmInput = fields({ parts: [sessionBinding, contextId] });
     const mac = new Uint8Array(await crypto.subtle.sign('HMAC', sendKey, confirmInput));
-    const confirmationWindow = await request({ bytes: joinBytes({ parts: [new Uint8Array([7]), mac] }), stage: 'confirmation' });
-    const peerMac = await receive();
+    const { sent: confirmationWindow, received: peerMac } = await mutual({
+      sending: request({ bytes: joinBytes({ parts: [new Uint8Array([7]), mac] }), stage: 'confirmation' }),
+      receiving: receive(),
+    });
     requireValue({ condition: peerMac.length === 33 && peerMac[0] === 7, message: 'Key confirmation encoding' });
     requireValue({ condition: await crypto.subtle.verify('HMAC', receiveKey, peerMac.subarray(1), confirmInput), message: 'Key confirmation failed' });
     requireValue({ condition: responses.accept({ window: confirmationWindow }), message: 'Stale key confirmation' });

@@ -299,7 +299,7 @@ it.each([
   const db = database();
   const { access } = await naidanRpcStorage.list();
   const provider = new LocalStorageProvider();
-  await provider.saveNaidanRpcRegistry({ registry: { version: 2, id: 'known-registry', registrations: [] } });
+  await provider.saveNaidanRpcRegistry({ registry: { version: 1, id: 'known-registry', registrations: [] } });
   const key = Object.keys(localStorage).find(key => key.endsWith('experimental-naidan-rpc-connections'));
   if (!key) throw new Error('Missing stable registry location');
   const bytes = JSON.stringify(raw); localStorage.setItem(key, bytes);
@@ -308,4 +308,25 @@ it.each([
   expect(localStorage.getItem(key)).toBe(bytes);
   expect(db.requests).toEqual([]);
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it.each(['bad-id', 'duplicate-id'])('keeps registry invariants at the use boundary and leaves stored data untouched (%s)', async mode => {
+  database(); await remember({ next: registration });
+  const provider = new LocalStorageProvider(), stored = (await provider.loadNaidanRpcRegistry())!;
+  const invalid = mode === 'bad-id' ? { ...stored, id: 'bad' } : { ...stored, registrations: [...stored.registrations, ...stored.registrations] };
+  // The provider handles declared structure; the registry owns identity and uniqueness.
+  await provider.saveNaidanRpcRegistry({ registry: invalid });
+  await expect(naidanRpcStorage.list()).rejects.toThrow(mode === 'bad-id' ? 'identity' : 'Duplicate');
+  expect(await provider.loadNaidanRpcRegistry()).toEqual(invalid);
+});
+
+it.each(['extractable', 'public-key'])('checks key-use policy at the identity boundary rather than in DTO shape (%s)', async mode => {
+  const db = database();
+  const pair = await crypto.subtle.generateKey({ name: 'X25519' }, mode === 'extractable', ['deriveBits']);
+  const invalid = { ...identity, privateKey: mode === 'public-key' ? pair.publicKey : pair.privateKey };
+  const { ExperimentalNaidanRpcIdentitySchemaDto } = await import('@/00-storage/00-dto/experimental-naidan-rpc.dto');
+  expect(ExperimentalNaidanRpcIdentitySchemaDto.safeParse(invalid).success).toBe(true);
+  db.stores.get('identity')!.set('self', invalid);
+  await expect(naidanRpcStorage.readIdentity()).rejects.toThrow('Invalid RPC identity');
+  expect(db.stores.get('identity')!.get('self')).toEqual(invalid);
 });

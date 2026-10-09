@@ -1,5 +1,3 @@
-import { retainRpcEndpoint, retainedRpcEndpoint, retainRpcLeaf, retainedRpcLeaf } from './retained-rpc';
-import { UnavailableRpcValue } from '@/01-models/unavailable-rpc-value';
 import { z } from 'zod';
 
 import { UI_LOCALES } from '@/01-models/ui-locale';
@@ -72,24 +70,10 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
  * The shared experimental reader isolates unreadable endpoint settings while
  * allowing the containing settings to load with an unsupported endpoint.
  */
-// Zod's object parser intentionally ignores some prototype-named keys. RPC
-// authority leaves require an exact own-key check before that normalization.
-export function exactRpcObject<TSchema extends z.ZodObject>({ schema }: { schema: TSchema }) {
-  return z.unknown().superRefine((value, context) => {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
-    for (const key of Reflect.ownKeys(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-      if (typeof key !== 'string' || !Object.hasOwn(schema.shape, key) || !descriptor.enumerable || !('value' in descriptor)) {
-        context.addIssue({ code: 'custom', message: 'Unsupported RPC own property' });
-      }
-    }
-  }).pipe(schema);
-}
-
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
     endpoint: missingAsUndefined(z.union([
-      exactRpcObject({ schema: resolveMissingAsUndefined(z.strictObject({ type: z.literal('naidan_rpc'), registrationId: missingAsUndefined(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)) })) }),
+      resolveMissingAsUndefined(z.object({ type: z.literal('naidan_rpc'), registrationId: missingAsUndefined(z.string()) })),
       resolveMissingAsUndefined(z.object({
         type: z.literal('browser_provided_lm'),
       })),
@@ -162,8 +146,6 @@ export const ExperimentalRemoteImageModelFileSchemaDto = z.object({
   expected: z.object({ size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), lastModified: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional(),
 });
 
-const registrationIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
-const peerPublicKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(z.object({
   primary: missingAsUndefined(resolveMissingAsUndefined(z.object({
@@ -183,49 +165,21 @@ export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndef
 }));
 export type ExperimentalRemoteImageModelEditorDto = z.infer<typeof ExperimentalRemoteImageModelEditorSchemaDto>;
 
-const ImageInferenceLocationSchemaDto = z.union([
+export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.union([
   z.object({ kind: z.literal('local') }),
-  exactRpcObject({
-    schema: resolveMissingAsUndefined(z.strictObject({
-      kind: z.literal('naidan_rpc'),
-      registration: missingAsUndefined(exactRpcObject({ schema: z.strictObject({ registrationId: registrationIdSchema, peerPublicKey: peerPublicKeySchema }) })),
-    })),
-  }),
+  z.object({ kind: z.literal('unavailable') }),
+  resolveMissingAsUndefined(z.object({
+    kind: z.literal('naidan_rpc'),
+    registration: missingAsUndefined(z.object({ registrationId: z.string(), peerPublicKey: z.string() })),
+  })),
 ]);
-export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.unknown().transform((input): z.infer<typeof ImageInferenceLocationSchemaDto> => {
-  const retained = retainedRpcLeaf({ value: input });
-  if (retained !== undefined) return retainRpcLeaf({ value: { kind: 'naidan_rpc', registration: undefined }, raw: retained });
-  const result = ImageInferenceLocationSchemaDto.safeParse(input);
-  if (result.success) return result.data;
-  // A present invalid routing value is never equivalent to absent preferences.
-  // Keep it unavailable rather than selecting the local default.
-  return retainRpcLeaf({ value: { kind: 'naidan_rpc', registration: undefined }, raw: new UnavailableRpcValue({ raw: input }) });
-});
 export type ExperimentalImageInferenceLocationPreferenceDto = z.infer<typeof ExperimentalImageInferenceLocationPreferenceSchemaDto>;
 
-const RemoteImageEditorPreferenceSchemaDto = exactRpcObject({
-  schema: z.strictObject({
-    registrationId: registrationIdSchema,
-    peerPublicKey: peerPublicKeySchema,
-    editor: ExperimentalRemoteImageModelEditorSchemaDto,
-  }),
-});
-const RemoteImageEditorValueSchemaDto = z.unknown().transform((input, context): z.infer<typeof RemoteImageEditorPreferenceSchemaDto> | { unavailableRpc: UnavailableRpcValue } => {
-  const retained = retainedRpcLeaf({ value: input });
-  if (retained !== undefined) return retainRpcLeaf({ value: { unavailableRpc: retained.copy() }, raw: retained });
-  const result = RemoteImageEditorPreferenceSchemaDto.safeParse(input);
-  if (result.success) return result.data;
-  if (typeof input === 'object' && input !== null && ExperimentalRemoteImageModelEditorSchemaDto.safeParse(Object.getOwnPropertyDescriptor(input, 'editor')?.value).success) {
-    const raw = new UnavailableRpcValue({ raw: input });
-    return retainRpcLeaf({ value: { unavailableRpc: raw }, raw });
-  }
-  context.addIssue({ code: 'custom', message: 'Invalid remote image editor' });
-  return z.NEVER;
-});
-export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = z.array(RemoteImageEditorValueSchemaDto).max(32).refine(items => {
-  const keys = items.flatMap(item => 'unavailableRpc' in item ? [] : [`${item.registrationId}:${item.peerPublicKey}`]);
-  return new Set(keys).size === keys.length;
-});
+export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = z.array(z.object({
+  registrationId: z.string(),
+  peerPublicKey: z.string(),
+  editor: ExperimentalRemoteImageModelEditorSchemaDto,
+}));
 export type ExperimentalRemoteImageModelEditorPreferenceDto = z.infer<typeof ExperimentalRemoteImageModelEditorPreferencesSchemaDto>[number];
 
 export const ExperimentalImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
@@ -370,11 +324,9 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
 
     const input = raw as Record<string, unknown>;
     const valueInput: Record<string, unknown> = {};
-    const retainedEndpoint = input.endpoint === undefined ? retainedRpcEndpoint({ value: raw }) : undefined;
-    const unreadable: Record<string, unknown> = retainedEndpoint === undefined ? {} : { endpoint: retainedEndpoint.read() };
+    const unreadable: Record<string, unknown> = {};
 
     for (const [key, rawValue] of Object.entries(input)) {
-      if (key === 'endpoint' && retainedEndpoint !== undefined) continue;
       const fieldSchema = Object.hasOwn(schema.shape, key) ? schema.shape[key] : undefined;
 
       if (fieldSchema === undefined) {
@@ -392,12 +344,6 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
     }
 
     const value = schema.parse(valueInput) as ExperimentalOutput<TSchema>;
-    const unsupportedEndpoint = unreadable.endpoint;
-    if (Object.is(schema, ExperimentalExperimentalTypeEndpointSchemaDto) && typeof unsupportedEndpoint === 'object'
-      && unsupportedEndpoint !== null && Object.getOwnPropertyDescriptor(unsupportedEndpoint, 'type')?.value === 'naidan_rpc') {
-      retainRpcEndpoint({ value, raw: retainedEndpoint ?? new UnavailableRpcValue({ raw: unsupportedEndpoint }) });
-    }
-
     return Object.keys(unreadable).length === 0
       ? value
       : attachUnreadable({ value, unreadable });

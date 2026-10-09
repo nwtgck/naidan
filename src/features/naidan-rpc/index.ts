@@ -1,6 +1,8 @@
+export { NaidanRpcByteBudget } from '@/features/naidan-rpc/byte-budget';
 export { createRpcProtocolAdvertisement, validateRpcProtocolAdvertisement } from './protocol-compatibility';
 export { ConnectionMaintenance, ConnectionOpenPermits, maintenanceClock } from '@/features/naidan-rpc/connection-maintenance';
 export type { ConnectionLease, ConnectionInitiation } from '@/features/naidan-rpc/connection-maintenance';
+export { NaidanRpcCallBudget } from '@/features/naidan-rpc/call-budget';
 export { NaidanRpcPeer } from '@/features/naidan-rpc/peer';
 export type { NaidanRpcLimits } from '@/features/naidan-rpc/peer';
 export { contract, procedure, expose, methodNames } from '@/features/naidan-rpc/contract';

@@ -69,13 +69,22 @@ export function imageGenerationRequestBodyToDto({ request }: { request: Omit<Ima
 
 export function imageGenerationRuntimeToDomain({ runtime }: { runtime: ExperimentalImageGenerationDto['request']['runtime'] }): ImageGenerationRecord['request']['runtime'] {
   switch (runtime.profile) {
-  case 'naidan-rpc': return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
+  case 'naidan-rpc': validateRemoteRuntime({ runtime }); return { ...ExperimentalImageGenerationRuntimeSchemaDto.options[1].parse(runtime), registrationId: toNaidanRpcRegistrationId({ raw: runtime.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: runtime.peerPublicKey }) };
   case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
   default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
   }
 }
 export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerationRecord['request']['runtime'] }): ExperimentalImageGenerationDto['request']['runtime'] {
-  return ExperimentalImageGenerationRuntimeSchemaDto.parse(runtime);
+  const dto = ExperimentalImageGenerationRuntimeSchemaDto.parse(runtime);
+  switch (dto.profile) {
+  case 'naidan-rpc': validateRemoteRuntime({ runtime: dto }); break;
+  case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': break;
+  default: { const exhaustive: never = dto; throw new Error(String(exhaustive)); }
+  }
+  return dto;
+}
+function validateRemoteRuntime({ runtime }: { runtime: { registrationId: string; peerPublicKey: string } }): void {
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(runtime.registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(runtime.peerPublicKey)) throw new Error('Invalid RPC execution provenance');
 }
 export function imageGenerationRequestToDomain({ request }: { request: ExperimentalImageGenerationDto['request'] }): ImageGenerationRecord['request'] {
   const { runtime, ...body } = request;
