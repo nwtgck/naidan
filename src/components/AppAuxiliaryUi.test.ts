@@ -86,8 +86,12 @@ vi.mock('@/features/transformers-js/model-support-investigation', () => ({
 }));
 
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceModal.vue', () => ({
-  default: { name: 'LlamaCppBrowserPerformanceModal', props: ['isOpen', 'defaultModel'], emits: ['close'],
-    template: '<div data-testid="llama-performance-stub" :data-open="isOpen"><button @click="$emit(\'close\')">close</button></div>' },
+  default: {
+    name: 'LlamaCppBrowserPerformanceModal',
+    props: ['isOpen', 'defaultModel'],
+    emits: ['close'],
+    template: '<div data-testid="llama-performance-stub" :data-open="isOpen"><button @click="$emit(\'close\')">close</button></div>',
+  },
 }));
 
 vi.mock('@/components/SettingsModal.vue', () => ({
