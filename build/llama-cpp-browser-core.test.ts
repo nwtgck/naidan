@@ -14,7 +14,43 @@ import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-bro
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
 
+const callbackGetters = [
+  'ggml_op_desc', 'ggml_backend_buffer_name', 'ggml_backend_buffer_is_host',
+  'ggml_backend_dev_count', 'ggml_backend_dev_get', 'ggml_backend_dev_name', 'ggml_backend_dev_supports_op',
+] as const;
+
 describe('shared browser core adapter', () => {
+  it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
+    const dependencyName = 'llama-cpp-browser-core';
+    const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));
+    const lockFile = z.object({
+      packages: z.object({
+        '': z.object({ dependencies: z.record(z.string(), z.string()) }),
+        'node_modules/llama-cpp-browser-core': z.object({ resolved: z.string(), integrity: z.string() }),
+      }),
+    }).parse(JSON.parse(readFileSync(path.join(repo, 'package-lock.json'), 'utf8')));
+    const specifier = packageFile.dependencies[dependencyName];
+    expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
+    expect(lockFile.packages[''].dependencies[dependencyName]).toBe(specifier);
+    const entry = lockFile.packages['node_modules/llama-cpp-browser-core'];
+    expect(entry.resolved).toBe(`git+ssh://git@github.com/nwtgck/browser-inference-core.git#${specifier?.split('#')[1]}`);
+    expect(entry.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
+  });
+
+  it('ships the versioned callback metadata exports declared by the pinned package', () => {
+    const base = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/api');
+    const schema = z.object({
+      callbackMetadata: z.object({ version: z.literal(1), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
+    }).parse(JSON.parse(readFileSync(path.join(base, 'schema.json'), 'utf8')));
+    const exports = z.array(z.string()).parse(JSON.parse(readFileSync(path.join(base, 'exports.json'), 'utf8')));
+    expect(schema.callbackMetadata.getters).toEqual([...callbackGetters].sort().map(name => ({ name, export: `_lcb_callback_${name}` })));
+    expect(exports).toContain('_lcb_callback_metadata_version');
+    for (const name of callbackGetters) {
+      expect(exports).toContain(`_lcb_callback_${name}`);
+      expect(exports).toContain(`_lcb_${name}`); // The ordinary Promise surface is not replaced.
+    }
+  });
+
   it('reads the combined inventory and emits five verified hosted Wasm payloads', async () => {
     const files = new Map<string, Uint8Array>();
     const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
@@ -144,7 +180,17 @@ describe('shared browser core adapter', () => {
     await module.evaluate();
     const factory: unknown = Reflect.get(module.namespace, 'default');
     if (typeof factory !== 'function') throw new Error('Missing core factory');
-    await factory({ wasmBinary: supplied, print() {}, printErr() {} });
+    const native: unknown = await factory({ wasmBinary: supplied, print() {}, printErr() {} });
+    if (typeof native !== 'object' || native === null) throw new Error('Missing native module');
+    const version: unknown = Reflect.get(native, '_lcb_callback_metadata_version');
+    if (typeof version !== 'function') throw new Error('Missing synchronous callback metadata version');
+    expect(Reflect.apply(version, native, [])).toBe(1);
+    for (const name of callbackGetters) expect(typeof Reflect.get(native, `_lcb_callback_${name}`)).toBe('function');
+    const count: unknown = Reflect.get(native, '_lcb_callback_ggml_backend_dev_count');
+    if (typeof count !== 'function') throw new Error('Missing synchronous callback device count');
+    const deviceCount: unknown = Reflect.apply(count, native, []);
+    expect(typeof deviceCount).toBe('bigint'); // Not a Promise, even though the ordinary API may be asynchronous.
+    expect(deviceCount).toBeGreaterThanOrEqual(0n);
     expect(instantiate).toHaveBeenCalledOnce();
     expect(instantiate.mock.calls[0]?.[0]).toBe(supplied);
     await expect(factory({ printErr() {} })).rejects.toThrow('Browser core requires supplied wasmBinary');

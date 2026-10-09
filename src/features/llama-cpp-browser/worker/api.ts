@@ -7,7 +7,7 @@ import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { logDiagnostic, logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { logDiagnostic, logFailure, subscribeDiagnostics, diagnosticSchema, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, progressSchema, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
@@ -221,8 +221,12 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       if (active?.generationId === id) active.controller.abort();
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callbacks are top-level arguments.
-    async generate(request, onEvent, onProgress, onDiagnostic) {
+    async generate(request, onEvent, onProgress, onDiagnostic, onSummary) {
       const { generationId, ...accepted } = workerGenerateCallSchema.parse(request);
+      let summary: Diagnostic | undefined;
+      let modelReads: Diagnostic['fileReads'];
+      const measuredAt = accepted.measurement ? performance.now() : undefined;
+      const preparationEvents: NonNullable<NonNullable<Diagnostic['performance']>['preparationEvents']> = [];
       if (active) throw new LlamaCppBrowserError({ code: "busy" });
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
@@ -230,6 +234,25 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const unsubscribe = subscribeDiagnostics({
         debug: accepted.debug ?? 'off',
         listener: ({ diagnostic }) => {
+          if (measuredAt !== undefined && diagnostic.event === 'file-read-performance' && diagnostic.fileReads?.target === 'model') {
+            modelReads = diagnostic.fileReads;
+          }
+          if (measuredAt !== undefined && preparationEvents.length < 64) {
+            switch (diagnostic.event) {
+            case 'runtime-ready': case 'load-start': case 'load-complete': case 'model-reused':
+            case 'context-start': case 'context-retry': case 'context-ready':
+              preparationEvents.push({
+                event: diagnostic.event,
+                observedMs: Math.max(0, performance.now() - measuredAt),
+                elapsedMs: diagnostic.elapsedMs,
+                contextTokens: diagnostic.contextTokens,
+                batchTokens: diagnostic.batchTokens,
+                reason: diagnostic.reason,
+              });
+              break;
+            default: break;
+            }
+          }
           if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
           return undefined;
         },
@@ -239,6 +262,9 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
           operation: () => generate({
             request: accepted,
             signal: controller.signal,
+            onSummary: ({ diagnostic }) => {
+              summary = diagnostic;
+            },
             onEvent: async ({ event }) => {
               // Already accepted content is drained on Stop; consumer abandonment rejects the ACK.
               const acceptedEvent = generationEventSchema.parse(event);
@@ -271,6 +297,13 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         return generationResultSchema.parse(result);
       } finally {
         unsubscribe();
+        if (summary && onSummary && accepted.measurement) {
+          const value: Diagnostic = {
+            ...summary,
+            performance: summary.performance ? { ...summary.performance, preparationEvents, modelReads } : undefined,
+          };
+          events.send({ operation: () => onSummary({ diagnostic: diagnosticSchema.parse(value) }) });
+        }
         // Finish proxy callbacks before resolving RPC; otherwise an old progress
         // callback could overwrite the next request or the service's idle state.
         try {

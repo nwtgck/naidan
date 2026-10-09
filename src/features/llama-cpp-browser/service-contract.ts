@@ -1,3 +1,4 @@
+import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
 import type { AudioGenerationInput, AudioGenerationResult } from '@/features/audio-generation/types';
 import type { ProfileCapabilities, ProfileState } from './runtime/profile-capabilities';
@@ -28,6 +29,11 @@ export interface LlamaCppBrowserService {
     onProgress?: ({ progress }: { progress: Progress }) => void,
     operation: ({ scope }: { scope: LlamaCppGenerationScope }) => Promise<void>,
   }): Promise<void>;
+  runPerformanceOperation({ options, signal, operation }: {
+    options: RuntimeOptions,
+    signal: AbortSignal | undefined,
+    operation: ({ scope }: { scope: LlamaCppPerformanceScope }) => Promise<void>,
+  }): Promise<void>;
   restartRuntime({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   cancel(): void;
   release(): void;
@@ -36,6 +42,20 @@ export interface LlamaCppBrowserService {
 export interface LlamaCppGenerationScope {
   readonly signal: AbortSignal;
   generate: LlamaCppBrowserService['generate'];
+}
+/** One model's measured trials; shares the ordinary Worker and native loop. */
+export interface LlamaCppPerformanceScope {
+  readonly signal: AbortSignal;
+  readonly options: RuntimeOptions;
+  generate({ input, sequence, observation, onEvent, onSummary, onProgress, signal }: {
+    input: Omit<GenerateInput, 'options'>,
+    sequence: 'fresh' | 'continue',
+    observation?: 'placement',
+    onEvent: GenerationCallback,
+    onSummary: ({ diagnostic }: { diagnostic: Diagnostic }) => void,
+    onProgress?: ({ progress }: { progress: Progress }) => void,
+    signal: AbortSignal,
+  }): Promise<GenerationResult>;
 }
 export const TEST_ONLY = {
 };

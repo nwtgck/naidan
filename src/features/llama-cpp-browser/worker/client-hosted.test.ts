@@ -7,9 +7,10 @@ import type { Progress } from '@/features/llama-cpp-browser/types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
+import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/worker-transport')>(),
   wrapWorkerRemote: () => transport.remote,
@@ -29,6 +30,7 @@ beforeEach(() => {
   memoryHistoryTest.reset();
   vi.clearAllMocks(); TestWorker.instances = [];
   vi.stubGlobal('Worker', TestWorker);
+  transport.remote.release.mockReset(); transport.remote.release.mockResolvedValue(undefined);
   transport.remote.listModels.mockResolvedValue([]);
   transport.remote.cancelGeneration.mockResolvedValue(undefined); transport.remote.finishAudioGeneration.mockReset(); transport.remote.finishAudioGeneration.mockResolvedValue(undefined);
   transport.remote.generate.mockReset(); transport.remote.generateAudio.mockReset(); transport.remote.generateAudio.mockResolvedValue(audioResult());
@@ -553,5 +555,28 @@ describe('model preparation transport', () => {
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: transport.remote.prepareModel.mock.calls[0]![0].generationId });
     gate.resolve(); await rejected; expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); client.dispose();
+  });
+});
+
+describe('measured session client', () => {
+  it('forwards terminal evidence after Stop and ignores it after the request settles', async () => {
+    const client = createLlamaCppWorkerClient(), control = new AbortController(), receive = vi.fn();
+    let late: ((args: { diagnostic: Diagnostic }) => void) | undefined;
+    transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, _diagnostic, summary) => {
+      late = summary; control.abort();
+      summary({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    await expect(client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onSummary: receive, signal: control.signal })).rejects.toThrow('aborted');
+    expect(receive).toHaveBeenCalledOnce();
+    late!({ diagnostic: performanceReport() }); expect(receive).toHaveBeenCalledOnce(); client.dispose();
+  });
+
+  it('waits for native release and terminates a release that never returns', async () => {
+    vi.useFakeTimers(); const client = createLlamaCppWorkerClient();
+    transport.remote.release.mockReturnValueOnce(new Promise(() => {}));
+    const rejected = expect(client.releaseRuntime({ signal: undefined })).rejects.toThrow('aborted');
+    await vi.advanceTimersByTimeAsync(10000); await rejected;
+    expect(client.canReuse()).toBe(false); expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
 });

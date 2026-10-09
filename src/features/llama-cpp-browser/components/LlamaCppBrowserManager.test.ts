@@ -120,6 +120,107 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('loads models with suspension omitted and leaves normal model operations enabled', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const wrapper = render(); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain(storedModel.name);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-refresh"]').attributes('disabled')).toBeUndefined();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-import"] fieldset').attributes('disabled')).toBeUndefined();
+  });
+
+  it('skips refresh triggers while suspended and reads the latest models when resumed', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const wrapper = mount(LlamaCppBrowserManager, { props: { suspended: true } }); wrappers.push(wrapper);
+    await flushPromises();
+    for (const listener of notifications.models) listener();
+    window.dispatchEvent(new Event('focus'));
+    await wrapper.get('[data-testid="llama-cpp-browser-refresh"]').trigger('click');
+    await flushPromises();
+    expect(llamaCppBrowserService.listModels).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ suspended: false }); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(wrapper.emitted('modelsChanged')).toEqual([[[storedModel]]]);
+
+    await wrapper.setProps({ suspended: true });
+    for (const listener of notifications.models) listener();
+    window.dispatchEvent(new Event('focus'));
+    await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain(storedModel.name);
+
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([]);
+    await wrapper.setProps({ suspended: false }); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[]]);
+  });
+
+  it.each(['resolve', 'reject'] as const)('discards a suspended refresh that later %s without reporting a stale result or error', async settlement => {
+    const read = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(read.promise).mockResolvedValue([storedModel]);
+    const wrapper = render(); await flushPromises();
+    const signal = vi.mocked(llamaCppBrowserService.listModels).mock.calls[0]?.[0].signal;
+    for (const listener of notifications.models) listener();
+    await wrapper.setProps({ suspended: true });
+    expect(signal?.aborted).toBe(true);
+    if (settlement === 'resolve') read.resolve([]);
+    else read.reject(new LlamaCppBrowserError({ code: 'storage-error' }));
+    await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(wrapper.emitted('modelsChanged')).toBeUndefined();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    await wrapper.setProps({ suspended: false }); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted('modelsChanged')).toEqual([[[storedModel]]]);
+  });
+
+  it('retains a resume request until an aborted refresh settles without overlapping reads', async () => {
+    const read = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(read.promise).mockResolvedValue([storedModel]);
+    const wrapper = render(); await flushPromises();
+    const signal = vi.mocked(llamaCppBrowserService.listModels).mock.calls[0]?.[0].signal;
+    await wrapper.setProps({ suspended: true });
+    expect(signal?.aborted).toBe(true);
+    await wrapper.setProps({ suspended: false });
+    for (const listener of notifications.models) listener();
+    window.dispatchEvent(new Event('focus'));
+    await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    read.resolve([]); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted('modelsChanged')).toEqual([[[storedModel]]]);
+    expect(vi.mocked(llamaCppBrowserService.listModels).mock.calls[1]?.[0].signal?.aborted).toBe(false);
+  });
+
+  it('does not restart an aborted refresh when unmounted before the pending resume', async () => {
+    const read = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(read.promise);
+    const wrapper = render(); await flushPromises();
+    await wrapper.setProps({ suspended: true });
+    await wrapper.setProps({ suspended: false });
+    wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
+    read.resolve([storedModel]); await flushPromises();
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(wrapper.emitted('modelsChanged')).toBeUndefined();
+  });
+
+  it('does not select a model from an old preparation after suspension and resume', async () => {
+    const wrapper = render(); await flushPromises();
+    const read = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModels).mockReturnValueOnce(read.promise).mockResolvedValue([storedModel]);
+    wrapper.findComponent({ name: 'LlamaCppBrowserHuggingFaceManager' }).vm.$emit('modelReady', storedModel);
+    await flushPromises();
+    await wrapper.setProps({ suspended: true });
+    await wrapper.setProps({ suspended: false });
+    read.resolve([storedModel]); await flushPromises();
+    expect(wrapper.emitted('modelSelected')).toBeUndefined();
+    expect(wrapper.emitted('modelsChanged')?.at(-1)).toEqual([[storedModel]]);
+    wrapper.findComponent({ name: 'LlamaCppBrowserHuggingFaceManager' }).vm.$emit('modelReady', storedModel);
+    await flushPromises();
+    expect(wrapper.emitted('modelSelected')).toEqual([[storedModel.name]]);
+  });
+
   it('lists browser storage and all linked roots together with readable source labels and no source selector', async () => {
     const first: LocalModel = {
       id: 'host/root-a/owner/repo:model.gguf',

@@ -1,0 +1,1 @@
+export const llamaCppPerformance__standard_measurement_help = (): string => "Five speed calls per model: brief initial load, short input, its continuation, long input, then the same short input again. One separate operation diagnostic is added by default. Repeated blocks are optional.";

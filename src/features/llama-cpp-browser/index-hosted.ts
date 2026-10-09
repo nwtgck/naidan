@@ -8,7 +8,7 @@ import { listStoredModels, removeStoredModel, withModelMutationLock } from './ru
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
-import type { LlamaCppBrowserService } from './service-contract';
+import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from './service-contract';
 import { logDiagnostic } from './debug-log';
 
 let state: EngineState = { status: 'idle' };
@@ -449,6 +449,74 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     } catch (error) {
       if (!callbackCompleted || observedFailure === undefined) throw error;
     }
+  },
+  async runPerformanceOperation({ options, signal, operation }) {
+    const acceptedOptions = parseRuntimeOptions({ options });
+    // Fail rather than silently warming behind an unrelated operation.
+    if (laneReservations > 0) throw new LlamaCppBrowserError({ code: 'busy' });
+    await run({
+      owner: undefined,
+      kind: 'operation',
+      signal,
+      operation: async ({ worker, signal }) => {
+        await worker.releaseRuntime({ signal });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions });
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        let open = true;
+        let pending: Promise<GenerationResult> | undefined;
+        let failure: { error: unknown } | undefined;
+        const generate: LlamaCppPerformanceScope['generate'] = ({ input, sequence, observation, onEvent, onSummary, onProgress, signal }) => {
+          if (!open) throw new Error('The performance operation is closed.');
+          if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
+          if (failure) throw failure.error;
+          const local = new AbortController();
+          const abort = () => local.abort();
+          const sources = [...new Set([signal, controller.signal])];
+          for (const source of sources) {
+            source.addEventListener('abort', abort, { once: true });
+            if (source.aborted) abort();
+          }
+          pending = Promise.resolve().then(async () => {
+            try {
+              local.signal.throwIfAborted();
+              const request = generateInputSchema.parse({ ...input, options: concreteOptions });
+              return await worker.generate({
+                request: { ...request, measurement: { sequence, observation } },
+                onEvent,
+                onSummary,
+                onProgress: ({ progress: value }) => {
+                  progress({ progress: value }); onProgress?.({ progress: value });
+                },
+                signal: local.signal,
+              });
+            } catch (error) {
+              failure = { error }; throw error;
+            } finally {
+              for (const source of sources) source.removeEventListener('abort', abort);
+              pending = undefined;
+            }
+          });
+          void pending.catch(() => {});
+          return pending;
+        };
+        try {
+          await operation({ scope: { signal: controller.signal, options: concreteOptions, generate } });
+          if (failure) throw failure.error;
+          if (pending) throw new Error('The performance operation ended with a pending request.');
+        } finally {
+          open = false;
+          controller.abort();
+          signal.removeEventListener('abort', abort);
+          await pending?.catch(() => {});
+          // Cleanup is outside trial timing. It is bounded by the client and
+          // cannot overlap the next model, even when the user has pressed Stop.
+          if (worker.canReuse()) await worker.releaseRuntime({ signal: undefined });
+        }
+      },
+    });
   },
   async restartRuntime({ signal }) {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });

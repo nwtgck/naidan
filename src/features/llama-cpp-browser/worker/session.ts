@@ -1,5 +1,6 @@
 import { beginMemoryDiagnostics, sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { openModelFileAccess } from './model-file-access';
+import { createBackendCensus } from './backend-census';
 import type { AudioBackend } from '@/features/audio-generation/types';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
@@ -23,7 +24,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
 };
 
 type ResidentChatMetadata = { vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
+type ResidentModel = { census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
   id: string, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
@@ -64,7 +65,11 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
         const checkpoint = current.cache.checkpoint; current.cache.checkpoint = undefined;
         disposePromptCheckpoint({ core: runtime.core, checkpoint });
       } finally {
-        if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
+        try {
+          if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
+        } finally {
+          current.census?.release(); current.census = undefined;
+        }
       }
     } finally {
       try {
@@ -92,7 +97,7 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
   if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
 }
-type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug'>;
+type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
 type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
 type SessionPreparation = {
@@ -149,7 +154,11 @@ async function releaseTextContextForProjector({ core, current }: { core: Core, c
   try {
     disposePromptCheckpoint({ core, checkpoint });
   } finally {
-    if (context !== 0n) await core.api.llama_free(context);
+    try {
+      if (context !== 0n) await core.api.llama_free(context);
+    } finally {
+      current.census?.release(); current.census = undefined;
+    }
   }
 }
 
@@ -298,7 +307,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         } finally {
           readCache.dispose();
           try {
-            if (reportFileReads) logDiagnostic({
+            if (reportFileReads || request.measurement) logDiagnostic({
               diagnostic: {
                 event: 'file-read-performance',
                 profile,
@@ -315,6 +324,13 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const current = resident;
   if (!current) throw new LlamaCppBrowserError({ code: "runtime-error" });
   checkCancelled();
+  const wantsCensus = request.measurement?.observation === 'placement';
+  if (current.context !== 0n && Boolean(current.census) !== wantsCensus) {
+    // A diagnostic callback belongs to a context, not to all future requests.
+    // Retain the large model; rebuild only this context when entering/leaving it.
+    await releaseTextContextForProjector({ core, current });
+    checkCancelled();
+  }
   const debug = request.debug ?? 'off';
   const useProjector = purpose.kind === 'audio' || purpose.projector === 'load-if-present';
   const preparation: SessionPreparation = {
@@ -355,6 +371,11 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     let failed = false;
     try {
       await api.llama_context_default_params(cp);
+      if (wantsCensus) {
+        current.census = createBackendCensus({ core });
+        core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval', value: BigInt(current.census.pointer) });
+        core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval_user_data', value: 0n });
+      }
       const swaField = core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
       if (swaField.kind !== 'boolean' || swaField.size !== 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
       // Full SWA retention needs no extra SWA snapshot. Read the actual native
@@ -441,7 +462,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       case 'audio': current.chatMetadata = undefined; break;
       default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
       }
-      logDiagnostic({ diagnostic: { event: "context-ready", cacheRemoval: current.sequenceRemoval, slidingWindowTokens: current.slidingWindow, contextTokens, elapsedMs: performance.now() - started, profile } });
+      logDiagnostic({ diagnostic: { event: "context-ready", cacheRemoval: current.sequenceRemoval, slidingWindowTokens: current.slidingWindow, contextTokens, batchTokens: current.chatMetadata?.prefillBatchTokens, elapsedMs: performance.now() - started, profile } });
     } catch (error) {
       failed = true;
       throw error;
@@ -454,7 +475,8 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
   }
   checkCancelled();
-  return { core, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, chatMetadata: current.chatMetadata, preparation };
+  current.census?.reset();
+  return { core, census: current.census, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, chatMetadata: current.chatMetadata, preparation };
 }
 export const TEST_ONLY = {
   residentContext: () => resident?.context,
