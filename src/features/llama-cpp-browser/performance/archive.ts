@@ -175,6 +175,34 @@ would not measure live residency. Missing records/counters mean unavailable, not
 nativeSettings preserves native context/batch/sequence sizes (token/count units)
 and graph node/split counts in observed order, including retry attempts. Graph
 batchTokens and nativeSingleTokenValue retain the upstream comparison where present.
+nativeSettings can contain loadedModelDescriptor from bounded getters on the loaded
+LM, collected once per resident model only when measurement is requested and
+re-emitted for each measured request. source=loaded-model-native-api identifies the native API, not a
+filename inference. Missing fields mean unavailable or invalid, never zero.
+parameterCount and tensorBytes are unsigned 64-bit decimal strings so JSON does
+not lose precision. tensorBytes describes model tensors, not file bytes or live
+RAM/VRAM. fileType is the loaded native llama_model_ftype numeric classification, including any
+LLAMA_FTYPE_GUESSED flag; mixed tensor quantization is possible. Head and layer counts are native summaries, not
+proof that every layer uses attention or that Flash Attention executed.
+No full metadata enumeration, model name, tokenizer data, or template is collected.
+The same nativeSettings history can also contain nativeFlashAttention requested
+(auto/enabled/disabled) or resolved (enabled/disabled) records, and contextEvent
+start/retry/ready boundaries. Requested mode is the native constructor parameter
+after any native parameter rewrites, not necessarily the original caller setting.
+contextAttempt is a request-local ordinal: start and
+retry begin an attempt; ready closes it. Missing contextAttempt means unassociated.
+Only a matching ready boundary can show that initialization completed for a
+resolved attempt. Requested mode alone is never resolved selection; explicit
+modes may not emit an AUTO-resolution line. Failed attempts remain in the history,
+and a later attempt with no resolution stays unknown rather than inheriting it.
+Missing boundaries/request/resolution after truncation also remain unknown.
+Measured settings use the same ordered Worker endpoint as the request's terminal
+response, rather than separate callback ports. Success, failure, and cooperative
+Stop retain notifications sent before that response without waiting for diagnostic
+acknowledgements. A forcibly terminated or failed Worker can still lose undelivered
+observations; absent evidence remains unavailable, never proof of a setting.
+These records report the native Flash Attention choice, not an execution backend,
+GPU kernel selection, performance improvement, or proof that a model ran on GPU.
 These records are observations, not an assurance that an attempted configuration
 became the final effective one; compare the terminal summary and preparation events.
 Each history retains its first 16 and latest 112 records, with dropped counts.
@@ -213,8 +241,17 @@ Architecture/quantization are not inferred from filenames; no extra full-model
 reread or hashing is performed. Missing model metadata is unavailable.
 runtimeBuild records the supplied bicore source revision and original asset
 SHA-256 digests (Secure Hash Algorithm, 256 bits), not a rehash of transformed
-JavaScript or the actual loaded bytes. Record the Naidan commit and environment
-conditions in plan.notes; appVersion alone cannot identify a development patch.
+JavaScript or the actual loaded bytes. appSource records the Naidan sourceCommit
+(full Git revision when available) and workingTree (clean, dirty, or unknown)
+when Vite loads its config. Dirty includes tracked and non-ignored untracked
+changes; unknown means the check was unavailable, not a clean checkout. Missing
+sourceCommit means the revision was unavailable, such as a source ZIP without Git.
+This is source-checkout evidence, not a hash of built or executing app bytes.
+Development hot updates and changes after config loading are not captured; restart
+Vite after source changes for a fresh observation. Save ZIP preserves the run's
+captured identity rather than inspecting the checkout at export time. appVersion
+alone cannot identify a development patch. Record other environment conditions
+in plan.notes.
 runtimeAssetBaseURL is the asset location, not a model download URL.
 preparationEvents contains up to 64 existing low-frequency observations; their
 observedMs is relative to request acceptance, not the event's own elapsedMs.

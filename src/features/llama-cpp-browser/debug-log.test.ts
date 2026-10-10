@@ -444,3 +444,48 @@ it.each([{ backend: 'CPU', nativeValue: 0 }, { backend: 'WebGPU', nativeValue: 6
     log.mockRestore();
   }
 });
+
+describe('native Flash Attention observations', () => {
+  it.each([
+    ['llama_context: flash_attn            = auto', { kind: 'requested', mode: 'auto' }],
+    ['llama_context: flash_attn\t= enabled\n', { kind: 'requested', mode: 'enabled' }],
+    ['llama_context: flash_attn = disabled\r\n', { kind: 'requested', mode: 'disabled' }],
+    ['resolve_fused_ops: Flash Attention enabled', { kind: 'resolved', mode: 'enabled' }],
+    ['resolve_fused_ops: Flash Attention not supported, set to disabled\n', { kind: 'resolved', mode: 'disabled' }],
+  ])('separates exact requested and resolved lines: %s', (message, expected) => {
+    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    try {
+      logNativeDiagnostic({ message });
+    } finally {
+      stop();
+    }
+    expect(receive.mock.calls).toEqual([[{ diagnostic: { event: 'native-info', nativeFlashAttention: expected } }]]);
+  });
+
+  it.each([
+    'llama_context: flash_attn = AUTO', 'llama_context: flash_attn = true',
+    'llama_context: flash_attn = auto private', 'private llama_context: flash_attn = auto',
+    'resolve_fused_ops: Flash Attention disabled', 'resolve_fused_ops: Flash Attention auto',
+    'resolve_fused_ops: Flash Attention enabled private.gguf',
+    `\
+resolve_fused_ops: Flash Attention enabled
+private`, 'resolve_fused_ops: Flash Attention enabled\n\n',
+    'resolve_fused_ops: Flash Attention enabled\r', 'resolve_fused_ops: Flash Attention enabled\u2028',
+    'resolve_fused_ops: Flash Attention enabled\u2029', '\u001b[31mresolve_fused_ops: Flash Attention enabled',
+    'resolve_fused_ops: Flash Attention not supported, set to disabled/private',
+    `llama_context: flash_attn${' '.repeat(256)}= auto`, null, {}, 1,
+  ])('rejects malformed or untrusted flash lines: %j', message => {
+    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    try {
+      logNativeDiagnostic({ message });
+    } finally {
+      stop();
+    }
+    expect(receive).not.toHaveBeenCalled();
+  });
+
+  it('rejects resolved auto and private diagnostic fields', () => {
+    expect(diagnosticSchema.safeParse({ event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'auto' } }).success).toBe(false);
+    expect(diagnosticSchema.safeParse({ event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: 'auto', model: 'private' } }).success).toBe(false);
+  });
+});

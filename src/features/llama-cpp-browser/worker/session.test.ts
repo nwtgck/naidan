@@ -1,3 +1,4 @@
+import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { subscribeMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
 import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
@@ -746,6 +747,31 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBeUndefined();
     for (const item of resources) {
       expect(item.remove).toHaveBeenCalledOnce(); expect(item.close).toHaveBeenCalledOnce();
+    }
+  });
+});
+
+describe('measurement-only loaded descriptor ownership', () => {
+  it('reads only on first measurement, re-emits cached data, and drops it on model release', async () => {
+    const core = host.core!;
+    core.api.llama_model_n_layer = vi.fn(async () => 64);
+    const measured = { ...request({ debug: 'off' }), measurement: { sequence: 'fresh' as const } };
+    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    try {
+      await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
+      expect(core.api.llama_model_n_layer).not.toHaveBeenCalled();
+      await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+      await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+      expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(1);
+      const descriptors = () => receive.mock.calls.flatMap(([{ diagnostic }]) => diagnostic.loadedModelDescriptor ? [diagnostic.loadedModelDescriptor] : []);
+      expect(descriptors().map(value => value.layers)).toEqual([64, 64]);
+      await releaseSession({ releaseRuntime: false });
+      vi.mocked(core.api.llama_model_n_layer).mockResolvedValue(32);
+      await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+      expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(2);
+      expect(descriptors().map(value => value.layers)).toEqual([64, 64, 32]);
+    } finally {
+      stop();
     }
   });
 });

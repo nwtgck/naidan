@@ -1,3 +1,5 @@
+import { readLoadedModelDescriptor } from './loaded-model-descriptor';
+import type { LoadedModelDescriptor } from '@/features/llama-cpp-browser/loaded-model-descriptor';
 import { beginMemoryDiagnostics, sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { openModelFileAccess } from './model-file-access';
 import { createBackendCensus } from './backend-census';
@@ -24,7 +26,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
 };
 
 type ResidentChatMetadata = { vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
+type ResidentModel = { descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
   id: string, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
@@ -326,6 +328,11 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const current = resident;
   if (!current) throw new LlamaCppBrowserError({ code: "runtime-error" });
   checkCancelled();
+  if (request.measurement) {
+    current.descriptor ??= await readLoadedModelDescriptor({ core, model: current.model });
+    logDiagnostic({ diagnostic: { event: 'native-info', loadedModelDescriptor: current.descriptor } });
+    checkCancelled();
+  }
   const wantsCensus = request.measurement?.observation === 'placement';
   if (current.context !== 0n && Boolean(current.census) !== wantsCensus) {
     // A diagnostic callback belongs to a context, not to all future requests.

@@ -167,6 +167,7 @@ export function useLlamaCppPerformance() {
     });
     const environment: PerformanceSnapshot['environment'] = {
       appVersion: __APP_VERSION__,
+      appSource: { ...__APP_SOURCE__ },
       buildMode: __BUILD_MODE_IS_HOSTED__ ? 'hosted' : 'standalone',
       userAgent: navigator.userAgent,
       hardwareConcurrency: navigator.hardwareConcurrency,

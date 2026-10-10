@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
 import { performanceArchive } from './archive';
@@ -47,6 +47,35 @@ describe('portable performance results', () => {
     expect(JSON.parse(await zip.file('environment.json')!.async('string')).timeOrigin).toBe(1000);
     expect(Object.keys(zip.files).some(name => name.endsWith('.gguf'))).toBe(false);
     expect(source.trials[0]?.output?.content).toBe('answer');
+  });
+
+  it.each(['clean', 'dirty', 'unknown'] as const)('preserves the run app identity with a %s working tree at export', async workingTree => {
+    const source = snapshot();
+    source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree };
+    vi.stubGlobal('__APP_SOURCE__', { sourceCommit: 'b'.repeat(40), workingTree: 'clean' });
+    try {
+      const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+      const environment = JSON.parse(await zip.file('environment.json')!.async('string'));
+      expect(environment.appVersion).toBe('test');
+      expect(environment.appSource).toEqual(source.environment.appSource);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('exports unavailable app revision explicitly without manufacturing a clean checkout', async () => {
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: snapshot() })).arrayBuffer());
+    expect(JSON.parse(await zip.file('environment.json')!.async('string')).appSource).toEqual({ workingTree: 'unknown' });
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).toContain('sourceCommit means the revision was unavailable');
+    expect(readme).toContain('Development hot updates and changes after config loading are not captured');
+    expect(readme).not.toContain('Record the Naidan commit');
+  });
+
+  it('rejects malformed app source revisions at the archive boundary', async () => {
+    const source = snapshot();
+    source.environment.appSource.sourceCommit = 'not-a-revision';
+    await expect(performanceArchive({ snapshot: source })).rejects.toThrow();
   });
 
   it('exports all-failed plans and missing values without inventing numeric zero', async () => {
@@ -174,4 +203,76 @@ it.each([
   expect(zip.file(`outputs/${id}.json`)).not.toBeNull();
   expect((await zip.file('summary.csv')!.async('string')).split('\r\n')[1]!.startsWith(`"${csvId}",`)).toBe(true);
   expect(await zip.file('README.md')!.async('string')).toContain('only when the resulting ID matches trials.jsonl');
+});
+
+it('keeps flash request/resolution and retry boundaries in the existing failed-attempt history', async () => {
+  const source = snapshot(); const trial = source.trials[0]!; trial.status = 'failed';
+  trial.memoryDiagnostics = {
+    samples: [],
+    droppedSamples: 0,
+    nativeAllocations: [],
+    droppedNativeAllocations: 0,
+    nativeSettings: [
+      { observedMs: 1, contextAttempt: 1, contextEvent: 'context-start' },
+      { observedMs: 2, contextAttempt: 1, nativeFlashAttention: { kind: 'requested', mode: 'auto' } },
+      { observedMs: 3, contextAttempt: 1, nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } },
+      { observedMs: 4, contextAttempt: 2, contextEvent: 'context-retry' },
+      { observedMs: 5, nativeMetric: 'n_ctx', nativeValue: 4096 },
+    ],
+    droppedNativeSettings: 2,
+  };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const record = JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim());
+  const observations = JSON.parse(await zip.file(record.memoryDiagnosticsFile)!.async('string'));
+  expect(observations.nativeSettings).toEqual(trial.memoryDiagnostics.nativeSettings);
+  expect(record.memoryDiagnosticsCoverage.nativeSettings).toBe(5);
+  expect(record.memoryDiagnosticsCoverage.droppedNativeSettings).toBe(2);
+  expect(observations.status).toBe('failed');
+  expect(await zip.file('README.md')!.async('string')).toContain('Requested mode alone is never resolved selection');
+});
+
+it('exports a loaded descriptor with lossless counts after cancellation without a terminal summary', async () => {
+  const source = snapshot(); const trial = source.trials[0]!; trial.status = 'cancelled'; trial.summary = undefined;
+  trial.memoryDiagnostics = { samples: [], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [{ observedMs: 1, loadedModelDescriptor: { source: 'loaded-model-native-api', architecture: 'qwen35', fileType: 15, parameterCount: '9007199254740993', tensorBytes: '18446744073709551615' } }], droppedNativeSettings: 0 };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const record = JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim());
+  const observations = JSON.parse(await zip.file(record.memoryDiagnosticsFile)!.async('string'));
+  expect(observations.nativeSettings).toEqual(trial.memoryDiagnostics.nativeSettings);
+  expect(observations.status).toBe('cancelled');
+  expect(await zip.file('README.md')!.async('string')).toContain('source=loaded-model-native-api');
+});
+
+it('keeps app and runtime identity beside native model and Flash Attention observations in one archive', async () => {
+  const source = snapshot(); const trial = source.trials[0]!;
+  source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree: 'dirty' };
+  source.environment.runtimeBuild = {
+    sourceCommit: 'b'.repeat(40),
+    files: [{ path: 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256: 'c'.repeat(64) }],
+  };
+  trial.memoryDiagnostics = {
+    samples: [],
+    droppedSamples: 0,
+    nativeAllocations: [],
+    droppedNativeAllocations: 0,
+    nativeSettings: [
+      { observedMs: 1, loadedModelDescriptor: { source: 'loaded-model-native-api', architecture: 'qwen35', parameterCount: '9007199254740993' } },
+      { observedMs: 2, contextAttempt: 1, contextEvent: 'context-start' },
+      { observedMs: 3, contextAttempt: 1, nativeFlashAttention: { kind: 'requested', mode: 'auto' } },
+      { observedMs: 4, contextAttempt: 1, nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } },
+      { observedMs: 5, contextAttempt: 1, contextEvent: 'context-ready' },
+    ],
+    droppedNativeSettings: 0,
+  };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const environment = JSON.parse(await zip.file('environment.json')!.async('string'));
+  expect(environment.appSource).toEqual(source.environment.appSource);
+  expect(environment.runtimeBuild).toEqual(source.environment.runtimeBuild);
+  const record = JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim());
+  const observations = JSON.parse(await zip.file(record.memoryDiagnosticsFile)!.async('string'));
+  expect(observations.nativeSettings).toEqual(trial.memoryDiagnostics.nativeSettings);
+  expect(record.memoryDiagnosticsCoverage.nativeSettings).toBe(5);
+  const readme = await zip.file('README.md')!.async('string');
+  expect(readme).toContain('source-checkout evidence, not a hash of built or executing app bytes');
+  expect(readme).toContain('source=loaded-model-native-api');
+  expect(readme).toContain('Requested mode alone is never resolved selection');
 });

@@ -1,3 +1,4 @@
+import { loadedModelDescriptorSchema } from './loaded-model-descriptor';
 import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
 import { backendCensusSchema } from './performance/backend-census-schema';
 import { z } from 'zod';
@@ -35,6 +36,12 @@ const fileReadSchema = z.object({
   allocationFallbacks: z.number().int().nonnegative().max(1),
   sourceReadMs: z.number().finite().nonnegative().optional(),
 }).strict();
+
+/** Native request and AUTO-resolution are distinct observations, not execution proof. */
+export const nativeFlashAttentionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('requested'), mode: z.enum(['auto', 'enabled', 'disabled']) }).strict(),
+  z.object({ kind: z.literal('resolved'), mode: z.enum(['enabled', 'disabled']) }).strict(),
+]);
 
 export const diagnosticSchema = z.object({
   event: eventSchema,
@@ -239,6 +246,8 @@ export const diagnosticSchema = z.object({
   nativeOtherNodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeCpuBf16Nodes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeTensorShape: z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).length(4).optional(),
+  nativeFlashAttention: nativeFlashAttentionSchema.optional(),
+  loadedModelDescriptor: loadedModelDescriptorSchema.optional(),
   nativeMetric: nativeMetricSchema.optional(),
   nativeValue: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   nativeSingleTokenValue: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
@@ -467,6 +476,18 @@ function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | 
   };
 }
 
+/** Exact pinned native formats only; never retain free text or device/model names. */
+function nativeFlashAttentionDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
+  if (typeof message !== 'string' || message.length > 256) return undefined;
+  const line = message.replace(/\r?\n$/, '');
+  if (/[\r\n\u2028\u2029]/.test(line)) return undefined;
+  const requested = /^llama_context: flash_attn[ \t]+= (auto|enabled|disabled)$/.exec(line);
+  if (requested) return { event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: z.enum(['auto', 'enabled', 'disabled']).parse(requested[1]) } };
+  if (line === 'resolve_fused_ops: Flash Attention enabled') return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } };
+  if (line === 'resolve_fused_ops: Flash Attention not supported, set to disabled') return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'disabled' } };
+  return undefined;
+}
+
 /** Fixed numeric context, graph and buffer formats from upstream llama.cpp. */
 function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -625,7 +646,7 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
     // sanitized allocation record visible even without a debug-enabled request.
     logDiagnostic({ diagnostic: allocation }); return;
   }
-  const progress = nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
+  const progress = nativeFlashAttentionDiagnostic({ message }) ?? nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
   if (progress) {
     logNativeCheckpoint({ diagnostic: progress }); return;
   }

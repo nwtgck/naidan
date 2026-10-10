@@ -114,6 +114,7 @@ export default tseslint.config(
         __BUILD_MODE_IS_HOSTED__: 'readonly',
         __BUILD_MODE_IS_TEST__: 'readonly',
         __APP_VERSION__: 'readonly',
+        __APP_SOURCE__: 'readonly',
         __PWA_BUILD_ID__: 'readonly',
       },
     },

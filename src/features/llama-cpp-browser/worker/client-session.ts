@@ -253,10 +253,8 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             workerProxy({
               value: ({ diagnostic }: { diagnostic: unknown }) => {
                 if (!acceptingEvents || disposed) return;
-                if (memory) {
-                  const observed = diagnosticSchema.safeParse(diagnostic);
-                  if (observed.success) memory.record({ diagnostic: observed.data });
-                }
+                // Measurement history is collected only from the ordered Worker
+                // notification endpoint, never twice through this proxy callback.
                 if (signal?.aborted) return;
                 debugEnabled = accepted.debug === 'on';
                 const checkpoint = diagnosticSchema.parse(diagnostic);

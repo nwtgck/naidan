@@ -2,7 +2,7 @@ import { beginGpuMeasurement } from '@/features/llama-cpp-browser/runtime/webgpu
 import { createProgressQueue } from './progress-queue';
 import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
 import { generateAudio } from './audio-generation';
-import { workerTransfer } from '@/utils/worker-transport';
+import { postWorkerNotification, workerTransfer } from '@/utils/worker-transport';
 import { probeRuntimeProfiles } from '@/features/llama-cpp-browser/runtime/detect-profile';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
@@ -257,7 +257,14 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
             default: break;
             }
           }
-          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && (diagnostic.nativeOperation !== undefined || (accepted.measurement !== undefined && diagnostic.nativeMetric !== undefined))))) return Promise.resolve(onDiagnostic({ diagnostic }));
+          // Post measured settings on the RPC's own Worker endpoint. Its ordered
+          // delivery preserves observations before success/failure closes the
+          // request, without waiting for a separate proxy callback acknowledgement.
+          const measuredContext = accepted.measurement !== undefined && (diagnostic.event === 'context-start' || diagnostic.event === 'context-retry' || diagnostic.event === 'context-ready');
+          const measuredSetting = accepted.measurement !== undefined && diagnostic.event === 'native-info' && (diagnostic.nativeMetric !== undefined || diagnostic.nativeFlashAttention !== undefined || diagnostic.loadedModelDescriptor !== undefined);
+          if (measuredContext || measuredSetting) postWorkerNotification({ endpoint: undefined, schema: diagnosticSchema, value: diagnostic });
+          // Existing operational diagnostics keep their separate callback contract.
+          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
           return undefined;
         },
       });

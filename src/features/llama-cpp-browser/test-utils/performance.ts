@@ -27,7 +27,7 @@ export function performanceReport({ reused = 0, outcome = 'completed' }: { reuse
 }
 
 export function performanceEnvironment(): PerformanceSnapshot['environment'] {
-  return { appVersion: 'test', buildMode: 'hosted', userAgent: 'test', hardwareConcurrency: 8, crossOriginIsolated: true, timeOrigin: 1000 };
+  return { appVersion: 'test', appSource: { workingTree: 'unknown' }, buildMode: 'hosted', userAgent: 'test', hardwareConcurrency: 8, crossOriginIsolated: true, timeOrigin: 1000 };
 }
 
 export const TEST_ONLY = {

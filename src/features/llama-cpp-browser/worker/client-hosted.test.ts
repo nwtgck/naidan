@@ -592,7 +592,10 @@ describe('measured partial memory evidence', () => {
     transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, diagnostic) => {
       late = diagnostic;
       TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
-      diagnostic({ diagnostic: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 12.25 } });
+      TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 12.25 } }));
+      const descriptor: Diagnostic = { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } };
+      TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: descriptor }));
+      diagnostic({ diagnostic: descriptor }); // The legacy proxy must not collect it twice.
       if (mode === 'failure') throw new LlamaCppBrowserError({ code: 'missing-model' });
       return new Promise(() => {});
     });
@@ -606,9 +609,36 @@ describe('measured partial memory evidence', () => {
     expect(receive).toHaveBeenCalledOnce();
     const memory = receive.mock.calls[0]![0].memory;
     expect(memory.samples).toEqual([sample]); expect(memory.nativeAllocations).toMatchObject([{ nativeMetric: 'model_buffer_mib', nativeValue: 12.25 }]);
+    expect(memory.nativeSettings).toMatchObject([{ loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } }]);
     late!({ diagnostic: { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 99 } });
+    const delayed: Diagnostic = { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 128 } };
+    late!({ diagnostic: delayed });
+    TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: delayed }));
     TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
-    expect(memory.samples).toHaveLength(1); expect(memory.nativeAllocations).toHaveLength(1); client.dispose();
+    expect(memory.samples).toHaveLength(1); expect(memory.nativeAllocations).toHaveLength(1);
+    expect(memory.nativeSettings).toMatchObject([{ loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } }]); client.dispose();
+  });
+
+  it('collects notifications once per request and ignores an old proxy during the next request', async () => {
+    const client = createLlamaCppWorkerClient(), receive = vi.fn();
+    const worker = TestWorker.instances[0]!;
+    let oldDiagnostic: ((args: { diagnostic: Diagnostic }) => void) | undefined;
+    for (const layers of [64, 32]) {
+      transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, diagnostic) => {
+        const descriptor: Diagnostic = { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', layers } };
+        worker.dispatchEvent(new MessageEvent('message', { data: descriptor }));
+        diagnostic({ diagnostic: descriptor });
+        oldDiagnostic?.({ diagnostic: { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 128 } } });
+        oldDiagnostic ??= diagnostic;
+        return { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+      });
+      await client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onMemoryDiagnostics: receive, signal: undefined });
+    }
+    expect(receive.mock.calls.map(([{ memory }]) => memory.nativeSettings.map(({ loadedModelDescriptor }: { loadedModelDescriptor: unknown }) => loadedModelDescriptor))).toEqual([
+      [{ source: 'loaded-model-native-api', layers: 64 }],
+      [{ source: 'loaded-model-native-api', layers: 32 }],
+    ]);
+    client.dispose();
   });
 
   it('does not let an observer failure replace success or the original load failure', async () => {

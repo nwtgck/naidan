@@ -45,7 +45,7 @@ class RetirementWorker extends EventTarget {
     generate: async (request: { measurement?: { sequence: string } }, _event: unknown, _progress: unknown, diagnostic: (value: { diagnostic: unknown }) => void) => {
       harness.events.push(`generate:${this.id}:${request.measurement?.sequence ?? 'chat'}`);
       this.lateDiagnostic = diagnostic;
-      diagnostic({ diagnostic: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'CPU', nativeValue: 12 } });
+      if (request.measurement) this.dispatchEvent(new MessageEvent('message', { data: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'CPU', nativeValue: 12 } }));
       if (harness.fail) throw new Error('load failed');
       if (harness.generationGate) await harness.generationGate;
       return { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
@@ -210,6 +210,7 @@ it('ignores old callbacks while the next model collector is actively recording',
   const measured = measure();
   await vi.waitFor(() => expect(harness.events).toContain('generate:1:fresh'));
   harness.workers[0]!.lateDiagnostic?.({ diagnostic: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'CPU', nativeValue: 999 } });
+  harness.workers[0]!.dispatchEvent(new MessageEvent('message', { data: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'CPU', nativeValue: 999 } }));
   gate.resolve(); await measured;
   expect(snapshots.map(value => value.nativeAllocations.map(item => item.nativeValue))).toEqual([[12], [12]]);
 });

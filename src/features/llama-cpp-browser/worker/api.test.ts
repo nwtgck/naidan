@@ -11,7 +11,7 @@ import { logDiagnostic, logNativeDiagnostic, logOperation } from '@/features/lla
 import type { importStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import type { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
@@ -60,6 +60,8 @@ function deferred() {
 beforeEach(() => {
   vi.clearAllMocks(); calls.audio.mockReset(); calls.audio.mockResolvedValue(audioResult()); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("generation RPC lifecycle", () => {
   it('probes browser capabilities without loading a model or generating', async () => {
@@ -653,7 +655,7 @@ describe('measured generation terminal reports', () => {
 });
 
 it.each([undefined, { sequence: 'fresh' as const }])('forwards safe native allocation metrics only for measurement %j', async measurement => {
-  const receive = vi.fn();
+  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
   calls.generate.mockImplementationOnce(async () => {
     for (const message of [
       'load_tensors: WebGPU model buffer size = 128.00 MiB',
@@ -665,7 +667,8 @@ it.each([undefined, { sequence: 'fresh' as const }])('forwards safe native alloc
     return completed();
   });
   await createWorkerApi().generate({ ...request({ generationId: 100 }), debug: 'off', measurement }, async () => {}, () => {}, receive);
-  expect(receive.mock.calls.map(([{ diagnostic }]) => diagnostic.nativeMetric)).toEqual(measurement ? ['model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib', 'compute_buffer_mib'] : []);
+  expect(receive).not.toHaveBeenCalled();
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.nativeMetric)).toEqual(measurement ? ['model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib', 'compute_buffer_mib'] : []);
 });
 
 it.each([undefined, { sequence: 'fresh' as const }])('gates existing queue observations to measurement %j and closes them at RPC completion', async measurement => {
@@ -679,4 +682,90 @@ it.each([undefined, { sequence: 'fresh' as const }])('gates existing queue obser
   await createWorkerApi().generate({ ...request({ generationId: 101 }), debug: 'off', measurement }, async () => {}, () => {});
   expect(submitCount).toBe(measurement ? 1 : undefined);
   expect(observer.snapshot()?.queue).toBeUndefined();
+});
+
+it.each([undefined, { sequence: 'fresh' as const }])('forwards only bounded flash/context observations for measurement %j', async measurement => {
+  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  calls.generate.mockImplementationOnce(async () => {
+    logDiagnostic({ diagnostic: { event: 'context-start' } });
+    logNativeDiagnostic({ message: 'llama_context: flash_attn            = auto' });
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention enabled' });
+    logDiagnostic({ diagnostic: { event: 'context-retry', contextTokens: 4096, batchTokens: 128 } });
+    logNativeDiagnostic({ message: 'llama_context: flash_attn            = auto' });
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention not supported, set to disabled' });
+    logDiagnostic({ diagnostic: { event: 'context-ready', contextTokens: 4096 } });
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention enabled private' });
+    logDiagnostic({ diagnostic: { event: 'load-start' } });
+    return completed();
+  });
+  await createWorkerApi().generate({ ...request({ generationId: 105 }), debug: 'off', measurement }, async () => {}, () => {}, receive);
+  expect(receive).not.toHaveBeenCalled();
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.event)).toEqual(measurement ? ['context-start', 'native-info', 'native-info', 'context-retry', 'native-info', 'native-info', 'context-ready'] : []);
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.nativeFlashAttention).filter(Boolean)).toEqual(measurement ? [
+    { kind: 'requested', mode: 'auto' }, { kind: 'resolved', mode: 'enabled' },
+    { kind: 'requested', mode: 'auto' }, { kind: 'resolved', mode: 'disabled' },
+  ] : []);
+});
+
+it('forwards partial flash evidence before initialization failure without a terminal performance report', async () => {
+  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post); const summary = vi.fn();
+  calls.generate.mockImplementationOnce(async () => {
+    logDiagnostic({ diagnostic: { event: 'context-start' } });
+    logNativeDiagnostic({ message: 'llama_context: flash_attn = auto' });
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention enabled' });
+    throw new Error('initialization failed');
+  });
+  await expect(createWorkerApi().generate({ ...request({ generationId: 106 }), debug: 'off', measurement: { sequence: 'fresh' } }, async () => {}, () => {}, receive, summary)).rejects.toThrow();
+  expect(receive).not.toHaveBeenCalled();
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.event)).toEqual(['context-start', 'native-info', 'native-info']);
+  expect(summary).not.toHaveBeenCalled();
+});
+
+it.each([undefined, { sequence: 'fresh' as const }])('forwards loaded descriptors only for measurement %j', async measurement => {
+  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  calls.generate.mockImplementationOnce(async () => {
+    logDiagnostic({ diagnostic: { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', parameterCount: '9007199254740993' } } });
+    return completed();
+  });
+  await createWorkerApi().generate({ ...request({ generationId: 107 }), debug: 'off', measurement }, async () => {}, () => {}, receive);
+  expect(receive).not.toHaveBeenCalled();
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.loadedModelDescriptor)).toEqual(measurement ? [{ source: 'loaded-model-native-api', parameterCount: '9007199254740993' }] : []);
+});
+
+it.each(['missing', 'throwing'] as const)('keeps generation and cleanup usable when the notification endpoint is %s', async endpoint => {
+  vi.stubGlobal('postMessage', endpoint === 'missing' ? undefined : () => {
+    throw new Error('closed endpoint');
+  });
+  const receive = vi.fn(() => new Promise<void>(() => {}));
+  calls.generate.mockImplementationOnce(async () => {
+    logDiagnostic({ diagnostic: { event: 'context-start' } });
+    logDiagnostic({ diagnostic: { event: 'native-info', nativeMetric: 'n_ctx', nativeValue: 512 } });
+    logDiagnostic({ diagnostic: { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } } });
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention enabled' });
+    return completed();
+  });
+  const api = createWorkerApi();
+  await expect(api.generate({ ...request({ generationId: 108 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, receive)).resolves.toEqual(completed());
+  expect(receive).not.toHaveBeenCalled();
+  await expect(api.release()).resolves.toBeUndefined();
+});
+
+it('posts cooperative Stop observations before rejection without waiting for diagnostic callbacks', async () => {
+  const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  const receive = vi.fn(() => new Promise<void>(() => {}));
+  const gate = deferred();
+  calls.generate.mockImplementationOnce(async ({ signal }) => {
+    logDiagnostic({ diagnostic: { event: 'context-start' } });
+    await gate.promise;
+    expect(signal?.aborted).toBe(true);
+    logNativeDiagnostic({ message: 'resolve_fused_ops: Flash Attention enabled' });
+    throw new LlamaCppBrowserError({ code: 'aborted' });
+  });
+  const api = createWorkerApi();
+  const pending = api.generate({ ...request({ generationId: 109 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, receive);
+  const rejected = expect(pending).rejects.toThrow('aborted');
+  await api.cancelGeneration({ generationId: 109 }); gate.resolve(); await rejected;
+  expect(post.mock.calls.map(([diagnostic]) => diagnostic.event)).toEqual(['context-start', 'native-info']);
+  expect(receive).not.toHaveBeenCalled();
+  await expect(api.release()).resolves.toBeUndefined();
 });
