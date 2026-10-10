@@ -5,6 +5,7 @@ import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationDraftToDomain, imageGenerationDraftToDto } from '@/00-storage/mapper/image-generation';
 import { z } from 'zod';
+import * as dtozod from '@/utils/dtozod';
 import { idToRaw, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId } from '@/01-models/ids';
 import type { StorageType } from '@/01-models/types';
 import { canTransitionImageGenerationRun, type ImageGenerationAsset, type ImageGenerationAssetAnnotations, type ImageGenerationAssetSummary, type ImageGenerationCatalog, type ImageGenerationReadResult, type ImageGenerationRun, type ImageGenerationRunExecution, type ImageGenerationRunSummary, type ImageGenerationSession, type ImageGenerationTagReference } from '@/01-models/image-generation';
@@ -399,7 +400,9 @@ export async function setImageGenerationAssetTags({ store, sessionId, assetId, t
 }): Promise<void> {
   const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: assetId }));
   z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(assignedAt);
-  const requested = z.array(ExperimentalImageGenerationTagReferenceSchemaDto).max(256).parse(tags.map(tag => imageGenerationTagReferenceToDto({ tag })));
+  // This is a command limit, not a persisted-data constraint.
+  if (tags.length > 256) throw new Error('Too many Image Generation asset tags.');
+  const requested = dtozod.array(ExperimentalImageGenerationTagReferenceSchemaDto).parse(tags.map(tag => imageGenerationTagReferenceToDto({ tag })));
   await withImageGenerationStore({
     store,
     operation: async ({ directory, catalog }) => {

@@ -83,16 +83,34 @@ describe('browser image generation settings', () => {
 
   it.each([
     { width: 255 },
+    { width: 4096 },
     { seed: '9223372036854775808' },
     { seed: 'abc' },
     { seed: '' },
     { seed: '1e3' },
+    { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/../escape.gguf' } }, components: [], loras: [] } },
+    { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'host', directoryId: 'linked-models', path: '/absolute.gguf' } }, components: [], loras: [] } },
+  ])('keeps structurally valid preferences without claiming they can execute: %j', preferences => {
+    const dto = SettingsSchemaDto.parse({
+      ...settingsToDto({ domain: base }),
+      experimental: { locale: 'ja', browserImageGeneration: preferences },
+    });
+    const read = settingsToDomain({ dto });
+    expect(read.experimental?.locale).toBe('ja');
+    expect(read.experimental?.browserImageGeneration).toMatchObject(preferences);
+    expect(read.experimental?.unreadable).toBeUndefined();
+    const saved = JSON.parse(JSON.stringify(settingsToDto({ domain: read })));
+    expect(settingsToDomain({ dto: SettingsSchemaDto.parse(saved) }).experimental?.browserImageGeneration).toMatchObject(preferences);
+  });
+
+  it.each([
+    { width: '255' },
+    { seed: 42 },
     { debug: 'verbose' },
     { imageDownload: { format: 'gif', metadata: 'omit' } },
     { modelDownloadDestination: { kind: 'host' } },
-    { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/../escape.gguf' } }, components: [], loras: [] } },
-    { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'host', directoryId: 'linked-models', path: '/absolute.gguf' } }, components: [], loras: [] } },
-  ])('isolates an invalid browser image group without failing the whole Settings DTO: %j', invalid => {
+    { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 42 } }, components: [], loras: [] } },
+  ])('isolates a structurally invalid browser image group without failing the whole Settings DTO: %j', invalid => {
     const dto = SettingsSchemaDto.parse({
       ...settingsToDto({ domain: base }),
       experimental: {

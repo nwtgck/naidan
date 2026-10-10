@@ -37,7 +37,7 @@ describe('session draft checkpoints', () => {
     expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toEqual(h.draft);
     const request = imageGenerationDraftToDto({ draft: h.draft }).request;
     expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ id: 'run-aa', sessionId: h.session.id, revision: 0, createdAt: 1, request: { ...request, parameters: { ...request.parameters, prompt: 'ready', seed: '42' } }, seeds: ['42'], sources: [], execution: { type: 'queued' } }).success).toBe(false);
-    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...imageGenerationDraftToDto({ draft: h.draft }), inferenceLocation: undefined }).success).toBe(true);
   });
 
   it('preserves user-selected components, explicit none and disabled adapter strength', async () => {
@@ -50,7 +50,7 @@ describe('session draft checkpoints', () => {
     const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
     expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
     const value = dto.modelSelection!;
-    const bad = [
+    const futureSelections = [
       { ...value, future: 1 },
       { ...value, primary: { ...value.primary, future: 1 } },
       { ...value, primary: { ...value.primary, location: { ...value.primary.location, future: 1 } } },
@@ -60,7 +60,12 @@ describe('session draft checkpoints', () => {
       { ...value, loras: [{ ...value.loras[0], future: 1 }] },
       { ...value, loras: [{ ...value.loras[0], location: { kind: 'opfs', path: 'models/adapter.gguf', future: 1 } }] },
     ];
-    for (const modelSelection of bad) expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, modelSelection }).success).toBe(false);
+    for (const modelSelection of futureSelections) {
+      const parsed = ExperimentalImageGenerationDraftSchemaDto.parse({ ...dto, modelSelection });
+      expect(JSON.stringify(parsed.modelSelection)).not.toContain('future');
+      expect(ExperimentalImageGenerationDraftSchemaDto.parse(parsed)).toEqual(parsed);
+    }
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, modelSelection: { ...value, primary: { ...value.primary, slot: 'future' } } }).success).toBe(false);
   });
 
   it('retries the identical revision after a lost acknowledgement but rejects stale different edits', async () => {

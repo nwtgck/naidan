@@ -109,10 +109,13 @@ describe('experimental translation and visibility persistence', () => {
     expect(decoded.preferences.assistantVisibility).toBe('closed'); expect(decoded.preferences.translation).toBeUndefined();
   });
 
-  it('rejects unknown override fields instead of erasing them during a preference edit', async () => {
+  it('accepts future override fields and preserves known preferences when editing', async () => {
     const h = await setup();
     const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
-    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...dto.preferences, translation: { modelId: 'x', future: true } } }).success).toBe(false);
+    const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences: { ...dto.preferences, translation: { modelId: 'x', future: true } } });
+    expect(parsed.preferences.translation?.modelId).toBe('x');
+    expect(parsed.preferences.translation).not.toHaveProperty('future');
+    expect(ExperimentalImageGenerationCatalogSchemaDto.parse(parsed)).toEqual(parsed);
   });
 });
 
@@ -137,15 +140,17 @@ describe('accepted session activity and translation parameters', () => {
     await expect(service.recordImageGenerationSessionUse({ store: h.store, sessionId: h.session.id, runId: run.id })).rejects.toThrow();
   });
 
-  it('round trips explicit zero, empty stop and reasoning off while rejecting nested unknown data', async () => {
+  it('round trips explicit zero, empty stop and reasoning off while accepting unknown fields but rejecting unknown enum values', async () => {
     const h = await setup(); const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
     const preferences = { ...dto.preferences, translation: { lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } } }, generationMonitorPresentation: 'compact-progress' };
     const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences }) });
     expect(decoded.preferences.translation?.lmParameters).toMatchObject({ temperature: 0, stop: [], reasoning: { effort: 'none' } });
     expect(decoded.preferences.generationMonitorPresentation).toBe('compact-progress');
-    for (const lmParameters of [{ future: 1 }, { reasoning: { future: true } }, { reasoning: { effort: 'future' } }]) {
-      expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, translation: { lmParameters } } }).success).toBe(false);
+    for (const lmParameters of [{ future: 1 }, { reasoning: { future: true } }, { experimental: { future: 1 } }]) {
+      const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences: { ...preferences, translation: { lmParameters } } });
+      expect(ExperimentalImageGenerationCatalogSchemaDto.parse(parsed)).toEqual(parsed);
     }
+    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, translation: { lmParameters: { reasoning: { effort: 'future' } } } } }).success).toBe(false);
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ ...dto, preferences: { ...preferences, generationMonitorPresentation: 'future' } }).success).toBe(false);
   });
 });
@@ -223,7 +228,7 @@ it('uses a cold stale RPC summary only for presentation and rejects canonical ac
   expect(fs.writes).toHaveLength(writes);
 });
 
-it.each(['wrong-id', 'wrong-session', 'invalid-width', 'invalid-seeds'] as const)('does not hide %s behind an unavailable RPC runtime', async corruption => {
+it.each(['wrong-id', 'wrong-session', 'wrong-width-type', 'wrong-seed-type'] as const)('does not hide %s behind an unavailable RPC runtime', async corruption => {
   const h = await setup(), local = generationRunFixture({ id: 'local-aa', sessionId: h.session.id, count: 1, seed: '42' });
   await service.createImageGenerationRun({ store: h.store, run: local, writeInputs: async () => {} });
   const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
@@ -232,8 +237,8 @@ it.each(['wrong-id', 'wrong-session', 'invalid-width', 'invalid-seeds'] as const
   switch (corruption) {
   case 'wrong-id': raw.id = 'different-aa'; break;
   case 'wrong-session': raw.sessionId = 'other-session'; break;
-  case 'invalid-width': raw.request.parameters.width = 0; break;
-  case 'invalid-seeds': raw.seeds = ['43']; break;
+  case 'wrong-width-type': raw.request.parameters.width = '0'; break;
+  case 'wrong-seed-type': raw.seeds = [43]; break;
   }
   const remote = await directory.getFileHandle('remote-aa.json', { create: true }); remote.text = JSON.stringify(raw);
   const activity = await fs.file({ path: `${root}/session-activity.json` }), activityBefore = activity.text;
@@ -293,4 +298,29 @@ it.each(['invalid-json', 'wrong-shard'] as const)('preflights %s session indexes
   await expect(service.saveImageGenerationSession({ store: h.store, session: { ...h.session, title: 'new title', revision: 1 }, expectedRevision: 0 })).rejects.toThrow();
   expect(activity.text).toBe(activityBefore); expect(session.text).toBe(sessionBefore);
   expect(fs.writes).toHaveLength(writes);
+});
+
+it('preserves an unavailable RPC run with relaxed values while allowing unrelated local work', async () => {
+  const h = await setup(), local = generationRunFixture({ id: 'local-aa', sessionId: h.session.id, count: 1, seed: '42' });
+  await service.createImageGenerationRun({ store: h.store, run: local, writeInputs: async () => {} });
+  const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
+  const raw = JSON.parse((await fs.file({ path: `${path}/local-aa.json` })).text);
+  raw.id = 'remote-aa';
+  // An old transport reference is not a current registration. Do not turn it
+  // into executable local work, or discard its original fields on mutation.
+  raw.request.runtime = { profile: 'naidan-rpc', connectionId: 'old-connection', peerId: 'B'.repeat(43), label: 'Unavailable', future: { retained: true } };
+  raw.request.parameters.width = -0.5;
+  raw.seeds = ['not-the-current-plan'];
+  const remote = await directory.getFileHandle('remote-aa.json', { create: true });
+  remote.text = JSON.stringify(raw);
+  const preserved = remote.text;
+  await service.createImageGenerationRun({
+    store: h.store,
+    run: generationRunFixture({ id: 'next-aa', sessionId: h.session.id, count: 1, seed: '43' }),
+    writeInputs: async () => {},
+  });
+  expect(remote.text).toBe(preserved);
+  expect(directory.children.has('next-aa.json')).toBe(true);
+  await expect(service.loadImageGenerationRun({ store: h.store, sessionId: h.session.id, runId: toImageGenerationRunId({ raw: 'remote-aa' }) })).rejects.toThrow('unsupported RPC runtime');
+  expect(remote.text).toBe(preserved);
 });

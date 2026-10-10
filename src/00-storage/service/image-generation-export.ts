@@ -11,7 +11,9 @@ export type ImageGenerationExportSnapshot = { metadata: ImageGenerationExportFil
 
 /** The storage service captures matching binary Files under its provider lock.
  * Files are retained as disk-backed snapshots, not accumulated byte buffers.
- * Unknown/corrupt records fail explicitly; use raw OPFS export to preserve them. */
+ * Structurally unreadable records fail explicitly; use raw OPFS export for those.
+ * File snapshots retain unknown fields, but only known binary references are
+ * collected. Loading a future record does not imply understanding its extensions. */
 export async function collectImageGenerationSessionMetadata({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<{ metadata: ImageGenerationExportFile[], binaryObjectIds: BinaryObjectId[] }> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
   return withImageGenerationStore({

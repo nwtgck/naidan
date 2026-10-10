@@ -90,7 +90,8 @@ describe('image archive and global tag identity', () => {
     expect(fs.writes.slice(written)).toEqual([`${root}/catalog.json`]);
     for (const image of [h.asset, asset]) expect((await service.loadImageGenerationAssetAnnotations({ store: h.store, sessionId: image.sessionId, assetId: image.id }))?.tags[0]?.tag).toEqual({ type: 'user', tagId });
     const current = await service.loadImageGenerationCatalog({ store: h.store });
-    await expect(service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 })).rejects.toThrow();
+    await service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 });
+    expect((await service.loadImageGenerationCatalog({ store: h.store })).tags).toHaveLength(2);
   });
 });
 

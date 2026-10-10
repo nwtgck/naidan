@@ -11,8 +11,8 @@
  * from the stable fields by a blank line. Keep existing compact one-line object
  * schemas on one line when adding or preserving their experimental field.
  */
-import { z } from 'zod';
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
+import * as dtozod from '@/utils/dtozod';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/dtozod/missingAsUndefined';
 import {
   ExperimentalAttachmentSchemaDtoV1,
   ExperimentalAttachmentSchemaDtoV2,
@@ -62,25 +62,25 @@ import {
   optionalExperimentalFieldSchemaDto,
 } from './experimental.dto';
 
-export const RoleSchemaDto = z.enum(['user', 'assistant', 'system', 'tool']);
-export type RoleDto = z.infer<typeof RoleSchemaDto>;
+export const RoleSchemaDto = dtozod.enum(['user', 'assistant', 'system', 'tool']);
+export type RoleDto = dtozod.infer<typeof RoleSchemaDto>;
 
-export const StorageTypeSchemaDto = z.enum(['local', 'opfs', 'memory']);
-export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
+export const StorageTypeSchemaDto = dtozod.enum(['local', 'opfs', 'memory']);
+export type StorageTypeDto = dtozod.infer<typeof StorageTypeSchemaDto>;
 
-export const HttpHeaderSchemaDto = z.tuple([z.string(), z.string()]);
-export type HttpHeaderDto = z.infer<typeof HttpHeaderSchemaDto>;
+export const HttpHeaderSchemaDto = dtozod.tuple([dtozod.string(), dtozod.string()]);
+export type HttpHeaderDto = dtozod.infer<typeof HttpHeaderSchemaDto>;
 
-export const HttpEndpointSchemaDto = resolveMissingAsUndefined(z.object({
-  type: z.enum(['openai', 'ollama']),
-  url: z.string(),
-  httpHeaders: missingAsUndefined(z.array(HttpHeaderSchemaDto)),
+export const HttpEndpointSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  type: dtozod.enum(['openai', 'ollama']),
+  url: dtozod.string(),
+  httpHeaders: missingAsUndefined(dtozod.array(HttpHeaderSchemaDto)),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalHttpEndpointSchemaDto }),
 }));
 
-export const TransformersJsEndpointSchemaDto = z.object({
-  type: z.literal('transformers_js'),
+export const TransformersJsEndpointSchemaDto = dtozod.object({
+  type: dtozod.literal('transformers_js'),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTransformersJsEndpointSchemaDto }),
 });
@@ -92,216 +92,216 @@ export const TransformersJsEndpointSchemaDto = z.object({
  * endpoint. This prevents every experimental endpoint rename or addition from
  * becoming a new top-level persisted discriminator.
  */
-export const ExperimentalTypeEndpointSchemaDto = z.object({
-  type: z.literal('experimental_type'),
+export const ExperimentalTypeEndpointSchemaDto = dtozod.object({
+  type: dtozod.literal('experimental_type'),
 
   experimental: optionalExperimentalFieldSchemaDto({
     schema: ExperimentalExperimentalTypeEndpointSchemaDto,
   }),
 });
 
-export const EndpointSchemaDto = resolveMissingAsUndefined(z.discriminatedUnion('type', [
+export const EndpointSchemaDto = resolveMissingAsUndefined(dtozod.discriminatedUnion('type', [
   HttpEndpointSchemaDto,
   TransformersJsEndpointSchemaDto,
   ExperimentalTypeEndpointSchemaDto,
 ]));
 
-export type EndpointDto = z.infer<typeof EndpointSchemaDto>;
+export type EndpointDto = dtozod.infer<typeof EndpointSchemaDto>;
 export type EndpointTypeDto = EndpointDto['type'];
 
 // --- Language Model Parameters ---
 
-export const ReasoningEffortSchemaDto = z.enum(['none', 'low', 'medium', 'high']);
-export type ReasoningEffortDto = z.infer<typeof ReasoningEffortSchemaDto>;
+export const ReasoningEffortSchemaDto = dtozod.enum(['none', 'low', 'medium', 'high']);
+export type ReasoningEffortDto = dtozod.infer<typeof ReasoningEffortSchemaDto>;
 
-export const ReasoningSchemaDto = resolveMissingAsUndefined(z.object({
+export const ReasoningSchemaDto = resolveMissingAsUndefined(dtozod.object({
   effort: missingAsUndefined(ReasoningEffortSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalReasoningSchemaDto }),
 }));
-export type ReasoningDto = z.infer<typeof ReasoningSchemaDto>;
+export type ReasoningDto = dtozod.infer<typeof ReasoningSchemaDto>;
 
-export const LmParametersSchemaDto = resolveMissingAsUndefined(z.object({
-  temperature: missingAsUndefined(z.number()),
-  topP: missingAsUndefined(z.number()),
-  maxCompletionTokens: missingAsUndefined(z.number()),
-  presencePenalty: missingAsUndefined(z.number()),
-  frequencyPenalty: missingAsUndefined(z.number()),
-  stop: missingAsUndefined(z.array(z.string())),
+export const LmParametersSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  temperature: missingAsUndefined(dtozod.number()),
+  topP: missingAsUndefined(dtozod.number()),
+  maxCompletionTokens: missingAsUndefined(dtozod.number()),
+  presencePenalty: missingAsUndefined(dtozod.number()),
+  frequencyPenalty: missingAsUndefined(dtozod.number()),
+  stop: missingAsUndefined(dtozod.array(dtozod.string())),
   reasoning: missingAsUndefined(ReasoningSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalLmParametersSchemaDto }),
 }));
-export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
+export type LmParametersDto = dtozod.infer<typeof LmParametersSchemaDto>;
 
-const SettingsTitleGenerationSchemaDto = z.union([
-  z.literal('disabled'),
-  z.object({
-    endpoint: z.literal('same_scope'),
-    model: z.union([
-      z.literal('same_scope'),
-      z.object({ id: z.string().min(1) }),
+const SettingsTitleGenerationSchemaDto = dtozod.union([
+  dtozod.literal('disabled'),
+  dtozod.object({
+    endpoint: dtozod.literal('same_scope'),
+    model: dtozod.union([
+      dtozod.literal('same_scope'),
+      dtozod.object({ id: dtozod.string() }),
     ]),
-    lmParameters: z.union([
-      z.literal('same_scope'),
+    lmParameters: dtozod.union([
+      dtozod.literal('same_scope'),
       LmParametersSchemaDto,
     ]),
   }),
-  z.object({
+  dtozod.object({
     endpoint: EndpointSchemaDto,
-    model: z.object({ id: z.string().min(1) }),
+    model: dtozod.object({ id: dtozod.string() }),
     lmParameters: LmParametersSchemaDto,
   }),
 ]);
 
-const ScopedTitleGenerationSchemaDto = z.union([
-  z.literal('disabled'),
-  z.literal('inherit'),
-  z.object({
-    endpoint: z.literal('same_scope'),
-    model: z.union([
-      z.literal('same_scope'),
-      z.object({ id: z.string().min(1) }),
+const ScopedTitleGenerationSchemaDto = dtozod.union([
+  dtozod.literal('disabled'),
+  dtozod.literal('inherit'),
+  dtozod.object({
+    endpoint: dtozod.literal('same_scope'),
+    model: dtozod.union([
+      dtozod.literal('same_scope'),
+      dtozod.object({ id: dtozod.string() }),
     ]),
-    lmParameters: z.union([
-      z.literal('same_scope'),
+    lmParameters: dtozod.union([
+      dtozod.literal('same_scope'),
       LmParametersSchemaDto,
     ]),
   }),
-  z.object({
+  dtozod.object({
     endpoint: EndpointSchemaDto,
-    model: z.object({ id: z.string().min(1) }),
+    model: dtozod.object({ id: dtozod.string() }),
     lmParameters: LmParametersSchemaDto,
   }),
 ]);
 
-export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
-  z.object({
-    behavior: z.literal('override'),
-    content: z.string().nullable(),
+export const SystemPromptSchemaDto = dtozod.discriminatedUnion('behavior', [
+  dtozod.object({
+    behavior: dtozod.literal('override'),
+    content: dtozod.string().nullable(),
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSystemPromptOverrideSchemaDto }),
   }),
-  z.object({
-    behavior: z.literal('append'),
-    content: z.string(),
+  dtozod.object({
+    behavior: dtozod.literal('append'),
+    content: dtozod.string(),
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSystemPromptAppendSchemaDto }),
   }),
 ]);
-export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
+export type SystemPromptDto = dtozod.infer<typeof SystemPromptSchemaDto>;
 
 // --- Volume Management & Mounts ---
 // User-facing label: "Folder". All internal identifiers use "volume".
 
-export const VolumeTypeSchemaDto = z.enum(['opfs', 'host']);
-export type VolumeTypeDto = z.infer<typeof VolumeTypeSchemaDto>;
+export const VolumeTypeSchemaDto = dtozod.enum(['opfs', 'host']);
+export type VolumeTypeDto = dtozod.infer<typeof VolumeTypeSchemaDto>;
 
-const VolumeBaseSchemaDto = z.object({
-  id: z.string(),
-  name: z.string(),
-  createdAt: z.number(),
+const VolumeBaseSchemaDto = dtozod.object({
+  id: dtozod.string(),
+  name: dtozod.string(),
+  createdAt: dtozod.number(),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalVolumeBaseSchemaDto }),
 });
 
 export const VolumeOpfsSchemaDto = VolumeBaseSchemaDto.extend({
-  type: z.literal('opfs'),
+  type: dtozod.literal('opfs'),
 });
 
 export const VolumeHostSchemaDto = VolumeBaseSchemaDto.extend({
-  type: z.literal('host'),
+  type: dtozod.literal('host'),
 });
 
-export const VolumeSchemaDto = z.discriminatedUnion('type', [
+export const VolumeSchemaDto = dtozod.discriminatedUnion('type', [
   VolumeOpfsSchemaDto,
   VolumeHostSchemaDto,
 ]);
-export type VolumeDto = z.infer<typeof VolumeSchemaDto>;
+export type VolumeDto = dtozod.infer<typeof VolumeSchemaDto>;
 
-export const VolumeIndexSchemaDto = z.object({
-  volumes: z.record(z.string(), VolumeSchemaDto),
+export const VolumeIndexSchemaDto = dtozod.object({
+  volumes: dtozod.record(dtozod.string(), VolumeSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalVolumeIndexSchemaDto }),
 });
-export type VolumeIndexDto = z.infer<typeof VolumeIndexSchemaDto>;
+export type VolumeIndexDto = dtozod.infer<typeof VolumeIndexSchemaDto>;
 
-export const MountVolumeSchemaDto = z.object({
-  type: z.literal('volume'),
-  volumeId: z.string(),
-  mountPath: z.string(),
-  readOnly: z.boolean(),
+export const MountVolumeSchemaDto = dtozod.object({
+  type: dtozod.literal('volume'),
+  volumeId: dtozod.string(),
+  mountPath: dtozod.string(),
+  readOnly: dtozod.boolean(),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMountVolumeSchemaDto }),
 });
 
-export const MountSchemaDto = z.discriminatedUnion('type', [
+export const MountSchemaDto = dtozod.discriminatedUnion('type', [
   MountVolumeSchemaDto,
 ]);
-export type MountDto = z.infer<typeof MountSchemaDto>;
+export type MountDto = dtozod.infer<typeof MountSchemaDto>;
 
 // --- Grouping ---
 
-export const ChatGroupSchemaDtoV1 = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  name: z.string(),
-  updatedAt: z.number(),
-  isCollapsed: z.boolean().default(false),
+export const ChatGroupSchemaDtoV1 = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  name: dtozod.string(),
+  updatedAt: dtozod.number(),
+  isCollapsed: dtozod.boolean().default(false),
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
-  modelId: missingAsUndefined(z.string()),
-  autoTitleEnabled: missingAsUndefined(z.boolean()),
-  titleModelId: missingAsUndefined(z.string()),
+  modelId: missingAsUndefined(dtozod.string()),
+  autoTitleEnabled: missingAsUndefined(dtozod.boolean()),
+  titleModelId: missingAsUndefined(dtozod.string()),
   systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
-  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+  mounts: missingAsUndefined(dtozod.array(MountSchemaDto)),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatGroupSchemaDto }),
 }));
-export type ChatGroupDtoV1 = z.infer<typeof ChatGroupSchemaDtoV1>;
+export type ChatGroupDtoV1 = dtozod.infer<typeof ChatGroupSchemaDtoV1>;
 
-export const ChatGroupSchemaDtoV2 = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  name: z.string(),
-  updatedAt: z.number(),
-  isCollapsed: z.boolean().default(false),
+export const ChatGroupSchemaDtoV2 = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  name: dtozod.string(),
+  updatedAt: dtozod.number(),
+  isCollapsed: dtozod.boolean().default(false),
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
-  modelId: missingAsUndefined(z.string()),
+  modelId: missingAsUndefined(dtozod.string()),
   titleGeneration: ScopedTitleGenerationSchemaDto,
   systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
-  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+  mounts: missingAsUndefined(dtozod.array(MountSchemaDto)),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatGroupSchemaDto }),
 }));
-export type ChatGroupDtoV2 = z.infer<typeof ChatGroupSchemaDtoV2>;
+export type ChatGroupDtoV2 = dtozod.infer<typeof ChatGroupSchemaDtoV2>;
 
-export const ChatGroupSchemaDto = z.union([
+export const ChatGroupSchemaDto = dtozod.union([
   ChatGroupSchemaDtoV2,
   ChatGroupSchemaDtoV1,
 ]);
-export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
+export type ChatGroupDto = dtozod.infer<typeof ChatGroupSchemaDto>;
 
 // --- Hierarchy (Structural Source of Truth) ---
 
-export const HierarchyChatNodeSchemaDto = z.object({
-  type: z.literal('chat'),
-  id: z.string(),
+export const HierarchyChatNodeSchemaDto = dtozod.object({
+  type: dtozod.literal('chat'),
+  id: dtozod.string(),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalHierarchyChatNodeSchemaDto }),
 });
 
-export const HierarchyChatGroupNodeSchemaDto = z.object({
-  type: z.literal('chat_group'),
-  id: z.string(),
-  chat_ids: z.array(z.string()),
+export const HierarchyChatGroupNodeSchemaDto = dtozod.object({
+  type: dtozod.literal('chat_group'),
+  id: dtozod.string(),
+  chat_ids: dtozod.array(dtozod.string()),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalHierarchyChatGroupNodeSchemaDto }),
 });
 
-export const HierarchySchemaDto = z.object({
-  items: z.array(z.union([
+export const HierarchySchemaDto = dtozod.object({
+  items: dtozod.array(dtozod.union([
     HierarchyChatNodeSchemaDto,
     HierarchyChatGroupNodeSchemaDto,
   ])),
@@ -309,66 +309,66 @@ export const HierarchySchemaDto = z.object({
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalHierarchySchemaDto }),
 });
 
-export type HierarchyDto = z.infer<typeof HierarchySchemaDto>;
+export type HierarchyDto = dtozod.infer<typeof HierarchySchemaDto>;
 
 // --- Tree-based Message Structure (Recursive) ---
 
-export const AttachmentStatusSchemaDto = z.enum(['persisted', 'memory', 'missing']);
+export const AttachmentStatusSchemaDto = dtozod.enum(['persisted', 'memory', 'missing']);
 
-export const BinaryObjectSchemaDto = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  mimeType: z.string(),
-  size: z.number(),
-  createdAt: z.number(),
-  name: missingAsUndefined(z.string()),
+export const BinaryObjectSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  mimeType: dtozod.string(),
+  size: dtozod.number(),
+  createdAt: dtozod.number(),
+  name: missingAsUndefined(dtozod.string()),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalBinaryObjectSchemaDto }),
 }));
-export type BinaryObjectDto = z.infer<typeof BinaryObjectSchemaDto>;
+export type BinaryObjectDto = dtozod.infer<typeof BinaryObjectSchemaDto>;
 
 /**
  * Shard Index
  * Stores metadata for all binary objects within a specific shard.
  */
-export const BinaryShardIndexSchemaDto = z.object({
-  objects: z.record(z.string(), BinaryObjectSchemaDto),
+export const BinaryShardIndexSchemaDto = dtozod.object({
+  objects: dtozod.record(dtozod.string(), BinaryObjectSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalBinaryShardIndexSchemaDto }),
 });
-export type BinaryShardIndexDto = z.infer<typeof BinaryShardIndexSchemaDto>;
+export type BinaryShardIndexDto = dtozod.infer<typeof BinaryShardIndexSchemaDto>;
 
-export const AttachmentSchemaDtoV1 = z.object({
-  id: z.string(),
-  originalName: z.string(),
-  mimeType: z.string(),
-  size: z.number(),
-  uploadedAt: z.number(),
+export const AttachmentSchemaDtoV1 = dtozod.object({
+  id: dtozod.string(),
+  originalName: dtozod.string(),
+  mimeType: dtozod.string(),
+  size: dtozod.number(),
+  uploadedAt: dtozod.number(),
   status: AttachmentStatusSchemaDto,
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalAttachmentSchemaDtoV1 }),
 });
 
-export const AttachmentSchemaDtoV2 = z.object({
-  id: z.string(),
-  binaryObjectId: z.string(),
-  name: z.string(),
+export const AttachmentSchemaDtoV2 = dtozod.object({
+  id: dtozod.string(),
+  binaryObjectId: dtozod.string(),
+  name: dtozod.string(),
   status: AttachmentStatusSchemaDto,
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalAttachmentSchemaDtoV2 }),
 });
 
-export const AttachmentSchemaDto = z.union([
+export const AttachmentSchemaDto = dtozod.union([
   AttachmentSchemaDtoV2,
   AttachmentSchemaDtoV1,
 ]);
-export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
+export type AttachmentDto = dtozod.infer<typeof AttachmentSchemaDto>;
 
-export const ToolCallSchemaDto = z.object({
-  id: z.string(),
-  type: z.literal('function'),
-  function: z.object({
-    name: z.string(),
-    arguments: z.string(),
+export const ToolCallSchemaDto = dtozod.object({
+  id: dtozod.string(),
+  type: dtozod.literal('function'),
+  function: dtozod.object({
+    name: dtozod.string(),
+    arguments: dtozod.string(),
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolCallFunctionSchemaDto }),
   }),
@@ -376,28 +376,28 @@ export const ToolCallSchemaDto = z.object({
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolCallSchemaDto }),
 });
 
-export type ToolCallDto = z.infer<typeof ToolCallSchemaDto>;
+export type ToolCallDto = dtozod.infer<typeof ToolCallSchemaDto>;
 
-export const TextOrBinaryObjectSchemaDto = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectTextSchemaDto }) }),
-  z.object({ type: z.literal('binary_object'), id: z.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectBinaryObjectSchemaDto }) }),
+export const TextOrBinaryObjectSchemaDto = dtozod.discriminatedUnion('type', [
+  dtozod.object({ type: dtozod.literal('text'), text: dtozod.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectTextSchemaDto }) }),
+  dtozod.object({ type: dtozod.literal('binary_object'), id: dtozod.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectBinaryObjectSchemaDto }) }),
 ]);
-export type TextOrBinaryObjectDto = z.infer<typeof TextOrBinaryObjectSchemaDto>;
+export type TextOrBinaryObjectDto = dtozod.infer<typeof TextOrBinaryObjectSchemaDto>;
 
-export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
-  z.object({ toolCallId: z.string(), status: z.literal('executing'), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultExecutingSchemaDto }) }),
-  z.object({
-    toolCallId: z.string(),
-    status: z.literal('success'),
+export const ToolExecutionResultSchemaDto = dtozod.discriminatedUnion('status', [
+  dtozod.object({ toolCallId: dtozod.string(), status: dtozod.literal('executing'), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultExecutingSchemaDto }) }),
+  dtozod.object({
+    toolCallId: dtozod.string(),
+    status: dtozod.literal('success'),
     content: TextOrBinaryObjectSchemaDto,
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultSuccessSchemaDto }),
   }),
-  z.object({
-    toolCallId: z.string(),
-    status: z.literal('error'),
-    error: z.object({
-      code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']),
+  dtozod.object({
+    toolCallId: dtozod.string(),
+    status: dtozod.literal('error'),
+    error: dtozod.object({
+      code: dtozod.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']),
       message: TextOrBinaryObjectSchemaDto,
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultErrorObjectSchemaDto }),
@@ -406,80 +406,80 @@ export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultErrorSchemaDto }),
   }),
 ]);
-export type ToolExecutionResultDto = z.infer<typeof ToolExecutionResultSchemaDto>;
+export type ToolExecutionResultDto = dtozod.infer<typeof ToolExecutionResultSchemaDto>;
 
 export const MessageNodeSchemaDtoV1 = resolveMissingAsUndefined(
-  z.discriminatedUnion('role', [
-    z.object({
-      id: z.string(),
-      role: z.literal('user'),
-      content: z.string(),
-      attachments: missingAsUndefined(z.array(AttachmentSchemaDto)),
-      timestamp: z.number(),
-      thinking: missingAsUndefined(z.undefined()),
-      modelId: missingAsUndefined(z.undefined()),
+  dtozod.discriminatedUnion('role', [
+    dtozod.object({
+      id: dtozod.string(),
+      role: dtozod.literal('user'),
+      content: dtozod.string(),
+      attachments: missingAsUndefined(dtozod.array(AttachmentSchemaDto)),
+      timestamp: dtozod.number(),
+      thinking: missingAsUndefined(dtozod.undefined()),
+      modelId: missingAsUndefined(dtozod.undefined()),
       lmParameters: missingAsUndefined(LmParametersSchemaDto),
-      toolCalls: missingAsUndefined(z.undefined()),
-      results: missingAsUndefined(z.undefined()),
+      toolCalls: missingAsUndefined(dtozod.undefined()),
+      results: missingAsUndefined(dtozod.undefined()),
       // This key belongs to V2 and must be absent in a V1 record.
-      parts: z.never().exactOptional(),
+      parts: dtozod.never().exactOptional(),
       get replies(): typeof MessageBranchSchemaDtoV1 {
         return MessageBranchSchemaDtoV1;
       },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeUserSchemaDto }),
     }),
-    z.object({
-      id: z.string(),
-      role: z.literal('assistant'),
-      content: z.string(),
-      attachments: missingAsUndefined(z.undefined()),
-      timestamp: z.number(),
-      thinking: missingAsUndefined(z.string()),
-      modelId: missingAsUndefined(z.string()),
+    dtozod.object({
+      id: dtozod.string(),
+      role: dtozod.literal('assistant'),
+      content: dtozod.string(),
+      attachments: missingAsUndefined(dtozod.undefined()),
+      timestamp: dtozod.number(),
+      thinking: missingAsUndefined(dtozod.string()),
+      modelId: missingAsUndefined(dtozod.string()),
       lmParameters: missingAsUndefined(LmParametersSchemaDto),
-      toolCalls: missingAsUndefined(z.array(ToolCallSchemaDto)),
-      results: missingAsUndefined(z.undefined()),
+      toolCalls: missingAsUndefined(dtozod.array(ToolCallSchemaDto)),
+      results: missingAsUndefined(dtozod.undefined()),
       // This key belongs to V2 and must be absent in a V1 record.
-      parts: z.never().exactOptional(),
+      parts: dtozod.never().exactOptional(),
       get replies(): typeof MessageBranchSchemaDtoV1 {
         return MessageBranchSchemaDtoV1;
       },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeAssistantSchemaDto }),
     }),
-    z.object({
-      id: z.string(),
-      role: z.literal('system'),
-      content: z.string(),
-      attachments: missingAsUndefined(z.undefined()),
-      timestamp: z.number(),
-      thinking: missingAsUndefined(z.undefined()),
-      modelId: missingAsUndefined(z.undefined()),
-      lmParameters: missingAsUndefined(z.undefined()),
-      toolCalls: missingAsUndefined(z.undefined()),
-      results: missingAsUndefined(z.undefined()),
+    dtozod.object({
+      id: dtozod.string(),
+      role: dtozod.literal('system'),
+      content: dtozod.string(),
+      attachments: missingAsUndefined(dtozod.undefined()),
+      timestamp: dtozod.number(),
+      thinking: missingAsUndefined(dtozod.undefined()),
+      modelId: missingAsUndefined(dtozod.undefined()),
+      lmParameters: missingAsUndefined(dtozod.undefined()),
+      toolCalls: missingAsUndefined(dtozod.undefined()),
+      results: missingAsUndefined(dtozod.undefined()),
       // This key belongs to V2 and must be absent in a V1 record.
-      parts: z.never().exactOptional(),
+      parts: dtozod.never().exactOptional(),
       get replies(): typeof MessageBranchSchemaDtoV1 {
         return MessageBranchSchemaDtoV1;
       },
 
       experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeSystemSchemaDto }),
     }),
-    z.object({
-      id: z.string(),
-      role: z.literal('tool'),
-      content: missingAsUndefined(z.undefined()),
-      attachments: missingAsUndefined(z.undefined()),
-      timestamp: z.number(),
-      thinking: missingAsUndefined(z.undefined()),
-      modelId: missingAsUndefined(z.undefined()),
-      lmParameters: missingAsUndefined(z.undefined()),
-      toolCalls: missingAsUndefined(z.undefined()),
-      results: z.array(ToolExecutionResultSchemaDto),
+    dtozod.object({
+      id: dtozod.string(),
+      role: dtozod.literal('tool'),
+      content: missingAsUndefined(dtozod.undefined()),
+      attachments: missingAsUndefined(dtozod.undefined()),
+      timestamp: dtozod.number(),
+      thinking: missingAsUndefined(dtozod.undefined()),
+      modelId: missingAsUndefined(dtozod.undefined()),
+      lmParameters: missingAsUndefined(dtozod.undefined()),
+      toolCalls: missingAsUndefined(dtozod.undefined()),
+      results: dtozod.array(ToolExecutionResultSchemaDto),
       // This key belongs to V2 and must be absent in a V1 record.
-      parts: z.never().exactOptional(),
+      parts: dtozod.never().exactOptional(),
       get replies(): typeof MessageBranchSchemaDtoV1 {
         return MessageBranchSchemaDtoV1;
       },
@@ -488,44 +488,58 @@ export const MessageNodeSchemaDtoV1 = resolveMissingAsUndefined(
     }),
   ]),
 );
-export type MessageNodeDtoV1 = z.infer<typeof MessageNodeSchemaDtoV1>;
+export type MessageNodeDtoV1 = dtozod.infer<typeof MessageNodeSchemaDtoV1>;
 
-export const MessageBranchSchemaDtoV1 = z.object({
-  get items(): z.ZodArray<typeof MessageNodeSchemaDtoV1> {
-    return z.array(MessageNodeSchemaDtoV1);
+// A named interface anchors mutual recursion; a type alias reintroduces TS2502/TS7022.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- This identity is required for recursive schema inference.
+interface MessageBranchSchemaTypeDtoV1 extends dtozod.DtoObject<{
+  items: dtozod.DtoArray<typeof MessageNodeSchemaDtoV1>;
+  experimental: ReturnType<typeof optionalExperimentalFieldSchemaDto<typeof ExperimentalMessageBranchSchemaDto>>;
+}> {}
+
+export const MessageBranchSchemaDtoV1: MessageBranchSchemaTypeDtoV1 = dtozod.object({
+  get items(): dtozod.DtoArray<typeof MessageNodeSchemaDtoV1> {
+    return dtozod.array(MessageNodeSchemaDtoV1);
   },
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
 });
-export type MessageBranchDtoV1 = z.infer<typeof MessageBranchSchemaDtoV1>;
+export type MessageBranchDtoV1 = dtozod.infer<typeof MessageBranchSchemaDtoV1>;
 
-export const MessageBranchSchemaDtoV2 = z.object({
-  get items(): z.ZodArray<typeof MessageNodeSchemaDtoV2> {
-    return z.array(MessageNodeSchemaDtoV2);
+// A named interface anchors mutual recursion; a type alias reintroduces TS2502/TS7022.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- This identity is required for recursive schema inference.
+interface MessageBranchSchemaTypeDtoV2 extends dtozod.DtoObject<{
+  items: dtozod.DtoArray<typeof MessageNodeSchemaDtoV2>;
+  experimental: ReturnType<typeof optionalExperimentalFieldSchemaDto<typeof ExperimentalMessageBranchSchemaDto>>;
+}> {}
+
+export const MessageBranchSchemaDtoV2: MessageBranchSchemaTypeDtoV2 = dtozod.object({
+  get items(): dtozod.DtoArray<typeof MessageNodeSchemaDtoV2> {
+    return dtozod.array(MessageNodeSchemaDtoV2);
   },
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
 });
-export type MessageBranchDtoV2 = z.infer<typeof MessageBranchSchemaDtoV2>;
+export type MessageBranchDtoV2 = dtozod.infer<typeof MessageBranchSchemaDtoV2>;
 
-export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedUnion('role', [
-  z.object({
-    id: z.string(),
-    role: z.literal('user'),
-    createdAt: z.number(),
-    modelId: missingAsUndefined(z.undefined()),
+export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(dtozod.discriminatedUnion('role', [
+  dtozod.object({
+    id: dtozod.string(),
+    role: dtozod.literal('user'),
+    createdAt: dtozod.number(),
+    modelId: missingAsUndefined(dtozod.undefined()),
     lmParameters: missingAsUndefined(LmParametersSchemaDto),
-    parts: z.array(
-      z.discriminatedUnion('type', [
-        resolveMissingAsUndefined(z.object({
-          type: z.literal('text'),
-          text: z.string(),
-          completeness: missingAsUndefined(z.literal('partial')),
+    parts: dtozod.array(
+      dtozod.discriminatedUnion('type', [
+        resolveMissingAsUndefined(dtozod.object({
+          type: dtozod.literal('text'),
+          text: dtozod.string(),
+          completeness: missingAsUndefined(dtozod.literal('partial')),
 
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
         })),
-        z.object({
-          type: z.literal('attachment'),
+        dtozod.object({
+          type: dtozod.literal('attachment'),
           attachment: AttachmentSchemaDtoV2,
 
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageAttachmentPartSchemaDto }),
@@ -536,47 +550,47 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeUserSchemaDto }),
   }),
-  z.object({
-    id: z.string(),
-    role: z.literal('assistant'),
-    createdAt: z.number(),
-    modelId: missingAsUndefined(z.string()),
+  dtozod.object({
+    id: dtozod.string(),
+    role: dtozod.literal('assistant'),
+    createdAt: dtozod.number(),
+    modelId: missingAsUndefined(dtozod.string()),
     lmParameters: missingAsUndefined(LmParametersSchemaDto),
-    parts: z.array(
-      z.discriminatedUnion('type', [
-        resolveMissingAsUndefined(z.object({
-          type: z.literal('reasoning'),
-          text: z.string(),
-          completeness: missingAsUndefined(z.literal('partial')),
+    parts: dtozod.array(
+      dtozod.discriminatedUnion('type', [
+        resolveMissingAsUndefined(dtozod.object({
+          type: dtozod.literal('reasoning'),
+          text: dtozod.string(),
+          completeness: missingAsUndefined(dtozod.literal('partial')),
 
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageReasoningPartSchemaDto }),
         })),
-        resolveMissingAsUndefined(z.object({
-          type: z.literal('text'),
-          text: z.string(),
-          completeness: missingAsUndefined(z.literal('partial')),
+        resolveMissingAsUndefined(dtozod.object({
+          type: dtozod.literal('text'),
+          text: dtozod.string(),
+          completeness: missingAsUndefined(dtozod.literal('partial')),
 
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
         })),
-        z.object({
-          type: z.literal('tool_call'),
+        dtozod.object({
+          type: dtozod.literal('tool_call'),
           toolCall: ToolCallSchemaDto,
 
           experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageToolCallPartSchemaDto }),
         }),
       ]),
     ),
-    interruption: missingAsUndefined(z.discriminatedUnion('type', [
-      z.object({
-        type: z.literal('cancelled'),
+    interruption: missingAsUndefined(dtozod.discriminatedUnion('type', [
+      dtozod.object({
+        type: dtozod.literal('cancelled'),
 
         experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageInterruptionCancelledSchemaDto }),
       }),
-      z.object({
-        type: z.literal('error'),
+      dtozod.object({
+        type: dtozod.literal('error'),
         // This message may contain text localized when the error was recorded.
         // Later locale changes do not retranslate this persisted text.
-        message: z.string(),
+        message: dtozod.string(),
 
         experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageInterruptionErrorSchemaDto }),
       }),
@@ -585,17 +599,17 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeAssistantSchemaDto }),
   }),
-  z.object({
-    id: z.string(),
-    role: z.literal('system'),
-    createdAt: z.number(),
-    modelId: missingAsUndefined(z.undefined()),
-    lmParameters: missingAsUndefined(z.undefined()),
-    parts: z.array(
-      resolveMissingAsUndefined(z.object({
-        type: z.literal('text'),
-        text: z.string(),
-        completeness: missingAsUndefined(z.literal('partial')),
+  dtozod.object({
+    id: dtozod.string(),
+    role: dtozod.literal('system'),
+    createdAt: dtozod.number(),
+    modelId: missingAsUndefined(dtozod.undefined()),
+    lmParameters: missingAsUndefined(dtozod.undefined()),
+    parts: dtozod.array(
+      resolveMissingAsUndefined(dtozod.object({
+        type: dtozod.literal('text'),
+        text: dtozod.string(),
+        completeness: missingAsUndefined(dtozod.literal('partial')),
 
         experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageTextPartSchemaDto }),
       })),
@@ -604,15 +618,15 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeSystemSchemaDto }),
   }),
-  z.object({
-    id: z.string(),
-    role: z.literal('tool'),
-    createdAt: z.number(),
-    modelId: missingAsUndefined(z.undefined()),
-    lmParameters: missingAsUndefined(z.undefined()),
-    parts: z.array(
-      z.object({
-        type: z.literal('tool_result'),
+  dtozod.object({
+    id: dtozod.string(),
+    role: dtozod.literal('tool'),
+    createdAt: dtozod.number(),
+    modelId: missingAsUndefined(dtozod.undefined()),
+    lmParameters: missingAsUndefined(dtozod.undefined()),
+    parts: dtozod.array(
+      dtozod.object({
+        type: dtozod.literal('tool_result'),
         result: ToolExecutionResultSchemaDto,
 
         experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageToolResultPartSchemaDto }),
@@ -623,16 +637,16 @@ export const MessageNodeSchemaDtoV2 = resolveMissingAsUndefined(z.discriminatedU
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageNodeToolSchemaDto }),
   }),
 ]));
-export type MessageNodeDtoV2 = z.infer<typeof MessageNodeSchemaDtoV2>;
+export type MessageNodeDtoV2 = dtozod.infer<typeof MessageNodeSchemaDtoV2>;
 
-export const MessageNodeSchemaDto = z.union([
+export const MessageNodeSchemaDto = dtozod.union([
   MessageNodeSchemaDtoV2,
   MessageNodeSchemaDtoV1,
 ]);
-export type MessageNodeDto = z.infer<typeof MessageNodeSchemaDto>;
+export type MessageNodeDto = dtozod.infer<typeof MessageNodeSchemaDto>;
 
-export const MessageBranchSchemaDto = z.object({
-  items: z.array(MessageNodeSchemaDto),
+export const MessageBranchSchemaDto = dtozod.object({
+  items: dtozod.array(MessageNodeSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMessageBranchSchemaDto }),
 });
@@ -641,82 +655,82 @@ export const MessageBranchSchemaDto = z.object({
  * Chat Metadata
  * Contains all attributes except the heavy message tree.
  */
-export const ChatMetaSchemaDtoV1 = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  currentLeafId: missingAsUndefined(z.string()),
-  updatedAt: z.number(),
-  createdAt: z.number(),
-  debugEnabled: z.boolean().optional().default(false),
+export const ChatMetaSchemaDtoV1 = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  title: dtozod.string().nullable(),
+  currentLeafId: missingAsUndefined(dtozod.string()),
+  updatedAt: dtozod.number(),
+  createdAt: dtozod.number(),
+  debugEnabled: dtozod.boolean().optional().default(false),
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
-  modelId: missingAsUndefined(z.string()),
-  autoTitleEnabled: missingAsUndefined(z.boolean()),
-  titleModelId: missingAsUndefined(z.string()),
-  originChatId: missingAsUndefined(z.string()),
-  originMessageId: missingAsUndefined(z.string()),
+  modelId: missingAsUndefined(dtozod.string()),
+  autoTitleEnabled: missingAsUndefined(dtozod.boolean()),
+  titleModelId: missingAsUndefined(dtozod.string()),
+  originChatId: missingAsUndefined(dtozod.string()),
+  originMessageId: missingAsUndefined(dtozod.string()),
 
   systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
-  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+  mounts: missingAsUndefined(dtozod.array(MountSchemaDto)),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatMetaSchemaDto }),
 }));
-export type ChatMetaDtoV1 = z.infer<typeof ChatMetaSchemaDtoV1>;
+export type ChatMetaDtoV1 = dtozod.infer<typeof ChatMetaSchemaDtoV1>;
 
-export const ChatMetaSchemaDtoV2 = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  currentLeafId: missingAsUndefined(z.string()),
-  updatedAt: z.number(),
-  createdAt: z.number(),
-  debugEnabled: z.boolean().optional().default(false),
+export const ChatMetaSchemaDtoV2 = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  title: dtozod.string().nullable(),
+  currentLeafId: missingAsUndefined(dtozod.string()),
+  updatedAt: dtozod.number(),
+  createdAt: dtozod.number(),
+  debugEnabled: dtozod.boolean().optional().default(false),
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
-  modelId: missingAsUndefined(z.string()),
+  modelId: missingAsUndefined(dtozod.string()),
   titleGeneration: ScopedTitleGenerationSchemaDto,
-  originChatId: missingAsUndefined(z.string()),
-  originMessageId: missingAsUndefined(z.string()),
+  originChatId: missingAsUndefined(dtozod.string()),
+  originMessageId: missingAsUndefined(dtozod.string()),
 
   systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
-  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+  mounts: missingAsUndefined(dtozod.array(MountSchemaDto)),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatMetaSchemaDto }),
 }));
-export type ChatMetaDtoV2 = z.infer<typeof ChatMetaSchemaDtoV2>;
+export type ChatMetaDtoV2 = dtozod.infer<typeof ChatMetaSchemaDtoV2>;
 
-export const ChatMetaSchemaDto = z.union([
+export const ChatMetaSchemaDto = dtozod.union([
   ChatMetaSchemaDtoV2,
   ChatMetaSchemaDtoV1,
 ]);
 
-export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
+export type ChatMetaDto = dtozod.infer<typeof ChatMetaSchemaDto>;
 
 /**
  * Chat Meta Index (Legacy/Bulk operations)
  */
-export const ChatMetaIndexSchemaDto = z.object({
-  entries: z.array(ChatMetaSchemaDto),
+export const ChatMetaIndexSchemaDto = dtozod.object({
+  entries: dtozod.array(ChatMetaSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatMetaIndexSchemaDto }),
 });
 
-export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
+export type ChatMetaIndexDto = dtozod.infer<typeof ChatMetaIndexSchemaDto>;
 
 /**
  * Chat Content
  * Contains the heavy message tree structure.
  * Stored in individual files to scale.
  */
-export const ChatContentSchemaDto = resolveMissingAsUndefined(z.object({
+export const ChatContentSchemaDto = resolveMissingAsUndefined(dtozod.object({
   root: MessageBranchSchemaDto,
-  currentLeafId: missingAsUndefined(z.string()),
+  currentLeafId: missingAsUndefined(dtozod.string()),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatContentSchemaDto }),
 }));
 
-export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
+export type ChatContentDto = dtozod.infer<typeof ChatContentSchemaDto>;
 
 /**
  * Combined Chat DTO
@@ -724,80 +738,80 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
  */
 export const ChatSchemaDtoV1 = ChatMetaSchemaDtoV1.safeExtend({
   root: missingAsUndefined(MessageBranchSchemaDto),
-  currentLeafId: missingAsUndefined(z.string()),
+  currentLeafId: missingAsUndefined(dtozod.string()),
 
   // Legacy support field
-  messages: missingAsUndefined(z.array(z.unknown())),
+  messages: missingAsUndefined(dtozod.array(dtozod.unknown())),
 });
-export type ChatDtoV1 = z.infer<typeof ChatSchemaDtoV1>;
+export type ChatDtoV1 = dtozod.infer<typeof ChatSchemaDtoV1>;
 
 export const ChatSchemaDtoV2 = ChatMetaSchemaDtoV2.safeExtend({
   root: missingAsUndefined(MessageBranchSchemaDto),
-  currentLeafId: missingAsUndefined(z.string()),
+  currentLeafId: missingAsUndefined(dtozod.string()),
 
   // Legacy support field
-  messages: missingAsUndefined(z.array(z.unknown())),
+  messages: missingAsUndefined(dtozod.array(dtozod.unknown())),
 });
-export type ChatDtoV2 = z.infer<typeof ChatSchemaDtoV2>;
+export type ChatDtoV2 = dtozod.infer<typeof ChatSchemaDtoV2>;
 
-export const ChatSchemaDto = z.union([
+export const ChatSchemaDto = dtozod.union([
   ChatSchemaDtoV2,
   ChatSchemaDtoV1,
 ]);
 
-export type ChatDto = z.infer<typeof ChatSchemaDto>;
+export type ChatDto = dtozod.infer<typeof ChatSchemaDto>;
 
 // --- Provider Profiles ---
 
-export const ProviderProfileSchemaDto = resolveMissingAsUndefined(z.object({
-  id: z.string(),
-  name: z.string(),
+export const ProviderProfileSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  name: dtozod.string(),
   endpoint: EndpointSchemaDto,
-  defaultModelId: missingAsUndefined(z.string()),
-  titleModelId: missingAsUndefined(z.string()),
-  systemPrompt: missingAsUndefined(z.string()),
+  defaultModelId: missingAsUndefined(dtozod.string()),
+  titleModelId: missingAsUndefined(dtozod.string()),
+  systemPrompt: missingAsUndefined(dtozod.string()),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalProviderProfileSchemaDto }),
 }));
-export type ProviderProfileDto = z.infer<typeof ProviderProfileSchemaDto>;
+export type ProviderProfileDto = dtozod.infer<typeof ProviderProfileSchemaDto>;
 
-export const SettingsSchemaDtoV1 = resolveMissingAsUndefined(z.object({
+export const SettingsSchemaDtoV1 = resolveMissingAsUndefined(dtozod.object({
   endpoint: EndpointSchemaDto,
-  defaultModelId: missingAsUndefined(z.string()),
-  titleModelId: missingAsUndefined(z.string()),
-  autoTitleEnabled: z.boolean().default(true),
+  defaultModelId: missingAsUndefined(dtozod.string()),
+  titleModelId: missingAsUndefined(dtozod.string()),
+  autoTitleEnabled: dtozod.boolean().default(true),
   storageType: StorageTypeSchemaDto,
-  providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
-  mounts: z.array(MountSchemaDto).default([]),
-  heavyContentAlertDismissed: missingAsUndefined(z.boolean()),
-  systemPrompt: missingAsUndefined(z.string()),
+  providerProfiles: dtozod.array(ProviderProfileSchemaDto).default([]),
+  mounts: dtozod.array(MountSchemaDto).default([]),
+  heavyContentAlertDismissed: missingAsUndefined(dtozod.boolean()),
+  systemPrompt: missingAsUndefined(dtozod.string()),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSettingsSchemaDto }),
 }));
-export type SettingsDtoV1 = z.infer<typeof SettingsSchemaDtoV1>;
+export type SettingsDtoV1 = dtozod.infer<typeof SettingsSchemaDtoV1>;
 
-export const SettingsSchemaDtoV2 = resolveMissingAsUndefined(z.object({
+export const SettingsSchemaDtoV2 = resolveMissingAsUndefined(dtozod.object({
   endpoint: EndpointSchemaDto,
-  defaultModelId: missingAsUndefined(z.string()),
+  defaultModelId: missingAsUndefined(dtozod.string()),
   titleGeneration: SettingsTitleGenerationSchemaDto,
   storageType: StorageTypeSchemaDto,
-  providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
-  mounts: z.array(MountSchemaDto).default([]),
-  heavyContentAlertDismissed: missingAsUndefined(z.boolean()),
-  systemPrompt: missingAsUndefined(z.string()),
+  providerProfiles: dtozod.array(ProviderProfileSchemaDto).default([]),
+  mounts: dtozod.array(MountSchemaDto).default([]),
+  heavyContentAlertDismissed: missingAsUndefined(dtozod.boolean()),
+  systemPrompt: missingAsUndefined(dtozod.string()),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSettingsSchemaDto }),
 }));
-export type SettingsDtoV2 = z.infer<typeof SettingsSchemaDtoV2>;
+export type SettingsDtoV2 = dtozod.infer<typeof SettingsSchemaDtoV2>;
 
-export const SettingsSchemaDto = z.union([
+export const SettingsSchemaDto = dtozod.union([
   SettingsSchemaDtoV2,
   SettingsSchemaDtoV1,
 ]);
-export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
+export type SettingsDto = dtozod.infer<typeof SettingsSchemaDto>;
 
 /**
  * Migration Data Chunk
@@ -822,17 +836,17 @@ export type MigrationChunkDto =
  * Migration State
  * Tracks completed data migrations to ensure they only run once.
  */
-export const MigrationStateSchemaDto = z.object({
-  completedMigrations: z.array(z.object({
-    name: z.string(),
-    completedAt: z.number(),
+export const MigrationStateSchemaDto = dtozod.object({
+  completedMigrations: dtozod.array(dtozod.object({
+    name: dtozod.string(),
+    completedAt: dtozod.number(),
 
     experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalCompletedMigrationSchemaDto }),
   })),
 
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMigrationStateSchemaDto }),
 });
-export type MigrationStateDto = z.infer<typeof MigrationStateSchemaDto>;
+export type MigrationStateDto = dtozod.infer<typeof MigrationStateSchemaDto>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
