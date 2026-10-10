@@ -8,6 +8,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
   let index = gid.x + grid.x * 64u * gid.y;
 }
 `;
+
 function fixture() {
   const draws: { counts: number[], constants: Record<string, number> | undefined }[] = [];
   let current: GPUComputePipelineDescriptor | undefined;

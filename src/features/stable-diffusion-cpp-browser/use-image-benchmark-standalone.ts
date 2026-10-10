@@ -2,6 +2,7 @@ import { computed } from 'vue';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
+
 export function useImageBenchmark({ generation: _generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
   const form = createBenchmarkForm();
   return {
@@ -31,5 +32,6 @@ export function useImageBenchmark({ generation: _generation }: { generation: Ima
     }) || {}),
   };
 }
+
 export const TEST_ONLY = {
 };

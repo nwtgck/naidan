@@ -10,6 +10,7 @@ const definition = contract({
     run: procedure({ input: z.strictObject({}), result: z.number(), notifications: {} }),
   },
 });
+
 function idleIncoming() {
   const next = Promise.withResolvers<IteratorResult<NaidanRpcDuplex>>();
   return {

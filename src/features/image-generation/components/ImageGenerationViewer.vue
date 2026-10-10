@@ -10,18 +10,23 @@ const container = ref<HTMLElement>(), zoom = ref(1), position = ref({ x: 0, y: 0
 const detailsOpen = ref(false), detailsId = useId();
 let previousFocus: HTMLElement | undefined;
 let pointer: { id: number, x: number, y: number } | undefined;
+
 function reset(): void {
   pointer = undefined;
   zoom.value = 1;
   position.value = { x: 0, y: 0 };
 }
+
 watch(index, reset);
+
 function move({ offset }: { offset: number }): void {
   index.value = Math.max(0, Math.min(props.count - 1, index.value + offset));
 }
+
 function magnify({ factor }: { factor: number }): void {
   zoom.value = Math.max(0.25, Math.min(8, zoom.value * factor));
 }
+
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.defaultPrevented || event.isComposing) return;
   trapImageDialogFocus({ root: container.value, event });
@@ -35,16 +40,19 @@ function keydown({ event }: { event: KeyboardEvent }): void {
   case 'ArrowRight': event.preventDefault(); move({ offset: 1 }); break;
   }
 }
+
 function pointerDown({ event }: { event: PointerEvent }): void {
   if (!(event.currentTarget instanceof HTMLElement) || event.button !== 0) return;
   pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
   event.currentTarget.setPointerCapture(event.pointerId);
 }
+
 function pointerMove({ event }: { event: PointerEvent }): void {
   if (!pointer || event.pointerId !== pointer.id) return;
   position.value = { x: position.value.x + event.clientX - pointer.x, y: position.value.y + event.clientY - pointer.y };
   pointer = { ...pointer, x: event.clientX, y: event.clientY };
 }
+
 onMounted(() => {
   if (document.activeElement instanceof HTMLElement) previousFocus = document.activeElement;
   container.value?.focus();

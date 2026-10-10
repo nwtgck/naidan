@@ -34,5 +34,6 @@ export function useModelLaunchOnboardingBypass({ initialized, storageType }: { i
   }, { immediate: true });
   return computed(() => (route.value?.path === '/' && route.value.query[MODEL_LAUNCH_QUERY] !== undefined) || restoredChatBypass.value);
 }
+
 export const TEST_ONLY = {
 };

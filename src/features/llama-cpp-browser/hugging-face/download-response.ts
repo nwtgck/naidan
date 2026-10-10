@@ -9,5 +9,6 @@ export function responseOffset({ status, headers, offset, size }: { status: numb
   if (!range || Number(range[1]) !== offset || Number(range[2]) !== size - 1 || Number(range[3]) !== size || (length !== null && (!/^\d+$/.test(length) || Number(length) !== size - offset))) throw new Error('Invalid download Content-Range');
   return offset;
 }
+
 export const TEST_ONLY = {
 };

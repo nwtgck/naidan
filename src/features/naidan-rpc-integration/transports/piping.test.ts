@@ -10,6 +10,7 @@ vi.mock('@/features/naidan-piping-duplex/naidan-piping-duplex-session', () => ({
 }));
 
 type ConnectionStub = { peerPublicHandshakeData: Uint8Array; abort(): void; closed: Promise<void>; peerIdentity?: Uint8Array };
+
 function sessionFor({ connection }: { connection: ConnectionStub }) {
   return {
     get peerPublicHandshakeData() {

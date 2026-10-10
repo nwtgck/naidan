@@ -306,12 +306,14 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   for (const candidate of candidates) if (candidate.issue) issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
   signal?.throwIfAborted(); onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } }); return { candidates, issues };
 }
+
 export function defaultCompanion({ main, candidates, requirement }: { main: ModelCandidate, candidates: ModelCandidate[], requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): string | undefined {
   const entries = candidates.filter(candidate => candidate.id !== main.id && componentMatch({ candidate, requirement }) === 'matching');
   // Smaller files are a footprint preference, not a quality or memory guarantee.
   entries.sort((a, b) => Number(b.repositoryId === main.repositoryId) - Number(a.repositoryId === main.repositoryId) || a.size - b.size || a.id.localeCompare(b.id));
   return entries[0]?.id;
 }
+
 export const TEST_ONLY = {
   fingerprint,
 };

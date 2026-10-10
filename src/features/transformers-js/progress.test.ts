@@ -12,6 +12,7 @@ class MockWorker extends EventTarget {
     this.active = false;
   });
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+
   // Worker constructors are a browser-platform positional boundary.
   constructor(url: URL) {
     super();

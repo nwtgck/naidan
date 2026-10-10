@@ -11,6 +11,7 @@ type RecordingSession = {
   timer: ReturnType<typeof setTimeout> | undefined,
   clock: ReturnType<typeof setInterval> | undefined,
 };
+
 /** Microphone access starts ONLY on the explicit Record action. A cancelled or
  * abandoned permission prompt may still resolve; stop those late tracks at once.
  * Keep capture and normalization separate from the shared inference Worker.
@@ -135,5 +136,6 @@ export function useReferenceRecording({ accept }: { accept: ({ blob, signal }: {
   });
   return { status, elapsed, error, supported, start, stop, cancel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
+
 export const TEST_ONLY = {
 };

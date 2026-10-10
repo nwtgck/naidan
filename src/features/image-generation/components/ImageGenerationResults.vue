@@ -23,9 +23,11 @@ const resultLimitDraft = ref(String(maxResults.value));
 watch(maxResults, value => {
   resultLimitDraft.value = String(value);
 });
+
 function editResultLimit({ event }: { event: Event }): void {
   if (event.target instanceof HTMLInputElement) resultLimitDraft.value = event.target.value;
 }
+
 function commitResultLimit({ event }: { event: Event }): void {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -33,6 +35,7 @@ function commitResultLimit({ event }: { event: Event }): void {
   resultLimitDraft.value = String(maxResults.value);
   input.value = resultLimitDraft.value;
 }
+
 const run = props.view.latestRun;
 const currentResultArrived = computed(() => run.value?.status === 'succeeded');
 const pendingImage = computed(() => props.view.busy.value && supported.value && run.value?.status === 'running');
@@ -53,12 +56,14 @@ const displayedFailure = computed(() => {
 // The outer execution section owns visibility; its first expansion should show diagnostics.
 const diagnosticsOpen = ref(props.presentation === 'settings');
 const diagnosticsRegion = ref<HTMLElement>();
+
 async function showDiagnostics(): Promise<void> {
   diagnosticsOpen.value = true;
   await nextTick();
   diagnosticsRegion.value?.scrollIntoView({ block: 'start' });
   diagnosticsRegion.value?.focus({ preventScroll: true });
 }
+
 const viewerIndex = ref<number>();
 watch(() => props.active, active => {
   if (!active) viewerIndex.value = undefined;
@@ -72,9 +77,11 @@ watch(results, (current, previous) => {
   const nextIndex = current.findIndex(item => item.id === selected?.id);
   viewerIndex.value = nextIndex < 0 ? undefined : nextIndex;
 });
+
 function formatElapsed({ elapsedMs }: { elapsedMs: number }): string {
   return `${(elapsedMs / 1000).toFixed(elapsedMs >= 10000 ? 0 : 1)} s`;
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

@@ -506,6 +506,7 @@ class PipeHandle implements WeshFileHandle {
   }
 
   async truncate(): Promise<void> {}
+
   async ioctl(): Promise<{ ret: number }> {
     return { ret: 0 };
   }

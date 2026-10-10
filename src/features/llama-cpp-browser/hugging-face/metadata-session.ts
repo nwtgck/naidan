@@ -43,10 +43,12 @@ export function createMetadataSession({ discover, now }: { discover: typeof disc
 }
 
 let session: ReturnType<typeof createMetadataSession> | undefined;
+
 export function getMetadataSession(): ReturnType<typeof createMetadataSession> {
   session ??= createMetadataSession({ discover: discoverRepository, now: () => Date.now() });
   return session;
 }
+
 export const TEST_ONLY = {
   reset: () => {
     session = undefined;

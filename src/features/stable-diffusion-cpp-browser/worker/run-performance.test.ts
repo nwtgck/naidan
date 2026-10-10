@@ -70,6 +70,7 @@ const placementFields = {
   webgpu_cpu_bf16: 1,
   webgpu_cpu_bf16_use_bytes: 2048,
 };
+
 function placementLog({ fields }: { fields: Partial<typeof placementFields> }): string {
   return 'compute_workspace.cpp:91 - browser-placement-v1 ' + Object.entries({ ...placementFields, ...fields }).map(([name, value]) => `${name}=${value}`).join(' ') + '\n';
 }

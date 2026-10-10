@@ -41,6 +41,7 @@ async function disposeSuccessfulReplayModel({ result }: {
 }
 
 const cleanups: Array<() => void> = [];
+
 export function cleanupParsedMetadataRequests() {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   vi.unstubAllGlobals();

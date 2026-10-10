@@ -23,9 +23,11 @@ const job = computed(() => {
   return candidate?.status === 'complete' || candidate?.status === 'cancelled' ? undefined : candidate;
 });
 const size = computed(() => props.state.target.value?.selection.files.reduce((sum, file) => sum + file.size, 0));
+
 function manageModels(): void {
   void router.replace({ query: { ...router.currentRoute.value.query, settings: 'llama-cpp-browser' } });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

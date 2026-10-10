@@ -8,11 +8,14 @@ class MockFile {
   readonly kind = 'file';
   text = '';
   readError: Error | undefined;
+
   constructor(readonly name: string) {}
+
   async getFile() {
     if (this.readError) throw this.readError;
     return { text: async () => this.text };
   }
+
   async createWritable() {
     let pending = '';
     return {
@@ -30,11 +33,15 @@ class MockFile {
 }
 class MockDirectory {
   readonly kind = 'directory';
+
   async isSameEntry(other: MockDirectory) {
     return this === other;
   }
+
   readonly children = new Map<string, MockDirectory | MockFile>();
+
   constructor(readonly name: string) {}
+
   // FileSystemDirectoryHandle uses positional arguments.
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockDirectory> {
     let child = this.children.get(name);
@@ -45,6 +52,7 @@ class MockDirectory {
     if (!(child instanceof MockDirectory)) throw new Error('Not a directory');
     return child;
   }
+
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFile> {
     let child = this.children.get(name);
     if (!child && options?.create) {
@@ -54,9 +62,11 @@ class MockDirectory {
     if (!(child instanceof MockFile)) throw new Error('Not a file');
     return child;
   }
+
   async *entries() {
     yield* this.children.entries();
   }
+
   async removeEntry(name: string) {
     if (failures.delete(name)) throw new Error(`Cannot remove ${name}`);
     if (!this.children.delete(name)) throw new DOMException('Missing entry', 'NotFoundError');
@@ -65,6 +75,7 @@ class MockDirectory {
 
 let root: MockDirectory;
 const getDirectory = vi.fn();
+
 function record({ id, prompt, createdAt }: { id: string, prompt: string, createdAt: number }): ImageGenerationRecord {
   return {
     id: toImageGenerationId({ raw: id }),
@@ -99,11 +110,13 @@ function record({ id, prompt, createdAt }: { id: string, prompt: string, created
     previews: [{ binaryObjectId: toBinaryObjectId({ raw: 'image-preview' }), step: 2, steps: 9, mode: 'projection', width: 128, height: 128 }],
   };
 }
+
 async function shard() {
   let directory = root;
   for (const name of ['naidan-storage', 'experimental', 'image-generation', 'generations', 'ab']) directory = await directory.getDirectoryHandle(name);
   return directory;
 }
+
 const query = { text: '', offset: 0, limit: 20 };
 
 beforeEach(() => {

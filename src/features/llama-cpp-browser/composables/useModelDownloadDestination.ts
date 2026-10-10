@@ -184,6 +184,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
+
 export const TEST_ONLY = {
   reset() {
     destinationIntent.value = undefined; destinationRevision++;

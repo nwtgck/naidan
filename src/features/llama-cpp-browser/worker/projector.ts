@@ -9,11 +9,13 @@ import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/featur
 import { createProjectorTrace } from './projector-trace';
 
 export type ResidentProjector = { pointer: bigint, debug: 'off' | 'on', release: () => Promise<void> };
+
 export async function loadProjector({ core, model, file, profile, debug, signal }: {
   core: Core, model: bigint, file: ModelFile, profile: LlamaCppProfile, debug: 'off' | 'on', signal: AbortSignal | undefined,
 }): Promise<ResidentProjector> {
   return loadProjectorForBackend({ core, model, file, profile, debug, signal, backend: 'profile' });
 }
+
 export async function loadProjectorForBackend({ core, model, file, profile, debug, signal, backend }: {
   core: Core, model: bigint, file: ModelFile, profile: LlamaCppProfile, debug: 'off' | 'on', signal: AbortSignal | undefined, backend: AudioBackend,
 }): Promise<ResidentProjector> {
@@ -124,5 +126,6 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
   // Transfer native ownership only after temporary filesystem resources are closed.
   return { pointer, debug, release };
 }
+
 export const TEST_ONLY = {
 };

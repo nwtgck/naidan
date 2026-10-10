@@ -8,6 +8,7 @@ export function modelFileMarker({ name, state }: { name: string, state: 'complet
   if (!name || /[/\\\0]/.test(name) || name === '.' || name === '..') throw new Error('Invalid model filename');
   return `.${name}.${state}`;
 }
+
 export async function optionalModelFile({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<FileSystemFileHandle | undefined> {
   try {
     return await directory.getFileHandle(name);
@@ -16,9 +17,11 @@ export async function optionalModelFile({ directory, name }: { directory: FileSy
     throw error;
   }
 }
+
 export async function modelFileIsPending({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<boolean> {
   return (await optionalModelFile({ directory, name: modelFileMarker({ name, state: 'pending' }) })) !== undefined;
 }
+
 const safeSize = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const modelFileSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('local') }).strict(),
@@ -38,11 +41,13 @@ export const modelFileReceiptSchema = z.object({
   source: modelFileSourceSchema,
 }).strict();
 export type ModelFileReceipt = z.infer<typeof modelFileReceiptSchema>;
+
 export async function readModelMarkerJson({ handle }: { handle: FileSystemFileHandle }): Promise<unknown> {
   const file = await handle.getFile();
   if (file.size > 64 * 1024) throw new Error('Model file marker exceeds its size limit');
   return JSON.parse(await file.text());
 }
+
 export async function writeModelMarkerJson({ directory, name, value }: { directory: FileSystemDirectoryHandle, name: string, value: unknown }): Promise<FileSystemFileHandle> {
   const existing = await optionalModelFile({ directory, name });
   const handle = existing ?? await directory.getFileHandle(name, { create: true });
@@ -68,6 +73,7 @@ export async function writeModelMarkerJson({ directory, name, value }: { directo
     throw error;
   }
 }
+
 export async function readModelFileReceipt({ directory, name, file }: { directory: FileSystemDirectoryHandle, name: string, file: File }): Promise<ModelFileReceipt | undefined> {
   if (await modelFileIsPending({ directory, name })) return undefined;
   const handle = await optionalModelFile({ directory, name: modelFileMarker({ name, state: 'complete' }) });
@@ -85,6 +91,7 @@ export async function readModelFileReceipt({ directory, name, file }: { director
   if (!parsed.success || parsed.data.size !== file.size || parsed.data.lastModified !== file.lastModified) return undefined;
   return parsed.data;
 }
+
 export async function publishModelFile({ directory, name, handle, file, source }: {
   directory: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, file: File, source: ModelFileReceipt['source'],
 }): Promise<void> {
@@ -92,5 +99,6 @@ export async function publishModelFile({ directory, name, handle, file, source }
   if (!await current.isSameEntry(handle) || now.size !== file.size || now.lastModified !== file.lastModified) throw new Error('Model changed before publication');
   await writeModelMarkerJson({ directory, name: modelFileMarker({ name, state: 'complete' }), value: modelFileReceiptSchema.parse({ version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source }) });
 }
+
 export const TEST_ONLY = {
 };

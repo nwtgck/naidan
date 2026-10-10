@@ -32,6 +32,7 @@ watch(() => props.active, async (active, _previous, onCleanup) => {
   await nextTick();
   if (current) panel.value?.focus({ preventScroll: true });
 }, { immediate: true });
+
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.defaultPrevented || event.isComposing) return;
   if (!docked.value) trapImageDialogFocus({ root: panel.value, event });
@@ -39,13 +40,16 @@ function keydown({ event }: { event: KeyboardEvent }): void {
     event.preventDefault(); emit('close');
   }
 }
+
 const ChatPane = defineAsyncComponent(() => import('@/components/ChatPane.vue'));
 const { chats } = useChatListData();
 const selected = computed(() => props.workspace.currentSession.value?.assistantChatId), loaded = ref<ChatId>(), loading = ref(false), failure = ref('');
 const pickerOpen = ref(true);
+
 async function chooseChat({ chatId }: { chatId: ChatId | undefined }): Promise<void> {
   await props.workspace.connectChat({ chatId });
 }
+
 watch(() => props.workspace.currentSession.value?.assistantChatId, chatId => {
   pickerOpen.value = !chatId;
 }, { immediate: true });

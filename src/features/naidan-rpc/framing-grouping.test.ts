@@ -10,6 +10,7 @@ function wireBytes({ frame }: { frame: Frame }): Uint8Array {
   const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES }), bytes = new Uint8Array(payload.length + 4);
   new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4); return bytes;
 }
+
 function joined({ parts }: { parts: Uint8Array[] }): Uint8Array {
   const bytes = new Uint8Array(parts.reduce((size, part) => size + part.length, 0)); let offset = 0;
   for (const part of parts) {
@@ -17,6 +18,7 @@ function joined({ parts }: { parts: Uint8Array[] }): Uint8Array {
   }
   return bytes;
 }
+
 function sizedFrame({ length }: { length: number }): Frame {
   let size = length;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -27,6 +29,7 @@ function sizedFrame({ length }: { length: number }): Frame {
   }
   throw new Error('Fixture could not construct the requested frame size');
 }
+
 function outcome({ promise }: { promise: Promise<void> }) {
   const state: { kind: 'pending' | 'resolved' | 'rejected'; reason: unknown } = { kind: 'pending', reason: undefined };
   const settled = promise.then(() => {
@@ -36,6 +39,7 @@ function outcome({ promise }: { promise: Promise<void> }) {
   });
   return { state, settled };
 }
+
 function heldWriter() {
   type Write = { bytes: Uint8Array; release: ReturnType<typeof Promise.withResolvers<void>> };
   const writes: Write[] = [], waiting = new Map<number, ReturnType<typeof Promise.withResolvers<Write>>>();

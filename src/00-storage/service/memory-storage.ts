@@ -50,6 +50,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
     return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(this.naidanRpcRegistry);
   }
+
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(registry);
   }

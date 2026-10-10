@@ -12,6 +12,7 @@ const getLaunch = vi.fn();
 vi.mock('../hugging-face/storage', () => ({ installedSelection: (args: unknown) => installed(args) }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: () => getLaunch(), loadChatMeta: async () => meta, loadChatGroup: async () => chatGroup, loadSettings: async () => null } }));
 const target: ModelLaunchTarget = { selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'model.gguf', size: 256 }] }, mainFilePath: 'model.gguf', modelId: 'hf.co/owner/Model:model.gguf' };
+
 function launchChat(): ChatMeta {
   return { id: toChatId({ raw: 'chat' }), groupId: toChatGroupId({ raw: 'cg' }), title: null, createdAt: 1, updatedAt: 1, debugEnabled: false };
 }

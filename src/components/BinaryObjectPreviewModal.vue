@@ -214,6 +214,7 @@ const formatDate = ({ timestamp }: { timestamp: number }) => {
 };
 
 const isCopied = ref(false);
+
 const copyName = async () => {
   if (!currentObject.value?.name) return;
   await navigator.clipboard.writeText(currentObject.value.name);

@@ -154,6 +154,7 @@ export const MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME = 'MissingDownloadedMo
 
 export class MissingDownloadedModelArtifactError extends Error {
   override readonly name = MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME;
+
   constructor({ message }: { message: string }) {
     super(message);
   }
@@ -161,6 +162,7 @@ export class MissingDownloadedModelArtifactError extends Error {
 
 export class DownloadedModelResourcePlanningError extends Error {
   override readonly name = 'DownloadedModelResourcePlanningError';
+
   constructor({ modelId, revision, details }: { modelId: string; revision: string | undefined; details: string }) {
     super(`No Production candidate could be planned (model=${modelId}, revision=${revision ?? 'main'}): ${details}`);
   }

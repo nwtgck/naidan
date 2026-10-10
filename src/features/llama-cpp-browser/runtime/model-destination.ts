@@ -11,6 +11,7 @@ export async function hostModelRoot({ destination, mode }: { destination: Extrac
   if (!hostModelPermissionGranted({ permission: await handle.queryPermission({ mode }) })) throw new Error('Linked model folder permission expired; reconnect the folder');
   return handle;
 }
+
 export async function withDestinationLock<T>({ destination, operation, signal }: { destination: ModelDestination | undefined, signal?: AbortSignal, operation: () => Promise<T> }): Promise<T> {
   const target = destination ?? { kind: 'opfs' };
   switch (target.kind) {
@@ -19,5 +20,6 @@ export async function withDestinationLock<T>({ destination, operation, signal }:
   default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

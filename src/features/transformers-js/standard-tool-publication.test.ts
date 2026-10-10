@@ -27,9 +27,11 @@ vi.mock('./models/native-protocol-streamer', () => ({
   NativeProtocolStreamer: class {
     private readonly onText: ({ text }: { text: string }) => void;
     private readonly onControl: ({ token }: { token: string }) => void;
+
     constructor({ onText, onControl }: { onText: ({ text }: { text: string }) => void; onControl: ({ token }: { token: string }) => void }) {
       this.onText = onText; this.onControl = onControl;
     }
+
     emit({ fragment }: { fragment: Fragment }): void {
       switch (fragment.type) {
       case 'text': this.onText({ text: fragment.text }); return;
@@ -37,6 +39,7 @@ vi.mock('./models/native-protocol-streamer', () => ({
       default: { const exhaustive: never = fragment; throw new Error(String(exhaustive)); }
       }
     }
+
     end(): void {}
   },
 }));

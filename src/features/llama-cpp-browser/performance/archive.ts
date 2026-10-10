@@ -222,12 +222,14 @@ modelReads uses existing byte/read counters, without extra per-read clock calls.
 lastProgress survives forced termination when its notification was received.
 The archive does not include model weights, account credentials, or saved chats.
 `;
+
 function csvCell({ value }: { value: string | number | undefined }): string {
   let text = value === undefined ? '' : String(value);
   // Metadata can be arbitrary text. Do not turn it into a spreadsheet formula.
   if (/^[=+@\-\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
+
 // This ZIP is an ephemeral, self-describing investigation artifact for humans/GPT,
 // not a stable API or persisted application state. Its shape may change each
 // commit: keep the README/field semantics current instead of adding migrations
@@ -314,5 +316,6 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
     await reader.cancel().catch(() => {}); reader.releaseLock();
   }
 }
+
 export const TEST_ONLY = {
 };

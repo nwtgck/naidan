@@ -27,6 +27,7 @@ function loaded() {
   mocks.load.mockResolvedValue({ create, wasmBinary: new Uint8Array(), moduleUrl: 'https://naidan.invalid/core.mjs', helpers });
   return { create, helpers, callbacks: () => callbacks! };
 }
+
 function pixels() {
   return { pixels: new Uint8ClampedArray(256 * 256 * 4), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false };
 }

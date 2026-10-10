@@ -303,5 +303,6 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
   };
   return api;
 }
+
 export const TEST_ONLY = {
 };

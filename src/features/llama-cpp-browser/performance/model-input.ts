@@ -18,5 +18,6 @@ export function resolvePerformanceModelInput({ text, models, selected }: {
   if (result.length > 16) errors.push('Select at most 16 models.');
   return errors.length ? { selected, errors } : { selected: result, errors: [] };
 }
+
 export const TEST_ONLY = {
 };

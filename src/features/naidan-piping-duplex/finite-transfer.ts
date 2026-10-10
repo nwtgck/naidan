@@ -13,9 +13,11 @@ export class BoundedBody {
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
   private readonly maximum: number;
   private readonly signal: AbortSignal;
+
   constructor({ reader, maximum, signal }: { reader: ReadableStreamDefaultReader<Uint8Array>; maximum: number; signal: AbortSignal }) {
     this.reader = reader; this.maximum = maximum; this.signal = signal;
   }
+
   private async fill(): Promise<void> {
     this.signal.throwIfAborted();
     while (!this.done && this.offset === this.chunk.length) {
@@ -27,6 +29,7 @@ export class BoundedBody {
       this.received += item.value.length; this.chunk = item.value; this.offset = 0;
     }
   }
+
   async take({ size }: { size: number }): Promise<Uint8Array<ArrayBuffer>> {
     requireValue({ condition: Number.isSafeInteger(size) && size >= 0 && size <= this.maximum, message: 'Invalid finite read size' });
     const result = new Uint8Array(size); let offset = 0;
@@ -37,9 +40,11 @@ export class BoundedBody {
     }
     return result;
   }
+
   async end(): Promise<void> {
     await this.fill(); requireValue({ condition: this.done, message: 'Trailing bytes in finite response' });
   }
+
   async all(): Promise<Uint8Array<ArrayBuffer>> {
     const chunks: Uint8Array[] = []; let size = 0;
     for (;;) {
@@ -56,6 +61,7 @@ export class BoundedBody {
 
 export class PipingStatusError extends AttemptError {
   readonly status: number;
+
   constructor({ status }: { status: number }) {
     super({ kind: status === 400 || status === 408 || status === 429 || status >= 500 ? 'transient' : 'fatal' });
     this.status = status; this.message = `Piping HTTP status: ${status}`;
@@ -78,6 +84,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
   private readonly timeoutMs: number;
   private sending = false;
   private receiving = false;
+
   constructor({ baseUrl, policy, timeoutMs, headers }: {
     baseUrl: string; policy: 'https-only' | 'allow-loopback-http'; timeoutMs: number; headers?: { name: string; value: string }[];
   }) {
@@ -88,6 +95,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
     requireValue({ condition: url.protocol === 'https:' || (policy === 'allow-loopback-http' && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)), message: 'HTTPS relay required' });
     this.origin = url.origin; this.timeoutMs = timeoutMs; this.headers = restrictedFetchHeadersSchema.parse(headers ?? []);
   }
+
   private async request<T>({ route, method, bytes, maximum, signal, consume, timeoutMs }: {
     route: string; method: 'POST' | 'GET'; bytes?: Uint8Array; maximum: number; signal: AbortSignal; timeoutMs?: number | null;
     consume({ body }: { body: BoundedBody }): Promise<T>;
@@ -161,6 +169,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
     if (failure) throw failure.error;
     return result!.value;
   }
+
   async send({ route, bytes, signal, timeoutMs }: { route: string; bytes: Uint8Array; signal: AbortSignal; timeoutMs?: number | null }): Promise<void> {
     requireValue({ condition: !this.sending, message: 'Concurrent finite POST' });
     const snapshot = ownBytes({ bytes, maxBytes: BATCH_BYTES }); this.sending = true;
@@ -180,6 +189,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
       this.sending = false;
     }
   }
+
   async read<T>({ route, maximum, signal, consume, timeoutMs }: {
     route: string; maximum: number; signal: AbortSignal; timeoutMs?: number | null; consume({ body }: { body: BoundedBody }): Promise<T>;
   }): Promise<T> {
@@ -190,6 +200,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
       this.receiving = false;
     }
   }
+
   receive({ route, maximum, signal, timeoutMs }: { route: string; maximum: number; signal: AbortSignal; timeoutMs?: number | null }): Promise<Uint8Array> {
     return this.read({ route, maximum, signal, timeoutMs, consume: ({ body }) => body.all() });
   }

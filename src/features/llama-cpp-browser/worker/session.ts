@@ -94,9 +94,11 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
     sampleMemoryDiagnostics({ core: previous.core, checkpoint: 'runtime-released' });
   }
 }
+
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
   if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
 }
+
 type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
 type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
@@ -478,6 +480,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   current.census?.reset();
   return { core, census: current.census, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, chatMetadata: current.chatMetadata, preparation };
 }
+
 export const TEST_ONLY = {
   residentContext: () => resident?.context,
   residentModel: () => resident?.model,

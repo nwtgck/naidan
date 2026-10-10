@@ -22,6 +22,7 @@ export function listChatModels({ resources, signal }: { resources: ReadOnlyInfer
     },
   });
 }
+
 export function listImageModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listImageModels'>) {
   return computationSource<z.infer<typeof imageCatalogItemSchema>>({
     signal,
@@ -31,6 +32,7 @@ export function listImageModels({ resources, signal }: { resources: ReadOnlyInfe
     },
   });
 }
+
 export function generateChat({ resources, inputBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateChat'>) {
   return {
     events: computationSource<Uint8Array>({
@@ -99,6 +101,7 @@ export function generateChat({ resources, inputBudget, input, signal, notify }: 
     }),
   };
 }
+
 export function generateImage({ resources, inputBudget, deliveryBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateImage'>) {
   const { modelSelection, parameters, preview, imageInputs, ...rest } = input; rest satisfies Record<PropertyKey, never>;
   return createImageResponse({
@@ -148,5 +151,6 @@ export function generateImage({ resources, inputBudget, deliveryBudget, input, s
     },
   });
 }
+
 export const TEST_ONLY = {
 };

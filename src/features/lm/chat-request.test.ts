@@ -5,6 +5,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from '@/01-models/ids';
 
 const id = toMessageId({ raw: 'm' });
+
 function text({ value }: { value: string }) {
   return { type: 'text' as const, text: value, completeness: 'complete' as const };
 }

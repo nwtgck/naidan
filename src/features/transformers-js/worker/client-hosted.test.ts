@@ -20,6 +20,7 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
 
 class MockWorker extends EventTarget {
   static latest: MockWorker;
+
   constructor(url: URL, options: WorkerOptions) {
     super();
     mocks.workerConstructor(url, options);
@@ -28,9 +29,11 @@ class MockWorker extends EventTarget {
 
   terminate = mocks.terminate;
   readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+
   postMessage(message: unknown) {
     this.startup.acceptHostMessage({ message });
   }
+
   async publishReady() {
     this.startup.start(); await this.startup.ready;
   }

@@ -8,10 +8,12 @@ export type DownloadAccess = {
   flush(): void,
   close(): void,
 };
+
 export async function openSyncAccess({ handle }: { handle: FileSystemFileHandle }): Promise<DownloadAccess> {
   const file = handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<DownloadAccess> };
   if (!file.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
   return file.createSyncAccessHandle();
 }
+
 export const TEST_ONLY = {
 };

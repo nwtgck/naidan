@@ -4,10 +4,12 @@ import { check, NaidanRpcPublicError } from '@/features/naidan-rpc/primitives';
 export class NaidanRpcByteBudget {
   private retained = 0;
   private readonly capacity: number;
+
   constructor({ capacity = 256 * 1024 * 1024 }: { capacity?: number } = {}) {
     check({ condition: Number.isSafeInteger(capacity) && capacity > 0, code: 'INVALID_ARGUMENT' });
     this.capacity = capacity;
   }
+
   reserve({ bytes }: { bytes: number }): () => void {
     check({ condition: Number.isSafeInteger(bytes) && bytes >= 0, code: 'INVALID_ARGUMENT' });
     if (bytes > this.capacity - this.retained) throw new NaidanRpcPublicError({
@@ -21,6 +23,7 @@ export class NaidanRpcByteBudget {
       }
     };
   }
+
   owner(): RpcByteOwner {
     return new RpcByteOwner({ budget: this });
   }
@@ -35,18 +38,22 @@ export class RpcByteOwner {
   private readonly children = new Set<RpcByteOwner>();
   private parent: RpcByteOwner | undefined;
   private closed = false;
+
   constructor({ budget }: { budget: NaidanRpcByteBudget }) {
     this.budget = budget;
   }
+
   fork(): RpcByteOwner {
     check({ condition: !this.closed, code: 'CANCELLED' });
     const child = new RpcByteOwner({ budget: this.budget }); child.parent = this;
     this.children.add(child); return child;
   }
+
   charge({ bytes }: { bytes: number }): void {
     check({ condition: !this.closed, code: 'CANCELLED' });
     if (bytes !== 0) this.charges.add(this.budget.reserve({ bytes }));
   }
+
   allocate({ bytes }: { bytes: number }): Uint8Array<ArrayBuffer> {
     check({ condition: !this.closed, code: 'CANCELLED' });
     const release = this.budget.reserve({ bytes });
@@ -56,15 +63,18 @@ export class RpcByteOwner {
       release(); throw error;
     }
   }
+
   retain({ bytes }: { bytes: Uint8Array }): void {
     check({ condition: !this.closed && bytes.buffer instanceof ArrayBuffer, code: 'INVALID_ARGUMENT' });
     if (bytes.buffer instanceof ArrayBuffer && !this.buffers.has(bytes.buffer)) this.buffers.set(bytes.buffer, this.budget.reserve({ bytes: bytes.buffer.byteLength }));
   }
+
   release({ bytes }: { bytes: Uint8Array }): void {
     if (bytes.buffer instanceof ArrayBuffer) {
       this.buffers.get(bytes.buffer)?.(); this.buffers.delete(bytes.buffer);
     }
   }
+
   clear(): void {
     if (this.closed) return;
     this.closed = true;

@@ -79,6 +79,7 @@ const observedMessagesSchema = z.array(z.object({
     function: z.object({ name: z.string(), arguments: z.object({ city: z.string() }).strict() }).strict(),
   }).strict()).optional(),
 }).strict());
+
 function semanticMessages({ messages }: { messages: unknown }) {
   return observedMessagesSchema.parse(messages).map(message => {
     const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
@@ -86,6 +87,7 @@ function semanticMessages({ messages }: { messages: unknown }) {
     return { role, content, tool_calls, tool_call_id };
   });
 }
+
 const strictTools = [{
   type: 'function',
   function: {

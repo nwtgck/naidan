@@ -143,6 +143,7 @@ export function createTokenRenderer({ core, vocab, cacheMode }: {
     },
   };
 }
+
 export const TEST_ONLY = {
   maximumEntries,
   maximumCachedBytes,

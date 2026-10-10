@@ -45,14 +45,17 @@ export class ConnectionOpenPermits {
   private readonly maximumWaiting: number;
   private active = 0;
   private readonly waiting: { signal: AbortSignal; mode: ConnectionInitiation; grant(): void; cancel(): void }[] = [];
+
   constructor({ capacity, maximumWaiting }: { capacity: number; maximumWaiting: number }) {
     if (!Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(maximumWaiting) || maximumWaiting < 0)
       throw new RangeError('Invalid connection capacity');
     this.capacity = capacity; this.maximumWaiting = maximumWaiting;
   }
+
   get idle(): boolean {
     return this.active === 0 && this.waiting.length === 0;
   }
+
   acquire({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }): PermitAdmission {
     signal.throwIfAborted();
     if (this.active >= this.capacity && this.waiting.length >= this.maximumWaiting)
@@ -91,6 +94,7 @@ export class ConnectionOpenPermits {
       },
     };
   }
+
   private drain(): void {
     while (this.active < this.capacity && this.waiting.length) {
       const request = this.waiting.find(request => isExplicit({ mode: request.mode })) ?? this.waiting[0]!;
@@ -129,21 +133,27 @@ export class ConnectionMaintenance<Value> {
   }) {
     this.permits = permits; this.factory = factory; this.classify = classify; this.retryDelay = retryDelay; this.clock = clock; this.changed = changed;
   }
+
   get desiredConnection(): 'connected' | 'disconnected' {
     return this.desired;
   }
+
   get phase(): MaintenancePhase {
     return this.status;
   }
+
   get blocked(): Block | undefined {
     return this.blockState;
   }
+
   get value(): Value | undefined {
     return this.isConnected() ? this.slot?.lease?.value : undefined;
   }
+
   get token(): object {
     return this.slot?.generation === this.generation ? this.slot.binding : this.intentToken;
   }
+
   private isConnected(): boolean {
     const phase = this.status;
     switch (phase) {
@@ -152,6 +162,7 @@ export class ConnectionMaintenance<Value> {
     default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
     }
   }
+
   private retirementBlock(): Block | undefined {
     const block = this.blockState; if (!block) return undefined;
     switch (block.kind) {
@@ -160,21 +171,25 @@ export class ConnectionMaintenance<Value> {
     default: { const exhaustive: never = block.kind; throw new Error(String(exhaustive)); }
     }
   }
+
   private notify(): void {
     try {
       this.changed();
     } catch { /* Observation cannot own connection resources. */ }
   }
+
   private rejectRequest({ error }: { error: unknown }): void {
     if (this.request && !this.request.settled) {
       this.request.settled = true; this.request.result.reject(error);
     }
   }
+
   private failRetirement({ error }: { error: unknown }): void {
     if (this.retirementBlock()) return;
     this.blockState = Object.freeze({ kind: 'retirement', error }); this.status = 'blocked';
     this.rejectRequest({ error }); this.notify();
   }
+
   private clearTimer(): boolean {
     const timer = this.timer; this.timer = undefined;
     try {
@@ -183,6 +198,7 @@ export class ConnectionMaintenance<Value> {
       this.failRetirement({ error }); return false;
     }
   }
+
   /** Explicit desire. Returns this attempt's result; a retryable failure can
    * reject it while the runtime desire remains connected for future attempts. */
   connect({ mode }: { mode: ConnectionInitiation }): Promise<Value> {
@@ -207,6 +223,7 @@ export class ConnectionMaintenance<Value> {
     const request = { generation: this.generation, result: deferred<Value>(), settled: false }; this.request = request;
     this.notify(); this.start(); return request.result.promise;
   }
+
   disconnect(): Promise<void> {
     this.desired = 'disconnected'; this.generation++; this.intentToken = {};
     const slot = this.slot, error = new Error('Connection desire cancelled');
@@ -215,6 +232,7 @@ export class ConnectionMaintenance<Value> {
     slot?.stop.abort(error); if (slot) this.beginRetirement({ slot }); this.notify();
     return slot?.retired.promise ?? (this.retirementBlock() ? Promise.reject(this.blockState?.error) : Promise.resolve());
   }
+
   /** Authority invalidation retains desire, but only explicit revalidation may
    * clear an ordinary terminal block. Passive wakeups never clear blocks. */
   block({ error }: { error: unknown }): Promise<void> {
@@ -224,18 +242,22 @@ export class ConnectionMaintenance<Value> {
     const slot = this.slot; slot?.stop.abort(error); if (slot) this.beginRetirement({ slot }); this.notify();
     return slot?.retired.promise ?? (this.retirementBlock() ? Promise.reject(this.blockState?.error) : Promise.resolve());
   }
+
   wake(): void {
     this.start();
   }
+
   private current({ slot }: { slot: Slot<Value> }): boolean {
     return this.slot === slot && slot.generation === this.generation && this.desired === 'connected' && !slot.stop.signal.aborted && !this.blockState;
   }
+
   private start(): void {
     if (this.desired !== 'connected' || this.slot || this.timer || this.blockState) return;
     const slot: Slot<Value> = { mode: this.nextMode, admission: undefined, generation: this.generation, binding: {}, stop: new AbortController(), retired: deferred<void>(), lease: undefined, retirement: undefined };
     this.nextMode = 'background'; this.slot = slot; this.status = 'queued'; this.notify();
     void this.run({ slot });
   }
+
   private decision({ error, source }: { error: unknown; source: 'factory' | 'connection' }): MaintenanceFailure {
     try {
       const decision = this.classify({ error, source });
@@ -247,6 +269,7 @@ export class ConnectionMaintenance<Value> {
       this.failRetirement({ error: failure }); return 'retirement-failed';
     }
   }
+
   private async run({ slot }: { slot: Slot<Value> }): Promise<void> {
     let release: (() => void) | undefined;
     let outcome: { error: unknown; decision: MaintenanceFailure } | undefined;
@@ -348,6 +371,7 @@ export class ConnectionMaintenance<Value> {
     }
     this.notify();
   }
+
   private beginRetirement({ slot, replacement = false }: { slot: Slot<Value>; replacement?: boolean }): void {
     if (!slot.lease || slot.retirement) return;
     // Reserve the join before shutdown can synchronously reenter the owner.
@@ -358,6 +382,7 @@ export class ConnectionMaintenance<Value> {
       retiring.reject(error);
     }
   }
+
   private async waitForUpdate({ slot, lease }: { slot: Slot<Value>; lease: ConnectionLease<Value> }): Promise<
     | { kind: 'ended'; error: unknown }
     | { kind: 'replacement'; candidate: ConnectionReplacement<Value>; stop(): void }
@@ -434,6 +459,7 @@ export class ConnectionMaintenance<Value> {
     if (failure) throw failure.error;
     return result;
   }
+
   private contactRetirementFailed({ error }: { error: unknown }): boolean {
     const decision = this.decision({ error, source: 'connection' });
     switch (decision) {
@@ -442,6 +468,7 @@ export class ConnectionMaintenance<Value> {
     default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
     }
   }
+
   private async disposeCandidate({ candidate }: { candidate: ConnectionReplacement<Value> }): Promise<void> {
     try {
       await candidate.dispose();
@@ -450,6 +477,7 @@ export class ConnectionMaintenance<Value> {
       this.failRetirement({ error }); throw error;
     }
   }
+
   private scheduleRetry(): void {
     if (this.desired !== 'connected' || this.slot || this.blockState || this.timer) return;
     try {
@@ -462,6 +490,7 @@ export class ConnectionMaintenance<Value> {
       if (!this.blockState) this.blockState = Object.freeze({ kind: 'terminal', error }); this.status = 'blocked';
     }
   }
+
   private armRetry({ deadline, generation }: { deadline: number; generation: number }): void {
     const identity = {}, remaining = deadline - this.clock.now();
     if (!Number.isFinite(remaining)) throw new Error('Invalid connection retry clock');

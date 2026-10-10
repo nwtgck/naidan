@@ -24,12 +24,14 @@ function peers({ aExports, bExports, capacity, maxCallTimeoutMs }: {
     stop.abort(); transport.close();
   }); return { a, b, transport, stop };
 }
+
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const result: T[] = [], reader = stream.getReader();
   for (;;) {
     const value = await reader.read(); if (value.done) return result; result.push(value.value);
   }
 }
+
 function source<T>({ items }: { items: T[] }): ReadableStream<T> {
   let index = 0;
   return new ReadableStream<T>({
@@ -38,6 +40,7 @@ function source<T>({ items }: { items: T[] }): ReadableStream<T> {
     },
   }, { highWaterMark: 0 });
 }
+
 const arithmetic = contract({
   name: 'example.math',
   methods: {

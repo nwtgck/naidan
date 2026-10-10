@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { memoryDiagnosticsHistories } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { lazyStrings } from '@/strings';
+
 function formatCapacity({ bytes }: { bytes: number }): string {
   return `${(bytes / 1048576).toFixed(2)} MiB (${bytes.toLocaleString()} B)`;
 }
+
 function formatTimestamp({ timestamp }: { timestamp: number }): string {
   return new Date(timestamp).toLocaleTimeString();
 }

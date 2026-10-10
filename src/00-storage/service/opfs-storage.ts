@@ -74,6 +74,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
     return ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
   }
+
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     if (registry === undefined) {
       const directory = await this.getExperimentalDir({ create: false });

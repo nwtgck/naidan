@@ -6,6 +6,7 @@ import type { HostModelDirectoriesView, HostModelDirectoryChoice } from '@/compo
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 
 const wrappers: VueWrapper[] = [];
+
 function render({ supported, entries, destination }: { supported: boolean, entries: HostModelDirectoryChoice[], destination: string }) {
   const selected = ref(destination);
   const view: HostModelDirectoriesView = {

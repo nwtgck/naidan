@@ -22,9 +22,11 @@ const queue = getDownloadQueue();
 const downloadDestination = useModelDownloadDestination({ blocked: () => props.disabled, changed: () => emit('changed') });
 const { destination, unavailable: destinationUnavailable, revision: destinationRevision, failure: destinationFailure } = downloadDestination;
 const activeCount = computed(() => queue.jobs.value.filter(job => job.source === 'suggestion' && jobIsBusy({ job }) && entries.value.some(entry => job.key.startsWith(`suggestion:${entry.id}:`))).length);
+
 function toggle(): void {
   open.value = !open.value;
 }
+
 function visible({ suggestion }: { suggestion: ModelSuggestion }): boolean {
   // Memory chips are editorial text-model hints. Neither multimodal options
   // nor quantization choices should hide the row underneath the pointer.
@@ -32,6 +34,7 @@ function visible({ suggestion }: { suggestion: ModelSuggestion }): boolean {
   // Keep running/paused rows visible so filtering never hides cancellation.
   return props.memoryFilter === 'hide' || matchesMemoryHint({ quantization: preferredQuantizationHint({ suggestion }), memory: memory.value, multimodal: 'off' }) || queue.jobs.value.some(job => job.key.startsWith(`suggestion:${suggestion.id}:`) && (jobIsBusy({ job }) || job.status === 'paused'));
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

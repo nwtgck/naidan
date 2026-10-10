@@ -9,7 +9,9 @@ import { naidanRpcStorage } from '@/00-storage/service/naidan-rpc';
 import { storageService } from '@/00-storage/service';
 
 let enabled = false;
+
 let readSettings: () => Settings | undefined = () => undefined;
+
 let loaded: Promise<NaidanPeerManager> | undefined;
 const listeners = new Set<() => void>();
 let control: ReturnType<typeof createRpcStopControl> | undefined;
@@ -17,9 +19,11 @@ let channel: BroadcastChannel | undefined;
 let automaticRegistration: object | undefined;
 let automaticEpoch = 0;
 let automaticScheduled: ScheduledIdleTask | undefined;
+
 function cancelAutomaticCheck(): void {
   automaticEpoch++; automaticScheduled?.cancel(); automaticScheduled = undefined;
 }
+
 function scheduleAutomaticCheck(): void {
   cancelAutomaticCheck();
   if (!automaticRegistration || !enabled) return;
@@ -45,6 +49,7 @@ function scheduleAutomaticCheck(): void {
     },
   });
 }
+
 /** Install only after app-ready. Startup continues without awaiting peers. */
 export function startRpcAutomaticConnections(): () => void {
   const registration = {}; automaticRegistration = registration;
@@ -61,6 +66,7 @@ export function startRpcAutomaticConnections(): () => void {
     }).catch(notifyRpcState);
   };
 }
+
 function revalidate(): void {
   if (!enabled) return;
   if (loaded) void loaded.then(async manager => {
@@ -72,6 +78,7 @@ function revalidate(): void {
   }).catch(notifyRpcState);
   else if (automaticRegistration) scheduleAutomaticCheck();
 }
+
 function controls(): ReturnType<typeof createRpcStopControl> {
   if (control) return control;
   control = createRpcStopControl({
@@ -105,9 +112,11 @@ function controls(): ReturnType<typeof createRpcStopControl> {
   });
   return control;
 }
+
 export function rpcStopStatus(): RpcStopStatus {
   return control?.status() ?? 'idle';
 }
+
 /** Explicit OFF only. Passive settings hydration must never send a stop probe. */
 export function requestRpcStop(): void {
   enabled = false; cancelAutomaticCheck(); controls().requestStop(); notifyRpcState();
@@ -115,9 +124,11 @@ export function requestRpcStop(): void {
   // Closing it also fences that pending acquisition and any pending pairing.
   if (loaded) void loaded.then(manager => manager.setEnabled({ enabled: false })).catch(notifyRpcState);
 }
+
 export function subscribeRpcState({ listener }: { listener(): void }): () => void {
   listeners.add(listener); return () => listeners.delete(listener);
 }
+
 export function notifyRpcState(): void {
   for (const listener of listeners) {
     try {
@@ -125,6 +136,7 @@ export function notifyRpcState(): void {
     } catch { /* Observation only. */ }
   }
 }
+
 /** Settings hydration cannot connect before app-ready. Enabling after ready
  * retries startup readiness; the manager owns the once-per-registry decision. */
 export function configureRpcFeature({ status, settings }: { status: 'enabled' | 'disabled', settings(): Settings }): Promise<void> {
@@ -138,6 +150,7 @@ export function configureRpcFeature({ status, settings }: { status: 'enabled' | 
   const desired = enabled;
   return loaded.then(manager => manager.setEnabled({ enabled: desired }));
 }
+
 export async function getRpcManager(): Promise<NaidanPeerManager> {
   if (!enabled) throw new Error('Enable Naidan RPC in Developer settings first');
   if (!loaded) {
@@ -163,5 +176,6 @@ export async function getRpcManager(): Promise<NaidanPeerManager> {
   if (!enabled) throw new Error('Naidan RPC is disabled');
   return manager;
 }
+
 export const TEST_ONLY = {
 };

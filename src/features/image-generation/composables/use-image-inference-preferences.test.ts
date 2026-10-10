@@ -29,10 +29,12 @@ function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPr
     },
   };
 }
+
 function saved(): BrowserImageGenerationSettings {
   const one = preference({ name: 'one' });
   return { width: 768, inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId: one.registrationId, peerPublicKey: one.peerPublicKey } }, remoteModelEditors: [one] };
 }
+
 function harness({ preferences }: { preferences: BrowserImageGenerationSettings }) {
   const scope = effectScope(); scopes.push(scope);
   const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { locale: 'en', browserImageGeneration: preferences } });
@@ -71,6 +73,7 @@ function harness({ preferences }: { preferences: BrowserImageGenerationSettings 
     },
   };
 }
+
 async function settle(): Promise<void> {
   await nextTick(); await Promise.resolve(); await nextTick();
 }

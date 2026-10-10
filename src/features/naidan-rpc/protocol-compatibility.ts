@@ -5,6 +5,7 @@ import { NaidanRpcProtocolError } from './primitives';
 export function createRpcProtocolAdvertisement(): Uint8Array<ArrayBuffer> {
   return encodeProtocolHeader();
 }
+
 /** Absence is compatible; a present advertisement selects exactly this RPC profile.
  * Call only after transport authentication, never on discovery observations. */
 export function validateRpcProtocolAdvertisement({ bytes }: { bytes: Uint8Array }): void {

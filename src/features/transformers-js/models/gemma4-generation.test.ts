@@ -12,6 +12,7 @@ function setup({ toolCalls }: { toolCalls: 'enabled' | 'disabled' }) {
   });
   return { decoder, events };
 }
+
 function textBodies({ events }: { events: InferenceGenerationEvent[] }) {
   return events.filter(e => e.type === 'part_start').map(start => ({
     kind: start.kind,
@@ -19,11 +20,13 @@ function textBodies({ events }: { events: InferenceGenerationEvent[] }) {
     completeness: events.filter(e => e.type === 'part_end').find(e => e.index === start.index)?.completeness,
   }));
 }
+
 function thought({ decoder, text }: { decoder: ReturnType<typeof createGemma4Generation>, text: string }) {
   decoder.control({ token: '<|channel>' });
   decoder.text({ text: 'thought\n' }); decoder.text({ text });
   decoder.control({ token: '<channel|>' });
 }
+
 function call({ decoder, body }: { decoder: ReturnType<typeof createGemma4Generation>, body: string }) {
   decoder.control({ token: '<|tool_call>' }); decoder.text({ text: body }); decoder.control({ token: '<tool_call|>' });
 }

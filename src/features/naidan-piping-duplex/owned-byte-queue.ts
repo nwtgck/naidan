@@ -9,13 +9,16 @@ export class OwnedByteQueue {
   private tail = PAGE_BYTES;
   private length = 0;
   private readonly capacity: number;
+
   constructor({ capacity }: { capacity: number }) {
     this.capacity = capacity;
     requireValue({ condition: Number.isSafeInteger(capacity) && capacity > 0, message: 'Invalid byte queue capacity' });
   }
+
   get byteLength(): number {
     return this.length;
   }
+
   append({ bytes }: { bytes: Uint8Array }): void {
     requireValue({ condition: bytes instanceof Uint8Array && bytes.buffer instanceof ArrayBuffer && bytes.length <= this.capacity - this.length, message: 'Byte queue capacity exceeded' });
     let offset = 0;
@@ -29,6 +32,7 @@ export class OwnedByteQueue {
     }
     this.length += bytes.length;
   }
+
   take({ maximum }: { maximum: number }): Uint8Array<ArrayBuffer> {
     requireValue({ condition: Number.isSafeInteger(maximum) && maximum > 0, message: 'Invalid read size' });
     const bytes = new Uint8Array(Math.min(maximum, this.length)); let offset = 0;
@@ -47,6 +51,7 @@ export class OwnedByteQueue {
     }
     return bytes;
   }
+
   clear(): number {
     const released = this.length;
     this.pages = []; this.head = 0; this.start = 0; this.tail = PAGE_BYTES; this.length = 0;

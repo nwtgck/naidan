@@ -17,6 +17,7 @@ const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
 let disposed = false;
 type ImportInput = { files: File[], directories: ModelDirectoryInput[] };
+
 async function importFiles({ collect }: { collect: () => ImportInput | Promise<ImportInput> }): Promise<void> {
   // Returning focus from a native drag or file picker starts a read-only list
   // refresh. That refresh must not disable imports or silently discard the input.
@@ -52,6 +53,7 @@ async function importFiles({ collect }: { collect: () => ImportInput | Promise<I
     active.value = undefined; emit('busy', false);
   }
 }
+
 async function importFile({ event }: { event: Event }): Promise<void> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -59,6 +61,7 @@ async function importFile({ event }: { event: Event }): Promise<void> {
   if (!files.length) return;
   await importFiles({ collect: () => ({ files, directories: [] }) });
 }
+
 async function importDirectory({ event }: { event: Event }): Promise<void> {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -66,13 +69,16 @@ async function importDirectory({ event }: { event: Event }): Promise<void> {
   if (!files.length) return;
   await importFiles({ collect: () => ({ files: [], directories: [directoryFromFiles({ files })] }) });
 }
+
 function dragEnter({ event }: { event: DragEvent }): void {
   if (props.disabled || active.value !== undefined || !event.dataTransfer?.types.includes('Files')) return;
   dragDepth.value++;
 }
+
 function dragOver({ event }: { event: DragEvent }): void {
   if (event.dataTransfer) event.dataTransfer.dropEffect = props.disabled || active.value !== undefined ? 'none' : 'copy';
 }
+
 async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   dragDepth.value = 0;
   const transfer = event.dataTransfer;
@@ -83,6 +89,7 @@ async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
 function cancel(): void {
   active.value?.abort();
 }
+
 onUnmounted(() => {
   disposed = true; active.value?.abort();
 });

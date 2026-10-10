@@ -8,6 +8,7 @@ import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageHistoryImage from './ImageHistoryImage.vue';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 const props = defineProps<{ tile: ImageGenerationTile, view: ImageGenerationWorkspaceView, prompt?: string }>();
+
 function tagLabel({ tag }: { tag: ImageGenerationTagReference }): string | undefined {
   switch (tag.type) {
   case 'system': return lazyStrings.imageGeneration__favorite();
@@ -15,6 +16,7 @@ function tagLabel({ tag }: { tag: ImageGenerationTagReference }): string | undef
   default: { const exhaustive: never = tag; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

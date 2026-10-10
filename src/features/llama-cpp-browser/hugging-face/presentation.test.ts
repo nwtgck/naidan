@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { preferredProjector, quantizationChoices, quantizationName } from './presentation';
 import { variantLabel } from './model-variants';
+
 function model({ path }: { path: string }) {
   return { label: path, files: [{ path, size: 128 }], size: 128 };
 }

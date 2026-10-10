@@ -6,9 +6,11 @@ import type { AudioReferenceEntry } from '@/features/audio-generation/composable
 const props = defineProps<{ entry: AudioReferenceEntry, selected: boolean, disabled: boolean }>();
 const emit = defineEmits<{ select: [checked: boolean], remove: [] }>();
 const player = ref<HTMLAudioElement>();
+
 function select({ event }: { event: Event }): void {
   if (!props.disabled && event.target instanceof HTMLInputElement) emit('select', event.target.checked);
 }
+
 onBeforeUnmount(() => {
   if (!player.value) return;
   player.value.pause(); player.value.removeAttribute('src'); player.value.load();

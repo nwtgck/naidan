@@ -4,6 +4,7 @@ import { AUDIO_METADATA_SCAN_BYTES, readAudioGgufMetadata, type GgufMetadataFile
 import { concatenateGguf, ggufFixture, ggufInteger, ggufString, textMetadata, boolMetadata } from './test-utils/gguf';
 
 const architecture = textMetadata({ key: 'general.architecture', value: 'qwen3tts' });
+
 async function read({ file, signal, keys = ['general.architecture'] }: { file: GgufMetadataFile, signal?: AbortSignal, keys?: string[] }) {
   return readAudioGgufMetadata({ file, keys, signal });
 }

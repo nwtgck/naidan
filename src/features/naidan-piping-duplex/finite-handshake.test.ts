@@ -9,6 +9,7 @@ import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime'
 import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
+
 async function fixture() {
   const relay = new FiniteMemoryRelay(), controller = new AbortController();
   vi.mocked(fetch).mockImplementation(relay.fetch);

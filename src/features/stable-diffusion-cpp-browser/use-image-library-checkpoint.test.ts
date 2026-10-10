@@ -14,6 +14,7 @@ afterEach(() => {
 });
 
 const recipe = imageModelRecipes.find(recipe => recipe.id === 'sdxl-base-1.0')!;
+
 // Synthetic headers exercise composition and original-file ownership, not real
 // trained-weight compatibility or browser inference quality.
 function repositories(): LocalImageRepository[] {
@@ -22,6 +23,7 @@ function repositories(): LocalImageRepository[] {
     return { id: `huggingface.co/${entry.repository}/resolve/main`, name: entry.repository, files: [{ path: entry.path, file }] };
   });
 }
+
 function harness({ initial }: { initial: LocalImageRepository[] }) {
   let entries = initial;
   const scope = effectScope(); scopes.push(scope);

@@ -56,6 +56,7 @@ export function observeWorkerMemory({ worker }: { worker: Pick<Worker, 'postMess
     histories.value = histories.value.map(history => history.workerId === workerId ? { ...history, status: 'worker-ended' } : history);
   };
 }
+
 export const TEST_ONLY = {
   reset() {
     histories.value = []; nextWorkerId = 0;

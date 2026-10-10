@@ -6,6 +6,7 @@ import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory
 import { keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
+
 async function pair({ relay = new FiniteMemoryRelay() }: { relay?: FiniteMemoryRelay } = {}) {
   const keys = await keyPair(); vi.mocked(fetch).mockImplementation(relay.fetch);
   const signal = new AbortController(), options = { baseUrl: 'https://relay.invalid', policy: 'https-only' as const, timeoutMs: 3000 };

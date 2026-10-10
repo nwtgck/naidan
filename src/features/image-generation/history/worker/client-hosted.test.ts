@@ -10,6 +10,7 @@ beforeEach(() => {
     constructor() {
       super(); mocks.workers.push(this);
     }
+
     terminate() {
       mocks.terminate();
     }

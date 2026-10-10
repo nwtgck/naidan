@@ -184,6 +184,7 @@ function emitSyntheticGemmaProtocol({ context, text }: { context: Parameters<Pro
   options.streamer.end();
   return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt)]), [1, input.length + ids.length]), past_key_values: null };
 }
+
 const generationEvidence = parseProviderReplayTextEvidence({ value: generationJson });
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
 const budgetContinuitySource = z.object({

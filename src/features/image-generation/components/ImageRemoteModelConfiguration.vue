@@ -7,10 +7,12 @@ import type { ImageInferenceLocationView } from '@/features/image-generation/com
 
 const props = defineProps<{ inferenceLocation: ImageInferenceLocationView, disabled: boolean, active: boolean }>();
 const lora = ref('');
+
 function addLora(): void {
   if (props.disabled) return;
   props.inferenceLocation.addLora({ id: lora.value }); lora.value = '';
 }
+
 function changeLora({ index, event, field }: { index: number, event: Event, field: 'strength' | 'enabled' }): void {
   if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
   const item = props.inferenceLocation.editor.value.loras[index];
@@ -23,6 +25,7 @@ function changeLora({ index, event, field }: { index: number, event: Event, fiel
   default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

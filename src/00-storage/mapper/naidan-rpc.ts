@@ -23,6 +23,7 @@ export function rpcRegistrationToDto({ registration }: { registration: NaidanRpc
     revision,
   });
 }
+
 export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpcRegistration {
   const { id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = ExperimentalNaidanRpcRegistrationSchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
@@ -38,6 +39,7 @@ export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpc
     revision,
   };
 }
+
 /** These are requirements for using identities and revision arithmetic, not
  * additional promises made by the serialized TypeScript shape. Method names
  * remain untrusted strings until the active contract checks local authority. */
@@ -48,5 +50,6 @@ function validateRegistrationIdentity({ id, peerPublicKey, localPublicKey, revis
   if (![peerPublicKey, localPublicKey].every(key => /^[A-Za-z0-9_-]{43}$/.test(key))) throw new Error('Invalid RPC public key');
   if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid RPC registration revision');
 }
+
 export const TEST_ONLY = {
 };

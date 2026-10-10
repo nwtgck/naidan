@@ -38,5 +38,6 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

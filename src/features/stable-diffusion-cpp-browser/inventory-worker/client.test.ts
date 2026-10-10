@@ -12,7 +12,9 @@ vi.mock('@/utils/worker-transport', async original => ({
 beforeEach(() => {
   vi.resetAllMocks(); mocks.workers.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
-    terminate = mocks.terminate; constructor() {
+    terminate = mocks.terminate;
+
+    constructor() {
       super(); mocks.workers.push(this);
     }
   });

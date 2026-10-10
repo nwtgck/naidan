@@ -31,6 +31,7 @@ function createYieldPoint(): () => Promise<void> {
     yieldedAt = performance.now();
   };
 }
+
 async function hashFile({ file, signal, report }: { file: File, signal: AbortSignal, report: ({ bytes }: { bytes: number }) => void }): Promise<string> {
   const hash = createSha256Hasher(), yieldIfDue = createYieldPoint();
   for (let offset = 0; offset < file.size; offset += chunkBytes) {
@@ -42,13 +43,16 @@ async function hashFile({ file, signal, report }: { file: File, signal: AbortSig
   }
   signal.throwIfAborted(); return hash.digestHex();
 }
+
 function sourceReceipt({ file }: { file: ImageFileIdentity }) {
   return { kind: 'hugging-face' as const, repository: file.repository, revision: file.revision, path: file.path, sha256: file.sha256 };
 }
+
 async function assertWeights({ file, signal }: { file: ModelMetadataFile, signal: AbortSignal }): Promise<void> {
   const inspection = await inspectWeightFile({ file, signal });
   if (inspection.status !== 'weights' || inspection.value.unsupported) throw new Error('Downloaded file is not a supported model weight');
 }
+
 function sameSource({ a, b }: { a: ImageFileIdentity, b: ImageFileIdentity }): boolean {
   return a.repository === b.repository && a.revision === b.revision && a.path === b.path && a.size === b.size && a.sha256 === b.sha256;
 }
@@ -225,6 +229,7 @@ export async function saveImageCatalogFile({ file, signal, report, fetch, destin
       }
     }));
 }
+
 export const TEST_ONLY = {
   hashFile,
   pendingSchema,

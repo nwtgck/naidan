@@ -23,12 +23,15 @@ async function file({ path, content }: { path: string; content: Uint8Array }): P
     access.close();
   }
 }
+
 async function textFile({ path }: { path: string }): Promise<void> {
   await file({ path, content: new TextEncoder().encode('{}') });
 }
+
 async function onnxModel({ path }: { path: string }): Promise<void> {
   for (const name of ['model.onnx', '.model.onnx.complete', 'config.json', '.config.json.complete']) await textFile({ path: `${path}/${name}` });
 }
+
 async function folderAt({ path }: { path: string }): Promise<FileSystemDirectoryHandle> {
   let folder = root;
   for (const part of path.split('/')) folder = await folder.getDirectoryHandle(part);

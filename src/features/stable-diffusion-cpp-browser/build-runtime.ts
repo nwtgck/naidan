@@ -191,5 +191,6 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
     },
   };
 }
+
 export const TEST_ONLY = {
 };

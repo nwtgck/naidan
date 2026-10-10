@@ -25,6 +25,7 @@ afterEach(() => {
 function screen() {
   view = mount(AudioReferenceInput, { props: { disabled: false, invalid: false } }); return view;
 }
+
 async function add({ wrapper, files }: { wrapper: VueWrapper, files: File[] }) {
   const input = wrapper.get<HTMLInputElement>('[data-testid="audio-reference"]'); Object.defineProperty(input.element, 'files', { configurable: true, value: files }); await input.trigger('change');
 }
@@ -90,9 +91,13 @@ it('keeps microphone Stop and Discard usable when the shared runtime becomes bus
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } }); vi.stubGlobal('OfflineAudioContext', class {});
   vi.stubGlobal('MediaRecorder', class extends EventTarget {
     static isTypeSupported = () => false;
-    state: RecordingState = 'inactive'; start() {
+    state: RecordingState = 'inactive';
+
+    start() {
       this.state = 'recording';
-    } stop() {
+    }
+
+    stop() {
       this.state = 'inactive';
     }
   });

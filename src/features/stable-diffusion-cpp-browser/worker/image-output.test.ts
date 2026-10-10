@@ -37,9 +37,11 @@ it.each([0, 256, 1024])('scales only the delivered preview surface (maxEdge=%i),
     constructor(width: number, height: number) {
       sizes.push([width, height]);
     }
+
     getContext() {
       return { putImageData: put, drawImage: draw };
     }
+
     async convertToBlob() {
       return new Blob(['image'], { type: 'image/png' });
     }

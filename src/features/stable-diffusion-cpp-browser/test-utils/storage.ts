@@ -4,16 +4,21 @@ export class MemoryFile {
   readonly kind = 'file';
   name: string; data = new Uint8Array(0); modified = ++stamp;
   failWrite = false;
+
   constructor(name: string) {
     this.name = name;
   }
+
   async getFile(): Promise<File> {
     return new File([this.data], this.name, { lastModified: this.modified });
   }
+
   async isSameEntry(other: unknown): Promise<boolean> {
     return other === this;
   }
+
   private opened = false;
+
   async createSyncAccessHandle() {
     if (this.opened) throw new DOMException('Locked', 'NoModificationAllowedError');
     this.opened = true;
@@ -44,6 +49,7 @@ export class MemoryFile {
       },
     };
   }
+
   async createWritable(options?: { keepExistingData?: boolean }) {
     let data = options?.keepExistingData ? this.data.slice() : new Uint8Array(0);
     let position = 0, closed = false;
@@ -77,15 +83,19 @@ export class MemoryFile {
 export class MemoryDirectory {
   readonly kind = 'directory';
   name: string; children = new Map<string, MemoryFile | MemoryDirectory>();
+
   constructor(name: string) {
     this.name = name;
   }
+
   async queryPermission(): Promise<PermissionState> {
     return 'granted';
   }
+
   async requestPermission(): Promise<PermissionState> {
     return 'granted';
   }
+
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MemoryDirectory> {
     let entry = this.children.get(name);
     if (!entry && options?.create) {
@@ -98,6 +108,7 @@ export class MemoryDirectory {
     default: { const exhaustive: never = entry; throw new Error(String(exhaustive)); }
     }
   }
+
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MemoryFile> {
     let entry = this.children.get(name);
     if (!entry && options?.create) {
@@ -110,9 +121,11 @@ export class MemoryDirectory {
     default: { const exhaustive: never = entry; throw new Error(String(exhaustive)); }
     }
   }
+
   async *entries(): AsyncGenerator<[string, MemoryFile | MemoryDirectory]> {
     yield* this.children.entries();
   }
+
   async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
     if (options?.recursive) throw new Error('Rollback must never recursively delete a repository');
     const entry = this.children.get(name);
@@ -120,6 +133,7 @@ export class MemoryDirectory {
     if (entry.kind === 'directory' && entry.children.size) throw new DOMException(name, 'InvalidModificationError');
     this.children.delete(name);
   }
+
   async isSameEntry(other: unknown): Promise<boolean> {
     return other === this;
   }

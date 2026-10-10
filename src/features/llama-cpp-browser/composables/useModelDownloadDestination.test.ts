@@ -16,6 +16,7 @@ vi.mock('@/composables/useHostModelDirectories', () => ({
   }),
 }));
 const wrappers: VueWrapper[] = [];
+
 function create() {
   let destination: ReturnType<typeof useModelDownloadDestination> | undefined;
   const changed = vi.fn();

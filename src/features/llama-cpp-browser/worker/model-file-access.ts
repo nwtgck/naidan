@@ -11,6 +11,7 @@ declare const FileReaderSync: { new(): {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Standard Worker FileReaderSync API.
   readAsArrayBuffer(blob: Blob): ArrayBuffer,
 } };
+
 /** Native host files have no OPFS sync handle. Read bounded slices directly
  * from their File snapshot in this Worker; never stage model bytes in OPFS. */
 export async function openModelFileAccess({ entry }: { entry: ModelFile }): Promise<ModelFileAccess> {
@@ -45,5 +46,6 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
   default: { const exhaustive: never = entry.storageKind; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

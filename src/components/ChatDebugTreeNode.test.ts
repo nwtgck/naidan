@@ -9,10 +9,12 @@ const { getFile } = vi.hoisted(() => ({ getFile: vi.fn() }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getFile } }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
 const wrappers: ReturnType<typeof mount>[] = [];
+
 function render({ node }: { node: MessageNode }) {
   const wrapper = mount(ChatDebugTreeNode, { props: { node, activeIds: new Set([node.id]), highlight: false, mode: 'active' } });
   wrappers.push(wrapper); return wrapper;
 }
+
 function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
   const common = { id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }), mimeType: 'image/png', originalName: 'image.png', size: 1, uploadedAt: 0 };
   return {

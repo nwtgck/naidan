@@ -60,6 +60,7 @@ export class FramedDuplex {
   private retirement: Promise<void> | undefined;
   private readonly reads = new Set<Promise<Frame | undefined>>();
   private readonly onRetirementFailure: (({ error }: { error: unknown }) => void) | undefined;
+
   constructor({ duplex, onRetirementFailure, onProtocolFailure, memory }: { memory?: RpcByteOwner; duplex: NaidanRpcDuplex; onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void; onRetirementFailure?: ({ error }: { error: unknown }) => void }) {
     this.memory = memory?.fork() ?? new NaidanRpcByteBudget().owner();
     this.onRetirementFailure = onRetirementFailure; this.onProtocolFailure = onProtocolFailure;
@@ -80,6 +81,7 @@ export class FramedDuplex {
     this.queue.push({ bytes, memory: initial, offset: 0, settled }); this.retainedBytes = bytes.buffer.byteLength;
     this.kick();
   }
+
   send({ frame }: { frame: Frame }): Promise<void> {
     if (this.retirement || this.released || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
     check({ condition: !this.closing, code: 'RESOURCE_EXHAUSTED' });
@@ -114,6 +116,7 @@ export class FramedDuplex {
     const work = deferred<void>(); this.sendWork = work.promise;
     void this.pump().then(work.resolve, work.reject);
   }
+
   private async pump(): Promise<void> {
     if (this.sending) return; this.sending = true;
     try {
@@ -150,6 +153,7 @@ export class FramedDuplex {
       this.sending = false;
     }
   }
+
   private readyPrefix(): { entries: Pending[]; bytes: Uint8Array; scratchBytes: number; memory: RpcByteOwner } {
     const memory = this.memory.fork();
     const entries: Pending[] = []; let length = 0;
@@ -168,6 +172,7 @@ export class FramedDuplex {
     }
     return { entries, bytes, scratchBytes: bytes.buffer.byteLength, memory };
   }
+
   finish(): Promise<void> {
     if (this.stopped || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
     if (!this.closing) {
@@ -175,6 +180,7 @@ export class FramedDuplex {
     }
     return this.drained.promise;
   }
+
   private rejectQueue({ error }: { error: unknown }): void {
     for (const entry of this.queue.splice(0)) {
       entry.settled.reject(error);
@@ -184,15 +190,18 @@ export class FramedDuplex {
     }
     this.drained.reject(error);
   }
+
   stop({ error }: { error: unknown }): Promise<void> {
     if (this.retirement) return this.retirement;
     this.stopped = true; this.failure ??= { error }; this.rejectQueue({ error: this.failure.error });
     return this.retireOwned({ mode: 'abort', error: this.failure.error });
   }
+
   /** Graceful retirement joins existing I/O without resetting a completed stream. */
   retire(): Promise<void> {
     return this.retireOwned({ mode: 'graceful', error: undefined });
   }
+
   private retireOwned({ mode, error }: { mode: 'abort' | 'graceful'; error: unknown }): Promise<void> {
     if (this.retirement) return this.retirement;
     const retired = deferred<void>(); this.retirement = retired.promise;
@@ -218,12 +227,14 @@ export class FramedDuplex {
     })().then(retired.resolve, retired.reject);
     return retired.promise;
   }
+
   release(): void {
     if (this.released) return;
     releaseLocks({ reader: this.reader, writer: this.writer });
     this.released = true; this.chunk = new Uint8Array();
     if (!this.retirement) this.memory.clear();
   }
+
   private async bytes({ length, allowEnd }: { length: number; allowEnd: boolean }): Promise<Uint8Array | undefined> {
     const bytes = new ByteAssembly({ limit: length, memory: this.frameMemory }); let written = 0;
     while (written < length) {
@@ -248,6 +259,7 @@ export class FramedDuplex {
     }
     return bytes.finish();
   }
+
   read(): Promise<Frame | undefined> {
     if (this.retirement || this.released || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
     check({ condition: this.reads.size === 0, code: 'INVALID_ARGUMENT' });
@@ -255,6 +267,7 @@ export class FramedDuplex {
     void work.then(() => this.reads.delete(work), () => this.reads.delete(work));
     return work;
   }
+
   private rejectHeader({ result }: { result: Exclude<ProtocolHeaderResult, { kind: 'supported' }> }): never {
     if (this.stopped || this.failure) throw this.failure?.error;
     const error = new NaidanRpcProtocolError({ diagnostic: result }); this.failure = { error };
@@ -264,9 +277,11 @@ export class FramedDuplex {
     } catch { /* Observation cannot replace local parser evidence. */ }
     throw error;
   }
+
   private checkReadActive(): void {
     if (this.stopped || this.failure) throw this.failure?.error;
   }
+
   private async readPreamble(): Promise<void> {
     const header = new ProtocolHeaderReader();
     for (;;) {
@@ -301,6 +316,7 @@ export class FramedDuplex {
       }
     }
   }
+
   private async readFrame(): Promise<Frame | undefined> {
     this.frameMemory?.clear(); this.frameMemory = this.memory.fork();
     await (this.preambleRead ??= this.readPreamble());
@@ -321,6 +337,7 @@ export class FramedDuplex {
     return frame;
   }
 }
+
 export function wireValue({ value, memory }: { value: unknown; memory?: RpcByteOwner }): WireValue {
   // Parsed frames contain only this codec's closed value set. Clone through it at application boundaries.
   const bytes = encode({ value, limit: FRAME_BYTES, memory });

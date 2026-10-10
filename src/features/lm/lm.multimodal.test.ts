@@ -30,6 +30,7 @@ function request({ text, model }: { text: string, model: string }): Parameters<L
   }];
   return { debug: undefined, messages, model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };
 }
+
 function body({ fetcher }: { fetcher: ReturnType<typeof vi.fn<LmFetch>> }) {
   const raw = fetcher.mock.calls[0]?.[1]?.body;
   if (typeof raw !== 'string') throw new Error('Expected a serialized request.');

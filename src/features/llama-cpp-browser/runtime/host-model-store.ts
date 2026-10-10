@@ -6,12 +6,15 @@ import type { ModelDirectory } from './model-directory';
 
 export type HostModelInventoryIssue = { directoryId: string, directoryName: string, message: string };
 let issues: HostModelInventoryIssue[] = [];
+
 export function recordOpfsInventoryIssue({ error }: { error: unknown }): void {
   issues = [{ directoryId: 'opfs', directoryName: 'OPFS', message: error instanceof Error ? error.message : String(error) }, ...issues];
 }
+
 export function getHostModelInventoryIssues(): readonly HostModelInventoryIssue[] {
   return issues;
 }
+
 /** Each root is independent. Losing permission never hides another root's models. */
 export async function listHostStoredModels({ directories, signal }: {
   directories: readonly { id: HostModelDirectoryId, name: string }[], signal: AbortSignal | undefined,
@@ -39,6 +42,7 @@ export async function listHostStoredModels({ directories, signal }: {
   signal?.throwIfAborted(); issues = unavailable;
   return result;
 }
+
 /** Worker resolution reads only the captured IDB handle, never UI settings. */
 export async function resolveHostModel({ name }: { name: string }): Promise<ModelDirectory> {
   const { destination, repository, modelPath } = parseHostModelReference({ name });
@@ -49,5 +53,6 @@ export async function resolveHostModel({ name }: { name: string }): Promise<Mode
   if (!selected) throw new LlamaCppBrowserError({ code: 'missing-model' });
   return selected;
 }
+
 export const TEST_ONLY = {
 };

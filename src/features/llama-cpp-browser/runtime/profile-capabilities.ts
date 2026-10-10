@@ -21,6 +21,7 @@ export const profileCapabilitiesSchema = z.object({
 export type ProfileCapabilities = z.infer<typeof profileCapabilitiesSchema>;
 export type ProfileState = { status: 'idle' } | { status: 'checking' }
   | { status: 'ready', capabilities: ProfileCapabilities } | { status: 'error', code: ErrorCode };
+
 export function resolveProfilePreference({ preference, capabilities }: { preference: RuntimeOptions['profile'], capabilities: ProfileCapabilities | undefined }): LlamaCppProfile | undefined {
   switch (preference) {
   case 'auto': return capabilities?.recommended;
@@ -28,5 +29,6 @@ export function resolveProfilePreference({ preference, capabilities }: { prefere
   default: { const exhaustive: never = preference; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
+
 export const TEST_ONLY = {
 };

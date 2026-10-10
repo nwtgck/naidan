@@ -41,9 +41,11 @@ const registryAccess: NaidanRpcRegistryAccess = {
   registryId: toNaidanRpcRegistryId({ raw: 'registry-example' }),
   persistence: 'durable',
 };
+
 function snapshot({ registrations }: { registrations: NaidanRpcRegistration[] }): NaidanRpcRegistrySnapshot {
   return { access: registryAccess, registrations };
 }
+
 function fixture() {
   const links: ReturnType<typeof transportPair>[] = [];
   const resources: ReadOnlyInferenceResources = {
@@ -85,6 +87,7 @@ function fixture() {
   });
   return { manager, dependencies, storage, links, release, resources };
 }
+
 function automaticFixture() {
   vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
   const result = fixture(); let stored: NaidanRpcRegistration = { ...record, connectOnStartup: 'enabled' };

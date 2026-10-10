@@ -4,6 +4,7 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { imagePromptTranslationMessages, translateImagePrompt } from './request';
 const mocks = vi.hoisted(() => ({ provider: vi.fn() }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: mocks.provider }));
+
 const args = () => ({
   prompt: `\
   a cat 🐈
@@ -15,6 +16,7 @@ const args = () => ({
   signal: new AbortController().signal,
   fakeLmDebugModeStatus: 'disabled' as const,
 });
+
 function providerWith({ result, output }: { result: ChatGenerationResult, output: string }) {
   const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
     signal,

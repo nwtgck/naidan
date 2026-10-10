@@ -27,6 +27,7 @@ class MockWorker extends EventTarget {
     this.active = false;
   });
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+
   constructor(url: URL) {
     super();
     workers.push(this);

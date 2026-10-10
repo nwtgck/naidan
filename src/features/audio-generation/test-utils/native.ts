@@ -117,5 +117,6 @@ export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   } as unknown as Core;
   return { core, api, module, controls, fields, owned, freed, write, grow, outputPointer };
 }
+
 export const TEST_ONLY = {
 };

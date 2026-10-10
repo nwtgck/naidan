@@ -19,6 +19,7 @@ const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
 const local: LocalModel = { id: `hf.co/${muse.repository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.repository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
+
 function render({ models }: { models: LocalModel[] }): VueWrapper {
   const wrapper = mount(LlamaCppBrowserModelSuggestions, { props: { models, disabled: false, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, defaultActionDisabled: false } });
   wrappers.push(wrapper); return wrapper;

@@ -308,6 +308,7 @@ const globalTitleReasoningLeadingOptions = computed(() => {
 function currentSettingsTitleGeneration(): SettingsTitleGeneration {
   return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
 }
+
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
   if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
@@ -335,6 +336,7 @@ function titleModelIdFromSettingsTitleGeneration({
   if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
   return titleGeneration.model.id;
 }
+
 const globalTitleGenerationEnabled = computed(() => currentSettingsTitleGeneration() !== 'disabled');
 
 const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
@@ -445,6 +447,7 @@ function removeGlobalTitleHeader({ index }: { index: number }): void {
   if (headers === undefined) return;
   setGlobalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
 }
+
 const globalTitleModelOptions = computed(() => globalTitleEndpointUsesSameScope.value
   ? sortedModels.value
   : sortedTitleEndpointModels.value);

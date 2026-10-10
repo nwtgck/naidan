@@ -19,6 +19,7 @@ import {
 } from './rational';
 
 const consumeOperation = (): void => {};
+
 const rational = (numerator: bigint, denominator = 1n, decimalExponent = 0) => createRational({
   numerator,
   denominator,

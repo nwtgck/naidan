@@ -48,5 +48,6 @@ export async function encodeImagePixels({ image, maxEdge }: { image: ImagePixels
   }
   return { png: await target.convertToBlob({ type: 'image/png' }), width: targetWidth, height: targetHeight };
 }
+
 export const TEST_ONLY = {
 };

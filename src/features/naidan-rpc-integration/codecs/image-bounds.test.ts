@@ -6,6 +6,7 @@ import { peerImageDimensions } from './image-bounds';
 function fixture({ name }: { name: string }): Uint8Array<ArrayBuffer> {
   return new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 }
+
 for (const name of ['baseline.jpg', 'progressive.jpg', 'grayscale.jpg', 'rgb.png', 'lossless.webp', 'lossy.webp']) {
   it(`accepts the generated ${name} fixture through an offset byte view`, () => {
     const bytes = fixture({ name }), storage = new Uint8Array(bytes.length + 17);
@@ -14,6 +15,7 @@ for (const name of ['baseline.jpg', 'progressive.jpg', 'grayscale.jpg', 'rgb.png
     expect(peerImageDimensions({ bytes: storage.subarray(11, 11 + bytes.length), mimeType })).toEqual({ width: 32, height: 24 });
   });
 }
+
 function spliceBeforeEnd({ inserted }: { inserted: number[] }) {
   const bytes = fixture({ name: 'baseline.jpg' });
   return new Uint8Array([...bytes.subarray(0, -2), ...inserted, 0xff, 0xd9]);

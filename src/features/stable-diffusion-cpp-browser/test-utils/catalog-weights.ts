@@ -1,6 +1,7 @@
 /** Small, structurally representative fixtures, not executable trained models. */
 import { ggufFixture, safetensorsFixture, tensor } from './weights';
 import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
+
 export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageRecipeFile, layers: number }): Promise<Uint8Array<ArrayBuffer>> {
   const name = file.path.split('/').at(-1)!;
   const blob = (() => {
@@ -39,5 +40,6 @@ export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageReci
   })();
   return new Uint8Array(await blob.slice(0, blob.size).arrayBuffer());
 }
+
 export const TEST_ONLY = {
 };

@@ -31,10 +31,13 @@ vi.mock('../runtime/feature', () => ({
   },
 }));
 const wrappers: ReturnType<typeof mount>[] = [];
+
 function panel() {
   const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); return wrapper;
 }
+
 const id = toNaidanRpcRegistrationId({ raw: 'registration-1' });
+
 function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcRegistrationView['phase'], persistence?: RpcRegistrationView['persistence'] } = {}): RpcRegistrationView {
   return {
     registration: {

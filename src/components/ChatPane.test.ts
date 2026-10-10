@@ -117,6 +117,7 @@ const mockCurrentChat = ref<Chat | null>({
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
+
 // Text-only fixtures keep the component contract current without migrating raw DTO data.
 function createTextNode({ id, role, text, createdAt }: {
   id: MessageId,

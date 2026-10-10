@@ -17,6 +17,7 @@ export function targetFixture({ id }: { id: string }): ImageBenchmarkTarget {
     issue: undefined,
   };
 }
+
 export function planFixture({ mode, repeats }: { mode: BenchmarkProtocol['mode'], repeats: number }) {
   return createBenchmarkPlan({
     id: 'test-session',
@@ -37,8 +38,10 @@ export function planFixture({ mode, repeats }: { mode: BenchmarkProtocol['mode']
     gpuBudgetMiB: undefined,
   });
 }
+
 export function metricFixture({ metric, fields }: { metric: string, fields: ImageDiagnostic['fields'] }): ImageDiagnostic {
   return { event: 'native', stage: 'sampling', elapsedMs: 10, fields: { metric, perfVersion: 1, ...fields } };
 }
+
 export const TEST_ONLY = {
 };

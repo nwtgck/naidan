@@ -555,6 +555,7 @@ function messageFixture({ id, role, content, attachments }: { id: string; role: 
   default: { const _ex: never = role; throw new Error('Unexpected role: ' + _ex); }
   }
 }
+
 function chatFixture(): Chat {
   return { id: toChatId({ raw: 'chat-1' }), title: 'Chat', createdAt: 1, updatedAt: 1, root: { items: [] }, currentLeafId: undefined, systemPrompt: undefined, debugEnabled: false };
 }

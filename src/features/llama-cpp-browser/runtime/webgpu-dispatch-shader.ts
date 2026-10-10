@@ -118,6 +118,7 @@ export function adaptDispatchShader({ source, entryPoint }: { source: string, en
     bindingGroups,
   };
 }
+
 export const TEST_ONLY = {
   maskComments,
 };

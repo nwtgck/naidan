@@ -6,6 +6,7 @@ export function normalizeRpcPairingCode({ code }: { code: string }): string {
   if (!normalized || /[\p{Cc}\p{Cs}]/u.test(normalized)) throw new Error('Enter a pairing code without control characters');
   return normalized;
 }
+
 export function isValidRpcPairingCode({ code }: { code: string }): boolean {
   try {
     normalizeRpcPairingCode({ code });
@@ -14,5 +15,6 @@ export function isValidRpcPairingCode({ code }: { code: string }): boolean {
     return false;
   }
 }
+
 export const TEST_ONLY = {
 };

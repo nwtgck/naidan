@@ -63,6 +63,7 @@ export async function listImageGenerationSessions({ store }: { store: ImageGener
     },
   });
 }
+
 export async function loadImageGenerationSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationSession | undefined> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
   return withImageGenerationStore({
@@ -73,6 +74,7 @@ export async function loadImageGenerationSession({ store, sessionId }: { store: 
     },
   });
 }
+
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
   const requested = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
   // Validate retained leaves before creating directories or reserving activity.
@@ -267,6 +269,7 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
     },
   });
 }
+
 export async function loadImageGenerationRun({ store, sessionId, runId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, runId: ImageGenerationRunId }): Promise<ImageGenerationRun | undefined> {
   const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: runId }));
   return withImageGenerationStore({
@@ -278,6 +281,7 @@ export async function loadImageGenerationRun({ store, sessionId, runId }: { stor
     },
   });
 }
+
 export async function listImageGenerationRuns({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationReadResult<ImageGenerationRunSummary>> {
   const id = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId }));
   return withImageGenerationStore({
@@ -364,6 +368,7 @@ export async function commitImageGenerationAsset({ store, asset, writeImages }: 
     },
   });
 }
+
 export async function loadImageGenerationAsset({ store, sessionId, assetId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: ImageGenerationAssetId }): Promise<ImageGenerationAsset | undefined> {
   const rawSessionId = imageGenerationRawIdSchema.parse(idToRaw({ id: sessionId })), id = imageGenerationRawIdSchema.parse(idToRaw({ id: assetId }));
   return withImageGenerationStore({
@@ -432,6 +437,7 @@ export async function setImageGenerationAssetTags({ store, sessionId, assetId, t
 function compareIds({ a, b }: { a: string, b: string }): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
 /** Return one consistent, validated snapshot. Filtering, text normalization,
  * tag matching and pagination belong to the Image Generation feature, not storage. */
 export async function readImageGenerationSessionIndex({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<{

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { modelLaunchTargetSchema } from '@/01-models/llama-cpp-browser-model-launch';
 import { resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
+
 function catalog({ paths }: { paths: string[] }): RepositoryCatalog {
   return { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: paths.map(path => ({ label: path, files: [{ path, size: 256 }], size: 256 })) };
 }

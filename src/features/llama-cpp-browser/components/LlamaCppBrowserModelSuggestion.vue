@@ -148,6 +148,7 @@ function selectQuantization({ event }: { event: Event }): void {
   previewError.value = false;
   // No inspect(), prefetch or fallback source lookup: this selection is local.
 }
+
 async function checkContents(): Promise<void> {
   if (optionsLocked.value) return;
   const requested = quantization.value;
@@ -167,6 +168,7 @@ async function checkContents(): Promise<void> {
     if (!disposed && inspecting.value === controller) inspecting.value = undefined;
   }
 }
+
 async function download(): Promise<void> {
   if (props.disabled || props.destinationUnavailable || authorizing.value || busy.value || inspecting.value || checkingLocal.value || localError.value) return;
   // Capture all mutable UI options BEFORE asking permission. A section can
@@ -198,6 +200,7 @@ async function download(): Promise<void> {
     authorizing.value = false;
   }
 }
+
 async function resumeOtherDestination({ job: requestedJob }: { job: DownloadJob }): Promise<void> {
   if (props.disabled || authorizing.value || jobIsBusy({ job: requestedJob })) return;
   const requestedDestination = requestedJob.destination;
@@ -226,6 +229,7 @@ async function resumeOtherDestination({ job: requestedJob }: { job: DownloadJob 
     authorizing.value = false;
   }
 }
+
 onUnmounted(() => {
   disposed = true; inspecting.value?.abort();
 });

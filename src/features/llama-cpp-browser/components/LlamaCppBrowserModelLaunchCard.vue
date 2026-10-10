@@ -27,6 +27,7 @@ const waitingForFiles = computed(() => props.state.readiness.value === 'checking
 function selectVariant({ event }: { event: Event }): void {
   if (event.target instanceof HTMLSelectElement) props.state.selectPath({ path: event.target.value });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

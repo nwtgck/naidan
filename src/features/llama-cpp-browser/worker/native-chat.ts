@@ -67,6 +67,7 @@ export async function createGrammarSampler({ core, vocab, params, preservedToken
     for (const pointer of allocations.reverse()) core.free({ pointer });
   }
 }
+
 const maximumChatTokenSpeculation = 65536;
 const maximumNativeTokenCount = 2147483647;
 
@@ -134,5 +135,6 @@ export async function preservedTokenIds({ core, vocab, params }: { core: Core, v
   }
   return preserved;
 }
+
 export const TEST_ONLY = {
 };

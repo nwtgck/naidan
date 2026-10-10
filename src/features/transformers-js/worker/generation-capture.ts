@@ -34,6 +34,7 @@ function readImageSizes({ value }: { value: unknown }): Array<[number, number]> 
   }
   return values;
 }
+
 function imageSizeFieldBytes({ name, values }: { name: string; values: Array<[number, number]> }): number {
   // All permitted names, tags, punctuation and safe positive decimal integers
   // are ASCII, so this character count is the exact UTF-8 JSON byte count.
@@ -43,6 +44,7 @@ function imageSizeFieldBytes({ name, values }: { name: string; values: Array<[nu
   // bound covered by the real native JSON export test if nesting changes.
   return JSON.stringify({ name, snapshot: { status: 'image-sizes', values } }).length;
 }
+
 export const generationCaptureContextSchema = z.object({
   runId: boundedId,
   workerEpoch: z.number().int().positive(),

@@ -3,9 +3,11 @@ import { createPreviewOutput } from './preview-output';
 import type { PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types';
 import type { encodeImagePixels } from './image-output';
 const image = { pixels: new Uint8ClampedArray([1, 2, 3, 255]), width: 1, height: 1 };
+
 function capture({ step, revision = 0 }: { step: number, revision?: number }) {
   return { image, maxEdge: 256, frame: { type: 'naidan-image-preview-v1' as const, runId: 1, revision, step, steps: 100, mode: 'projection' as const } };
 }
+
 const encoded = () => ({ png: new Blob(['x'], { type: 'image/png' }), width: 1, height: 1 });
 
 it('bounds active encoding to one plus the newest pending frame under rapid callbacks', async () => {

@@ -8,6 +8,7 @@ import { createLoadDiagnosticLedger, createLoadDiagnosticOperation, loadDiagnost
 // connection. Build-only tests must not import application runtime contracts.
 const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
 const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' }).code;
+
 function session({ observer, failure }: { observer: unknown; failure: unknown }): () => Promise<unknown> {
   const observerStart = transformed.indexOf('function naidanCreateModelLoadObserver(');
   const observerEnd = transformed.indexOf('\nasync function readResponse(', observerStart);

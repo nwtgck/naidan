@@ -28,15 +28,19 @@ const phaseLabel = computed(() => {
   default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
   }
 });
+
 function stepFor({ trial }: { trial: PerformanceTrial }) {
   return snapshot.value?.plan.steps.find(step => step.id === trial.stepId);
 }
+
 function numberText({ value }: { value: number | undefined }): string {
   return value === undefined ? '—' : value.toFixed(1);
 }
+
 function close(): void {
   view.stop(); dialog.value?.close(); emit('close');
 }
+
 async function syncOpen(): Promise<void> {
   await nextTick();
   if (props.isOpen) {
@@ -47,6 +51,7 @@ async function syncOpen(): Promise<void> {
     view.stop(); dialog.value?.close();
   }
 }
+
 watch(() => props.isOpen, () => {
   void syncOpen();
 });

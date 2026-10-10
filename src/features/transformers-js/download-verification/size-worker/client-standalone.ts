@@ -1,4 +1,5 @@
 import type { DownloadSizeRequest, DownloadSizeResult } from './types';
+
 export function createDownloadSizeClient() {
   return {
     async collect({ request: _request }: { request: DownloadSizeRequest }): Promise<DownloadSizeResult> {
@@ -7,5 +8,6 @@ export function createDownloadSizeClient() {
     dispose(): void {},
   };
 }
+
 export const TEST_ONLY = {
 };

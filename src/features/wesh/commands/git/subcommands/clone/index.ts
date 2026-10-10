@@ -23,6 +23,7 @@ function localCloneDestinationName({ sourcePath }: {
     throw new Error(`cannot derive destination directory from '${sourcePath}'`);
   return basename;
 }
+
 async function assertCloneDestinationAvailable({ context, destinationPath, displayName }: {
     context: WeshCommandContext;
     destinationPath: string;
@@ -50,6 +51,7 @@ async function assertCloneDestinationAvailable({ context, destinationPath, displ
   }
   }
 }
+
 async function cleanupCloneDestination({ context, destinationPath, removeRoot }: {
     context: WeshCommandContext;
     destinationPath: string;
@@ -90,7 +92,9 @@ async function cleanupCloneDestination({ context, destinationPath, removeRoot }:
     await removeRecursively({ path: entry.fullPath });
   }
 }
+
 import { parseCloneArguments } from "./arguments";
+
 export async function runClone({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];

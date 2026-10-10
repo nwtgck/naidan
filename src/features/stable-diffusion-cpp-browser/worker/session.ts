@@ -17,10 +17,12 @@ type Run = { request: Request, onProgress: ({ event }: { event: Progress }) => v
   onLog: ({ message, level }: { message: string, level?: number }) => void,
   onDiagnostic?: Emit, onPerformance?: ({ signal }: { signal: NativePerformanceSignal }) => void, onPreview?: ({ capture }: { capture: PreviewPixels }) => void };
 const pathFields = { model: 'model_path', diffusion: 'diffusion_model_path', vae: 'vae_path', clipL: 'clip_l_path', clipG: 'clip_g_path', t5: 't5xxl_path', lm: 'llm_path' } satisfies Record<ModelSlot, string>;
+
 function totalModelBytes({ request }: { request: Request }): number {
   return request.models.reduce((total, model) => total + model.file.size + (model.companions ?? []).reduce((sum, companion) => sum + companion.file.size, 0), 0)
     + request.loras.reduce((total, lora) => total + lora.file.size, 0);
 }
+
 function resolveWeightResidency({ request }: { request: Request }) {
   switch (request.weightResidency) {
   case 'auto': return { resolved: 'gpu', paramsBackend: 'WebGPU', eagerLoad: true };
@@ -31,6 +33,7 @@ function resolveWeightResidency({ request }: { request: Request }) {
   default: { const exhaustive: never = request.weightResidency; throw new Error(String(exhaustive)); }
   }
 }
+
 export function effectiveVaeTile({ modelVersion, requested, policy, enabled }: {
   modelVersion: string, requested: number, policy: Request['parameters']['qwenVaePolicy'], enabled: boolean,
 }): number {
@@ -620,5 +623,6 @@ export async function runImageGeneration({ core, helpers, reader, ...run }: Run 
   if ('cancelled' in output) throw new DOMException('Image generation cancelled', 'AbortError');
   return output;
 }
+
 export const TEST_ONLY = {
 };

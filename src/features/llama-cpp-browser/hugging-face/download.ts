@@ -152,8 +152,10 @@ export async function downloadRepository({ selection, signal, onProgress, destin
     }),
   });
 }
+
 export async function cancelDownload({ repository, plan, destination }: { repository: string, plan: DeletionPlan, destination?: ModelDestination }): Promise<DeletionResult> {
   return withDestinationLock({ destination, operation: () => withRepositoryLock({ repository, operation: () => deleteRepository({ repository, plan, destination }) }) });
 }
+
 export const TEST_ONLY = {
 };

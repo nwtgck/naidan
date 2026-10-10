@@ -114,6 +114,7 @@ const planningRequestEnvelope = z.object({ type: z.literal('APPLY'), path: z.tup
 
 class InvestigationTestWorker extends ProviderReplayTestWorker {
   readonly kind: 'planning' | 'evidence';
+
   // Implements the browser Worker constructor.
   constructor(url: string | URL, options: WorkerOptions | undefined) {
     const pathname = new NodeUrl(String(url)).pathname;

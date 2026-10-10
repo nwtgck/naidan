@@ -16,6 +16,7 @@ const recipe = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1')!
 const files = selectedRecipeFiles({ recipe, selections: {} });
 let root: MemoryDirectory;
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 function library() {
   const scope = effectScope(); scopes.push(scope);
   return scope.run(() => useImageLibrary({

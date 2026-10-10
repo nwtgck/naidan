@@ -50,6 +50,7 @@ export function validateProductionProviderInvestigationLiveProgress({ value, run
     throw new Error('Invalid Production Provider investigation progress');
   }
 }
+
 const maximumCharacters = 65536;
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/u);
 const modelIdSchema = z.string().max(256).regex(/^(?:hf\.co\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);

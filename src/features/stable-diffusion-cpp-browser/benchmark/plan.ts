@@ -27,6 +27,7 @@ export function benchmarkParameters({ common, target, strategy, overrides }: {
   }
   return { parameters: { ...common, ...modelValues, ...overrides }, preset };
 }
+
 export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol, targets, common, overrides, loras, imageInputs, strategy, artifact, baseUrl, preview, weightResidency, gpuBudgetMiB }: {
   id: string, createdAt: string, appVersion: string, notes: string, protocol: unknown,
   targets: ImageBenchmarkTarget[], common: Parameters, overrides: Readonly<Record<string, Partial<Parameters>>>,
@@ -58,5 +59,6 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
   // All requests are validated and detached before creating/releasing any worker.
   return { id, createdAt, appVersion, notes, protocol: settings, models };
 }
+
 export const TEST_ONLY = {
 };

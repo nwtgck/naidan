@@ -110,6 +110,7 @@ const getDefaultCustomUrl = () => {
   }
   return path;
 };
+
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
 
 watch(show, (val) => {
@@ -283,9 +284,11 @@ function acceptLocalModels({ models }: { models: LocalModel[] }): void {
   availableModels.value = models.map(model => model.name);
   if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
 }
+
 function selectLocalModel({ name }: { name: string }): void {
   if (isLlamaCppBrowser.value && availableModels.value.includes(name)) selectedModel.value = name;
 }
+
 async function refreshLocalModels({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
   try {
     const models = await llamaCppBrowserService.listModels({ signal });
@@ -416,6 +419,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
     await handleConnect();
   }
 });
+
 function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   selectEndpointType({ type: preset.type });
   customUrl.value = preset.url;

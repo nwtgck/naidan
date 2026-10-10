@@ -4,6 +4,7 @@ import { toBinaryObjectId } from '@/01-models/ids';
 import { MemoryStorageProvider } from './memory-storage';
 import { publishImageGenerationBinaries } from './image-generation-binaries';
 const id = toBinaryObjectId({ raw: 'image-aa' });
+
 function file({ text, type }: { text: string, type: string }) {
   return { binaryObjectId: id, blob: new Blob([text], { type }), name: 'image.png' };
 }

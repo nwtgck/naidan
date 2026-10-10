@@ -11,6 +11,7 @@ type Entry = {
   failure: string,
   task: Promise<void> | undefined,
 };
+
 function copyPublication({ record, files }: Publication): Publication {
   const { id, createdAt, request, result, previews, ...rest } = record;
   rest satisfies Record<PropertyKey, never>;
@@ -78,6 +79,7 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
     },
   };
 }
+
 export const pendingImageHistory = createPendingImageHistory({ maxEntries: 32, byteLimit: 128 * 1024 * 1024 });
 export const TEST_ONLY = {
 };

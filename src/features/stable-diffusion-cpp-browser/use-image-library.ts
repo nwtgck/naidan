@@ -32,6 +32,7 @@ function primarySlot({ family }: { family: ModelCandidate['family'] }): ModelSlo
   default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
   }
 }
+
 function automaticOrigin({ origin }: { origin: 'automatic' | 'manual' | 'files' }): boolean {
   switch (origin) {
   case 'automatic': return true;
@@ -973,5 +974,6 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
+
 export const TEST_ONLY = {
 };

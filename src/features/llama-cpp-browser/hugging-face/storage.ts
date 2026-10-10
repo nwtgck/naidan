@@ -12,6 +12,7 @@ import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJ
 export function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
 }
+
 export async function repositoryFolder({ repository, create, destination }: { repository: string, create: boolean, destination?: ModelDestination }): Promise<FileSystemDirectoryHandle> {
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: create ? 'readwrite' : 'read' }) : await opfsRoot();
@@ -19,16 +20,19 @@ export async function repositoryFolder({ repository, create, destination }: { re
   for (const name of path) folder = await folder.getDirectoryHandle(name, { create });
   return folder;
 }
+
 export async function selectedFile({ folder, path, create }: { folder: FileSystemDirectoryHandle, path: string, create: boolean }): Promise<FileSystemFileHandle> {
   const parts = path.split('/'); const name = parts.pop()!;
   for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
   return folder.getFileHandle(name, { create });
 }
+
 export async function readJournal({ folder }: { folder: FileSystemDirectoryHandle }): Promise<DownloadJournal> {
   const file = await (await folder.getFileHandle(pendingName)).getFile();
   if (file.size > 4 * 1024 * 1024) throw new Error('Download journal exceeds the size limit');
   return journalSchema.parse(JSON.parse(await file.text()));
 }
+
 export async function writeJournal({ folder, journal }: { folder: FileSystemDirectoryHandle, journal: DownloadJournal }): Promise<void> {
   const writer = await (await folder.getFileHandle(pendingName, { create: true })).createWritable();
   try {
@@ -37,6 +41,7 @@ export async function writeJournal({ folder, journal }: { folder: FileSystemDire
     await writer.abort().catch(() => {}); throw error;
   }
 }
+
 export async function visitRepositories({ visit, destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void, visit: ({ repository, folder }: { repository: string, folder: FileSystemDirectoryHandle }) => Promise<void> }): Promise<void> {
   let host: FileSystemDirectoryHandle;
   try {
@@ -63,6 +68,7 @@ export async function visitRepositories({ visit, destination, onIssue }: { desti
     }
   }
 }
+
 async function repositoryFiles({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory['files']> {
   const folder = await repositoryFolder({ repository, create: false, destination });
   let pending: DownloadJournal | undefined;
@@ -74,9 +80,11 @@ async function repositoryFiles({ repository, destination }: { repository: string
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
   return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path)).map(file => isHostDestination(destination) ? { ...file, storageKind: 'host' as const } : file);
 }
+
 export async function repositoryDirectories({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
   return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository, destination }), destination });
 }
+
 async function describeRepositoryDirectories({ repository, actual, onlyModelPath, destination }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
   for (const group of models) {
@@ -99,6 +107,7 @@ async function describeRepositoryDirectories({ repository, actual, onlyModelPath
   }
   return result;
 }
+
 export async function installedSelection({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<LocalModel | undefined> {
   let actual: ModelDirectory['files'];
   try {
@@ -118,21 +127,25 @@ export async function installedSelection({ selection, destination }: { selection
   const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath, destination })).find(model => model.modelPath === requested.modelPath);
   return directory ? describeDirectory({ directory }) : undefined;
 }
+
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
   for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
   return true;
 }
+
 export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
   if (!name.startsWith('hf.co/')) throw new LlamaCppBrowserError({ code: 'missing-model' });
   const value = name.slice('hf.co/'.length); const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
+
 export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
   const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository });
   const matching = variant === undefined ? models : models.filter(model => model.id === name || model.name === name);
   if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   return matching[0]!;
 }
+
 export async function listHuggingFaceModels({ destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void } = {}): Promise<LocalModel[]> {
   const result: LocalModel[] = [];
   await visitRepositories({
@@ -144,6 +157,7 @@ export async function listHuggingFaceModels({ destination, onIssue }: { destinat
   });
   return result;
 }
+
 export async function listPendingDownloads({ destination }: { destination?: ModelDestination } = {}): Promise<DownloadJournal[]> {
   const result: DownloadJournal[] = [];
   await visitRepositories({
@@ -156,6 +170,7 @@ export async function listPendingDownloads({ destination }: { destination?: Mode
   });
   return result;
 }
+
 export async function withRepositoryLock<T>({ repository, operation }: { repository: string, operation: () => Promise<T> }): Promise<T> {
   repositorySchema.parse(repository);
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -163,6 +178,7 @@ export async function withRepositoryLock<T>({ repository, operation }: { reposit
     if (!lock) throw new LlamaCppBrowserError({ code: 'busy' }); return operation();
   });
 }
+
 export async function deleteRepository({ repository, plan, destination }: { repository: string, plan: DeletionPlan, destination?: ModelDestination }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
   if (plan.id !== (isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: undefined }) : modelName({ repository }))) throw new Error('Deletion plan does not match the repository');
@@ -194,5 +210,6 @@ export async function deleteRepository({ repository, plan, destination }: { repo
   }
   return result;
 }
+
 export const TEST_ONLY = {
 };

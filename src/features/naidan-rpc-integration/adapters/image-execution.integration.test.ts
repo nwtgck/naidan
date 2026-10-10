@@ -22,6 +22,7 @@ function image(): Blob {
   view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
   return new Blob([bytes], { type: 'image/png' });
 }
+
 function input(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
@@ -30,6 +31,7 @@ function input(): PeerImageInput {
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
 }
+
 async function setup() {
   const local = new Uint8Array(32).fill(1), remote = new Uint8Array(32).fill(2);
   const record: NaidanRpcRegistration = {

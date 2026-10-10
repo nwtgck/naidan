@@ -26,11 +26,13 @@ watch(() => [props.context, props.recommendation?.id, props.field, hint.value?.v
 watch(different, value => {
   if (!value) open.value = false;
 }, { flush: 'sync' });
+
 async function openWithKeyboard(): Promise<void> {
   if (props.disabled) return;
   open.value = true; await nextTick();
   if (open.value) action.value?.focus({ preventScroll: true });
 }
+
 async function toggle({ detail }: MouseEvent): Promise<void> {
   if (open.value) {
     open.value = false; return;
@@ -38,14 +40,17 @@ async function toggle({ detail }: MouseEvent): Promise<void> {
   if (detail === 0) await openWithKeyboard();
   else open.value = true;
 }
+
 function close(): void {
   open.value = false; button.value?.focus({ preventScroll: true });
 }
+
 async function apply(): Promise<void> {
   if (props.disabled || !props.recommendation || !open.value) return;
   emit('apply', { field: props.field, recommendationId: props.recommendation.id, context: props.context });
   open.value = false; await nextTick(); document.getElementById(props.inputId)?.focus({ preventScroll: true });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

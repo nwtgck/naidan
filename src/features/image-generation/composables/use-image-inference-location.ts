@@ -373,6 +373,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     }) || {}),
   };
 }
+
 export type ImageInferenceLocationView = ReturnType<typeof useImageInferenceLocation>;
 export const TEST_ONLY = {
 };

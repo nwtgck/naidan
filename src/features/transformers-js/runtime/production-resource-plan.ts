@@ -3,6 +3,7 @@ import type { TransformersJsProductionInvestigationCandidate } from '@/features/
 
 export class ProductionResourceCandidateError extends Error {
   override readonly name = 'ProductionResourceCandidateError';
+
   constructor({ candidate, cause }: { candidate: TransformersJsProductionInvestigationCandidate; cause: unknown }) {
     super(`Cannot plan ${candidate.device}/${candidate.dtype}: selected resource configuration is invalid`, { cause });
   }

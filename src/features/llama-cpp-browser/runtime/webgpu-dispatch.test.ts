@@ -9,6 +9,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_id) lid
 }
 `;
 type Draw = { count: number[], constants: Record<string, number>, pipeline: GPUComputePipeline, offsets: number[], group: GPUBindGroup | null };
+
 function fixture({ limit }: { limit: number }) {
   const draws: Draw[] = [];
   const pipelineDescriptors = new Map<GPUComputePipeline, GPUComputePipelineDescriptor>();

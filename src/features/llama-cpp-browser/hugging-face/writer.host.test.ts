@@ -15,6 +15,7 @@ vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 const destination = { kind: 'host' as const, directoryId: 'root-one' };
 const selection: DownloadSelection = { repository: 'owner/repository', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
 let root: MemoryDirectory, opfs: MemoryDirectory;
+
 function bytes(): Uint8Array<ArrayBuffer> {
   const value = new Uint8Array(128); value.set([71, 71, 85, 70, 3, 0, 0, 0]); return value;
 }

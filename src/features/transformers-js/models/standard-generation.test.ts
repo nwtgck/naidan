@@ -8,6 +8,7 @@ const handling: StandardToolHandling = { outputProtocol: 'delimited-pythonic', h
 const tools: WorkerToolDefinition[] = [{ type: 'function', function: { name: 'f', description: '', parameters: { type: 'object' } } }];
 const open = '<|tool_call_start|>';
 const close = '<|tool_call_end|>';
+
 function setup({ declarations, history }: { declarations: WorkerToolDefinition[] | undefined, history: StandardToolHandling['historyEncoding'] }) {
   const events: InferenceGenerationEvent[] = [];
   const codec = createStandardGeneration({
@@ -20,9 +21,11 @@ function setup({ declarations, history }: { declarations: WorkerToolDefinition[]
   });
   return { codec, events };
 }
+
 function strings({ events }: { events: InferenceGenerationEvent[] }): string {
   return events.flatMap(event => event.type === 'text_delta' ? [event.text] : []).join('');
 }
+
 function feedCall({ codec, body }: { codec: ReturnType<typeof createStandardGeneration>, body: string }): void {
   codec.control({ token: open }); codec.text({ text: body }); codec.control({ token: close });
 }

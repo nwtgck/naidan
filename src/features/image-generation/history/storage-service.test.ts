@@ -13,6 +13,7 @@ import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 
 const images = new Map<string, { blob: Blob, name: string }>();
+
 function generation() {
   const snapshot = snapshotImageGeneration({ request: requestFixture(), createdAt: 1, sourceCommit: 'a'.repeat(40), locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }) });
   return finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false }, previews: [], elapsedMs: 1 });

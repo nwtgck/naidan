@@ -73,6 +73,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M', 'Q8_0'].map(quant => ({ label: quant, size: 256, files: [{ path: `Model-${quant}.gguf`, size: 256 }] })) };
 const base = resolveModelLaunchTarget({ input: catalog.repository, catalog });
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 function mountState() {
   const scope = effectScope(); scopes.push(scope);
   const state = scope.run(() => useModelLaunchChat({ chat: computed(() => currentChat.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' as const }, modelId: activeLaunch.target.modelId })) }))!;

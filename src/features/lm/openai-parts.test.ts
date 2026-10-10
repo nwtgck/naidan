@@ -12,6 +12,7 @@ import type { LmFetch } from './fetch';
 function node(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
 }
+
 async function run({ payload, onChange }: { payload: string, onChange: (node: AssistantMessageNode) => void }) {
   const fetcher = vi.fn(async () => new Response(payload));
   const provider: LmProvider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher });

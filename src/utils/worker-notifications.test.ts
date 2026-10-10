@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { postWorkerNotification, subscribeWorkerNotifications } from './worker-transport';
 const schema = z.object({ type: z.literal('notification-test'), count: z.number().int().nonnegative().max(8) }).strict();
+
 function endpoint({ port }: { port: MessagePort }): Endpoint {
   return port as unknown as Endpoint;
 }

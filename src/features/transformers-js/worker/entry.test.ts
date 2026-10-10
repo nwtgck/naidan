@@ -124,9 +124,11 @@ vi.mock('@huggingface/transformers', () => ({
   },
   InterruptableStoppingCriteria: class {
     interrupted = false;
+
     reset() {
       this.interrupted = false; mockResetFn();
     }
+
     interrupt() {
       this.interrupted = true; mockInterruptFn();
     }

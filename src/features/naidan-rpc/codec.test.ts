@@ -4,6 +4,7 @@ import { decode, encode, Reference } from '@/features/naidan-rpc/codec';
 import type { WireValue } from '@/features/naidan-rpc/codec';
 
 const hex = ({ value }: { value: string }) => new Uint8Array(Buffer.from(value, 'hex'));
+
 const vectors: { bytes: string; value: WireValue }[] = [
   { bytes: '00', value: 0 }, { bytes: '17', value: 23 }, { bytes: '1818', value: 24 }, { bytes: '1903e8', value: 1000 },
   { bytes: '1a000f4240', value: 1000000 }, { bytes: '1b000000e8d4a51000', value: 1000000000000 },

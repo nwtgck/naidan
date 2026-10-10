@@ -35,6 +35,7 @@ vi.mock('@/features/stable-diffusion-cpp-browser/logic/repository-store', () => 
 vi.mock('@/features/stable-diffusion-cpp-browser/logic/model-candidates', () => ({ scanImageRepositories: mocks.scan }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify' }));
 vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: mocks.configuration }));
+
 function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles'] }): ModelCandidate {
   return {
     id: path,
@@ -53,6 +54,7 @@ function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles
     files: [{ path, file: new File([new Uint8Array(16)], path, { lastModified: 123 }) }],
   };
 }
+
 function request(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/model/model.gguf' }, expected: { size: 16, lastModified: 123 } } }, components: [], loras: [] },
@@ -61,9 +63,11 @@ function request(): PeerImageInput {
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
 }
+
 function resource() {
   return createReadOnlyResources({ directories: () => [] });
 }
+
 function generate({ input }: { input: PeerImageInput }) {
   return resource().generateImage({ input, signal: new AbortController().signal, onPreview: () => {}, onProgress: () => {} });
 }

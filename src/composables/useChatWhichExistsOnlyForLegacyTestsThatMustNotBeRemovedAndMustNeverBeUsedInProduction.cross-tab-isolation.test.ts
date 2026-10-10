@@ -22,6 +22,7 @@ function resetSharedStorage() {
 }
 
 if (!shared[STORAGE_KEY]) resetSharedStorage();
+
 const getShared = () => shared[STORAGE_KEY];
 
 type TestHierarchyNode =

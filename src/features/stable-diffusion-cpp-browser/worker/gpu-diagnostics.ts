@@ -376,5 +376,6 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
     },
   };
 }
+
 export const TEST_ONLY = {
 };

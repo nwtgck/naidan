@@ -5,6 +5,7 @@ import { validateAudioWav } from './wav';
 import { readBlobBytes, referenceFile } from './test-utils/blob';
 const decode = vi.fn<OfflineAudioContext['decodeAudioData']>();
 const constructed = vi.fn();
+
 function decodedAudio({ channels, length }: { channels: number[][], length: number }): AudioBuffer {
   return { length, sampleRate: 24000, numberOfChannels: channels.length, getChannelData: (index: number) => Float32Array.from(channels[index]!) } as AudioBuffer;
 }
@@ -15,6 +16,7 @@ beforeEach(() => {
     constructor(...args: unknown[]) {
       constructed(...args);
     }
+
     decodeAudioData = decode;
   });
 });

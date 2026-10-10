@@ -11,6 +11,7 @@ import type { StandaloneEmbeddedBinary } from '../../src/features/file-protocol-
 import { createExternalWasmGuardPlugin } from './plugin/external-wasm';
 
 const directories: string[] = [];
+
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-embedded-binary-')); directories.push(root);
   const bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);

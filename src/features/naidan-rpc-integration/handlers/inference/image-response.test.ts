@@ -11,6 +11,7 @@ function output(): ImageExecutionOutput {
   const view = new DataView(bytes.buffer); view.setUint32(8, 13); view.setUint32(12, 0x49484452); view.setUint32(16, 256); view.setUint32(20, 256);
   return { png: new Blob([bytes], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false };
 }
+
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const reader = stream.getReader(); const values: T[] = [];
   try {
@@ -21,6 +22,7 @@ async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[
     reader.releaseLock();
   }
 }
+
 function setup({ run }: { run: Parameters<typeof createImageResponse>[0]['run'] }) {
   const budget = createInferenceBudget({ capacity: 80 * 1024 * 1024 }); const lifetime = new AbortController();
   const response = createImageResponse({ signal: lifetime.signal, seed: '42', width: 256, height: 256, budget, run });

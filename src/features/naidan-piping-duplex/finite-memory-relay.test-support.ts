@@ -15,13 +15,16 @@ export class FiniteMemoryRelay {
   private readonly chunkBytes: number;
   holdSenderEof: (({ route, bytes }: { route: string; bytes: Uint8Array }) => Promise<void>) | undefined;
   transform: (({ bytes }: { bytes: Uint8Array }) => Uint8Array) | undefined;
+
   constructor({ chunkBytes = 16384 }: { chunkBytes?: number } = {}) {
     if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0) throw new RangeError('Invalid relay fragment size');
     this.chunkBytes = chunkBytes;
   }
+
   get occupied(): number {
     return this.slots.size + this.responses.size;
   }
+
   fetch: typeof fetch = (input, init) => {
     const isPost = init?.method === 'POST';
     const route = String(input), side = isPost ? 'sender' : 'receiver', signal = init?.signal;
@@ -114,6 +117,7 @@ export class FiniteMemoryRelay {
     }
     return response.promise;
   };
+
   interrupt(): void {
     for (const slot of this.slots.values()) {
       for (const entry of [slot.sender, slot.receiver]) {

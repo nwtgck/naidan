@@ -99,6 +99,7 @@ function database() {
     },
   };
 }
+
 let identity: NaidanRpcIdentity;
 const registration: NaidanRpcRegistration = {
   id: toNaidanRpcRegistrationId({ raw: 'registration-1' }),

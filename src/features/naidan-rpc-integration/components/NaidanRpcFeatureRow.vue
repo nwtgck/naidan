@@ -39,6 +39,7 @@ const copy = computed(() => {
   const toggleLabel = isEnabled.value ? lazyStrings.naidanRpc__disable() : lazyStrings.naidanRpc__enable();
   return title && summary && details && toggleLabel ? { title, summary, details, toggleLabel } : undefined;
 });
+
 async function toggle(): Promise<void> {
   if (pending.value) return;
   pending.value = true; failed.value = '';
@@ -57,6 +58,7 @@ async function toggle(): Promise<void> {
     pending.value = false;
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

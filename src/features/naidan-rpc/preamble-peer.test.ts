@@ -12,6 +12,7 @@ afterEach(async () => {
 });
 
 const api = contract({ name: 'header.test', methods: { ping: procedure({ input: z.object({}), result: z.number(), notifications: {} }) } });
+
 function fixture() {
   const pair = transportPair({ capacity: 4, fragmentBytes: 1 }), handler = vi.fn(() => 7);
   const peer = new NaidanRpcPeer({
@@ -24,6 +25,7 @@ function fixture() {
     peer.dispose(); pair.close(); await peer.retire();
   }); return { pair, peer, handler };
 }
+
 async function writePrefix({ pair, bytes, close }: { pair: ReturnType<typeof transportPair>; bytes: Uint8Array; close: boolean }): Promise<void> {
   const raw = await pair.b.openStream({ signal: undefined }), reader = raw.readable.getReader(), writer = raw.writable.getWriter();
   const reading = (async () => {

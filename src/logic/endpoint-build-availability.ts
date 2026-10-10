@@ -9,5 +9,6 @@ export function getEndpointBuildAvailability({ type }: { type: EndpointType }): 
   default: { const exhaustive: never = type; throw new Error(`Unhandled endpoint type: ${exhaustive}`); }
   }
 }
+
 export const TEST_ONLY = {
 };

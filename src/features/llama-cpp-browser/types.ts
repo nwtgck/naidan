@@ -4,6 +4,7 @@ import { parseHostModelReference } from './runtime/model-destination-types';
 
 export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm64', 'cpu-wasm32']);
 export type LlamaCppProfile = z.infer<typeof profileSchema>;
+
 export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
   switch (profile) {
   case 'webgpu-wasm64-jspi':
@@ -14,6 +15,7 @@ export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
+
 export const runtimeOptionsSchema = z.object({
   profile: z.union([z.literal('auto'), profileSchema]),
 }).strict();
@@ -55,6 +57,7 @@ export class LlamaCppBrowserError extends Error {
     this.name = 'LlamaCppBrowserError';
   }
 }
+
 export function errorCode({ error }: { error: unknown }): ErrorCode {
   if (error instanceof DOMException && error.name === 'AbortError') return 'aborted';
   if (error instanceof Error) {
@@ -64,6 +67,7 @@ export function errorCode({ error }: { error: unknown }): ErrorCode {
   }
   return 'runtime-error';
 }
+
 export const progressSchema = z.object({
   phase: z.enum(['importing', 'initializing', 'loading', 'prefill', 'generating', 'decoding-audio']),
   completed: z.number().nonnegative().finite(),

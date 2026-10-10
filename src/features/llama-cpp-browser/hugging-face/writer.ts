@@ -22,6 +22,7 @@ export type DownloadWriterApi = {
   pause(): Promise<void>,
   finish(): Promise<void>,
 };
+
 export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
   let folder: FileSystemDirectoryHandle | undefined; let journal: DownloadJournal | undefined;
   let comparison: File | undefined;
@@ -199,5 +200,6 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
   };
   return api;
 }
+
 export const TEST_ONLY = {
 };

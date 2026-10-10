@@ -166,20 +166,24 @@ function summarizeNativeRecording({ native, refusedEpochs }: { native: Productio
 function invalid(): never {
   throw new Error('Invalid native capture evidence');
 }
+
 function scalar({ value }: { value: unknown }): void {
   if (value !== undefined && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') invalid();
 }
+
 function data({ value, key }: { value: unknown; key: string }): unknown {
   if (value === null || typeof value !== 'object') return invalid();
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (descriptor === undefined || !('value' in descriptor)) return invalid();
   return descriptor.value as unknown;
 }
+
 function discriminant<Kind extends string>({ value, key, variants }: { value: unknown; key: string; variants: Record<Kind, true> }): Kind {
   const kind = data({ value, key });
   if (typeof kind !== 'string' || !Object.hasOwn(variants, kind)) invalid();
   return kind as Kind;
 }
+
 // Exact mapped keys force review when any protocol field is added, including
 // optional fields. Values are inspected only after rejecting extra/accessor keys.
 function record<T>({ value, fields, optional }: { value: unknown; fields: { [Key in keyof T]-?: Check }; optional: readonly (keyof T)[] }): void {
@@ -199,6 +203,7 @@ function record<T>({ value, fields, optional }: { value: unknown; fields: { [Key
     }
   }
 }
+
 function array({ check, maximum }: { check: Check; maximum: number }): Check {
   return ({ value }) => {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype || value.length > maximum) invalid();
@@ -206,11 +211,13 @@ function array({ check, maximum }: { check: Check; maximum: number }): Check {
     for (let index = 0; index < value.length; ++index) check({ value: data({ value, key: String(index) }) });
   };
 }
+
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object;
 const bufferGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'buffer')!.get!;
 const offsetGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteOffset')!.get!;
 const lengthGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteLength')!.get!;
 const ordinaryLengthGetter = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength')!.get!;
+
 function byteView({ value }: { value: unknown }): Uint8Array<ArrayBuffer> {
   if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Uint8Array.prototype) invalid();
   // Opaque binary leaf: never enumerate millions of numeric properties or copy
@@ -220,6 +227,7 @@ function byteView({ value }: { value: unknown }): Uint8Array<ArrayBuffer> {
   Reflect.apply(ordinaryLengthGetter, buffer, []);
   return new Uint8Array(buffer, Reflect.apply(offsetGetter, value, []) as number, Reflect.apply(lengthGetter, value, []) as number);
 }
+
 function createDescriptorChecks() {
   // Count repeated references repeatedly: Zod/JSON expands each occurrence.
   // These are whole-export limits, distinct from each recorder's own limits.
@@ -545,12 +553,15 @@ function createDescriptorChecks() {
 }
 
 const publicKeys = new Set(['input_ids', 'attention_mask', 'decoder_input_ids', 'decoder_attention_mask', 'pixel_values', 'image_position_ids', 'image_grid_thw', 'video_grid_thw', 'original_sizes', 'reshaped_input_sizes', 'num_soft_tokens_per_image', 'past_key_values', 'max_new_tokens', 'temperature', 'top_p', 'do_sample', 'streamer', 'stopping_criteria', 'return_dict_in_generate']);
+
 function hasUnknownNativeKeys({ capture }: { capture: Native }): boolean {
   return capture.events.some(event => (event.kind === 'inputs' && event.values.some(value => !publicKeys.has(value.name)))
     || (event.kind === 'settings' && event.value.kwargs.keys.values.some(key => !publicKeys.has(key))));
 }
+
 type Binary = { path: string; bytes: Uint8Array<ArrayBuffer>; byteLength: number; sha256: string };
 const undefinedValue = { captureValue: 'undefined' as const };
+
 function snapshots({ event }: { event: Event }): TensorSnapshot[] {
   switch (event.kind) {
   case 'inputs': return event.values.map(value => value.snapshot);
@@ -559,6 +570,7 @@ function snapshots({ event }: { event: Event }): TensorSnapshot[] {
   default: { const exhaustive: never = event; return exhaustive; }
   }
 }
+
 function sameContext({ left, right }: { left: Native['calls'][number]['context']; right: Native['calls'][number]['context'] }): boolean {
   const { runId, workerEpoch, requestId, generationCallId, ...rest } = left; rest satisfies Record<PropertyKey, never>;
   return runId === right.runId && workerEpoch === right.workerEpoch && requestId === right.requestId && generationCallId === right.generationCallId;
@@ -572,6 +584,7 @@ type CollectionProgress = {
   phase: ProductionProviderNativeCollectionSnapshot['phase'];
   epochs: readonly { collection: { status: Epoch['collection']['status'] | 'export-refused' } }[];
 };
+
 function validateCollectionProgress({ snapshot, provider }: { snapshot: CollectionProgress; provider: ProductionProviderCaptureSnapshot }): void {
   if (snapshot.runId !== provider.runId || snapshot.epochs.length > snapshot.maximumWorkerEpochs
     || (snapshot.unrecordedWorkerCreations > 0) !== snapshot.incompleteReasons.includes('epoch-limit')) invalid();
@@ -918,16 +931,19 @@ function jsonRecord({ value }: { value: unknown }): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid();
   return value as Record<string, unknown>;
 }
+
 function jsonArray({ value, maximum }: { value: unknown; maximum: number }): unknown[] {
   if (!Array.isArray(value) || value.length > maximum) invalid();
   return value;
 }
+
 function decodeOptionalNumber({ value }: { value: unknown }): unknown {
   if (typeof value === 'object' && value !== null) {
     encodedUndefinedSchema.parse(value); return undefined;
   }
   return value;
 }
+
 function decodeLifetime({ value }: { value: unknown }): z.output<typeof epochSchema>['lifetime'] {
   const lifetime = jsonRecord({ value });
   switch (lifetime.status) {

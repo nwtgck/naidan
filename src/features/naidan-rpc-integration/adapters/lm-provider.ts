@@ -10,13 +10,16 @@ import { getRpcManager } from '@/features/naidan-rpc-integration/runtime/feature
  * module imports no native runtime, model storage or Worker implementation. */
 export class NaidanRpcLmProvider implements LmProvider {
   private readonly registrationId: NaidanRpcRegistrationId | undefined;
+
   constructor({ registrationId }: { registrationId: NaidanRpcRegistrationId | undefined }) {
     this.registrationId = registrationId;
   }
+
   private async client(): Promise<NaidanPeerClient> {
     if (!this.registrationId) throw new Error('Select a connection in Naidan RPC settings');
     return (await getRpcManager()).client({ id: this.registrationId });
   }
+
   async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
     const call = (await this.client()).listChatModels({ input: {}, on: {}, signal, timeoutMs: undefined });
     try {
@@ -35,6 +38,7 @@ export class NaidanRpcLmProvider implements LmProvider {
       call.cancel({ reason: 'Model listing stopped' }); throw error;
     }
   }
+
   private generate({ client }: { client: NaidanPeerClient }): LlamaCppBrowserService['generate'] {
     return async ({ input, signal, onEvent }) => {
       signal?.throwIfAborted();
@@ -53,9 +57,11 @@ export class NaidanRpcLmProvider implements LmProvider {
       }
     };
   }
+
   chat({ ...request }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
     return createLlamaCppGeneration({ request, generate: async ({ ...args }) => this.generate({ client: await this.client() })(args) });
   }
+
   async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
     // A multi-tool operation stays pinned to this session. A later reconnect
     // cannot silently redirect its next generation to a new RPC peer instance.

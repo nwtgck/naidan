@@ -1039,6 +1039,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     }) || {}),
   };
 }
+
 export type ImageGenerationWorkspaceView = ReturnType<typeof useImageGenerationWorkspace>;
 export const TEST_ONLY = {
 };

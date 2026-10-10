@@ -14,6 +14,7 @@ export function copyRemoteImageSelection({ selection }: { selection: RemoteImage
     loras: loras.map(({ file, strength }) => ({ file: copyFile({ file }), strength })),
   };
 }
+
 export function isRemoteImageRuntime({ runtime }: { runtime: ImageGenerationRuntime }): boolean {
   switch (runtime.profile) {
   case 'naidan-rpc': return true;
@@ -21,6 +22,7 @@ export function isRemoteImageRuntime({ runtime }: { runtime: ImageGenerationRunt
   default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
   }
 }
+
 export function copyImageGenerationRuntime({ runtime }: { runtime: ImageGenerationRuntime }): ImageGenerationRuntime {
   switch (runtime.profile) {
   case 'naidan-rpc': return { ...runtime, modelSelection: runtime.modelSelection && copyRemoteImageSelection({ selection: runtime.modelSelection }) };
@@ -28,5 +30,6 @@ export function copyImageGenerationRuntime({ runtime }: { runtime: ImageGenerati
   default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

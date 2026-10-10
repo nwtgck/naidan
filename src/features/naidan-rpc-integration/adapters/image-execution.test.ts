@@ -10,6 +10,7 @@ function png(): Uint8Array<ArrayBuffer> {
   bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
   view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44); return bytes;
 }
+
 function source<T>({ values }: { values: T[] }): ReadableStream<T> {
   return new ReadableStream({
     start(controller) {
@@ -17,6 +18,7 @@ function source<T>({ values }: { values: T[] }): ReadableStream<T> {
     },
   });
 }
+
 function setup() {
   const request: PeerImageInput = {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/test.gguf' } } }, components: [], loras: [] },

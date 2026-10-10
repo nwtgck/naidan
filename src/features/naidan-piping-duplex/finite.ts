@@ -2,6 +2,7 @@ import { requireValue } from '@/features/naidan-piping-duplex/bytes';
 export type AttemptKind = 'waiting-sender' | 'waiting-receiver' | 'established' | 'transient' | 'fatal';
 export class AttemptError extends Error {
   readonly kind: AttemptKind;
+
   constructor({ kind }: {
         kind: AttemptKind;
     }) {
@@ -14,6 +15,7 @@ export class Deadline {
   private internalParent: AbortSignal;
   private internalListener: () => void;
   private internalTimer: ReturnType<typeof setTimeout>;
+
   constructor({ parent, milliseconds }: {
         parent: AbortSignal;
         milliseconds: number;
@@ -27,10 +29,12 @@ export class Deadline {
     if (parent.aborted)
       this.internalListener();
   }
+
   dispose(): void {
     clearTimeout(this.internalTimer); this.internalParent.removeEventListener('abort', this.internalListener); this.internalController.abort();
   }
 }
+
 export async function sleep({ milliseconds, signal }: {
     milliseconds: number;
     signal: AbortSignal;

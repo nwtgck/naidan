@@ -6,6 +6,7 @@ import { createVerifiedImageModelFiles } from './verified-image-model-files';
 function file({ text }: { text: string }): File {
   return new File([text], 'model.gguf', { lastModified: 123 });
 }
+
 async function prepared({ cache, value, key, signal }: {
   cache: ReturnType<typeof createVerifiedImageModelFiles>; value: File; key: string; signal: AbortSignal;
 }) {

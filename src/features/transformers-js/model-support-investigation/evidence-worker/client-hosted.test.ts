@@ -18,9 +18,11 @@ vi.mock("@/utils/worker-transport", async importOriginal => ({
 
 class MockWorker extends EventTarget {
   static instances: MockWorker[] = [];
+
   constructor() {
     super(); MockWorker.instances.push(this);
   }
+
   terminate = mocks.terminate;
 }
 

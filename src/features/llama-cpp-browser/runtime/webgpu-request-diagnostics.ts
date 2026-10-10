@@ -5,6 +5,7 @@ const readers = new WeakMap<object, () => GpuRequests | undefined>();
 export function associateGpuRequests({ core, snapshot }: { core: object, snapshot: () => GpuRequests | undefined }): void {
   readers.set(core, snapshot);
 }
+
 export function readGpuRequests({ core }: { core: object }): GpuRequests | undefined {
   try {
     return readers.get(core)?.();

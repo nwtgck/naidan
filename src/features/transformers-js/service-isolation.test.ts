@@ -41,6 +41,7 @@ function createClientFixture() {
 }
 
 const owners: Array<{ dispose(): Promise<void> }> = [];
+
 async function createOwner({ createWorkerClient }: { createWorkerClient: () => TransformersJsWorkerClient }) {
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({ createWorkerClient });

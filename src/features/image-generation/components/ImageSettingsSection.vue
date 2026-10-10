@@ -2,9 +2,11 @@
 import { ChevronRightIcon } from 'lucide-vue-next';
 defineProps<{ title: string | undefined, summary: string | undefined, embedded?: boolean, compact?: boolean }>();
 const open = defineModel<boolean>('open', { default: false });
+
 function toggle({ event }: { event: Event }): void {
   if (event.target instanceof HTMLDetailsElement) open.value = event.target.open;
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

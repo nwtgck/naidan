@@ -18,6 +18,7 @@ export type ConnectionHealth = Readonly<{ state: 'healthy' | 'checking' }>;
 export type LivenessOptions = { intervalMs: number; checkingMs: number; responseTimeoutMs: number; busyTimeoutMs: number };
 export const DEFAULT_LIVENESS: LivenessOptions = Object.freeze({ intervalMs: 10_000, checkingMs: 5_000, responseTimeoutMs: 20_000, busyTimeoutMs: 120_000 });
 export const DEFAULT_RECEIVE_LIMITS: ReceiveLimits = Object.freeze({ streams: STREAMS, connectionWindow: CONNECTION_WINDOW, streamWindow: STREAM_WINDOW });
+
 export function validateLiveness({ liveness }: { liveness: LivenessOptions }): LivenessOptions {
   for (const duration of Object.values(liveness)) requireValue({ condition: Number.isInteger(duration) && duration > 0 && duration <= 2147483647, message: 'Invalid liveness duration' });
   requireValue({ condition: liveness.checkingMs < liveness.responseTimeoutMs && liveness.responseTimeoutMs <= liveness.busyTimeoutMs, message: 'Invalid liveness ordering' });
@@ -93,6 +94,7 @@ export class OrderedSession {
     })();
     void this.closed.catch(() => {});
   }
+
   static async create({ keys, endpoint, signal, limits = DEFAULT_RECEIVE_LIMITS, liveness = DEFAULT_LIVENESS }: {
     keys: NaidanPipingKeyContext; endpoint: FiniteTransfer; signal: AbortSignal; limits?: ReceiveLimits; liveness?: LivenessOptions;
   }): Promise<OrderedSession> {
@@ -112,27 +114,35 @@ export class OrderedSession {
       throw error;
     }
   }
+
   get peerIdentity(): Uint8Array {
     return this.peer.slice();
   }
+
   get contextId(): Uint8Array {
     return this.context.slice();
   }
+
   get health(): ConnectionHealth {
     return this.currentHealth;
   }
+
   subscribeHealth({ listener }: { listener({ health }: { health: ConnectionHealth }): void }): () => void {
     this.listeners.add(listener); return () => this.listeners.delete(listener);
   }
+
   get incomingStreams(): AsyncIterable<MultiplexedStream> {
     return this.mux.incomingStreams;
   }
+
   openStream({ signal }: { signal: AbortSignal | undefined }): Promise<MultiplexedStream> {
     return this.mux.openStream({ signal });
   }
+
   drain({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
     return this.mux.drain({ signal });
   }
+
   private healthChanged({ state }: { state: ConnectionHealth['state'] }): void {
     if (this.currentHealth.state === state) return;
     this.currentHealth = Object.freeze({ state });
@@ -142,10 +152,12 @@ export class OrderedSession {
       } catch { /* Observation does not own I/O. */ }
     }
   }
+
   private end({ kind, error }: { kind: NaidanPipingConnectionEndKind; error: unknown }): void {
     const end = this.lifetime.commit({ kind, error });
     this.mux.stop({ error: end.error }); this.readiness.reject(end.error); this.mux.changed.fire();
   }
+
   private fail({ error }: { error: unknown }): void {
     let kind: NaidanPipingConnectionEndKind = 'transport-fatal';
     if (error instanceof AuthenticatedProtocolError) kind = 'authenticated-protocol-error';
@@ -153,9 +165,11 @@ export class OrderedSession {
     else if (error instanceof ResponseUnconfirmedError) kind = 'response-unconfirmed';
     this.end({ kind, error }); this.stop.abort(error); this.mux.changed.fire();
   }
+
   abort({ reason }: { reason: string }): void {
     const error = new Error(reason); this.end({ kind: 'local-stop', error }); this.stop.abort(error); this.mux.changed.fire();
   }
+
   close({ noticeTimeoutMs = 2000, signal }: { noticeTimeoutMs?: number; signal: AbortSignal | undefined }): Promise<{ notification: 'acknowledged' | 'unconfirmed' }> {
     if (this.closeResult) return this.closeResult;
     requireValue({ condition: Number.isInteger(noticeTimeoutMs) && noticeTimeoutMs > 0 && noticeTimeoutMs <= 2147483647, message: 'Invalid close deadline' });
@@ -170,18 +184,21 @@ export class OrderedSession {
       .finally(() => signal?.removeEventListener('abort', abort));
     void this.closeResult.catch(() => {}); this.mux.changed.fire(); return this.closeResult;
   }
+
   private activate(): void {
     if (!this.active && this.localReady && this.peerReady && !this.lifetime.end) {
       this.active = true; this.nextProbe = performance.now() + this.liveness.intervalMs;
       this.mux.activate(); this.readiness.resolve(); this.mux.changed.fire();
     }
   }
+
   private noticeFinished(): void {
     if (!this.localClose && !this.remoteClose) return;
     if (this.localClose && (!this.localClose.sent || !this.localClose.acknowledged)) return;
     if (this.remoteClose && !this.remoteClose.sent) return;
     this.stop.abort(new Error('Close notice complete')); this.mux.changed.fire();
   }
+
   private controls(): Frame[] {
     if (!this.localReady) return [{ kind: 'ready', limits: this.mux.limits }];
     const frames: Frame[] = [];
@@ -201,6 +218,7 @@ export class OrderedSession {
     }
     return frames;
   }
+
   private async sendLoop(): Promise<void> {
     const signal = this.stop.signal;
     while (!signal.aborted) {
@@ -224,6 +242,7 @@ export class OrderedSession {
       this.noticeFinished();
     }
   }
+
   private sent({ controls }: { controls: readonly Frame[] }): void {
     for (const frame of controls) {
       switch (frame.kind) {
@@ -234,6 +253,7 @@ export class OrderedSession {
       }
     }
   }
+
   private received({ frame, first }: { frame: Frame; first: boolean }): void {
     if (first) {
       requireValue({ condition: !this.gotReady && frame.kind === 'ready', message: 'Missing initial READY' });
@@ -267,6 +287,7 @@ export class OrderedSession {
     }
     this.mux.changed.fire();
   }
+
   private async receiveLoop(): Promise<void> {
     const signal = this.stop.signal;
     while (!signal.aborted) {
@@ -310,6 +331,7 @@ export class OrderedSession {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
   }
+
   private async monitor(): Promise<void> {
     const signal = this.stop.signal;
     while (!signal.aborted) {

@@ -30,6 +30,7 @@ const { availableModels: settingsModels, isFetchingModels: isInternalFetching, f
 
 const availableModels = computed(() => props.models ?? settingsModels.value);
 const isFetchingModels = computed(() => props.models !== undefined ? !!props.loading : props.loading || (isInternalFetching?.value ?? false));
+
 function modelLabel({ model }: { model: string }): string {
   return props.modelLabels?.[model] ?? model;
 }

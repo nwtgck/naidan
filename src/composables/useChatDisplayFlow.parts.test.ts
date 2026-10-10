@@ -9,9 +9,11 @@ function createFlow({ message, processing }: { message: AssistantMessageNode, pr
   const chat = ref({ id: toChatId({ raw: 'chat' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
   return { ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat.value), isProcessing: () => processing }), chat };
 }
+
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
+
 function flatten({ items }: { items: ChatFlowItem[] }): Exclude<ChatFlowItem, { type: 'process_sequence' }>[] {
   return items.flatMap(item => item.type === 'process_sequence' ? flatten({ items: item.items }) : [item]);
 }

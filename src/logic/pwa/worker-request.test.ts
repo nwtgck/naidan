@@ -17,6 +17,7 @@ function workerWithReply(data: unknown): ServiceWorker {
     },
   } as unknown as ServiceWorker;
 }
+
 const signal = new AbortController().signal;
 
 describe('service worker message transport', () => {

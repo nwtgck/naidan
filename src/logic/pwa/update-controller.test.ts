@@ -9,17 +9,21 @@ class WorkerHandle extends EventTarget {
   state: ServiceWorkerState = 'installing';
   scriptURL = 'https://example.test/naidan/sw.js';
   postMessage = vi.fn((_data: unknown, ports?: MessagePort[]) => ports?.[0]?.postMessage(USE_NETWORK_MESSAGE));
+
   native(): ServiceWorker {
     return this as unknown as ServiceWorker;
   }
+
   transition(state: ServiceWorkerState): void {
     this.state = state; this.dispatchEvent(new Event('statechange'));
   }
 }
 const disposers: Array<() => void> = [];
+
 const flush = async () => {
   for (let n = 0; n < 12; n++) await Promise.resolve();
 };
+
 function setup({ registerPending = false, firstInstall = false } = {}) {
   const old = new WorkerHandle(); old.state = 'activated';
   const next = new WorkerHandle();

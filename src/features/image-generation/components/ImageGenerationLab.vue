@@ -49,6 +49,7 @@ const tabs = computed(() => [
   { id: 'models' as const, label: lazyStrings.ImageGenerationLab__models(), icon: FolderOpenIcon },
   { id: 'measure' as const, label: lazyStrings.imageBenchmark__diagnostics(), icon: SlidersHorizontalIcon },
 ]);
+
 function openTab({ tab }: { tab: typeof activeTab.value }): void {
   // A different session can still be the same generate tab. Do not lose its URL
   // change to defineModel's same-value suppression.
@@ -57,6 +58,7 @@ function openTab({ tab }: { tab: typeof activeTab.value }): void {
   }
   activeTab.value = tab;
 }
+
 function tabKey({ event }: { event: KeyboardEvent }): void {
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
@@ -68,18 +70,22 @@ function tabKey({ event }: { event: KeyboardEvent }): void {
     document.getElementById(id + '-tab-' + tab.id)?.focus();
   }
 }
+
 async function openHistory({ id }: { id: ImageGenerationId | undefined }): Promise<void> {
   openTab({ tab: 'history' });
   if (id) await view.history.select({ id });
 }
+
 async function reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void> {
   await view.reuseHistory({ record });
   if (!view.historyActions.error.value) openTab({ tab: 'generate' });
 }
+
 async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void> {
   await view.useHistoryImage({ binaryObjectId, role });
   if (!view.historyActions.error.value) openTab({ tab: 'generate' });
 }
+
 const { library, busy, supported, formDisabled, debug, unavailable, files, loras, imageInputs, parameters, retainModel, modelResident, maxResults, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } = view;
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>

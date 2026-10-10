@@ -7,12 +7,14 @@ export function encodePeerKey({ bytes }: { bytes: Uint8Array }): string {
   if (bytes.length !== 32) throw new Error('Invalid peer identity length');
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
+
 export function decodePeerKey({ value }: { value: string }): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('Invalid peer identity');
   const bytes = Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/') + '='), char => char.charCodeAt(0));
   if (encodePeerKey({ bytes }) !== value || bytes.every(byte => byte === 0)) throw new Error('Invalid peer identity');
   return bytes;
 }
+
 /** Validate the public/private binding rather than trusting a stored label or
  * export. The long-lived private key stays nonextractable. */
 export async function restoreRpcIdentity({ identity }: { identity: NaidanRpcIdentity }): Promise<NaidanPipingIdentity> {
@@ -30,6 +32,7 @@ export async function restoreRpcIdentity({ identity }: { identity: NaidanRpcIden
   if (difference !== 0) throw new Error('Stored RPC identity does not match its public key');
   return { privateKey: identity.privateKey, publicKey: bytes };
 }
+
 export function createRpcIdentityLoader({ read }: { read(): Promise<NaidanRpcIdentity | undefined> }) {
   let loading: Promise<NaidanPipingIdentity> | undefined;
   return {
@@ -52,5 +55,6 @@ export function createRpcIdentityLoader({ read }: { read(): Promise<NaidanRpcIde
     },
   };
 }
+
 export const TEST_ONLY = {
 };

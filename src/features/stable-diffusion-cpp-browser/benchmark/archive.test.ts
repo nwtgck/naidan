@@ -6,6 +6,7 @@ import { createBenchmarkRunner } from './runner';
 import { metricFixture, planFixture } from './test-fixtures';
 import { manifestSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
+
 async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   let calls = 0;
   const runner = createBenchmarkRunner({

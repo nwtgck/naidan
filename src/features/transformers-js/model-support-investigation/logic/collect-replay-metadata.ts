@@ -58,6 +58,7 @@ export type InvestigationReplayMetadataSnapshot = {
 class CollectionFailure extends Error {
   readonly status: Exclude<z.infer<typeof outcomeSchema>, 'collected'>;
   readonly httpStatus: number | undefined;
+
   constructor({ status, httpStatus }: { status: Exclude<z.infer<typeof outcomeSchema>, 'collected'>, httpStatus: number | undefined }) {
     super(status);
     this.status = status;

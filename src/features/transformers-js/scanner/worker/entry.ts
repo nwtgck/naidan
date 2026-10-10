@@ -101,6 +101,7 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
   lastMetadataFetchUrl = url;
   return runtimeFetch(input, init);
 };
+
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;
 

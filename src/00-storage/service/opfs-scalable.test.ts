@@ -8,13 +8,16 @@ import type { ChatId, MessageId } from '@/01-models/ids';
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private content: string = '') {}
+
   async getFile() {
     // Return an object that looks like a File/Blob with a text() method
     return {
       text: async () => this.content,
     };
   }
+
   async createWritable() {
     return {
       write: async (data: string) => {

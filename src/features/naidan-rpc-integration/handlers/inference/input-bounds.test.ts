@@ -17,6 +17,7 @@ function png({ width, height }: { width: number, height: number }) {
   view.setUint32(16, width); view.setUint32(20, height); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
   return bytes;
 }
+
 function transcript({ attachments }: { attachments: number[] }) {
   return bytesSource({
     bytes: encodeDocument({
@@ -33,6 +34,7 @@ function transcript({ attachments }: { attachments: number[] }) {
     }),
   });
 }
+
 function resources() {
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>(async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }));
   const unavailable = (): never => {

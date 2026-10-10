@@ -9,6 +9,7 @@ import { consumeProviderGenerationForTest } from './provider-test-support';
 function request({ model }: { model: string }): Parameters<LmProvider['chat']>[0] {
   return { debug: undefined, messages: [], model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };
 }
+
 const fetchMock = vi.fn<LmFetch>();
 const { events, errorCount, clearEvents } = useGlobalEvents();
 

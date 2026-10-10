@@ -9,5 +9,6 @@ export function readDiagnostics({ calls }: { calls: readonly (readonly unknown[]
     return z.record(z.string(), z.unknown()).parse(JSON.parse(line.slice(prefix.length)));
   });
 }
+
 export const TEST_ONLY = {
 };

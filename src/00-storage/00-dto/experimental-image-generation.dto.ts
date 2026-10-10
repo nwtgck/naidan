@@ -358,6 +358,7 @@ const ImageGenerationRunBaseSchemaDto = z.object({
   }).strict()).max(256),
   execution: ExperimentalImageGenerationRunExecutionSchemaDto,
 }).strict();
+
 function validateRun({ run, context }: { run: { request: { parameters: { seed: string } }, seeds: string[], sources: { role: string, sessionId: string, assetId: string }[] }, context: z.RefinementCtx }): void {
   try {
     const seeds = planImageGenerationSeeds({ baseSeed: run.request.parameters.seed, count: run.seeds.length });
@@ -372,6 +373,7 @@ function validateRun({ run, context }: { run: { request: { parameters: { seed: s
     sources.add(key);
   });
 }
+
 export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined(ImageGenerationRunBaseSchemaDto).superRefine((run, context) => validateRun({ run, context }));
 export type ExperimentalImageGenerationRunDto = z.infer<typeof ExperimentalImageGenerationRunSchemaDto>;
 
@@ -392,6 +394,7 @@ export function unavailableDirectRpcRecord({ raw }: { raw: unknown }): { id: str
   if (!result.success || ExperimentalImageGenerationSchemaDto.safeParse(raw).success) return undefined;
   return { id: result.data.id };
 }
+
 export function unavailableRunRpcRecord({ raw }: { raw: unknown }): { id: string, sessionId: string } | undefined {
   const result = UnavailableRunRecordSchemaDto.safeParse(raw);
   if (!result.success || ExperimentalImageGenerationRunSchemaDto.safeParse(raw).success) return undefined;

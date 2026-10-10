@@ -8,9 +8,11 @@ export class RpcRetirementError extends Error {
 export class RetirementFailures {
   private first: RpcRetirementError | undefined;
   private readonly onFailure: (({ error }: { error: unknown }) => void) | undefined;
+
   constructor({ onFailure }: { onFailure: (({ error }: { error: unknown }) => void) | undefined }) {
     this.onFailure = onFailure;
   }
+
   add({ error }: { error: unknown }): void {
     if (this.first) return;
     this.first = error instanceof RpcRetirementError ? error : new RpcRetirementError({ cause: error });
@@ -20,6 +22,7 @@ export class RetirementFailures {
       this.onFailure?.({ error: this.first.cause });
     } catch { /* The primary cleanup failure remains authoritative. */ }
   }
+
   async join({ work }: { work: Promise<void> }): Promise<void> {
     try {
       await work;
@@ -27,6 +30,7 @@ export class RetirementFailures {
       this.add({ error });
     }
   }
+
   check(): void {
     if (this.first) throw this.first;
   }
@@ -48,6 +52,7 @@ export async function cancelReader({ reader, reason }: { reader: ReaderLease; re
     throw new RpcRetirementError({ cause: error });
   }
 }
+
 export async function abortWriter({ writer, reason, ownedClose }: { writer: WriterLease; reason: unknown; ownedClose?: Promise<void> }): Promise<void> {
   try {
     // Native desiredSize is null in errored/erroring state. Snapshot BEFORE abort:
@@ -73,6 +78,7 @@ export async function abortWriter({ writer, reason, ownedClose }: { writer: Writ
     throw new RpcRetirementError({ cause: error });
   }
 }
+
 export function releaseLocks({ reader, writer }: { reader: ReaderLease | undefined; writer: WriterLease | undefined }): void {
   const failures: unknown[] = [];
   try {

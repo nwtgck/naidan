@@ -1,11 +1,13 @@
 import { requireValue } from '@/features/naidan-piping-duplex/bytes';
 
 const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
 export function createNaidanPipingCode(): string {
   const random = crypto.getRandomValues(new Uint8Array(8));
   const code = Array.from(random, byte => alphabet[byte & 31]).join('');
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
+
 export function normalizeRendezvousCode({ code }: { code: string }): string {
   if (/^peer-[0-9a-f]{64}$/.test(code)) return code;
   if (/^[0-9]{4,8}$/.test(code)) return code;

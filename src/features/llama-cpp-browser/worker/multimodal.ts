@@ -15,6 +15,7 @@ export function splitImagePrompt({ prompt, images }: { prompt: string, images: {
   if (offset < prompt.length) parts.push({ type: 'text', text: prompt.slice(offset) });
   return parts;
 }
+
 /** Native mtmd owns image preprocessing, embedding and model-specific positions. */
 export async function prepareMultimodal({ core, projector, prompt, images }: {
   core: Core, projector: bigint, prompt: string, images: { marker: string, blob: Blob }[],
@@ -128,5 +129,6 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
     for (const pointer of allocations.reverse()) core.free({ pointer });
   }
 }
+
 export const TEST_ONLY = {
 };

@@ -23,10 +23,12 @@ export async function readImageGenerationActivity({ directory }: { directory: Fi
   if (sessions.warningCount || sessions.items.some(session => session.activityOrder !== undefined)) throw new Error('Image Generation activity clock is missing; preserve the store for recovery.');
   return { version: 1, sequence: 0, pending: [] };
 }
+
 async function writeActivity({ directory, journal }: { directory: FileSystemDirectoryHandle, journal: ExperimentalImageGenerationActivityJournalDto }): Promise<void> {
   const value = ExperimentalImageGenerationActivityJournalSchemaDto.parse(journal);
   await writeImageGenerationText({ directory, name: journalName, text: JSON.stringify(value) });
 }
+
 export async function reserveImageGenerationActivity({ directory, run }: {
   directory: FileSystemDirectoryHandle, run: { sessionId: string, runId: string } | undefined,
 }): Promise<number> {
@@ -37,6 +39,7 @@ export async function reserveImageGenerationActivity({ directory, run }: {
   await writeActivity({ directory, journal: { ...current, sequence: order, pending: run ? [...current.pending, { ...run, order }] : current.pending } });
   return order;
 }
+
 export async function finishImageGenerationActivity({ directory, sessionId, runId }: {
   directory: FileSystemDirectoryHandle, sessionId: string, runId: string,
 }): Promise<void> {

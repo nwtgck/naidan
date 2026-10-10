@@ -61,6 +61,7 @@ export function quoteGitPath({ path, quoteNonAscii, quoteSpaces }: {
 export function quoteNonAsciiFromConfig({ config }: { config: GitConfig }): boolean {
   return getBooleanConfigValue({ config, key: 'core.quotepath' }) ?? true;
 }
+
 export function formatGitPatchPath({ path, prefix, quoteNonAscii, headerLabel }: {
   path: string,
   prefix: 'a' | 'b',

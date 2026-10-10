@@ -43,5 +43,6 @@ export function createImageGenerationArchive({ snapshot, exportedAt }: { snapsho
   void completed.catch(() => undefined);
   return { stream: output.stream, completed };
 }
+
 export const TEST_ONLY = {
 };

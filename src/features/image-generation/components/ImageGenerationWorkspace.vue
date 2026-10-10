@@ -37,11 +37,13 @@ watch(requestedSessionId, id => {
 watch([view.initialized, view.busy], () => {
   void drainSessionRoute();
 });
+
 async function drainSessionRoute(): Promise<void> {
   if (!view.initialized.value || view.busy.value || !pendingSession) return;
   const request = pendingSession; pendingSession = undefined;
   await view.selectSession({ sessionId: request.id });
 }
+
 const { count } = view;
 const countHelpOpen = ref(false);
 const container = ref<HTMLElement>();
@@ -53,9 +55,11 @@ const assistantVisited = ref(false);
 watch(assistantOpen, value => {
   if (value) assistantVisited.value = true;
 }, { immediate: true });
+
 async function setAssistantOpen({ open }: { open: boolean }): Promise<void> {
   await view.updatePreferences({ change: { type: 'assistant-visibility', visibility: open ? 'open' : 'closed' } });
 }
+
 const { showConfirm } = useConfirm();
 let exportAbort: AbortController | undefined;
 const unregister = registerImageGenerationNavigation({ navigation: { view, openModels: () => emit('models'), openDiagnostics: () => emit('diagnostics'), openGeneration: () => emit('workspace') } });
@@ -68,12 +72,14 @@ const draftLabel = computed(() => {
   default: { const exhaustive: never = view.draftStatus.value; throw new Error(String(exhaustive)); }
   }
 });
+
 function editCount({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   const value = event.target.valueAsNumber;
   if (Number.isInteger(value) && value >= 1 && value <= IMAGE_GENERATION_MAX_RUN_IMAGES) count.value = value;
   event.target.value = String(count.value);
 }
+
 async function exportSession(): Promise<void> {
   const store = view.store.value, session = view.currentSession.value;
   if (!store || !session || exporting.value || props.generation.busy.value) return;
@@ -96,6 +102,7 @@ async function exportSession(): Promise<void> {
     }
   }
 }
+
 const unsafeToLeave = computed(() => props.generation.busy.value || view.hasPendingSave.value || exporting.value || view.draftStatus.value !== 'saved');
 onBeforeRouteLeave(async to => {
   // All nested model, diagnostic and session locations share this runtime owner.

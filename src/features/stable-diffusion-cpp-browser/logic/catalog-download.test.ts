@@ -3,9 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { downloadImageRecipe as acquire, type ImageRecipeDownloadRequest } from './catalog-download';
 import { privacyFetchStream } from '@/features/privacy-fetch';
+
 function downloadImageRecipe({ files, signal, onProgress }: ImageRecipeDownloadRequest): Promise<void> {
   return acquire({ files, signal, onProgress, fetch: privacyFetchStream });
 }
+
 import { listImageRepositories } from './repository-store';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
 import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
@@ -28,6 +30,7 @@ function gguf(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(32), view = new DataView(bytes.buffer);
   view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true); return bytes;
 }
+
 function response({ bytes, status, headers }: { bytes: Uint8Array<ArrayBuffer>, status: number, headers: Record<string, string> }): PrivacyFetchStreamResponse {
   return {
     url: '',
@@ -45,14 +48,17 @@ function response({ bytes, status, headers }: { bytes: Uint8Array<ArrayBuffer>, 
     }),
   };
 }
+
 function metadata({ bytes, path }: { bytes: Uint8Array<ArrayBuffer>, path: string }): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(JSON.stringify([{ type: 'file', path, size: bytes.length, lfs: { size: bytes.length, oid: createHash('sha256').update(bytes).digest('hex') } }]));
 }
+
 function serve({ actual, expected }: { actual: Uint8Array<ArrayBuffer>, expected: Uint8Array<ArrayBuffer> }): void {
   calls.fetch.mockImplementation(async ({ request }: { request: { url: string } }) => request.url.includes('/api/')
     ? response({ bytes: metadata({ bytes: expected, path: file.path }), status: 200, headers: {} })
     : response({ bytes: actual, status: 200, headers: {} }));
 }
+
 async function stored(): Promise<MemoryDirectory> {
   let folder = root;
   for (const name of ['models', 'huggingface.co', 'org', 'model', 'resolve', 'main']) folder = await folder.getDirectoryHandle(name);

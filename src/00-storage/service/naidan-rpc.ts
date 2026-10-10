@@ -66,9 +66,11 @@ export const naidanRpcStorage = {
     });
   },
 };
+
 export function validateRpcTransport({ value }: { value: unknown }): NaidanRpcTransportSettings {
   return normalizeNaidanRpcTransport({ transport: ExperimentalNaidanRpcTransportSchemaDto.parse(value) });
 }
+
 export type NaidanRpcStorage = typeof naidanRpcStorage;
 export const TEST_ONLY = {
 };

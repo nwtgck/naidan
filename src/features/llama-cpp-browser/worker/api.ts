@@ -25,6 +25,7 @@ async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promi
     throw new LlamaCppBrowserError({ code: errorCode({ error }) });
   }
 }
+
 function eventQueue() {
   const pending = new Set<Promise<void>>(); let failed = false;
   return {
@@ -51,6 +52,7 @@ function eventQueue() {
     },
   };
 }
+
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
@@ -331,5 +333,6 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -8,6 +8,7 @@ export interface RandomAccessSource {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- External core range-reader callback signature.
   read(destination: Uint8Array, offset: number): number;
 }
+
 export function createGgufFileSource({ file, reader }: {
   file: File, reader: SyncBlobReader,
 }): RandomAccessSource {

@@ -100,9 +100,11 @@ function smallStream(): ReadableStream<Uint8Array> {
     },
   });
 }
+
 function fakeClock(): void {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
 }
+
 function claimFrame({ src, consume }: { src: string, consume: boolean }): void {
   const request = new Request(src, { referrer: '', referrerPolicy: 'no-referrer' });
   Object.defineProperty(request, 'mode', { value: 'navigate' });
@@ -121,12 +123,14 @@ function claimFrame({ src, consume }: { src: string, consume: boolean }): void {
     },
   });
 }
+
 function savedBlob(): Blob {
   expect(createObjectURL).toHaveBeenCalledOnce();
   const blob = createObjectURL.mock.calls[0]![0];
   if (!(blob instanceof Blob)) throw new Error('Expected a saved Blob');
   return blob;
 }
+
 async function expectBufferedBytes({ bytes }: { bytes: number[] }): Promise<void> {
   expect([...new Uint8Array(await savedBlob().arrayBuffer())]).toEqual(bytes);
   expect(click).toHaveBeenCalledOnce();

@@ -12,9 +12,11 @@ import { buildChatGenerationMessages } from './build-chat-generation-messages';
 function assistant({ id }: { id: string }): AssistantMessageNode {
   return { id: toMessageId({ raw: id }), role: 'assistant', createdAt: 13, modelId: 'fixture', lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] } };
 }
+
 async function* strings({ values }: { values: string[] }): AsyncGenerator<string, void, void> {
   yield* values;
 }
+
 async function* items({ values }: { values: ChatGenerationItem[] }): AsyncGenerator<ChatGenerationItem, void, void> {
   yield* values;
 }

@@ -104,5 +104,6 @@ export async function translateImagePrompt({ prompt, language, endpoint, modelId
   default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

@@ -86,9 +86,11 @@ const downloadLabel = computed(() => {
   }
 });
 let lastAnnouncedSelection: string | undefined;
+
 function recheckLocalFiles(): void {
   localCheckVersion.value++;
 }
+
 const total = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0));
 let disposed = false; const deleting = ref(false);
 const authorizing = ref(false);
@@ -100,14 +102,17 @@ const downloadDestination = useModelDownloadDestination({
 });
 const { destination, unavailable: destinationUnavailable, revision: destinationRevision, failure: destinationFailure } = downloadDestination;
 let refreshVersion = 0;
+
 function percentage({ completed, total }: { completed: number, total: number }): number {
   return Math.min(100, Math.max(0, Math.floor(completed / total * 100)));
 }
+
 function size({ bytes }: { bytes: number }): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
+
 async function refresh(): Promise<void> {
   if (props.disabled || disposed) return;
   const version = ++refreshVersion;
@@ -119,6 +124,7 @@ async function refresh(): Promise<void> {
     if (!disposed && version === refreshVersion) error.value ??= 'failed';
   }
 }
+
 async function inspect(): Promise<void> {
   if (active.value || props.disabled || deleting.value) return;
   inspecting = true;
@@ -156,6 +162,7 @@ async function inspect(): Promise<void> {
     inspecting = false; active.value = undefined;
   }
 }
+
 async function download({ selection, destination: requestedDestination }: { selection: DownloadSelection, destination: ModelDestination }): Promise<void> {
   if (active.value || props.disabled || deleting.value || authorizing.value) return;
   error.value = undefined; authorizing.value = true;
@@ -171,11 +178,13 @@ async function download({ selection, destination: requestedDestination }: { sele
     authorizing.value = false;
   }
 }
+
 async function start(): Promise<void> {
   const current = catalog.value; const model = selected.value;
   if (!current || !model || needsProjector.value || !catalogCurrent.value || localAvailability.value !== 'missing' || destinationUnavailable.value) return;
   await download({ selection: { repository: current.repository, revision: current.revision, files: selectedFiles.value }, destination: destination.value });
 }
+
 async function remove({ repository, destination: requestedDestination }: { repository: string, destination: ModelDestination }): Promise<void> {
   if (deleting.value || active.value || props.disabled || queuedDownloadBusy.value) return;
   deleting.value = true; error.value = undefined;
@@ -205,6 +214,7 @@ async function remove({ repository, destination: requestedDestination }: { repos
     deleting.value = false;
   }
 }
+
 watch([selectionToCheck, destination], () => emit('selectionChanged'), { flush: 'sync' });
 watch([selectionToCheck, () => props.disabled, active, deleting, localCheckVersion, destination, destinationRevision], async ([selection, disabled, operation, removing, _version, requestedDestination], _previous, onCleanup) => {
   let cancelled = false; onCleanup(() => {
@@ -270,11 +280,13 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true; active.value?.abort(); window.removeEventListener('focus', recheckLocalFiles);
 });
+
 async function inspectRepository({ input: requestedInput }: { input: string }): Promise<void> {
   if (props.disabled || active.value || deleting.value || disposed) return;
   input.value = requestedInput;
   await inspect();
 }
+
 defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

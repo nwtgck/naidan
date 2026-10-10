@@ -30,5 +30,6 @@ export async function loadCoreFactory({ artifact, baseUrl }: { artifact: Artifac
   if (!helpers || typeof helpers !== 'object' || !('attachCore' in helpers) || typeof helpers.attachCore !== 'function' || !('mountReadOnlyFile' in helpers) || typeof helpers.mountReadOnlyFile !== 'function' || !('schema' in helpers) || !helpers.schema || typeof helpers.schema !== 'object' || !('schemaSha256' in helpers.schema) || helpers.schema.schemaSha256 !== artifact.schemaSha256 || !('abiVersion' in helpers.schema) || helpers.schema.abiVersion !== 2) throw new Error('Missing or incompatible thin image core helpers');
   return { helpers: helpers as HostHelpers, create: module.default as CoreFactory, wasmBinary, moduleUrl };
 }
+
 export const TEST_ONLY = {
 };

@@ -4,6 +4,7 @@ import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSetting
 export { defaultPreviewSettings } from './form-options';
 
 export const profileSchema = z.enum(profileOptions);
+
 export function getProfileConfiguration({ profile }: { profile: z.infer<typeof profileSchema> }): { pointerBytes: 4 | 8, memory64: boolean, jspi: boolean, suspension: 'direct' | 'asyncify' } {
   switch (profile) {
   case 'webgpu-wasm32-asyncify': return { pointerBytes: 4, memory64: false, jspi: false, suspension: 'asyncify' };
@@ -12,6 +13,7 @@ export function getProfileConfiguration({ profile }: { profile: z.infer<typeof p
   default: { const exhaustive: never = profile; throw new Error(String(exhaustive)); }
   }
 }
+
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 export const artifactSchema = z.object({
   profile: profileSchema,

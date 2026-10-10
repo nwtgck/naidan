@@ -6,6 +6,7 @@ export type ReferenceMode = 'bytes' | 'items' | 'callback';
 export class Reference {
   readonly id: number;
   readonly mode: ReferenceMode;
+
   constructor({ id, mode }: { id: number; mode: ReferenceMode }) {
     this.id = id; this.mode = mode;
   }
@@ -13,9 +14,11 @@ export class Reference {
 export type WireValue = undefined | boolean | number | string | Uint8Array | Reference | WireValue[] | { [key: string]: WireValue };
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
 function enforceCodecLimit({ constraint, limit, observed }: { constraint: string; limit: number; observed: number }): void {
   if (observed > limit) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint, limit, observed } });
 }
+
 function utf8({ text, memory }: { text: string; memory?: RpcByteOwner }): Uint8Array<ArrayBuffer> {
   // TextEncoder would silently replace unmatched UTF-16 surrogates.
   for (let at = 0; at < text.length; at++) {
@@ -30,6 +33,7 @@ function utf8({ text, memory }: { text: string; memory?: RpcByteOwner }): Uint8A
   const { written } = encoder.encodeInto(text, bytes);
   return bytes.subarray(0, written);
 }
+
 /** A closed RFC 8949 subset: definite lengths, string keys, finite numbers and two application-local tags. */
 export function encode({ value, limit, memory }: { value: unknown; limit: number; memory?: RpcByteOwner }): Uint8Array<ArrayBuffer> {
   check({ condition: Number.isInteger(limit) && limit >= 1 && limit <= FRAME_BYTES, code: 'INVALID_ARGUMENT' });
@@ -139,6 +143,7 @@ export function encode({ value, limit, memory }: { value: unknown; limit: number
     memory?.release({ bytes: buffer });
   }
 }
+
 export function decode({ bytes, memory }: { bytes: Uint8Array; memory?: RpcByteOwner }): WireValue {
   check({ condition: bytes.length <= FRAME_BYTES, code: 'RESOURCE_EXHAUSTED' });
   check({ condition: bytes.buffer instanceof ArrayBuffer, code: 'INVALID_ARGUMENT' });

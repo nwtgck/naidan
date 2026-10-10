@@ -47,6 +47,7 @@ let chunks: ReturnType<typeof createAsyncChannel<string>> | undefined;
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
+
     chat({ signal }: Parameters<LmProvider['chat']>[0]): ReturnType<LmProvider['chat']> {
       return createChatGenerationStream({
         signal,
@@ -60,6 +61,7 @@ vi.mock('../features/lm/openai', () => ({
         },
       });
     }
+
     async listModels() {
       return ['gpt-4'];
     }
@@ -69,6 +71,7 @@ vi.mock('../features/lm/openai', () => ({
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
+
     async listModels() {
       return [];
     }

@@ -40,6 +40,7 @@ async function expand(): Promise<void> {
   wrapper!.get<HTMLDetailsElement>('details').element.open = true;
   await wrapper!.get('details').trigger('toggle');
 }
+
 async function choose({ selector, files }: { selector: string, files: File[] }): Promise<void> {
   const input = wrapper!.get<HTMLInputElement>(`[data-testid="${selector}"]`);
   Object.defineProperty(input.element, 'files', { configurable: true, value: files }); await input.trigger('change');
@@ -162,9 +163,11 @@ it('opens an image preview and closes it when the pane becomes inactive or the f
 function clipboard({ read }: { read: () => Promise<ClipboardItem[]> }): void {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read } });
 }
+
 function clipboardItem({ types }: { types: string[] }): ClipboardItem {
   return { types, presentationStyle: 'unspecified', getType: vi.fn(async (type: string) => new Blob(['pixels'], { type })) };
 }
+
 function pasteEvent({ files, items }: { files: File[], items: { type: string, getAsFile(): File | undefined }[] }): ClipboardEvent {
   const event = new Event('paste', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'clipboardData', { value: { files, items } });

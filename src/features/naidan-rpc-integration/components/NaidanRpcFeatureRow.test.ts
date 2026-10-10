@@ -16,10 +16,12 @@ vi.mock('../runtime/feature', () => ({
   },
 }));
 const wrappers: ReturnType<typeof mount>[] = [];
+
 function panel() {
   const wrapper = mount(NaidanRpcFeatureRow, { global: { stubs: { ExperimentalFeatureRow: defineComponent({ emits: ['toggle'], template: '<button data-testid="toggle" @click="$emit(\'toggle\')">toggle</button>' }) } } });
   wrappers.push(wrapper); return wrapper;
 }
+
 function updateStatus({ status }: { status: RpcStopStatus }) {
   fixture.status = status; for (const listener of fixture.listeners) listener();
 }

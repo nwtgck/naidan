@@ -165,6 +165,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const worker2 = { terminate: terminate2 } as unknown as Worker;
     class WorkerMock {
       static nextWorkers = [worker1, worker2];
+
       constructor() {
         return WorkerMock.nextWorkers.shift()!;
       }
@@ -251,6 +252,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const worker2 = { terminate: terminate2 } as unknown as Worker;
     class WorkerMock {
       static nextWorkers = [worker1, worker2];
+
       constructor() {
         return WorkerMock.nextWorkers.shift()!;
       }

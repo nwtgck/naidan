@@ -55,15 +55,18 @@ const fieldLabel = computed(() => {
   default: { const exhaustive: never = props.field; throw new Error(String(exhaustive)); }
   }
 });
+
 function retire(): void {
   epoch++; controller?.abort(); controller = undefined; translating.value = false; progress.value = undefined;
 }
+
 function restoreFocus(): void {
   if (activeFocusAreaVersion.value === focusVersion && previousArea) setActiveFocusArea({ area: previousArea });
   previousArea = undefined; focusVersion = undefined;
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
   previousFocus = undefined;
 }
+
 async function show(): Promise<void> {
   if ((!props.text.trim() && !previousResult.value) || !props.active || open.value) return;
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
@@ -71,9 +74,11 @@ async function show(): Promise<void> {
   result.value = ''; resultComplete.value = false; failure.value = ''; open.value = true;
   await nextTick(); if (!disposed && open.value) dialog.value?.focus({ preventScroll: true });
 }
+
 function close(): void {
   retire(); open.value = false; result.value = ''; failure.value = ''; restoreFocus();
 }
+
 function keyboard({ event }: { event: KeyboardEvent }): void {
   if (event.defaultPrevented || event.isComposing) return;
   trapImageDialogFocus({ root: dialog.value, event });
@@ -81,10 +86,12 @@ function keyboard({ event }: { event: KeyboardEvent }): void {
     event.preventDefault(); close();
   }
 }
+
 function changeLanguage({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const value = parseUiLocale({ value: event.target.value }); if (value) language.value = value;
 }
+
 // A result is valid only for this exact source, destination and live session.
 // Never translate again automatically after settings or the source change.
 watch(() => JSON.stringify([props.text, props.field, props.workspace.store.value?.storeId, props.workspace.selectedSessionId.value,
@@ -94,6 +101,7 @@ watch(() => JSON.stringify([props.text, props.field, props.workspace.store.value
 watch(() => props.active, active => {
   if (!active && open.value) close();
 });
+
 async function translate(): Promise<void> {
   if (translating.value || !open.value || !props.active || !props.text.trim()) return;
   retire(); const token = epoch, abort = new AbortController(); controller = abort;
@@ -129,11 +137,13 @@ async function translate(): Promise<void> {
     }
   }
 }
+
 async function cancel(): Promise<void> {
   retire(); const token = epoch;
   const message = await ensureStrings.imageGeneration__translation_cancelled();
   if (!disposed && open.value && token === epoch) failure.value = message;
 }
+
 onScopeDispose(() => {
   disposed = true; retire(); if (open.value) restoreFocus();
 });

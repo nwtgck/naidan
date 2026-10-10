@@ -34,6 +34,7 @@ function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto })
     requestedCount: seeds.length,
   });
 }
+
 function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDto }): ExperimentalImageGenerationAssetSummaryDto {
   const { result, previews, ...metadata } = record;
   const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
@@ -102,6 +103,7 @@ export async function imageGenerationRunTable({ directory, sessionId, create }: 
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
 }
+
 export async function imageGenerationAssetTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
   const records = await imageGenerationDirectory({ parent: directory, name: 'assets', create });
   return createImageGenerationTable({
@@ -117,6 +119,7 @@ export async function imageGenerationAssetTable({ directory, sessionId, create }
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
 }
+
 export async function imageGenerationAnnotationsTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
   const records = await imageGenerationDirectory({ parent: directory, name: 'annotations', create });
   return createImageGenerationTable({

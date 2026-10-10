@@ -24,6 +24,7 @@ vi.mock('@/00-storage/service', () => ({
   },
 }));
 const automaticDisposers: (() => void)[] = [];
+
 function automaticRegistry(): NaidanRpcRegistrySnapshot {
   return {
     access: { providerGeneration: 1, registryId: undefined, persistence: 'durable' },
@@ -39,8 +40,10 @@ function automaticRegistry(): NaidanRpcRegistrySnapshot {
     }],
   };
 }
+
 let control: ReturnType<typeof createRpcStopControl> | undefined;
 const channels: { onmessage: ((event: { data: unknown }) => void) | undefined, postMessage: ReturnType<typeof vi.fn> }[] = [];
+
 const settings = () => ({ experimental: { naidanRpc: 'enabled' } }) as Settings;
 
 beforeEach(() => {
@@ -49,6 +52,7 @@ beforeEach(() => {
   vi.stubGlobal('BroadcastChannel', class {
     onmessage: ((event: { data: unknown }) => void) | undefined;
     postMessage = vi.fn();
+
     constructor() {
       channels.push(this);
     }

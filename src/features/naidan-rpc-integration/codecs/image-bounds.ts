@@ -115,5 +115,6 @@ export function peerImageDimensions({ bytes, mimeType }: {
   default: { const exhaustive: never = mimeType; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

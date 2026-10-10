@@ -35,7 +35,9 @@ function adapter({ source, root }: { source: ModelFileReceipt['source'] | undefi
     ...(root ? { hostSource: { directoryId: root, directoryName: root, repository: entry.source.repository } } : {}),
   };
 }
+
 const source = (): ModelFileReceipt['source'] => ({ kind: 'hugging-face', repository: entry.source.repository, revision: entry.source.revision, path: entry.source.path, sha256: entry.source.sha256 });
+
 function harness() {
   const file = new File(['synthetic checkpoint'], 'model.gguf');
   const model: ModelCandidate = {

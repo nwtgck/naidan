@@ -51,6 +51,7 @@ function dataSchema({ schema }: { schema: z.ZodType }): JsonSchema {
   // current authority still run on every call and are not advertised as types.
   return jsonSchema.parse(z.toJSONSchema(schema, { io: 'input', cycles: 'throw', reused: 'inline' }));
 }
+
 function containsCapability({ plan }: { plan: Plan }): boolean {
   const node = plan.node;
   switch (node.kind) {
@@ -62,6 +63,7 @@ function containsCapability({ plan }: { plan: Plan }): boolean {
   default: { const exhaustive: never = node; throw new Error(String(exhaustive)); }
   }
 }
+
 function describeValue({ plan }: { plan: Plan }): ValueDescriptor {
   const { schema, node } = plan;
   if (schema instanceof z.ZodUndefined || schema instanceof z.ZodVoid) return { kind: 'undefined' };
@@ -93,6 +95,7 @@ function describeValue({ plan }: { plan: Plan }): ValueDescriptor {
   default: { const exhaustive: never = node; throw new Error(String(exhaustive)); }
   }
 }
+
 export function describeMethods<C extends Contract>({ contract, names }: {
   contract: C; names: readonly NaidanRpcMethodName<NoInfer<C>>[];
 }): MethodDescriptor[] {

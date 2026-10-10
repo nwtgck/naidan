@@ -11,6 +11,7 @@ afterEach(() => {
 });
 
 const definition = contract({ name: 'indefinite.work', methods: { compute: procedure({ input: z.object({}), result: z.number(), notifications: {} }) } });
+
 function peers({ run, maximum }: { run: () => Promise<number>; maximum: number | undefined }) {
   const transport = transportPair({ capacity: 2, fragmentBytes: 1024 }), lifetime = new AbortController();
   const a = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: maximum }, signal: lifetime.signal });

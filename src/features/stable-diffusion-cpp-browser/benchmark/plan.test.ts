@@ -4,6 +4,7 @@ import { createBenchmarkPlan, benchmarkParameters } from './plan';
 import { planFixture, targetFixture } from './test-fixtures';
 import { parametersFixture, artifactFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
+
 const input = () => ({
   id: 'batch',
   createdAt: 'now',

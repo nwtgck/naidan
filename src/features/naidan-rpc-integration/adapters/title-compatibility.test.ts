@@ -27,6 +27,7 @@ afterEach(async () => {
 const registrationId = toNaidanRpcRegistrationId({ raw: 'title-compatibility' });
 const messages = [{ id: toMessageId({ raw: 'title-input' }), role: 'user' as const, parts: [{ type: 'text' as const, text: 'A title', completeness: 'complete' as const }] }];
 const parameters: LmParameters = { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'none' } };
+
 function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateChat'] }) {
   const transport = transportPair({ capacity: 8, fragmentBytes: 79 }), lifetime = new AbortController();
   const unexpected = (): never => {
@@ -83,6 +84,7 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
     }),
   };
 }
+
 const successful: ReadOnlyInferenceResources['generateChat'] = async ({ onEvent }) => {
   await onEvent({ event: { type: 'text', text: 'Title' } });
   return { content: 'Title', reasoningContent: '', toolCalls: [], finishReason: 'stop' };

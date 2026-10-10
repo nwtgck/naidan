@@ -15,13 +15,16 @@ const unsubscribe = pendingImageHistory.subscribe({
   },
 });
 onScopeDispose(unsubscribe);
+
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
   return pendingImageHistory.list().flatMap(entry => entry.files).find(file => file.binaryObjectId === binaryObjectId)?.blob;
 }
+
 async function download({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
   const blob = await getImage({ binaryObjectId });
   if (blob) downloadBlob({ blob, filename: 'naidan-unsaved-image.png' });
 }
+
 async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
   failure.value = '';
   try {
@@ -30,6 +33,7 @@ async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
     failure.value = error instanceof Error ? error.message : String(error);
   }
 }
+
 async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
   if (!await showConfirm({ message: await ensureStrings.ImagePendingHistory__discard_warning() })) return;
   try {
@@ -38,6 +42,7 @@ async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
     failure.value = error instanceof Error ? error.message : String(error);
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

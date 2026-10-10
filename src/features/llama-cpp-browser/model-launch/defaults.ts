@@ -1,6 +1,7 @@
 import type { Endpoint } from '@/01-models/types';
 
 export type ModelLaunchDefaultSnapshot = { endpoint: Endpoint, modelId: string | undefined, revision: number, storedMatches: boolean, isStorageCurrent: () => boolean };
+
 export function canInitializeModelLaunchDefaults({ endpoint, modelId }: { endpoint: Endpoint, modelId: string | undefined }): boolean {
   if (modelId !== undefined && modelId !== '') return false;
   switch (endpoint.type) {
@@ -10,5 +11,6 @@ export function canInitializeModelLaunchDefaults({ endpoint, modelId }: { endpoi
   default: { const exhaustive: never = endpoint; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

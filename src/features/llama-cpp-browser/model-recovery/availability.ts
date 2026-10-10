@@ -51,6 +51,7 @@ export function createModelAvailabilityCache({ inspect, now }: {
   }
   return { check, invalidate, revision: readonly(revision) };
 }
+
 export const localModelAvailability = createModelAvailabilityCache({ inspect: inspectLocalModel, now: () => Date.now() });
 export const TEST_ONLY = {
 };

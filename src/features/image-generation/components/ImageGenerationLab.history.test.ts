@@ -37,6 +37,7 @@ vi.mock('@/features/image-generation/use-image-generation', async () => {
 
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
 let listener: ChangeListener | undefined;
+
 function page({ prompt }: { prompt: string }): ImageGenerationHistoryPage {
   return {
     items: [{
@@ -54,6 +55,7 @@ function page({ prompt }: { prompt: string }): ImageGenerationHistoryPage {
     warningCount: 0,
   };
 }
+
 async function migrate({ type }: { type: StorageType }): Promise<void> {
   mocks.getType.mockReturnValue(type);
   listener?.({ event: { type: 'migration', timestamp: Date.now() } });

@@ -85,12 +85,14 @@ const { assets, runtimeFetch } = configureHostedTransformersRuntime({
 });
 const modelFetch = createHostedTransformersModelFetch({ runtimeFetch });
 const MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES = 32 * 1024;
+
 const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   throw new Error(
     `Model Support Investigation MUST NOT fetch model artifacts while loading; required downloaded file is missing: ${url}`,
   );
 };
+
 self.fetch = modelFetch;
 env.fetch = downloadedModelCacheOnlyFetch;
 // Investigation loads must match Production's downloaded-model contract. The

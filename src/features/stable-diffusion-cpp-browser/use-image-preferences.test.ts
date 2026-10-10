@@ -25,6 +25,7 @@ function repositories(): LocalImageRepository[] {
   ];
   return files.map((file, index) => ({ id: `user/${index}`, name: `repo ${index}`, files: [{ path: file.name, file }] }));
 }
+
 function harness({ saved, initialized, entries }: { saved: BrowserImageGenerationSettings | undefined, initialized: boolean, entries: LocalImageRepository[] }) {
   const scope = effectScope(); scopes.push(scope);
   return scope.run(() => {
@@ -84,6 +85,7 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
     };
   })!;
 }
+
 async function settled(): Promise<void> {
   await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick();
 }

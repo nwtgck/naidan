@@ -8,8 +8,10 @@ function validateIdentity({ value }: { value: unknown }): NaidanRpcIdentity {
     || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) throw new Error('Invalid RPC identity');
   return identity;
 }
+
 const databaseName = 'naidan-experimental-rpc-identity';
 const identityStore = 'identity';
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1);
@@ -30,6 +32,7 @@ function openDatabase(): Promise<IDBDatabase> {
     };
   });
 }
+
 async function transact<T>({ mode, run }: {
   mode: IDBTransactionMode,
   run({ transaction, result, fail }: { transaction: IDBTransaction, result({ value }: { value: T }): void, fail({ error }: { error: unknown }): void }): void,
@@ -83,6 +86,7 @@ export async function readRpcIdentity(): Promise<NaidanRpcIdentity | undefined> 
     },
   });
 }
+
 /** Insert once. A registry save failure leaves this committed key available for
  * retry; no registry, labels, permissions or session state belong in IndexedDB. */
 export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIdentity }): Promise<void> {
@@ -103,5 +107,6 @@ export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIde
     },
   });
 }
+
 export const TEST_ONLY = {
 };

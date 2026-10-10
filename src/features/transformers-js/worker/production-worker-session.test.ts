@@ -15,12 +15,14 @@ class LifecycleWorker extends EventTarget {
   terminate = vi.fn();
   readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+
   async publishReady() {
     this.startup.start(); await this.startup.ready;
   }
 }
 
 const sessions: ReturnType<typeof createProductionWorkerSession>[] = [];
+
 function fixture() {
   const worker = new LifecycleWorker();
   const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100 });

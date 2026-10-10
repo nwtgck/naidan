@@ -16,22 +16,27 @@ const PUBLIC_BYTES = 256;
 const PRIVATE_BYTES = 16384;
 export type HandshakeResult = { keys: NaidanPipingKeyContext; peerPublicHandshakeData: Uint8Array; peerHandshakeData: Uint8Array };
 type Material = { entry: string; secret: Uint8Array | CryptoKey; role?: NaidanPipingRole };
+
 function base64url({ bytes }: { bytes: Uint8Array }): string {
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
+
 async function digest({ bytes }: { bytes: Uint8Array }): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)));
 }
+
 export function readOffer({ bytes }: { bytes: Uint8Array }): { attempt: Uint8Array; first: Uint8Array } {
   requireValue({ condition: bytes.length === 78 && bytes[13] === 0x21 && inspectProtocolHeader({ bytes, maxBytes: 78 }).kind === 'supported', message: 'Invalid connection OFFER' });
   const attempt = bytes.slice(14, 46); requireValue({ condition: attempt.some(Boolean), message: 'Empty attempt' });
   return { attempt, first: bytes.slice(46) };
 }
+
 function advertisement({ publicData, privateData }: { publicData: Uint8Array; privateData: Uint8Array }): Uint8Array {
   const outer = ownBytes({ bytes: publicData, maxBytes: PUBLIC_BYTES }), inner = ownBytes({ bytes: privateData, maxBytes: PRIVATE_BYTES });
   const length = new Uint8Array(2); new DataView(length.buffer).setUint16(0, outer.length);
   return joinBytes({ parts: [length, outer, inner] });
 }
+
 function readAdvertisement({ bytes }: { bytes: Uint8Array }): { peerPublicHandshakeData: Uint8Array; peerHandshakeData: Uint8Array } {
   requireValue({ condition: bytes.length >= 2 && bytes.length <= 2 + PUBLIC_BYTES + PRIVATE_BYTES, message: 'Invalid handshake advertisement' });
   const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(0);

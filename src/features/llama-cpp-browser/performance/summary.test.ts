@@ -5,6 +5,7 @@ import type { PerformanceSnapshot, PerformanceTrial } from './types';
 import { performanceFindings, summarizePerformance } from './summary';
 
 type PreparationEvents = NonNullable<NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['preparationEvents']>;
+
 function warmSnapshot({ models, repeats }: { models: number, repeats: number }): PerformanceSnapshot {
   const plan = performancePlan({ models, repeats });
   return {

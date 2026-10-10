@@ -7,11 +7,13 @@ import { BATCH_BYTES, batchHeader } from '@/features/naidan-piping-duplex/batch-
 
 useOfflineScope();
 const signal = new AbortController().signal;
+
 async function codecs() {
   const keys = await keyPair();
   const left = keys.a.createDomain({ label: 'test/ordered-v1', context: keys.a.contextId }), right = keys.b.createDomain({ label: 'test/ordered-v1', context: keys.b.contextId });
   return { keys, left, right, tx: new OrderedRecords({ domain: left, context: keys.a.contextId, direction: 1, usage: 'encrypt' }), rx: new OrderedRecords({ domain: right, context: keys.b.contextId, direction: 1, usage: 'decrypt' }) };
 }
+
 async function read({ rx, bytes, chunkBytes = 10000 }: { rx: OrderedRecords; bytes: Uint8Array; chunkBytes?: number }): Promise<Uint8Array[]> {
   let offset = 0;
   const stream = new ReadableStream<Uint8Array>({

@@ -40,6 +40,7 @@ class TestWorker extends EventTarget {
   terminate = vi.fn();
 }
 let worker: TestWorker;
+
 function request(): GenerateInput {
   return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'webgpu-wasm64-jspi' } };
 }

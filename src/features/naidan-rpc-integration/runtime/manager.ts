@@ -71,6 +71,7 @@ export type RpcManagerDependencies = {
   retireResources(): Promise<void>,
   changed(): void,
 };
+
 function isCapacityWaiting({ entry }: { entry: Entry }): boolean {
   const phase = entry.maintenance.phase;
   switch (phase) {
@@ -79,6 +80,7 @@ function isCapacityWaiting({ entry }: { entry: Entry }): boolean {
   default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
   }
 }
+
 function isSaved({ persistence }: { persistence: Entry['persistence'] }): boolean {
   switch (persistence) {
   case 'saved': return true;
@@ -86,17 +88,20 @@ function isSaved({ persistence }: { persistence: Entry['persistence'] }): boolea
   default: { const exhaustive: never = persistence; throw new Error(String(exhaustive)); }
   }
 }
+
 function copyRegistration({ registration }: { registration: NaidanRpcRegistration }): NaidanRpcRegistration {
   const { id, peerPublicKey, localPublicKey, label, transport, inboundAllowedMethods, connectOnStartup, revision, ...rest } = registration;
   rest satisfies Record<PropertyKey, never>;
   return { id, peerPublicKey, localPublicKey, label, transport: validateRpcTransport({ value: transport }), inboundAllowedMethods: [...inboundAllowedMethods], connectOnStartup, revision };
 }
+
 function sessionSettings({ registration }: { registration: NaidanRpcRegistration }): string {
   const { label: _label, connectOnStartup: _connectOnStartup, revision: _revision, ...settings } = copyRegistration({ registration });
   const { id, peerPublicKey, localPublicKey, transport, inboundAllowedMethods, ...rest } = settings;
   rest satisfies Record<PropertyKey, never>;
   return JSON.stringify({ id, peerPublicKey, localPublicKey, transport, inboundAllowedMethods });
 }
+
 function retryableAutomaticError({ error }: { error: unknown }): boolean {
   if (error instanceof RpcTransportInterruptedError || error instanceof RpcOwnerBusyError || error instanceof RecordExhaustedError || error instanceof HandshakeResponseUnconfirmedError || error instanceof ResponseUnconfirmedError) return true;
   if (!(error instanceof AttemptError)) return false;
@@ -141,17 +146,21 @@ export class NaidanPeerManager {
   constructor({ dependencies }: { dependencies: RpcManagerDependencies }) {
     this.dependencies = dependencies;
   }
+
   private changed(): void {
     try {
       this.dependencies.changed();
     } catch { /* UI observation cannot own a session. */ }
   }
+
   isEnabled(): boolean {
     return this.enabled;
   }
+
   isPairing(): boolean {
     return this.pairing !== undefined;
   }
+
   /** App-ready and later hints may retry readiness. Only a successfully read
    * registry is applied, once per storage generation; explicit stops remain final. */
   startAutomaticConnections(): Promise<void> {
@@ -166,6 +175,7 @@ export class NaidanPeerManager {
       }
     }); return this.startupTask;
   }
+
   stopAutomaticConnections(): void {
     this.startupEpoch++; this.wakeRegistryReadiness();
     for (const entry of this.entries.values()) {
@@ -176,10 +186,12 @@ export class NaidanPeerManager {
       }
     }
   }
+
   wakeDesiredConnections(): void {
     if (!this.enabled) return;
     for (const entry of this.entries.values()) entry.maintenance.wake();
   }
+
   private createMaintenance({ factory, changed, settings }: {
     factory({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }): Promise<ConnectionLease<RpcLink>>;
     changed(): void;
@@ -207,6 +219,7 @@ export class NaidanPeerManager {
     });
     return owner;
   }
+
   list(): RpcRegistrationView[] {
     return [...this.entries.values()].map(entry => ({
       registration: copyRegistration({ registration: entry.registration }),
@@ -227,19 +240,23 @@ export class NaidanPeerManager {
       connectionToken: entry.rpc === undefined || entry.maintenance.value !== entry.link ? undefined : entry.stop.signal,
     }));
   }
+
   reload(): Promise<void> {
     return this.beginRegistryLoad().task.then(() => {});
   }
+
   private wakeRegistryReadiness(): void {
     const previous = this.registryReadinessChanged;
     this.registryReadinessChanged = Promise.withResolvers<void>(); previous.resolve();
   }
+
   private beginRegistryLoad(): { task: Promise<RegistryLoadOutcome> } {
     const epoch = this.registryEpoch, sequence = ++this.reloadSequence;
     const load = { task: this.loadRegistry({ epoch, sequence }) };
     this.registryLoad = load; this.wakeRegistryReadiness();
     return load;
   }
+
   /** A catalogue read may complete without publishing. Startup needs the latest
    * adopted snapshot, not merely the completion of the read it first started.
    * UI reloads remain latest-wins and never seed connection intent themselves. */
@@ -288,6 +305,7 @@ export class NaidanPeerManager {
       entry.intentOrigin = 'startup'; void entry.maintenance.connect({ mode: 'background' }).catch(() => {});
     }
   }
+
   private async loadRegistry({ epoch, sequence }: { epoch: number; sequence: number }): Promise<RegistryLoadOutcome> {
     const { registrations: records, access } = await this.dependencies.storage.list();
     // Reads started before or during a write must never recreate deleted rows.
@@ -327,6 +345,7 @@ export class NaidanPeerManager {
     this.changed();
     return { status: 'published', epoch: publishedEpoch, access, startupRegistrationIds };
   }
+
   /** A hint from another tab or a resumed page is not authority. Suspend new
    * inbound calls before the read, then compare against this session's record.
    * Changed records require an explicit reload/reconnect; never adopt new grants. */
@@ -412,6 +431,7 @@ export class NaidanPeerManager {
     };
     void task.then(settled, settled); return task;
   }
+
   /** Validation belongs to the manager, not to the contact. A cancelled
    * candidate must dispose its cipher even while the shared storage read stalls.
    * The validation remains observed and fences its own eventual publication. */
@@ -427,6 +447,7 @@ export class NaidanPeerManager {
       signal.removeEventListener('abort', abort);
     }
   }
+
   private trackRegistryMutation({ task }: { task: Promise<void> }): Promise<void> {
     this.registryEpoch++;
     this.registryMutations.add(task);
@@ -437,6 +458,7 @@ export class NaidanPeerManager {
     void task.then(settled, settled);
     return task;
   }
+
   setEnabled({ enabled }: { enabled: boolean }): Promise<void> {
     if (this.enabled === enabled) return this.stopping;
     this.enabled = enabled;
@@ -476,15 +498,18 @@ export class NaidanPeerManager {
     })().then(stopped.resolve, stopped.reject);
     this.changed(); return stopped.promise;
   }
+
   private requireEntry({ id }: { id: NaidanRpcRegistrationId }): Entry {
     const entry = this.entries.get(id);
     if (!entry) throw new Error('Select an RPC registration');
     return entry;
   }
+
   private requireRegistryAccess({ entry }: { entry: Entry }): NaidanRpcRegistryAccess {
     if (!entry.registryAccess) throw new Error('The saved RPC registry is unavailable. Reload before saving.');
     return entry.registryAccess;
   }
+
   private async ensureOwner(): Promise<void> {
     if (!this.enabled) throw new Error('Naidan RPC is disabled');
     const epoch = this.ownerEpoch, signal = this.lifetime.signal;
@@ -501,6 +526,7 @@ export class NaidanPeerManager {
       throw new Error('RPC ownership changed');
     }
   }
+
   private access({ entry, initial }: { entry: Entry, initial: Names }) {
     const stored = peerAllowedMethodsSchema.safeParse(entry.registration.inboundAllowedMethods);
     return createMethodAccess({
@@ -519,6 +545,7 @@ export class NaidanPeerManager {
       changed: () => this.changed(),
     });
   }
+
   private add({ registration, persistence, registryAccess, maintenance }: { maintenance?: ConnectionMaintenance<RpcLink>; registration: NaidanRpcRegistration, persistence: 'temporary' | 'saved', registryAccess: NaidanRpcRegistryAccess | undefined }): Entry {
     if (this.entries.size >= 32) throw new Error('Too many RPC registration records');
     const parsed = peerAllowedMethodsSchema.safeParse(registration.inboundAllowedMethods);
@@ -558,6 +585,7 @@ export class NaidanPeerManager {
     entry.access = this.access({ entry, initial: parsed.success ? parsed.data : [] });
     this.entries.set(registration.id, entry); this.registryEpoch++; return entry;
   }
+
   private checkRoute({ peerKey, settings, except }: { peerKey: string, settings: NaidanRpcTransportSettings, except: Entry | undefined }): void {
     const origin = validateRpcTransport({ value: settings }).serverUrl;
     for (const entry of this.entries.values()) {
@@ -565,6 +593,7 @@ export class NaidanPeerManager {
         entry.registration.transport.serverUrl === origin) throw new Error('This peer and server already have an active connection');
     }
   }
+
   private async discardUnacceptedLink({ link, reason, rpc }: { link: RpcLink; reason: string; rpc: NaidanRpcPeer | undefined }): Promise<void> {
     let failure: { error: unknown } | undefined;
     for (const stop of [() => rpc?.dispose(), () => link.abort({ reason })]) {
@@ -584,6 +613,7 @@ export class NaidanPeerManager {
     }
     if (failure) throw failure.error;
   }
+
   private ready({ entry, link, signal }: { entry: Entry, link: RpcLink; signal: AbortSignal }): void {
     signal.throwIfAborted(); entry.stop.signal.throwIfAborted();
     if (this.entries.get(entry.registration.id) !== entry || entry.change === 'forgetting') throw new Error('The registration is no longer current');
@@ -621,6 +651,7 @@ export class NaidanPeerManager {
     // receive loop resumes asynchronously; suspend before publishing this peer.
     if (this.validation && isSaved({ persistence: entry.persistence })) entry.rpc.setIncomingAdmission({ status: 'suspended' });
   }
+
   private lease({ entry, link }: { entry: Entry; link: RpcLink }): ConnectionLease<RpcLink> {
     const rpc = entry.rpc; if (!rpc) throw new Error('RPC engine was not prepared');
     const ended = Promise.race([link.ended.then(({ error }) => ({ error, protocolError: undefined })), rpc.ended]).then(outcome => {
@@ -678,6 +709,7 @@ export class NaidanPeerManager {
       } : {}),
     };
   }
+
   async connect({ id }: { id: NaidanRpcRegistrationId }): Promise<void> {
     if (!this.enabled) throw new Error('Naidan RPC is disabled');
     const entry = this.requireEntry({ id }); entry.intentOrigin = 'explicit'; const generation = ++entry.intentGeneration;
@@ -686,6 +718,7 @@ export class NaidanPeerManager {
       throw new Error('Connection request was superseded');
     await entry.maintenance.connect({ mode: 'explicit' });
   }
+
   private async connectEntry({ id, signal: requestedSignal, mode, prepared }: { id: NaidanRpcRegistrationId; signal: AbortSignal; mode: ConnectionInitiation; prepared?: Pick<RpcPreparedLink, 'finish'> }): Promise<ConnectionLease<RpcLink>> {
     const entry = this.requireEntry({ id });
     await entry.mutation?.catch(() => {}); requestedSignal.throwIfAborted();
@@ -750,6 +783,7 @@ export class NaidanPeerManager {
     })();
     return entry.startup;
   }
+
   async pair({ settings, code, verifyPeer, signal }: {
     settings: NaidanRpcTransportSettings; code: string;
     verifyPeer: NaidanPipingPeerVerifier; signal: AbortSignal;
@@ -844,9 +878,11 @@ export class NaidanPeerManager {
     })().then(completed.resolve, completed.reject);
     this.changed(); return task;
   }
+
   cancelPairing(): void {
     this.pairing?.stop.abort();
   }
+
   /** Confirmation dialogs may outlive the session they describe. Capture an
    * opaque stop command, not a late ID lookup which could stop a reconnect. */
   prepareDisconnect({ id }: { id: NaidanRpcRegistrationId }): () => Promise<void> {
@@ -856,6 +892,7 @@ export class NaidanPeerManager {
       return this.disconnect({ id });
     };
   }
+
   disconnect({ id }: { id: NaidanRpcRegistrationId }): Promise<void> {
     if (this.startupPending) {
       if (this.startupStops.size >= 32 && !this.startupStops.has(id)) this.startupEpoch++;
@@ -875,6 +912,7 @@ export class NaidanPeerManager {
     }).then(done.resolve, done.reject);
     return done.promise;
   }
+
   private blockEntry({ entry, error }: { entry: Entry; error: unknown }): Promise<void> {
     return entry.maintenance.block({ error }).then(() => {
       if (entry.removed && this.entries.get(entry.registration.id) === entry) {
@@ -882,6 +920,7 @@ export class NaidanPeerManager {
       }
     });
   }
+
   private trackRpcRetirement({ rpc }: { rpc: NaidanRpcPeer }): void {
     const retiring = rpc.retire(); this.retiringRpcs.add(retiring);
     void retiring.then(() => {
@@ -894,6 +933,7 @@ export class NaidanPeerManager {
       this.changed();
     });
   }
+
   private closeEntry({ id, notifyPeer = true }: { id: NaidanRpcRegistrationId; notifyPeer?: boolean }): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry) return Promise.resolve();
@@ -957,9 +997,11 @@ export class NaidanPeerManager {
     });
     return closed.promise;
   }
+
   client({ id }: { id: NaidanRpcRegistrationId }): NaidanPeerClient {
     return this.bindClient({ id }).client;
   }
+
   /** Discovery does not depend on inference grants and remains available while
    * saved settings are checked. All inference bindings keep their stricter gate. */
   async getPeerProvidedMethods({ id, signal }: { id: NaidanRpcRegistrationId, signal: AbortSignal }): Promise<PeerProvidedMethods> {
@@ -972,6 +1014,7 @@ export class NaidanPeerManager {
     if (this.entries.get(id) !== entry || entry.rpc !== rpc) throw new Error('RPC session changed');
     return result;
   }
+
   bindClient({ id }: { id: NaidanRpcRegistrationId }): RpcClientBinding {
     if (!this.enabled) throw new Error('Naidan RPC is disabled');
     const entry = this.requireEntry({ id });
@@ -983,6 +1026,7 @@ export class NaidanPeerManager {
       signal: entry.stop.signal,
     };
   }
+
   async updateInboundAllowedMethods({ id, inboundAllowedMethods }: { id: NaidanRpcRegistrationId, inboundAllowedMethods: Names }): Promise<void> {
     const names = peerAllowedMethodsSchema.parse(inboundAllowedMethods);
     await this.ensureOwner();
@@ -997,6 +1041,7 @@ export class NaidanPeerManager {
       })(),
     });
   }
+
   async remember({ id, label }: { id: NaidanRpcRegistrationId, label: string | undefined }): Promise<void> {
     await this.ensureOwner();
     const entry = this.requireEntry({ id });
@@ -1053,6 +1098,7 @@ export class NaidanPeerManager {
       })(),
     });
   }
+
   /** Names are local display metadata. Renaming never changes transport,
    * identity, or inbound authority, and does not require reconnecting. */
   async rename({ id, label }: { id: NaidanRpcRegistrationId, label: string }): Promise<void> {
@@ -1096,6 +1142,7 @@ export class NaidanPeerManager {
     });
     return entry.mutation;
   }
+
   async setConnectOnStartup({ id, connectOnStartup }: { id: NaidanRpcRegistrationId, connectOnStartup: NaidanRpcRegistration['connectOnStartup'] }): Promise<void> {
     const entry = this.requireEntry({ id });
     const enabling = entry.registration.connectOnStartup === 'disabled' && connectOnStartup === 'enabled';
@@ -1140,6 +1187,7 @@ export class NaidanPeerManager {
       void this.connect({ id }).catch(() => {});
     }
   }
+
   async forget({ id }: { id: NaidanRpcRegistrationId }): Promise<void> {
     await this.ensureOwner(); const entry = this.requireEntry({ id });
     switch (entry.change) {

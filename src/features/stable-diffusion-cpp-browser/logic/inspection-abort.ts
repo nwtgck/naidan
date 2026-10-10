@@ -14,5 +14,6 @@ export async function awaitInspection<T>({ task, signal }: { task: Promise<T>, s
     signal.removeEventListener('abort', abort);
   }
 }
+
 export const TEST_ONLY = {
 };

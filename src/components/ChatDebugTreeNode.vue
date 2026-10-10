@@ -53,6 +53,7 @@ const interruption = computed(() => {
 
 // Human readable content preview
 const isCopied = ref(false);
+
 const copyContent = async () => {
   if (!rawContent.value) return;
   await navigator.clipboard.writeText(rawContent.value);
@@ -108,6 +109,7 @@ const cleanContentCompact = computed(() => {
 
 let thumbnailsVersion = 0;
 let disposed = false;
+
 async function loadThumbnails() {
   const version = ++thumbnailsVersion;
   cleanupThumbnails();

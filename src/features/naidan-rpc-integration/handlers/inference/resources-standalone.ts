@@ -10,5 +10,6 @@ export function createReadOnlyResources({ directories }: { directories(): readon
   };
   return { listChatModels: unavailable, listImageModels: unavailable, generateChat: unavailable, generateImage: unavailable, dispose() {} };
 }
+
 export const TEST_ONLY = {
 };

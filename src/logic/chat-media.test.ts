@@ -9,9 +9,11 @@ function imageBlock({ id }: { id: string }): string {
 {"binaryObjectId":"${id}","displayWidth":32,"displayHeight":32,"prompt":"  原文のprompt  ","steps":0,"seed":0}
 \`\`\``;
 }
+
 function user({ id, parts, createdAt }: { id: string; parts: UserMessageNode['parts']; createdAt: number }): UserMessageNode {
   return { id: toMessageId({ raw: id }), role: 'user', parts, createdAt, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
+
 function attachment({ status }: { status: 'persisted' | 'missing' }): Attachment {
   return {
     id: toAttachmentId({ raw: 'attachment' }),

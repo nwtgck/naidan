@@ -11,6 +11,7 @@ export function imageDirectoryFromFiles({ files }: { files: File[] }): Repositor
   }).filter(entry => !entry.path.split('/').includes('.git'));
   return { name, files: entries };
 }
+
 export async function imageDirectoriesFromDrop({ transfer, signal }: { transfer: DataTransfer, signal: AbortSignal | undefined }): Promise<RepositoryInput[]> {
   // Capture ALL entries/files during the drop event, before awaiting callbacks.
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.());
@@ -59,5 +60,6 @@ export async function imageDirectoriesFromDrop({ transfer, signal }: { transfer:
   }
   signal?.throwIfAborted(); return result;
 }
+
 export const TEST_ONLY = {
 };

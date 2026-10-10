@@ -150,6 +150,7 @@ const sequentialDiffs = computed(() => {
 
   return result;
 });
+
 function toggleSkip({ id }: { id: MessageId }) {
   const next = new Set(skippedMessageIds.value);
   if (next.has(id)) {

@@ -33,6 +33,7 @@ function indexRegularMode({ entry }: { entry: GitIndexEntry }): 0o100644 | 0o100
     throw new Error(`unsupported index mode ${entry.mode.toString(8)}: ${entry.path}`);
   }
 }
+
 function snapshotFromIndex({ entries }: {
   entries: readonly GitIndexEntry[],
 }): GitDiffSnapshot {
@@ -55,6 +56,7 @@ function snapshotFromIndex({ entries }: {
   }
   return result;
 }
+
 async function writeUnmergedCombinedDiff({ context, repository, path, entries, quoteNonAscii }: {
   context: WeshCommandContext,
   repository: GitRepository,
@@ -100,6 +102,7 @@ async function writeUnmergedCombinedDiff({ context, repository, path, entries, q
     quoteNonAscii,
   });
 }
+
 async function snapshotWorktreeForIndex({ context, repository, entries }: {
   context: WeshCommandContext,
   repository: GitRepository,
@@ -135,17 +138,20 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
   }
   return result;
 }
+
 function hasTrailingWhitespace({ bytes }: { bytes: Uint8Array }): boolean {
   if (bytes.byteLength === 0) return false;
   const last = bytes[bytes.byteLength - 1];
   return last === 0x20 || last === 0x09;
 }
+
 function isConflictMarkerLine({ text }: { text: string }): boolean {
   return text === '<<<<<<<' || text.startsWith('<<<<<<< ')
     || text === '|||||||' || text.startsWith('||||||| ')
     || text === '======='
     || text === '>>>>>>>' || text.startsWith('>>>>>>> ');
 }
+
 async function checkWhitespaceErrors({ context, repository, paths, left, right }: {
   context: WeshCommandContext,
   repository: GitRepository,
@@ -206,6 +212,7 @@ async function checkWhitespaceErrors({ context, repository, paths, left, right }
   }
   return found;
 }
+
 export async function runDiff({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],

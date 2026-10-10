@@ -10,15 +10,19 @@ import { toMessageId, toToolCallId, toBinaryObjectId, toChatId } from '@/01-mode
 function fresh(): ToolMessageNode {
   return { id: toMessageId({ raw: 'tool-node' }), role: 'tool', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [] } };
 }
+
 function call({ id, name, argumentsText }: { id: string, name: string, argumentsText: string }): ToolCall {
   return { id: toToolCallId({ raw: id }), type: 'function', function: { name, arguments: argumentsText } };
 }
+
 function tool({ execute }: { execute: Tool['execute'] }): Tool {
   return { name: 'f', description: 'Fixture function', parametersSchema: z.object({ n: z.number().default(4) }), execute };
 }
+
 async function inline({ text }: { text: string }): Promise<TextOrBinaryObject> {
   return { type: 'text', text };
 }
+
 function execute({ calls, tools, node, signal, persistContent, onChange }: {
   calls: ToolCall[], tools: Tool[], node: ToolMessageNode, signal: AbortSignal | undefined,
   persistContent: Parameters<typeof executeChatToolCalls>[0]['persistContent'], onChange: () => void | Promise<void>,

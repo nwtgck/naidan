@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createLazyImageQuerySession } from './lazy-query-session';
 const mocks = vi.hoisted(() => ({ wrap: vi.fn(), release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: mocks.wrap, releaseWorkerRemote: mocks.release }));
+
 function worker() {
   const events = new EventTarget(); return Object.assign(events, { terminate: vi.fn() }) as unknown as Worker;
 }

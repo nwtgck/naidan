@@ -21,11 +21,13 @@ data: [DONE]
 const ollamaDone = `\
 {"message":{"content":"Title"},"done":true}
 `;
+
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetcher.mock.calls[index]?.[1]?.body;
   if (typeof raw !== 'string') throw new Error('Missing request body');
   return JSON.parse(raw);
 }
+
 function collect({ provider, endpoint, parameters, signal }: {
   provider: LmProvider, endpoint: Endpoint, parameters: LmParameters, signal: AbortSignal,
 }) {

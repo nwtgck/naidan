@@ -10,10 +10,13 @@ import { OPFSStorageProvider } from './opfs-storage';
 // --- Exhaustive Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private blob: Blob = new Blob()) {}
+
   async getFile() {
     return this.blob;
   }
+
   createWritable() {
     return Promise.resolve({
       write: async (data: any) => {

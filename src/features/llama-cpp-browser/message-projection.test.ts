@@ -8,9 +8,13 @@ import { prepareLlamaCppRequest } from './message-projection';
 const id = toMessageId({ raw: 'message' });
 const callId = toToolCallId({ raw: 'call' });
 const binaryObjectId = toBinaryObjectId({ raw: 'binary' });
+
 const text = ({ value }: { value: string }) => ({ type: 'text' as const, text: value, completeness: 'complete' as const });
+
 const reasoning = ({ value }: { value: string }) => ({ type: 'reasoning' as const, text: value, completeness: 'complete' as const });
+
 const call = () => ({ type: 'tool_call' as const, toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: ' { "value": 1.0 } ' } } });
+
 const image = ({ status }: { status: 'persisted' | 'missing' | 'memory' }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> => ({
   type: 'attachment',
   attachment: {
@@ -23,6 +27,7 @@ const image = ({ status }: { status: 'persisted' | 'missing' | 'memory' }): Extr
     ...(status === 'memory' ? { status, blob: new Blob(['png'], { type: 'image/png' }) } : { status }),
   },
 });
+
 function request({ messages }: { messages: ChatMessage[] }): Parameters<LmProvider['chat']>[0] {
   return { messages, model: 'user/test', parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: undefined };
 }

@@ -70,6 +70,7 @@ export interface ImageGenerationQueryClient {
   query({ store, sessionId, query }: ImageGenerationQuery): Promise<ImageGenerationQueryResult>,
   dispose(): Promise<void>,
 }
+
 /** Branded IDs stay inside their owner. Worker boundaries use explicit strings. */
 function tagToWire({ value }: { value: z.output<typeof tag> }): z.input<typeof tag> {
   switch (value.type) {
@@ -78,6 +79,7 @@ function tagToWire({ value }: { value: z.output<typeof tag> }): z.input<typeof t
   default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
   }
 }
+
 export function generationQueryToWire({ value }: { value: ImageGenerationQuery }): z.input<typeof generationQueryRequestSchema> {
   switch (value.store.storageType) {
   case 'opfs': break;
@@ -95,6 +97,7 @@ export function generationQueryToWire({ value }: { value: ImageGenerationQuery }
     },
   };
 }
+
 export function generationResultToWire({ value }: { value: ImageGenerationQueryResult }): z.input<typeof generationQueryResultSchema> {
   return {
     runsWithAssets: value.runsWithAssets.map(id => idToRaw({ id })),
@@ -120,5 +123,6 @@ export function generationResultToWire({ value }: { value: ImageGenerationQueryR
     runs: { ...value.runs, items: value.runs.items.map(run => ({ ...run, id: idToRaw({ id: run.id }), sessionId: idToRaw({ id: run.sessionId }) })) },
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -17,6 +17,7 @@ function setup() {
   });
   return { events, decoder };
 }
+
 function message({ decoder, channel, recipient, text, ending }: {
   decoder: ReturnType<typeof createGptOssGeneration>, channel: string,
   recipient: string | undefined, text: string, ending: '<|end|>' | '<|return|>' | '<|call|>' | undefined,

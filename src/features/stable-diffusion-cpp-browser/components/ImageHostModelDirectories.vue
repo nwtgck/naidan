@@ -32,6 +32,7 @@ function selectDestination({ event }: { event: Event }): void {
   if (event.target.value === 'opfs' && !props.opfsSupported) return;
   props.view.selectDestination({ id: event.target.value });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

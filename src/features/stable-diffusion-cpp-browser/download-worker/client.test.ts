@@ -11,6 +11,7 @@ beforeEach(() => {
   vi.clearAllMocks(); remote.wrap.mockReturnValue(remote); remote.cancel.mockResolvedValue(undefined);
   vi.stubGlobal('Worker', class extends EventTarget {
     terminate = vi.fn();
+
     constructor() {
       super();
       // eslint-disable-next-line @typescript-eslint/no-this-alias -- Retain the externally constructed Worker test instance.

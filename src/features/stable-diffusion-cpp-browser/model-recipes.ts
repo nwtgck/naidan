@@ -170,8 +170,10 @@ export function imageRecipeLink({ file, action }: { file: Pick<ImageRecipeFile, 
   default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
   }
 }
+
 export function imageRecipeLayout({ recipe }: { recipe: ImageModelRecipe }): string {
   return recipe.files.map(file => `${file.directory}/\n  ${file.path}`).join('\n');
 }
+
 export const TEST_ONLY = {
 };

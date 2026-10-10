@@ -2,6 +2,7 @@ import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-d
 import { createWaitAccounting, UPLOAD_BUCKET_LIMITS, uploadBucket } from './performance-counters';
 export type MeasurementPoint = { phase: string, step: number, reason: string };
 export type MeasurementOutcome = 'complete' | 'cancelled' | 'failed';
+
 const counters = () => ({
   buffers: 0,
   bufferBytesRequested: 0,
@@ -34,7 +35,9 @@ const counters = () => ({
   mapWriteBytes: 0,
   mapBytesUnknown: 0,
 });
+
 export type GpuCounters = ReturnType<typeof counters>;
+
 const delta = ({ value, previous }: { value: Record<string, number>, previous: Record<string, number> }) =>
   Object.fromEntries(Object.entries(value).map(([key, count]) => [key, Math.max(0, count - (previous[key] ?? 0))]));
 
@@ -165,5 +168,6 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
     },
   };
 }
+
 export const TEST_ONLY = {
 };

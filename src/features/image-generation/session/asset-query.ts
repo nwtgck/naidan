@@ -57,5 +57,6 @@ export function selectImageGenerationAssets({ snapshot, query }: {
   const last = items.at(-1);
   return { items, warnings, warningCount, total: matches.length, nextCursor: remaining.length > items.length && last ? { createdAt: last.createdAt, id: last.id } : undefined };
 }
+
 export const TEST_ONLY = {
 };

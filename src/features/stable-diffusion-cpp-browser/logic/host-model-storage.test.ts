@@ -29,7 +29,9 @@ async function directory(): Promise<MemoryDirectory> {
   for (const name of ['owner', 'repo', 'nested']) folder = await folder.getDirectoryHandle(name, { create: true });
   return folder;
 }
+
 const fetch = vi.fn<CatalogFetch>();
+
 function serve({ offset }: { offset: number }): void {
   fetch.mockResolvedValue({
     url: '',

@@ -23,6 +23,7 @@ function png({ width = 256, height = 256 } = {}): Uint8Array<ArrayBuffer> {
   bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
   view.setUint32(16, width); view.setUint32(20, height); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44); return bytes;
 }
+
 function input(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
@@ -31,6 +32,7 @@ function input(): PeerImageInput {
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
 }
+
 function stream<T>({ values }: { values: T[] }): ReadableStream<T> {
   return new ReadableStream({
     start(controller) {
@@ -38,7 +40,9 @@ function stream<T>({ values }: { values: T[] }): ReadableStream<T> {
     },
   });
 }
+
 const terminal: PeerImageEvent = { type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test-v1', uniformOutput: false };
+
 function mockClient({ image = stream({ values: [png()] }), events = stream({ values: [terminal] }), closed = Promise.resolve() }: {
   image?: ReadableStream<Uint8Array>, events?: ReadableStream<PeerImageEvent>, closed?: Promise<void>,
 } = {}) {
@@ -50,6 +54,7 @@ function mockClient({ image = stream({ values: [png()] }), events = stream({ val
   const client: NaidanPeerClient = { getProvidedMethods: unsupported, generateImage, listChatModels: unsupported, generateChat: unsupported, listImageModels: unsupported };
   return { client, cancel, generateImage };
 }
+
 function start({ client, value = input() }: { client: NaidanPeerClient, value?: PeerImageInput }) {
   const stop = new AbortController(); cleanup.push(() => stop.abort());
   const onPreview = vi.fn(); return { ...startPeerImage({ client, input: value, signal: stop.signal, onProgress: () => {}, onPreview }), onPreview, stop };

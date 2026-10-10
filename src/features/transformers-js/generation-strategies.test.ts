@@ -8,6 +8,7 @@ import type { InferenceMessage, WorkerToolJsonObject } from './types';
 vi.mock("@huggingface/transformers", () => ({
   TextStreamer: class {
     readonly emit: (output: string) => void;
+
     // Mirrors the upstream constructor used by the actual strategy.
     constructor(_tokenizer: unknown, options: { callback_function: (output: string) => void }) {
       this.emit = options.callback_function;

@@ -831,6 +831,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   private assembleLegacyHierarchy({
     chatsMap,
     chatGroupsMap,
@@ -896,6 +897,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   /**
    * Execute Import.
    */
@@ -955,6 +957,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   private async loadZip({ blob }: { blob: Blob }): Promise<IndexedZipArchive> {
     try {
       return await openIndexedZipArchive({ blob });

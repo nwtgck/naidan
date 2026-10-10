@@ -11,6 +11,7 @@ import type { DownloadSelection } from './types';
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 const repository = 'owner/Model-GGUF'; const revision = 'a'.repeat(40);
 const projector = { path: 'mmproj-Q8_0.gguf', size: 128 };
+
 const selection = ({ quant }: { quant: string }): DownloadSelection => ({ repository, revision, files: [{ path: `Model-${quant}.gguf`, size: 128 }, projector] });
 
 beforeEach(() => {

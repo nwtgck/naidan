@@ -15,14 +15,17 @@ export function createImageGenerationStorageHarness() {
     text = '';
     readonly name: string;
     readonly path: string;
+
     constructor({ name, path }: { name: string, path: string }) {
       this.name = name; this.path = path;
     }
+
     async getFile() {
       reads.push(this.path); fault({ operation: 'read', path: this.path });
       const text = this.text;
       return new NodeFile([text], this.name, { type: 'application/json' });
     }
+
     async createWritable() {
       let pending = '';
       fault({ operation: 'open', path: this.path });
@@ -45,9 +48,11 @@ export function createImageGenerationStorageHarness() {
     readonly children = new Map<string, MockDirectory | MockFile>();
     readonly name: string;
     readonly path: string;
+
     constructor({ name, path }: { name: string, path: string }) {
       this.name = name; this.path = path;
     }
+
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle.getDirectoryHandle is a browser positional contract.
     async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockDirectory> {
       if (name.includes('/') || name === '.' || name === '..') throw new Error('Invalid directory component.');
@@ -59,6 +64,7 @@ export function createImageGenerationStorageHarness() {
       if (!(child instanceof MockDirectory)) throw new DOMException('Not a directory', 'TypeMismatchError');
       return child;
     }
+
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle.getFileHandle is a browser positional contract.
     async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFile> {
       if (name.includes('/') || name === '.' || name === '..') throw new Error('Invalid file component.');
@@ -70,10 +76,12 @@ export function createImageGenerationStorageHarness() {
       if (!(child instanceof MockFile)) throw new DOMException('Not a file', 'TypeMismatchError');
       return child;
     }
+
     async *entries() {
       fault({ operation: 'enumerate', path: this.path });
       yield* this.children.entries();
     }
+
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle.removeEntry is a browser positional contract.
     async removeEntry(name: string, options?: { recursive?: boolean }) {
       fault({ operation: 'remove', path: `${this.path}/${name}` });
@@ -113,6 +121,7 @@ export function createImageGenerationStorageHarness() {
 export function generationSessionFixture({ id }: { id: string }): ImageGenerationSession {
   return { activityOrder: undefined, translation: undefined, assistantChatId: undefined, id: toImageGenerationSessionId({ raw: id }), revision: 0, title: '雨の夜景', createdAt: 1, updatedAt: 1, state: 'active' };
 }
+
 export function generationRunFixture({ id, sessionId, count, seed }: { id: string, sessionId: ImageGenerationSessionId, count: number, seed: string }): ImageGenerationRun {
   return {
     acceptedOrder: undefined,
@@ -158,6 +167,7 @@ export function generationRunFixture({ id, sessionId, count, seed }: { id: strin
     },
   };
 }
+
 export function generationAssetFixture({ id, run, index }: { id: string, run: ImageGenerationRun, index: number }): ImageGenerationAsset {
   const seed = run.seeds[index];
   if (seed === undefined) throw new Error('Fixture has no planned output at this index.');

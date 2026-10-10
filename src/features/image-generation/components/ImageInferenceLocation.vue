@@ -15,15 +15,18 @@ const configuration = ref(''), configurationError = ref('');
 watch(props.inferenceLocation.selection, value => {
   configuration.value = value ? JSON.stringify(value, undefined, 2) : ''; configurationError.value = '';
 }, { immediate: true });
+
 function chooseKind({ value }: { value: string }): void {
   switch (value) {
   case 'local': case 'naidan_rpc': props.inferenceLocation.setKind({ value }); break;
   default: throw new Error('Unknown image inference location');
   }
 }
+
 function chooseRegistration({ value }: { value: string }): void {
   props.inferenceLocation.chooseRegistration({ id: props.inferenceLocation.entries.value.find(entry => idToRaw({ id: entry.registration.id }) === value)?.registration.id });
 }
+
 function applyConfiguration(): void {
   if (props.disabled) return;
   try {
@@ -33,9 +36,11 @@ function applyConfiguration(): void {
     configurationError.value = error instanceof Error ? error.message : String(error);
   }
 }
+
 function manage(): void {
   void router.push({ query: { ...router.currentRoute.value.query, settings: 'naidan-rpc' } });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

@@ -106,6 +106,7 @@ export function benchmarkManifest({ snapshot, includePrompts, includeInputImages
     ],
   });
 }
+
 export function benchmarkAggregate({ snapshot }: { snapshot: BenchmarkSnapshot }) {
   return aggregateSchema.parse(snapshot.plan.models.map(({ target }, modelIndex) => {
     const modelRuns = snapshot.runs.filter(run => run.record.modelIndex === modelIndex);
@@ -125,6 +126,7 @@ export function benchmarkAggregate({ snapshot }: { snapshot: BenchmarkSnapshot }
     };
   }));
 }
+
 const README = `\
 # Naidan image-generation benchmark
 
@@ -203,6 +205,7 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
   void completed.catch(() => undefined);
   return { stream: output.stream, completed };
 }
+
 export async function benchmarkArchiveBlob({ snapshot, includePrompts, includeInputImages, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string, signal: AbortSignal }): Promise<Blob> {
   signal.throwIfAborted();
   const archive = createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt });
@@ -225,5 +228,6 @@ export async function benchmarkArchiveBlob({ snapshot, includePrompts, includeIn
     signal.removeEventListener('abort', abort); await reader.cancel().catch(() => undefined); reader.releaseLock();
   }
 }
+
 export const TEST_ONLY = {
 };

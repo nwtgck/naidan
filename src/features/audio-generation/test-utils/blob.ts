@@ -11,10 +11,12 @@ export function readBlobBytes({ blob }: { blob: Blob }): Promise<Uint8Array<Arra
     reader.readAsArrayBuffer(blob);
   });
 }
+
 export function referenceFile({ name }: { name: string }): File {
   const file = new File(['encoded audio'], name, { type: 'audio/wav' });
   Object.defineProperty(file, 'arrayBuffer', { value: async () => new Uint8Array([1, 2, 3]).buffer });
   return file;
 }
+
 export const TEST_ONLY = {
 };

@@ -12,6 +12,7 @@ vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addE
 
 const originalLocks = navigator.locks;
 const lockCalls: string[] = [];
+
 function simulatedWebLocks() {
   const lanes = new Map<string, Promise<void>>();
   return {
@@ -29,6 +30,7 @@ function simulatedWebLocks() {
     },
   };
 }
+
 function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
   const repository = 'owner/Model-GGUF'; const mainFilePath = 'Model-Q4_K_M.gguf';
   return {

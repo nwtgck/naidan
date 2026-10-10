@@ -60,9 +60,11 @@ export type NaidanId = BrandedId<string>;
 export function toNaidanRpcRegistrationId({ raw }: { raw: string }): NaidanRpcRegistrationId {
   return raw as unknown as NaidanRpcRegistrationId;
 }
+
 export function toNaidanRpcPeerPublicKey({ raw }: { raw: string }): NaidanRpcPeerPublicKey {
   return raw as unknown as NaidanRpcPeerPublicKey;
 }
+
 export function toNaidanRpcRegistryId({ raw }: { raw: string }): NaidanRpcRegistryId {
   return raw as unknown as NaidanRpcRegistryId;
 }

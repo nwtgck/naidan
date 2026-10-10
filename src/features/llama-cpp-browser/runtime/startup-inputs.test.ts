@@ -12,6 +12,7 @@ let core: Core;
 const profile: LlamaCppProfile = 'cpu-wasm32';
 const assetBaseURL = 'https://example.invalid/runtime/';
 const bytes = new Uint8Array([0, 97, 115, 109]);
+
 async function turn(): Promise<void> {
   await new Promise<void>(resolve => setImmediate(resolve));
 }

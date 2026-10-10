@@ -21,6 +21,7 @@ class TestWorker extends EventTarget {
   postMessage = vi.fn();
   static instances: TestWorker[] = [];
   terminate = vi.fn();
+
   constructor() {
     super(); TestWorker.instances.push(this);
   }

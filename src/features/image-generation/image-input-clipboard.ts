@@ -25,5 +25,6 @@ export async function readClipboardImageFiles({ clipboard }: { clipboard: Pick<C
   }
   return files;
 }
+
 export const TEST_ONLY = {
 };

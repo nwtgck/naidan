@@ -54,6 +54,7 @@ export class LocalStorageProvider extends IStorageProvider {
     const raw = localStorage.getItem(KEY_NAIDAN_RPC_REGISTRY);
     return raw === null ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(raw));
   }
+
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     if (registry === undefined) localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
     else localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));

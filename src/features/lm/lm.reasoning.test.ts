@@ -11,6 +11,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 const fetchMock = vi.fn<LmFetch>();
 const finishedOpenAi = 'data: [DONE]\n\n';
 const finishedOllama = '{"done":true}\n';
+
 function request({ parameters }: { parameters: LmParameters | undefined }): Parameters<LmProvider['chat']>[0] {
   return {
     debug: undefined,
@@ -22,12 +23,14 @@ function request({ parameters }: { parameters: LmParameters | undefined }): Para
     signal: undefined,
   };
 }
+
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetchMock.mock.calls[index]?.[1]?.body;
   expect(typeof raw).toBe('string');
   if (typeof raw !== 'string') throw new Error('Expected a serialized request.');
   return JSON.parse(raw);
 }
+
 function failure({ message }: { message: string }): Response {
   return Response.json({ error: message }, { status: 400 });
 }

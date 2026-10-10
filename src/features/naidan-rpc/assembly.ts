@@ -8,12 +8,15 @@ export class ByteAssembly {
   private used = 0;
   private readonly limit: number;
   private readonly memory: RpcByteOwner | undefined;
+
   constructor({ limit, memory }: { limit: number; memory?: RpcByteOwner }) {
     this.limit = limit; this.memory = memory?.fork();
   }
+
   get byteLength(): number {
     return this.used;
   }
+
   append({ bytes }: { bytes: Uint8Array }): void {
     const required = this.used + bytes.length;
     check({ condition: required <= this.limit, code: 'RESOURCE_EXHAUSTED' });
@@ -25,9 +28,11 @@ export class ByteAssembly {
     }
     this.bytes.set(bytes, this.used); this.used = required;
   }
+
   dispose(): void {
     this.memory?.clear(); this.bytes = new Uint8Array(); this.used = 0;
   }
+
   finish(): Uint8Array<ArrayBuffer> {
     return this.bytes.subarray(0, this.used);
   }

@@ -8,12 +8,15 @@ import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private content: string = '') {}
+
   getFile() {
     return Promise.resolve({
       text: () => Promise.resolve(this.content),
     });
   }
+
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {

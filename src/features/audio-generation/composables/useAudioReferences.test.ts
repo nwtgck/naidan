@@ -19,6 +19,7 @@ afterEach(() => {
 function library() {
   return scope.run(useAudioReferences)!;
 }
+
 function file({ name, bytes }: { name: string, bytes: number }): File {
   const value = new File(['x'], name); Object.defineProperty(value, 'size', { value: bytes }); return value;
 }

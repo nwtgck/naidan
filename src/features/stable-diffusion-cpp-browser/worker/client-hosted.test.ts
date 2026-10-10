@@ -11,9 +11,13 @@ beforeEach(() => {
   vi.stubGlobal('Worker', class extends EventTarget {
     constructor() {
       super(); mocks.constructed(); mocks.workers.push(this);
-    } postMessage(value: unknown) {
+    }
+
+    postMessage(value: unknown) {
       mocks.messages.push(value);
-    } terminate() {
+    }
+
+    terminate() {
       mocks.terminate();
     }
   });

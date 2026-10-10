@@ -14,9 +14,11 @@ const previewLimitDraft = ref(String(maxPreviews.value));
 watch(maxPreviews, value => {
   previewLimitDraft.value = String(value);
 });
+
 function editPreviewLimit({ event }: { event: Event }): void {
   if (event.target instanceof HTMLInputElement) previewLimitDraft.value = event.target.value;
 }
+
 function commitPreviewLimit({ event }: { event: Event }): void {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -24,6 +26,7 @@ function commitPreviewLimit({ event }: { event: Event }): void {
   previewLimitDraft.value = String(maxPreviews.value);
   input.value = previewLimitDraft.value;
 }
+
 const viewerIndex = ref<number>();
 const previewSettingsOpen = ref(false);
 const previewSettingsId = useId();
@@ -39,9 +42,11 @@ watch(previewSnapshots, (current, previous) => {
   const nextIndex = current.findIndex(item => item.id === selected?.id);
   viewerIndex.value = nextIndex < 0 ? undefined : nextIndex;
 });
+
 function formatElapsed({ elapsedMs }: { elapsedMs: number }): string {
   return `${(elapsedMs / 1000).toFixed(elapsedMs >= 10000 ? 0 : 1)} s`;
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

@@ -25,14 +25,17 @@ const unsubscribe = imageRecoveryStore.subscribe({
   },
 });
 onScopeDispose(unsubscribe);
+
 async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
   return imageRecoveryStore.list().flatMap(entry => entry.files).find(file => file.binaryObjectId === binaryObjectId)?.blob;
 }
+
 function download({ id }: { id: ImageGenerationId }): void {
   const entry = imageRecoveryStore.list().find(item => item.id === id);
   const image = entry?.files.find(file => file.binaryObjectId === entry.record.result.binaryObjectId);
   if (image) downloadBlob({ blob: image.blob, filename: 'naidan-recovered-image.png' });
 }
+
 async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
   if (saving.value) return;
   const entry = imageRecoveryStore.list().find(item => item.id === id);
@@ -46,6 +49,7 @@ async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
     saving.value = false;
   }
 }
+
 async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
   if (!await showConfirm({ message: await ensureStrings.ImageRecoveredOutputs__discard_warning() })) return;
   try {
@@ -61,6 +65,7 @@ async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
     failure.value = error instanceof Error ? error.message : String(error);
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

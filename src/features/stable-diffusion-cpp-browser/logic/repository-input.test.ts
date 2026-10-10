@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { imageDirectoriesFromDrop, imageDirectoryFromFiles } from './repository-input';
+
 function localFile({ path }: { path: string }): File {
   const file = new File(['data'], path.split('/').at(-1)!);
   Object.defineProperty(file, 'webkitRelativePath', { value: path }); return file;

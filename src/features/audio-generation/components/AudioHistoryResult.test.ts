@@ -6,6 +6,7 @@ import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import AudioHistoryResult from './AudioHistoryResult.vue';
 const text = '  First line\n日本語のテキスト。\nSecond line\twith spacing.  ';
+
 function entry(): AudioHistoryEntry {
   const { wav, ...result } = audioResult();
   return {
@@ -17,6 +18,7 @@ function entry(): AudioHistoryEntry {
     settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }),
   };
 }
+
 let wrapper: VueWrapper | undefined;
 const copy = vi.fn<(text: string) => Promise<void>>();
 

@@ -207,5 +207,6 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
+
 export const TEST_ONLY = {
 };

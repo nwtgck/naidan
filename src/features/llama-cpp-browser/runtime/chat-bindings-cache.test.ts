@@ -29,24 +29,31 @@ function fixture() {
   }
   class Parser {
     reasoning_format = 0; parse_tool_calls = false; parser: unknown; delete = deleteParser;
+
     constructor(_params: Params) {}
   }
   class Arena {
-    load(_text: string) {} delete() {}
+    load(_text: string) {}
+
+    delete() {}
   }
   const apply = vi.fn((_inputs: Inputs) => new Params());
   class Templates {
     constructor(_model: bigint, _chatTemplate: string, _bos: string, _eos: string) {
       templateConstructed();
     }
+
     delete() {
       deletedTemplates();
     }
+
     apply = apply;
   }
   const fakeNative = {
     string_map: class {
-      set(_key: string, _value: string) {} delete() {}
+      set(_key: string, _value: string) {}
+
+      delete() {}
     },
     common_reasoning_format: { COMMON_REASONING_FORMAT_DEEPSEEK: 1 },
     common_json: { parse: (_text: string) => ({ delete() {} }) },

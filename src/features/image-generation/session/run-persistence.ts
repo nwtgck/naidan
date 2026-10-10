@@ -22,5 +22,6 @@ export function createImageRunPersistence({ store }: { store: ImageGenerationSto
     }),
   };
 }
+
 export const TEST_ONLY = {
 };

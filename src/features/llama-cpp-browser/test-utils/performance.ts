@@ -12,6 +12,7 @@ export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none' 
     notes: '',
   });
 }
+
 export function performanceReport({ reused = 0, outcome = 'completed' }: { reused?: number, outcome?: 'completed' | 'failed' | 'aborted' } = {}) {
   let time = 0;
   const metrics = createGenerationPerformance({ enabled: true, now: () => time });
@@ -24,8 +25,10 @@ export function performanceReport({ reused = 0, outcome = 'completed' }: { reuse
   time = 230; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
   return metrics.finish({ outcome, profile: 'webgpu-wasm64-jspi' })!;
 }
+
 export function performanceEnvironment(): PerformanceSnapshot['environment'] {
   return { appVersion: 'test', buildMode: 'hosted', userAgent: 'test', hardwareConcurrency: 8, crossOriginIsolated: true, timeOrigin: 1000 };
 }
+
 export const TEST_ONLY = {
 };

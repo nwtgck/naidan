@@ -5,5 +5,6 @@ export function modelDownloadUrl({ repository, revision, file }: { repository: s
   const path = repositoryFileSchema.parse(file).path.split('/').map(encodeURIComponent).join('/');
   return `https://huggingface.co/${repositoryUrlPath({ repository })}/resolve/${revisionSchema.parse(revision)}/${path}`;
 }
+
 export const TEST_ONLY = {
 };

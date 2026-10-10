@@ -9,12 +9,15 @@ import type { AssistantMessageNode, ChatMessage } from '@/01-models/types';
 function node(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'generated' }), role: 'assistant', createdAt: 1, parts: [], interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
+
 function history(): ChatMessage[] {
   return [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'original', completeness: 'complete' }] }];
 }
+
 function chat({ messages, controller }: { messages: ChatMessage[], controller: AbortController }) {
   return new PromptApiProvider().chat({ debug: undefined, messages, model: BROWSER_PROVIDED_LM_MODEL_ID, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal });
 }
+
 function browser({ stream }: { stream: ReadableStream<string> }) {
   const destroy = vi.fn(); const promptStreaming = vi.fn((_prompt: import('./language-model').PromptApiPrompt) => stream);
   const create = vi.fn(async () => ({ destroy, promptStreaming }));

@@ -25,6 +25,7 @@ beforeEach(async () => {
 function read({ request }: { request: ReturnType<typeof chatRequest> }) {
   return collectChatGeneration({ items: new LlamaCppBrowserProvider().chat(request), abortController: new AbortController() });
 }
+
 function called({ argumentsText, name, id }: { argumentsText: string, name: string, id: string }): GenerationResult {
   return { content: '', reasoningContent: '', finishReason: 'stop', toolCalls: [{ id, type: 'function', function: { name, arguments: argumentsText } }] };
 }

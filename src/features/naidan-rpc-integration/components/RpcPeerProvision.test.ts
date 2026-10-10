@@ -40,6 +40,7 @@ function registration({ id, phase }: { id: string, phase: RpcRegistrationView['p
     connectionToken: phase === 'connected' ? {} : undefined,
   };
 }
+
 function panel({ view }: { view: RpcRegistrationView }) {
   const getPeerProvidedMethods = vi.fn<NaidanPeerManager['getPeerProvidedMethods']>().mockResolvedValue({ status: 'ready', methods: [] });
   const manager = { getPeerProvidedMethods };

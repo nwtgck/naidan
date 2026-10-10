@@ -48,12 +48,15 @@ function render({ suggestion, models }: { suggestion: ModelSuggestion, models: L
   const wrapper = mount(LlamaCppBrowserModelSuggestion, { props: { suggestion, models, disabled: false, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, defaultActionDisabled: false } });
   wrappers.push(wrapper); return wrapper;
 }
+
 function unrender({ wrapper }: { wrapper: VueWrapper }): void {
   wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
 }
+
 function selected({ wrapper }: { wrapper: VueWrapper }): string {
   return wrapper.get<HTMLSelectElement>('[data-testid="llama-suggestion-quantization"]').element.value;
 }
+
 async function forceSelectionChange({ wrapper, value }: { wrapper: VueWrapper, value: string }): Promise<void> {
   // Test Utils suppresses trigger() on disabled elements; dispatch directly to
   // exercise the handler's guard against synthetic changes to a frozen intent.
@@ -61,6 +64,7 @@ async function forceSelectionChange({ wrapper, value }: { wrapper: VueWrapper, v
   select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
   await flushPromises();
 }
+
 function holdDownloadUntilPaused(): void {
   vi.mocked(downloadRepository).mockImplementationOnce(({ signal }) => new Promise<void>((_resolve, reject) => {
     signal.throwIfAborted();

@@ -32,5 +32,6 @@ export async function publishImageGenerationBinaries({ provider, referenced, fil
     if (!await provider.getFile({ binaryObjectId }) || !await provider.getBinaryObject({ binaryObjectId })) throw new Error('Image Generation references a missing or unpublished binary object.');
   }
 }
+
 export const TEST_ONLY = {
 };

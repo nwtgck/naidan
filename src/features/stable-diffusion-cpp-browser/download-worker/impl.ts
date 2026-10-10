@@ -2,6 +2,7 @@ import { receivePrivacyStream } from '@/features/privacy-fetch/stream-port';
 import { downloadImageRecipe } from '@/features/stable-diffusion-cpp-browser/logic/catalog-download';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import type { ImageDownloadWorker } from './types';
+
 export function createImageDownloadWorker(): WorkerServerApi<ImageDownloadWorker> {
   let active: AbortController | undefined;
   return {
@@ -35,5 +36,6 @@ export function createImageDownloadWorker(): WorkerServerApi<ImageDownloadWorker
     },
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -8,6 +8,7 @@ export type DownloadFileAccess = {
   flush(): Promise<void>,
   close(): Promise<void>,
 };
+
 export async function openDownloadAccess({ handle, kind, offset }: {
   handle: FileSystemFileHandle, kind: 'opfs' | 'host', offset: number,
 }): Promise<DownloadFileAccess> {
@@ -69,5 +70,6 @@ export async function openDownloadAccess({ handle, kind, offset }: {
   default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

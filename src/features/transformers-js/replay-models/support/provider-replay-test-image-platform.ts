@@ -130,6 +130,7 @@ export function createProviderReplayTestImagePlatform(): ProviderReplayTestImage
     readonly data: Uint8ClampedArray;
     readonly width: number;
     readonly height: number;
+
     constructor(data: Uint8ClampedArray, width: number, height: number, ...unsupported: unknown[]) {
       if (unsupported.length) throw new Error('Unsupported ImageData options');
       solidPixel({ data, width, height });
@@ -144,13 +145,16 @@ export function createProviderReplayTestImagePlatform(): ProviderReplayTestImage
     readonly height = 1;
     readonly #rgba: Uint8ClampedArray;
     #closed = false;
+
     constructor({ rgba }: { rgba: Uint8ClampedArray }) {
       this.#rgba = Uint8ClampedArray.from(rgba);
     }
+
     snapshot() {
       if (this.#closed) throw new Error('ImageBitmap is closed');
       return this.#rgba.slice();
     }
+
     close() {
       this.#closed = true;
     }
@@ -160,16 +164,19 @@ export function createProviderReplayTestImagePlatform(): ProviderReplayTestImage
     readonly width: number;
     readonly height: number;
     #data: Uint8ClampedArray | undefined;
+
     constructor(width: number, height: number, ...unsupported: unknown[]) {
       if (unsupported.length) throw new Error('Unsupported Canvas constructor options');
       pixelCount({ width, height });
       this.width = width;
       this.height = height;
     }
+
     snapshot() {
       if (!this.#data) throw new Error('Canvas has no supported full-frame content');
       return this.#data.slice();
     }
+
     readonly #context = {
       drawImage: (source: unknown, dx: number, dy: number, ...size: number[]) => {
         if (!(source instanceof ReplayImageBitmap) && !(source instanceof ReplayOffscreenCanvas)) {
@@ -199,6 +206,7 @@ export function createProviderReplayTestImagePlatform(): ProviderReplayTestImage
         return new ReplayImageData(this.snapshot(), width, height);
       },
     };
+
     getContext(contextId: string, ...unsupported: unknown[]) {
       if (contextId !== '2d' || unsupported.length) throw new Error('Only an unconfigured 2d context is supported');
       return this.#context;

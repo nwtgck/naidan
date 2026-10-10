@@ -4,6 +4,7 @@ import { modelLaunchViewState, readModelLaunchView } from './history';
 import { readModelLaunchReference } from './reference';
 const chatId = toChatId({ raw: 'test-chat' });
 const modelId = 'hf.co/owner/Model-GGUF:folder%2FModel-Q4_K_M.gguf';
+
 function view() {
   return modelLaunchViewState({ chatId, input: 'hf.co/owner/Model-GGUF:Q4_K_M', modelId, revision: 'a'.repeat(40) });
 }

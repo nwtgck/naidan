@@ -19,6 +19,7 @@ export function componentRequirements({ family }: { family: ImageFamily }): { sl
   default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
   }
 }
+
 export function componentMatch({ candidate, requirement }: { candidate: { family: string, classes: readonly string[], roles: readonly ModelSlot[], issue: string | undefined }, requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): 'matching' | 'unverified' | 'incompatible' {
   if (candidate.issue) return 'incompatible';
   // This selector supports standalone VAE files. Embedded decoder tensors do

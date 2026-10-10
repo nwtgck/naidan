@@ -2117,6 +2117,7 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
+
 const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
   if (dto === undefined) return undefined;
   const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,

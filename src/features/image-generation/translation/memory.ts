@@ -38,5 +38,6 @@ export function createImageTranslationMemory({ maxEntries, maxCharacters }: { ma
   }
   return { read, save, clear, removeSession };
 }
+
 export const TEST_ONLY = {
 };

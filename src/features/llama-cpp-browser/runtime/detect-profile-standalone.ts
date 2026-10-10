@@ -48,6 +48,7 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
 }
+
 /** Probe only browser capabilities in the inference Worker, before core/model loading. */
 export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
   let reason: ProfileUnavailableReason | undefined;
@@ -77,6 +78,7 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
     }),
   });
 }
+
 export const TEST_ONLY = {
   memory64Probe,
   suspensionProbe,

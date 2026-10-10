@@ -17,6 +17,7 @@ export type NaidanRpcRegistrySnapshot = {
   access: NaidanRpcRegistryAccess,
   registrations: NaidanRpcRegistration[],
 };
+
 export function sameNaidanRpcRegistry({ left, right }: { left: NaidanRpcRegistryAccess, right: NaidanRpcRegistryAccess }): boolean {
   const { providerGeneration: leftGeneration, registryId: leftId, persistence: leftPersistence, ...leftRest } = left;
   leftRest satisfies Record<PropertyKey, never>;
@@ -24,6 +25,7 @@ export function sameNaidanRpcRegistry({ left, right }: { left: NaidanRpcRegistry
   rightRest satisfies Record<PropertyKey, never>;
   return leftGeneration === rightGeneration && leftId === rightId && leftPersistence === rightPersistence;
 }
+
 export async function readNaidanRpcRegistry({ provider, providerGeneration, persistence }: {
   provider: IStorageProvider, providerGeneration: number, persistence: NaidanRpcRegistryAccess['persistence'],
 }): Promise<NaidanRpcRegistrySnapshot> {
@@ -37,6 +39,7 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
     registrations: registrations.map(value => rpcRegistrationFromDto({ value })),
   };
 }
+
 /** The caller holds the common storage lock, including provider switching and
  * clearing. Only the selected record is changed in the latest registry. */
 export async function writeNaidanRpcRegistry({ provider, current, registrations }: {
@@ -50,10 +53,12 @@ export async function writeNaidanRpcRegistry({ provider, current, registrations 
   // document after clearAll must not share authority with the old document.
   return { ...current.access, registryId: id };
 }
+
 function validateRegistry({ id, registrations }: { id: string; registrations: readonly { id: string }[] }): void {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw new Error('Invalid RPC registry identity');
   if (registrations.length > 32) throw new Error('RPC registry capacity exceeded');
   if (new Set(registrations.map(registration => registration.id)).size !== registrations.length) throw new Error('Duplicate RPC registration');
 }
+
 export const TEST_ONLY = {
 };

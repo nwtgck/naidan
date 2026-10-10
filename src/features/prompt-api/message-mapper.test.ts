@@ -5,24 +5,29 @@ import type { PromptApiMessageContent, PromptApiPrompt } from './language-model'
 import { mapChatMessagesToPromptApi } from './message-mapper';
 
 const id = toMessageId({ raw: 'message' });
+
 function text({ value }: { value: string }) {
   return { type: 'text' as const, text: value, completeness: 'complete' as const };
 }
+
 function image({ mimeType, status }: { mimeType: string, status: 'memory' | 'persisted' | 'missing' }): Extract<ChatMessage, { role: 'user' }>['parts'][number] {
   const common = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'image', mimeType, size: 5, uploadedAt: 1 };
   const attachment: Attachment = status === 'memory' ? { ...common, status, blob: new Blob(['hello'], { type: mimeType }) } : { ...common, status };
   return { type: 'attachment', attachment };
 }
+
 function getPromptMessages({ prompt }: { prompt: PromptApiPrompt }) {
   if (typeof prompt === 'string') throw new Error('Expected message-array prompt.');
   return prompt;
 }
+
 function getImageContent({ content }: { content: string | PromptApiMessageContent[] }) {
   if (typeof content === 'string') throw new Error('Expected multimodal content.');
   const found = content.find(part => part.type === 'image');
   if (found?.type !== 'image') throw new Error('Expected image.');
   return found;
 }
+
 function map({ messages }: { messages: ChatMessage[] }) {
   return mapChatMessagesToPromptApi({ messages, readBinaryObject: undefined, signal: undefined });
 }

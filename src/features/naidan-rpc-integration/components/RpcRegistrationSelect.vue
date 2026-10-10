@@ -20,6 +20,7 @@ const unsubscribe = subscribeRpcState({
 onScopeDispose(() => {
   disposed = true; unsubscribe();
 });
+
 async function refresh(): Promise<void> {
   try {
     const manager = await getRpcManager();
@@ -30,6 +31,7 @@ async function refresh(): Promise<void> {
     if (!disposed) failed.value = true;
   }
 }
+
 onMounted(async () => {
   try {
     await (await getRpcManager()).reload(); await refresh();
@@ -37,12 +39,15 @@ onMounted(async () => {
     if (!disposed) failed.value = true;
   }
 });
+
 function select({ value }: { value: string }): void {
   emit('update:modelValue', registrations.value.find(item => idToRaw({ id: item.registration.id }) === value)?.registration.id);
 }
+
 function manage(): void {
   void router.push({ query: { ...router.currentRoute.value.query, settings: 'naidan-rpc' } });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

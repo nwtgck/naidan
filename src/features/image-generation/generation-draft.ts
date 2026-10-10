@@ -15,11 +15,14 @@ export type ImageGenerationDraftAccess = {
   restoreDraft({ draft }: { draft: ImageGenerationDraft }): Promise<void>,
   resetDraft(): void,
 };
+
 export function findDraftModelFile({ entries, location }: { entries: ImageGenerationDraft['modelFiles'], location: ImageGenerationModelFile }): File | undefined {
   return entries.find(entry => JSON.stringify(entry.location) === JSON.stringify(location))?.file;
 }
+
 export function findDraftImage({ files, binaryObjectId }: { files: HistoryBinaryFile[], binaryObjectId: BinaryObjectId }): Blob | undefined {
   return files.find(file => file.binaryObjectId === binaryObjectId)?.blob;
 }
+
 export const TEST_ONLY = {
 };

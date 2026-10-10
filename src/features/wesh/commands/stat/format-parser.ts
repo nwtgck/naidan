@@ -46,6 +46,7 @@ export interface CompiledStatFormat {
 
 const MAX_FORMAT_LENGTH = 1_000_000;
 const MAX_FORMAT_FIELD_SIZE = 1_000_000;
+
 function decodePrintfByteEscape({ escaped }: { escaped: string }): number | undefined {
   switch (escaped) {
   case '\\': return 0x5c;

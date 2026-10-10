@@ -29,11 +29,13 @@ export async function scanDeletionTree({ folder }: { folder: FileSystemDirectory
   files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { files, directories };
 }
+
 async function parentDirectory({ folder, path }: { folder: FileSystemDirectoryHandle, path: string }): Promise<{ parent: FileSystemDirectoryHandle, name: string }> {
   const parts = relativePath.parse(path).split('/'); const name = parts.pop()!;
   for (const part of parts) folder = await folder.getDirectoryHandle(part);
   return { parent: folder, name };
 }
+
 export async function pruneEmptyDirectories({ folder, directories }: { folder: FileSystemDirectoryHandle, directories: string[] }): Promise<void> {
   for (const path of directories) {
     try {
@@ -44,6 +46,7 @@ export async function pruneEmptyDirectories({ folder, directories }: { folder: F
     }
   }
 }
+
 export async function executeDeletionPlan({ folder, plan, selectedPaths }: { folder: FileSystemDirectoryHandle, plan: DeletionPlan, selectedPaths: string[] | undefined }): Promise<DeletionResult> {
   const current = await scanDeletionTree({ folder });
   const files = selectedPaths ? current.files.filter(file => selectedPaths.includes(file.path)) : current.files;
@@ -58,5 +61,6 @@ export async function executeDeletionPlan({ folder, plan, selectedPaths }: { fol
   await pruneEmptyDirectories({ folder, directories: selectedPaths ? current.directories.filter(directory => selectedPaths.some(path => path.startsWith(`${directory}/`))) : current.directories });
   return 'deleted';
 }
+
 export const TEST_ONLY = {
 };

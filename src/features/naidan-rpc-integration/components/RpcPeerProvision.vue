@@ -11,10 +11,12 @@ const provided = shallowRef<PeerProvidedMethods>();
 const connected = computed(() => props.registration?.phase === 'connected');
 let epoch = 0, disposed = false;
 let pending: AbortController | undefined;
+
 function invalidate(): void {
   epoch++; pending?.abort(); pending = undefined;
   provided.value = undefined; status.value = 'idle';
 }
+
 async function refresh(): Promise<void> {
   const manager = props.manager, registration = props.registration;
   if (!manager || registration?.phase !== 'connected') return;
@@ -33,6 +35,7 @@ async function refresh(): Promise<void> {
     if (pending === controller) pending = undefined;
   }
 }
+
 // Health and local setting snapshots do not create a new peer. Requery only
 // for the actual session, or an explicit refresh/focus, to avoid discovery
 // calls themselves perpetually invalidating idle connection observations.
@@ -40,19 +43,23 @@ watch([() => props.manager, () => props.registration?.registration.id, () => pro
   invalidate();
   if (connected.value) void refresh();
 }, { immediate: true, flush: 'sync' });
+
 function focus(): void {
   if (connected.value && status.value !== 'loading') void refresh();
 }
+
 window.addEventListener('focus', focus);
 onScopeDispose(() => {
   disposed = true; invalidate(); window.removeEventListener('focus', focus);
 });
+
 function groupState({ names }: { names: readonly NaidanPeerControlledMethodName[] }): string | undefined {
   const count = names.filter(name => provided.value?.methods.some(method => method.name === name)).length;
   if (count === 0) return lazyStrings.RpcPeerProvision__not_provided();
   if (count === names.length) return lazyStrings.RpcPeerProvision__provided();
   return lazyStrings.RpcPeerProvision__partially_provided();
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
