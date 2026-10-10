@@ -13,6 +13,9 @@
     "test": "vitest",
     "test:pwa": "vitest run --config vitest.pwa.config.ts",
     "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
+    "strings:catalogs": "tsx scripts/generate-string-catalogs.ts",
+    "strings:catalogs:check": "tsx scripts/generate-string-catalogs.ts --check",
+    "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
