@@ -121,7 +121,11 @@ describe('native streamer instance call-through', () => {
     class ThrowingStreamer {
       put() {
         throw failure;
-      } end() {} on_finalized_text() {}
+      }
+
+      end() {}
+
+      on_finalized_text() {}
     }
     const streamer = new ThrowingStreamer(); const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: ThrowingStreamer.prototype, capture });
@@ -167,7 +171,11 @@ describe('native streamer instance call-through', () => {
     class Streamer {
       put() {
         return returned;
-      } end() {} on_finalized_text() {}
+      }
+
+      end() {}
+
+      on_finalized_text() {}
     }
     const streamer = new Streamer(); const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: Streamer.prototype, capture });

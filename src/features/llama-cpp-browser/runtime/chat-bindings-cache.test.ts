@@ -33,7 +33,9 @@ function fixture() {
     constructor(_params: Params) {}
   }
   class Arena {
-    load(_text: string) {} delete() {}
+    load(_text: string) {}
+
+    delete() {}
   }
   const apply = vi.fn((_inputs: Inputs) => new Params());
   class Templates {
@@ -49,7 +51,9 @@ function fixture() {
   }
   const fakeNative = {
     string_map: class {
-      set(_key: string, _value: string) {} delete() {}
+      set(_key: string, _value: string) {}
+
+      delete() {}
     },
     common_reasoning_format: { COMMON_REASONING_FORMAT_DEEPSEEK: 1 },
     common_json: { parse: (_text: string) => ({ delete() {} }) },

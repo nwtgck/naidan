@@ -103,7 +103,9 @@ describe('explicit microphone capture lifetime', () => {
 
   it('cleans up when recorder construction fails after permission is granted', async () => {
     vi.stubGlobal('MediaRecorder', class {
-      static isTypeSupported = () => false; constructor() {
+      static isTypeSupported = () => false;
+
+      constructor() {
         throw new Error('failed');
       }
     });

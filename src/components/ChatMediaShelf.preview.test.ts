@@ -103,7 +103,9 @@ beforeEach(async () => {
     downloads.push({ url: this.href, name: this.download, blob });
   });
   vi.stubGlobal('IntersectionObserver', class {
-    observe() {} disconnect() {}
+    observe() {}
+
+    disconnect() {}
   });
 });
 
