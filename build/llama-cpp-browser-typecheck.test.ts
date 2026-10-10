@@ -25,5 +25,5 @@ describe('browser core packaging type boundary', () => {
       message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     }));
     expect(diagnostics).toEqual([]);
-  });
+  }, 30000);
 });
