@@ -665,9 +665,9 @@ defineExpose({
                 <div :tw-class="['flex flex-col items-start border-b border-gray-100 dark:border-gray-800', isLlamaCppBrowser ? 'gap-2 pb-3' : 'gap-4 pb-4']">
                   <div>
                     <h3 tw-class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <FlaskConicalIcon tw-class="w-4 h-4 text-purple-500" />
+                      <FlaskConicalIcon :tw-class="['w-4 h-4', isLlamaCppBrowser ? 'text-blue-500' : 'text-purple-500']" />
                       {{ lazyStrings.OnboardingModal__in_browser_ai() }}
-                      <span tw-class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">{{ lazyStrings.OnboardingModal__experimental() }}</span>
+                      <span :tw-class="['px-1.5 py-0.5 text-[10px] rounded-md font-bold uppercase tracking-wider', isLlamaCppBrowser ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' : 'bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400']">{{ lazyStrings.OnboardingModal__experimental() }}</span>
                     </h3>
                     <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ lazyStrings.OnboardingModal__run_models_in_browser() }}</p>
                   </div>
@@ -940,14 +940,14 @@ defineExpose({
       <footer v-if="isTransformersJs || isLlamaCppBrowser" tw-class="shrink-0 px-6 md:px-10 py-3.5 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
         <div tw-class="flex items-center justify-between gap-3">
           <p tw-class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
-            <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+            <SettingsIcon :tw-class="['w-3.5 h-3.5 md:w-4 md:h-4', isLlamaCppBrowser ? 'text-blue-500/60' : 'text-purple-500/60']" />
             {{ lazyStrings.OnboardingModal__settings_saved_for_local_inference() }}
           </p>
           <button
             @click="handleFinish"
             data-testid="onboarding-local-start"
             :disabled="!selectedModel || !isEndpointAvailable || (isLlamaCppBrowser && !localRuntimeReady)"
-            tw-class="ml-auto shrink-0 px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+            :tw-class="['ml-auto shrink-0 px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm md:text-base', isLlamaCppBrowser ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30']"
           >
             <PlayIcon tw-class="w-4 h-4 fill-current" />
             <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>

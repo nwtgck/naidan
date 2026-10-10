@@ -130,6 +130,7 @@ describe('OnboardingModal.vue', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="preset-manager"]').text()).toBe('hf.co/owner/repo:Q4_K_M');
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').classes()).toContain('bg-blue-600');
     expect(wrapper.find('[data-testid="onboarding-connect-button"]').exists()).toBe(false);
     expect(mockSave).not.toHaveBeenCalled(); expect(listModelsMock).not.toHaveBeenCalled();
     list.mockResolvedValue([{ id: 'model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);

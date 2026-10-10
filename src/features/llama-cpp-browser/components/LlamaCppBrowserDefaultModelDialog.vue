@@ -97,7 +97,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <div tw-class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3 items-center">
                 <p tw-class="text-sm break-all text-gray-500 dark:text-gray-400">{{ oldName }}</p>
                 <ArrowRightIcon tw-class="hidden sm:block w-4 h-4 text-gray-400" /><ArrowDownIcon tw-class="sm:hidden w-4 h-4 text-gray-400" />
-                <p tw-class="text-sm font-bold break-words text-purple-700 dark:text-purple-300">{{ localModelDisplayName({ model }) }}</p>
+                <p tw-class="text-sm font-bold break-words text-blue-700 dark:text-blue-300">{{ localModelDisplayName({ model }) }}</p>
               </div>
             </div>
             <div v-if="current && current.endpoint.type !== 'llama_cpp_browser'" data-testid="llama-default-endpoint-change" tw-class="space-y-2">
@@ -108,7 +108,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ failure === 'changed' ? lazyStrings.llamaCppBrowserDownloads__settings_changed_review_again() : lazyStrings.llamaCppBrowser__operation_failed() }}</p>
             <div tw-class="flex justify-end gap-3 pt-2">
               <button type="button" :disabled="saving" data-testid="llama-default-cancel" tw-class="px-4 py-2.5 text-xs font-bold rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50" @click="close">{{ lazyStrings.SHARED__cancel() }}</button>
-              <button type="button" :disabled="saving || !apply || !current" data-testid="llama-default-confirm" tw-class="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl text-white bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed" @click="confirm"><Loader2Icon v-if="saving" tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.llamaCppBrowserDownloads__set_as_default() }}</button>
+              <button type="button" :disabled="saving || !apply || !current" data-testid="llama-default-confirm" tw-class="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed" @click="confirm"><Loader2Icon v-if="saving" tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.llamaCppBrowserDownloads__set_as_default() }}</button>
             </div>
           </div>
         </div>

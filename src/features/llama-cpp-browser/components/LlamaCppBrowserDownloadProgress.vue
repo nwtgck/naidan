@@ -42,10 +42,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div tw-class="space-y-2" data-testid="llama-download-progress">
     <div :tw-class="['flex items-center justify-between gap-3 tabular-nums text-gray-500 dark:text-gray-400', appearance === 'welcome' ? 'text-xs' : 'text-[10px]']">
       <span v-if="progress">{{ formatDownloadBytes({ bytes: progress.completed }) }} / {{ formatDownloadBytes({ bytes: progress.total }) }}</span>
-      <span v-if="percentage !== undefined" :tw-class="['font-semibold', appearance === 'welcome' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400']">{{ percentage }}%</span>
+      <span v-if="percentage !== undefined" tw-class="font-semibold text-blue-600 dark:text-blue-400">{{ percentage }}%</span>
     </div>
     <div v-if="percentage !== undefined" role="progressbar" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceManager__downloading_model()" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="percentage" :tw-class="['w-full rounded-full overflow-hidden', appearance === 'welcome' ? 'h-2.5 bg-gray-200/70 dark:bg-gray-700/60' : 'h-1.5 bg-gray-100 dark:bg-gray-800']">
-      <div :tw-class="['h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none', appearance === 'welcome' ? 'bg-blue-600 dark:bg-blue-500' : 'bg-purple-500 dark:bg-purple-400']" :style="{ width: `${percentage}%` }" />
+      <div tw-class="h-full rounded-full bg-blue-600 dark:bg-blue-500 transition-[width] duration-300 motion-reduce:transition-none" :style="{ width: `${percentage}%` }" />
     </div>
     <div :tw-class="['flex flex-wrap gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400 tabular-nums', appearance === 'welcome' ? 'text-xs' : 'text-[10px]']">
       <span v-if="speed" data-testid="llama-download-speed">{{ speed }}</span>

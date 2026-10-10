@@ -292,7 +292,7 @@ defineExpose({
             </button>
             <button
               @click="activeTab = 'llama_cpp_browser'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-llama-cpp-browser"
             >
               <BrainCircuitIcon tw-class="w-4 h-4" />
@@ -423,7 +423,7 @@ defineExpose({
                   <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
                   <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>
                   <button type="button" data-testid="open-llama-cpp-performance"
-                          :disabled="props.performanceLoading" tw-class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
+                          :disabled="props.performanceLoading" tw-class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
                   <p v-if="props.performanceError" role="alert" tw-class="break-words text-xs text-red-700 dark:text-red-300">{{ props.performanceError }}</p>
                 </section>
               </div>
