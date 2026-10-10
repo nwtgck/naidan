@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
+import type { ProfileCapabilities } from './runtime/profile-capabilities';
 const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
@@ -47,6 +48,69 @@ function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
 describe('serialized hosted model service', () => {
   it('defaults to browser feature detection without an explicitly chosen profile', () => {
     expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('publishes validated option snapshots immediately and on changes until unsubscribed', () => {
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'auto' } });
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    expect(listener.mock.calls[0]?.[0].options).toEqual({ profile: 'auto' });
+    unsubscribe(); unsubscribe();
+    service.setOptions({ options: { profile: 'webgpu-wasm32-asyncify' } });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('isolates option snapshots from observers and callers', () => {
+    const mutate = service.subscribeOptions({
+      listener: ({ options }) => {
+        options.profile = 'cpu-wasm64';
+      },
+    });
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    const options = { profile: 'webgpu-wasm32-asyncify' as const };
+    service.setOptions({ options });
+    expect(service.getOptions()).toEqual(options);
+    expect(listener).toHaveBeenLastCalledWith({ options });
+    service.getOptions().profile = 'cpu-wasm32';
+    expect(service.getOptions()).toEqual(options);
+    mutate(); unsubscribe();
+  });
+
+  it('does not publish or change options when validation rejects an update', () => {
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    const invalid = { profile: 'auto' as const, unknownOption: true };
+    expect(() => service.setOptions({ options: invalid })).toThrow();
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+    expect(listener).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+
+  it('does not let a failed option observer interrupt another observer or the update', () => {
+    const failing = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const stopFailing = service.subscribeOptions({ listener: failing });
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    failing.mockImplementation(() => {
+      throw new Error('Observer failed');
+    });
+    expect(() => service.setOptions({ options: { profile: 'cpu-wasm32' } })).not.toThrow();
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    expect(service.getOptions()).toEqual({ profile: 'cpu-wasm32' });
+    stopFailing(); unsubscribe();
+  });
+
+  it('does not retain an observer that throws while subscribing', () => {
+    const failing = vi.fn(() => {
+      throw new Error('Cannot subscribe');
+    });
+    expect(() => service.subscribeOptions({ listener: failing })).toThrow('Cannot subscribe');
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    expect(failing).toHaveBeenCalledOnce();
   });
 
   it('resolves auto on the same Worker before passing a concrete generation profile', async () => {
@@ -410,6 +474,112 @@ it('keeps repeated preview intents queued behind a chat without aborting or comp
 });
 
 describe('idle model preparation', () => {
+  it('shares an advisory capability probe without suppressing one-shot model preparation', async () => {
+    const report: ProfileCapabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve(report); await probe;
+    await expect(preparation).resolves.toBe('ready');
+    expect(worker.prepareModel).toHaveBeenCalledOnce();
+    expect(worker.probeProfiles).toHaveBeenCalledOnce(); expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it('does not wait for a probe queued with a foreground generation', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await expect(service.prepareModel({ model: 'other.gguf', signal: undefined })).resolves.toBe('skipped-busy');
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await sending;
+  });
+
+  it('lets a foreground send win while preparation is observing a capability probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const generationGate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(generationGate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'other.gguf', signal: undefined });
+    const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe;
+    await expect(preparation).resolves.toBe('skipped-busy');
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    generationGate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await sending;
+  });
+
+  it('detaches cancelled preparation without cancelling the shared capability probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const controller = new AbortController();
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: controller.signal });
+    const rejected = expect(preparation).rejects.toThrow('aborted'); controller.abort(); await rejected;
+    expect(worker.dispose).not.toHaveBeenCalled(); expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] }); await probe;
+    expect(service.getProfileState().status).toBe('ready');
+  });
+
+  it('does not revive a released engine after the advisory probe fails', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const probeRejected = expect(probe).rejects.toThrow('worker-failed');
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const preparationRejected = expect(preparation).rejects.toThrow('worker-failed');
+    service.release();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probeRejected; await preparationRejected;
+    expect(worker.prepareModel).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
+    expect(service.getProfileState().status).toBe('idle');
+  });
+
+  it('does not revive an engine released by a ready-profile observer before the waiter resumes', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const stop = service.subscribeProfiles({
+      listener: ({ state }) => {
+        if (state.status === 'ready') service.release();
+      },
+    });
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const rejected = expect(preparation).rejects.toThrow('aborted');
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await rejected; stop();
+    expect(worker.prepareModel).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the accepted profile snapshot while sharing a pending probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    gate.resolve({
+      recommended: 'cpu-wasm64',
+      profiles: [
+        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+      ],
+    });
+    await probe; await expect(preparation).resolves.toBe('ready');
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.options.profile).toBe('cpu-wasm32');
+  });
+
+  it('lets only one competing preparation acquire the lane after a shared probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const loading = Promise.withResolvers<void>(); worker.prepareModel.mockReturnValueOnce(loading.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const first = service.prepareModel({ model: 'first.gguf', signal: undefined });
+    const second = service.prepareModel({ model: 'second.gguf', signal: undefined });
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await expect(second).resolves.toBe('skipped-busy');
+    await vi.waitFor(() => expect(worker.prepareModel).toHaveBeenCalledOnce());
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.model).toBe('first.gguf');
+    loading.resolve(); await expect(first).resolves.toBe('ready');
+  });
+
   it('uses real preparation on the same worker without submitting messages or generating', async () => {
     expect(await service.prepareModel({ model: 'local.gguf', signal: undefined })).toBe('ready');
     expect(worker.prepareModel).toHaveBeenCalledOnce();

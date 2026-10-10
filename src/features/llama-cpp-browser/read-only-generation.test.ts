@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import type { LlamaCppBrowserService } from './service-contract';
+import type { ProfileCapabilities } from './runtime/profile-capabilities';
 const fixture = vi.hoisted(() => ({
   generate: vi.fn<LlamaCppWorkerClient['generate']>(),
-  probeProfiles: vi.fn(),
+  probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(),
+  prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(),
   dispose: vi.fn(),
   subscribeDisposed: vi.fn(() => () => {}),
   canReuse: vi.fn(() => true),
@@ -17,6 +19,7 @@ let reader: ReturnType<typeof module.createReadOnlyLlamaCppClient>;
 
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); fixture.canReuse.mockReturnValue(true);
+  fixture.prepareModel.mockResolvedValue(undefined);
   fixture.generate.mockResolvedValue({ content: 'text', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); module = await import('./index-hosted');
   reader = module.createReadOnlyLlamaCppClient();
 });
@@ -205,4 +208,77 @@ it('does not queue completed detached retirement behind another reader operation
   generation.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   await generating;
   reader = next;
+});
+
+it('does not start welcome warmup when an advisory probe is queued behind read-only generation', async () => {
+  const generating = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['generate']>>>();
+  fixture.generate.mockReturnValueOnce(generating.promise);
+  fixture.probeProfiles.mockResolvedValueOnce({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+  const generation = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  await vi.waitFor(() => expect(fixture.generate).toHaveBeenCalledOnce());
+  const service = module.llamaCppBrowserService;
+  const probe = service.probeProfiles({ signal: undefined });
+  try {
+    await expect(service.prepareModel({ model: 'welcome.gguf', signal: undefined })).resolves.toBe('skipped-busy');
+    service.cancel(); service.release();
+    expect(fixture.generate.mock.calls[0]?.[0].signal?.aborted).toBe(false);
+    expect(fixture.probeProfiles).not.toHaveBeenCalled();
+    expect(fixture.prepareModel).not.toHaveBeenCalled();
+    expect(fixture.dispose).not.toHaveBeenCalled();
+  } finally {
+    generating.resolve({ content: 'text', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await generation; await probe;
+  }
+  // The passive probe does not become the owner of the read-only model cache.
+  await reader.dispose();
+  expect(fixture.dispose).toHaveBeenCalledOnce();
+  expect(service.getProfileState()).toEqual({ status: 'idle' });
+});
+
+it('preserves fail-fast read-only acceptance while an advisory probe owns the lane', async () => {
+  const checking = Promise.withResolvers<ProfileCapabilities>();
+  fixture.probeProfiles.mockReturnValueOnce(checking.promise);
+  const probe = module.llamaCppBrowserService.probeProfiles({ signal: undefined });
+  try {
+    await expect(reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('busy');
+    expect(fixture.generate).not.toHaveBeenCalled();
+    expect(fixture.resolve).not.toHaveBeenCalled();
+  } finally {
+    checking.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe;
+  }
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  expect(fixture.generate).toHaveBeenCalledOnce();
+});
+
+it('does not revive a retired read-only cache through warmup waiting on an advisory probe', async () => {
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const checking = Promise.withResolvers<ProfileCapabilities>();
+  fixture.probeProfiles.mockReturnValueOnce(checking.promise);
+  const service = module.llamaCppBrowserService;
+  const probe = service.probeProfiles({ signal: undefined });
+  const preparing = service.prepareModel({ model: 'welcome.gguf', signal: undefined });
+  const rejected = expect(preparing).rejects.toThrow('aborted');
+  const retiring = reader.dispose();
+  checking.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+  await probe; await retiring; await rejected;
+  expect(fixture.prepareModel).not.toHaveBeenCalled();
+  expect(fixture.dispose).toHaveBeenCalledOnce();
+  expect(service.getProfileState()).toEqual({ status: 'idle' });
+});
+
+it('transfers cache ownership to welcome warmup after a shared advisory probe', async () => {
+  await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+  const checking = Promise.withResolvers<ProfileCapabilities>();
+  fixture.probeProfiles.mockReturnValueOnce(checking.promise);
+  const service = module.llamaCppBrowserService;
+  const probe = service.probeProfiles({ signal: undefined });
+  const preparing = service.prepareModel({ model: 'welcome.gguf', signal: undefined });
+  checking.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+  await probe; await expect(preparing).resolves.toBe('ready');
+  expect(fixture.prepareModel).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ model: 'welcome.gguf' }) }));
+  await reader.dispose();
+  // The retired read-only owner must not evict a model now owned by the local UI.
+  expect(fixture.dispose).not.toHaveBeenCalled();
+  expect(service.getProfileState().status).toBe('ready');
 });

@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref, reactive, computed } from 'vue';
+import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
+import WelcomeScreen from './WelcomeScreen.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -51,13 +52,26 @@ const {
 // Test the real ChatPane/ChatInput wiring independently of the setup state
 // machine, which has deferred-file and download tests in useModelLaunchChat.
 const launchComposerOverride = ref<'visible' | 'hidden'>();
+const launchVisibilityOverride = ref<boolean>();
+// Browser/profile lifecycle is tested in useFirefoxWebGpuWarning. This suite
+// verifies the real pane's eligibility gate and shared notice-slot wiring.
+const firefoxWebGpuWarningCandidate = ref(false);
+vi.mock('@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning', () => ({
+  useFirefoxWebGpuWarning: ({ enabled }: { enabled: ComputedRef<boolean> }) => ({
+    visible: computed(() => enabled.value && firefoxWebGpuWarningCandidate.value),
+  }),
+}));
 vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useModelLaunchChat')>();
   return {
     ...original,
     useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
       const state = original.useModelLaunchChat(args);
-      return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
+      return {
+        ...state,
+        composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value),
+        visible: computed(() => launchVisibilityOverride.value ?? state.visible.value),
+      };
     },
   };
 });
@@ -782,6 +796,8 @@ let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
   launchComposerOverride.value = undefined;
+  launchVisibilityOverride.value = undefined;
+  firefoxWebGpuWarningCandidate.value = false;
   recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
@@ -4139,5 +4155,106 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     wrapper.unmount();
+  });
+});
+
+describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
+  beforeEach(() => {
+    resetMocks(); setupScrollToMock();
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/local-model' };
+    firefoxWebGpuWarningCandidate.value = true;
+  });
+
+  afterEach(() => {
+    wrapper?.unmount(); wrapper = null;
+  });
+
+  it.each(['privacy', 'model-launch'] as const)('supplements the %s welcome without replacing its primary content', async appearance => {
+    launchVisibilityOverride.value = appearance === 'model-launch';
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+        stubs: { LlamaCppBrowserModelLaunchCard: { template: '<section data-testid="model-launch-hero">Linked model</section>' } },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="firefox-webgpu-warning"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('relative');
+    switch (appearance) {
+    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.'); break;
+    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true); break;
+    default: { const exhaustive: never = appearance; throw new Error(String(exhaustive)); }
+    }
+  });
+
+  it('keeps the draft and submission policy intact when the advisory appears and disappears', async () => {
+    firefoxWebGpuWarningCandidate.value = false;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('Keep this draft while changing runtime options');
+    const input = wrapper.getComponent(ChatInput);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    firefoxWebGpuWarningCandidate.value = true;
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(textarea.element.value).toBe('Keep this draft while changing runtime options');
+    expect(input.isVisible()).toBe(true);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    firefoxWebGpuWarningCandidate.value = false;
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    // No empty named slot should change the ordinary wallpaper layout.
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('coexists with missing-model recovery and leaves recovery as the submission gate', async () => {
+    recoveryAvailability.value = 'missing';
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="firefox-webgpu-warning"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+    recoveryAvailability.value = 'available';
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
+  });
+
+  it('uses the resolved endpoint and removes the slot when the chat switches providers', async () => {
+    // A chat-local override can differ from the resolved inherited context.
+    mockCurrentChat.value!.endpoint = { type: 'openai', url: 'https://example.invalid' };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'transformers_js' } };
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+  });
+
+  it('does not show the welcome advisory over an existing conversation', async () => {
+    const node = createTextNode({ id: toMessageId({ raw: 'warning-existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
+    mockActiveMessages.value = [node];
+    mockCurrentChat.value!.root.items = [node];
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    expect(wrapper.findComponent(WelcomeScreen).exists()).toBe(false);
+  });
+
+  it('does not create a warning for an unresolved chat', async () => {
+    mockCurrentChat.value = null;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
   });
 });

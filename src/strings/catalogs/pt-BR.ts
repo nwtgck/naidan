@@ -922,6 +922,12 @@ import { LlamaCppBrowserDownloadSources__files_and_sources } from '@/strings/mes
 import { LlamaCppBrowserDownloadSources__request_urls_help } from '@/strings/messages/LlamaCppBrowserDownloadSources__request_urls_help/pt-BR';
 import { LlamaCppBrowserDownloadSources__revision } from '@/strings/messages/LlamaCppBrowserDownloadSources__revision/pt-BR';
 import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance/pt-BR';
+import { LlamaCppBrowserFirefoxWebGpuWarning__technical_details } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__technical_details/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__about_hours_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_remaining/pt-BR';
 import { LlamaCppBrowserHuggingFaceManager__about_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_minutes_remaining/pt-BR';
@@ -3644,6 +3650,12 @@ export const catalog = {
   LlamaCppBrowserDownloadSources__request_urls_help,
   LlamaCppBrowserDownloadSources__revision,
   LlamaCppBrowserDownloadSources__url_copied,
+  LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution,
+  LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling,
+  LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report,
+  LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english,
+  LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance,
+  LlamaCppBrowserFirefoxWebGpuWarning__technical_details,
   LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining,
   LlamaCppBrowserHuggingFaceManager__about_hours_remaining,
   LlamaCppBrowserHuggingFaceManager__about_minutes_remaining,

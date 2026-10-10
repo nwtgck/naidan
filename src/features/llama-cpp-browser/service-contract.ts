@@ -15,6 +15,7 @@ export interface LlamaCppBrowserService {
   probeProfiles({ signal }: { signal: AbortSignal | undefined }): Promise<ProfileCapabilities>;
   getState(): EngineState;
   getOptions(): RuntimeOptions;
+  subscribeOptions({ listener }: { listener: ({ options }: { options: RuntimeOptions }) => void }): () => void;
   setOptions({ options }: { options: RuntimeOptions }): void;
   subscribe({ listener }: { listener: ({ state }: { state: EngineState }) => void }): () => void;
   subscribeModelList({ listener }: { listener: () => void }): () => void;

@@ -13,6 +13,7 @@ import { logDiagnostic, logFailure } from './debug-log';
 
 let state: EngineState = { status: 'idle' };
 let options: RuntimeOptions = defaultRuntimeOptions();
+const optionsListeners = new Set<({ options }: { options: RuntimeOptions }) => void>();
 let client: LlamaCppWorkerClient | undefined;
 type WorkerRetirement = { outcome: Promise<void>, completed: Promise<void> };
 const retiringWorkers = new WeakMap<LlamaCppWorkerClient, WorkerRetirement>();
@@ -260,10 +261,19 @@ async function run<T>({ signal, operation, kind, owner }: {
 export const llamaCppBrowserService: LlamaCppBrowserService = {
   async prepareModel({ model, signal, onProgress }) {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    const acceptedOptions = { ...options };
+    // A capability-only probe owns no model. Share it instead of suppressing
+    // the Welcome Screen's one-shot warmup when its advisory probes first.
+    // Do not reserve a warmup lane while waiting: a foreground send still wins.
+    if (laneReservations === 1 && profileProbe !== undefined) {
+      const epoch = profileEpoch;
+      await observeProbe({ pending: profileProbe, signal });
+      // Releasing the engine while we waited must not revive its Worker.
+      if (epoch !== profileEpoch) throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
     // Inspect ownership, not progress. Tool callbacks can own the lane while
     // EngineState still says idle. Do not evict or wait behind another chat.
     if (laneReservations > 0) return 'skipped-busy';
-    const acceptedOptions = { ...options };
     return run({
       kind: 'operation',
       owner: undefined,
@@ -309,8 +319,29 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   getState: () => ({ ...state }),
   getOptions: () => ({ ...options }),
+  subscribeOptions({ listener }) {
+    // Options are shared by all chats. Each observer receives its own snapshot.
+    optionsListeners.add(listener);
+    try {
+      listener({ options: { ...options } });
+    } catch (error) {
+      optionsListeners.delete(listener);
+      throw error;
+    }
+    return () => {
+      optionsListeners.delete(listener);
+    };
+  },
   setOptions({ options: next }) {
     options = parseRuntimeOptions({ options: next });
+    for (const listener of optionsListeners) {
+      try {
+        listener({ options: { ...options } });
+      } catch {
+        // An advisory UI must not interrupt option changes or other observers.
+        logDiagnostic({ diagnostic: { event: 'failed' } });
+      }
+    }
   },
   subscribe({ listener }) {
     listeners.add(listener); listener({ state: { ...state } }); return () => {

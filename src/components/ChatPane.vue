@@ -49,6 +49,8 @@ import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/compone
 import { useModelLaunchChat } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
 import { useMissingLlamaCppBrowserModel } from '@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel';
 import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
+import LlamaCppBrowserFirefoxWebGpuWarning from '@/features/llama-cpp-browser/components/LlamaCppBrowserFirefoxWebGpuWarning.vue';
+import { useFirefoxWebGpuWarning } from '@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning';
 import ChatInput from './ChatInput.vue';
 import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
 import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
@@ -161,6 +163,10 @@ const modelRecovery = useMissingLlamaCppBrowserModel({
   chat,
   resolved: computed(() => resolvedSettings.value ?? undefined),
   enabled: computed(() => !modelLaunch.visible.value || (chat.value?.root.items.length ?? 0) > 0),
+});
+const firefoxWebGpuWarning = useFirefoxWebGpuWarning({
+  enabled: computed(() => chat.value !== null && activeMessages.value.length === 0
+    && resolvedSettings.value?.endpoint.type === 'llama_cpp_browser'),
 });
 const inheritedSettings = chatPaneState.inheritedSettings;
 const availableChatGroups = chatPaneState.chatGroups;
@@ -1692,8 +1698,9 @@ watch(
             <template v-if="modelLaunch.visible.value" #primary>
               <LlamaCppBrowserModelLaunchCard :state="modelLaunch" />
             </template>
-            <template v-if="modelRecovery.visible.value" #notice>
-              <LlamaCppBrowserModelRecovery :state="modelRecovery" />
+            <template v-if="firefoxWebGpuWarning.visible.value || modelRecovery.visible.value" #notice>
+              <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
+              <LlamaCppBrowserModelRecovery v-if="modelRecovery.visible.value" :state="modelRecovery" />
             </template>
           </WelcomeScreen>
         </template>
