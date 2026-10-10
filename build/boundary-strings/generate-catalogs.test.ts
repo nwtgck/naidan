@@ -2,13 +2,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 
 import * as ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { synchronizeStringCatalogs } from './generate-catalogs';
+import { executeStringCatalogCommand } from './catalog-command';
 import {
   BOUNDARY_STRING_LOCALES,
   createBoundaryStringProjectPaths,
@@ -354,36 +353,26 @@ catalog.${messageKey}({ wrong: 'Ada' });
 });
 
 describe('String catalog command', () => {
-  it('runs write and non-writing checks against the script location rather than the working directory', () => {
+  it('runs write and non-writing checks against the explicit repository root', () => {
     const root = createFixture({ keys: [messageKey] });
     const cwd = createFixture({ keys: [] });
-    const script = path.join(root, 'scripts/generate-string-catalogs.ts');
-    fs.mkdirSync(path.dirname(script));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
-    fs.copyFileSync(fileURLToPath(new URL('../../scripts/generate-string-catalogs.ts', import.meta.url)), script);
-    // Run the exact entry point with the real implementation graph. Only the
-    // script's repository root is a fixture; no runtime modules are stubbed.
-    fs.symlinkSync(fileURLToPath(new URL('..', import.meta.url)), path.join(root, 'build'), 'junction');
-    const run = ({ args }: { args: string[] }) => spawnSync(
-      process.execPath,
-      ['--import', import.meta.resolve('tsx'), script, ...args],
-      { cwd, encoding: 'utf8', timeout: 10_000 },
-    );
-    const generated = run({ args: [] });
-    expect(generated.error).toBeUndefined();
-    expect(generated.status, generated.stderr).toBe(0);
+    const generated = executeStringCatalogCommand({ root, argv: [] });
+    expect(generated.exitCode, generated.stderr).toBe(0);
+    expect(generated.stdout).toBe(`String catalogs: 1 messages, ${BOUNDARY_STRING_LOCALES.length} locales, ${BOUNDARY_STRING_LOCALES.length} files updated.\n`);
+    expect(generated.stderr).toBe('');
     expect(fs.existsSync(path.join(cwd, 'src/strings/catalogs'))).toBe(false);
     const before = snapshotCatalogs({ root });
-    expect(run({ args: ['--check'] }).status).toBe(0);
+    expect(executeStringCatalogCommand({ root, argv: ['--check'] }).exitCode).toBe(0);
     expect(snapshotCatalogs({ root })).toEqual(before);
     fs.writeFileSync(createBoundaryStringProjectPaths({ root }).catalogFilePathsByLocale.en, '// stale\n');
     const stale = snapshotCatalogs({ root });
-    const checked = run({ args: ['--check'] });
-    expect(checked.status).toBe(1);
+    const checked = executeStringCatalogCommand({ root, argv: ['--check'] });
+    expect(checked.exitCode).toBe(1);
+    expect(checked.stdout).toBe('');
     expect(checked.stderr).toContain('src/strings/catalogs/en.ts');
     expect(snapshotCatalogs({ root })).toEqual(stale);
-    expect(run({ args: [] }).status).toBe(0);
-    expect(run({ args: ['--check'] }).status).toBe(0);
+    expect(executeStringCatalogCommand({ root, argv: [] }).exitCode).toBe(0);
+    expect(executeStringCatalogCommand({ root, argv: ['--check'] }).exitCode).toBe(0);
   }, 20_000);
 
   it.each([
@@ -393,10 +382,9 @@ describe('String catalog command', () => {
     { args: ['--write'], status: 1 },
   ])('handles $args without initializing the application', ({ args, status }) => {
     const cwd = createFixture({ keys: [] });
-    const script = fileURLToPath(new URL('../../scripts/generate-string-catalogs.ts', import.meta.url));
-    const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), script, ...args], { cwd, encoding: 'utf8', timeout: 10_000 });
-    expect(result.error).toBeUndefined();
-    expect(result.status).toBe(status);
+    const result = executeStringCatalogCommand({ root: cwd, argv: args });
+    expect(result.exitCode).toBe(status);
+    expect(status === 0 ? result.stderr : result.stdout).toBe('');
     expect(`${result.stdout}${result.stderr}`).toContain('Usage: npm run strings:catalogs');
     expect(fs.existsSync(path.join(cwd, 'src/strings/catalogs'))).toBe(false);
   });

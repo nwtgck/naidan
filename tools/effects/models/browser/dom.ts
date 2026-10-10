@@ -31,6 +31,14 @@ function validateImage({ input }: { input: OperationInput }): Value {
 /** Co-located identity, policy and value guards. No generic DOM-write exemption. */
 export const DOM_OPERATIONS: readonly OperationRule[] = [
   {
+    id: 'iframe.content-window',
+    definedIn: import.meta.url,
+    access: 'read',
+    targets: ['HTMLIFrameElement.contentWindow'],
+    policy: { kind: 'intentional-none', reason: 'Reading a built-in iframe browsing context does not send a message. Delivery is checked separately.' },
+    evaluate: input => ({ kind: 'choice', values: [input.context.native({ name: 'Window', receiver: undefined }), SCALAR] }),
+  },
+  {
     id: 'image.construct',
     definedIn: import.meta.url,
     access: 'construct',

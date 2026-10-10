@@ -4,19 +4,19 @@ export type OverlayType = 'none' | 'search' | 'recent';
 
 const activeOverlay = ref<OverlayType>('none');
 
-/** @effects `none` */
+/** @effects [] */
 export function useOverlay() {
-  /** @effects `none` */
+  /** @effects [] */
   const openOverlay = ({ type }: { type: OverlayType }) => {
     activeOverlay.value = type;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const closeOverlay = () => {
     activeOverlay.value = 'none';
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const toggleOverlay = ({ type }: { type: OverlayType }) => {
     activeOverlay.value = activeOverlay.value === type ? 'none' : type;
   };

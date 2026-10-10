@@ -2,7 +2,7 @@
  * Detects if a given endpoint is an Ollama instance.
  * Ollama returns "Ollama is running" on its base URL.
  */
-/** @effects `network.http(*)` */
+/** @effects ["network.http(*)"] */
 export async function detectOllama({ url, headers }: {
   url: string,
   headers?: [string, string][],

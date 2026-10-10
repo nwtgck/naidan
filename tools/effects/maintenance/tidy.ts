@@ -7,6 +7,8 @@ import { executableTokens } from '../fixes/executable.ts';
 import { planEffectFix, planEffectRows, type EffectFileEdit } from '../fixes/plan.ts';
 import { checkModelInputs, createEffectsProgram, effectProgramInputs, resolveProjectPath, typescriptDiagnostics } from '../project.ts';
 import type { TidySelection } from './selection.ts';
+import { mayOmitEffectAnnotation } from '../analysis/annotation-policy.ts';
+import type { ContractOwner } from '../analysis/values.ts';
 
 export type TidyChange = {
   file: string,
@@ -15,6 +17,7 @@ export type TidyChange = {
   before: readonly string[],
   after: readonly string[],
   removed: readonly string[],
+  annotation: 'remove' | 'retain',
 };
 export type EffectTidyRun = {
   analysis: EffectsAnalysis,
@@ -28,6 +31,12 @@ function requireClean({ analysis, stage }: { analysis: EffectsAnalysis, stage: s
   if (analysis.diagnostics.length !== 0) {
     throw new Error(`Effect tidy ${stage}: a clean ordinary check is required; run effects:fix first or resolve diagnostics.\n${analysis.diagnostics.map(item => item.message).join('\n')}`);
   }
+}
+
+function trivialAnnotations({ analysis, owners }: { analysis: EffectsAnalysis, owners: readonly ContractOwner[] }): ReadonlySet<number> {
+  const unsafe = new Set(analysis.unsafeSuppressions.map(item => item.owner));
+  return new Set(owners.filter(owner => owner.annotation !== undefined && !unsafe.has(owner.id)
+    && (analysis.solution.rows.get(owner.id) ?? []).length === 0 && mayOmitEffectAnnotation({ owner })).map(owner => owner.id));
 }
 
 /**
@@ -62,13 +71,14 @@ export function runEffectTidy({ root, config, files, write, inputSnapshots }: {
   requireClean({ analysis: inferred, stage: 'inference' });
   const inferIds = new Set(selections.filter(item => item.disposition === 'infer').map(item => item.owner));
   const owners = inferred.owners.filter(owner => inferIds.has(owner.id));
+  const omitAnnotations = trivialAnnotations({ analysis: inferred, owners });
   const changes: TidyChange[] = [];
   for (const owner of owners) {
     const candidate = inferred.solution.rows.get(owner.id) ?? [];
     if (candidate.some(effect => !effectCovered({ effect, allowed: owner.declared }))) throw new Error('Effect tidy cannot widen a selected declaration.');
     const before = owner.declared.map(effect => printEffect({ effect }));
     const after = candidate.map(effect => printEffect({ effect }));
-    if (before.join('\n') !== after.join('\n')) {
+    if (before.join('\n') !== after.join('\n') || omitAnnotations.has(owner.id)) {
       changes.push({
         file: owner.location.file,
         start: owner.location.start,
@@ -76,10 +86,11 @@ export function runEffectTidy({ root, config, files, write, inputSnapshots }: {
         before,
         after,
         removed: before.filter(effect => !after.includes(effect)),
+        annotation: omitAnnotations.has(owner.id) ? 'remove' : 'retain',
       });
     }
   }
-  const plan = planEffectRows({ owners, rows: inferred.solution.rows, sources: inferred.sources });
+  const plan = planEffectRows({ owners, rows: inferred.solution.rows, sources: inferred.sources, omitAnnotations });
   const projected = createEffectsProgram({ root, config, overlays: new Map(plan.edits.map(edit => [edit.file, edit.after])) });
   const after = new EffectsAnalyzer({ root, config, program: projected }).analyze();
   after.diagnostics = [...typescriptDiagnostics({ program: projected }), ...after.diagnostics];
@@ -88,10 +99,12 @@ export function runEffectTidy({ root, config, files, write, inputSnapshots }: {
   const repeat = new EffectsAnalyzer({ root, config, program: projected }).analyzeForTidy({ files: selected });
   requireClean({ analysis: repeat.analysis, stage: 'idempotence validation' });
   const repeatIds = new Set(repeat.selections.filter(item => item.disposition === 'infer').map(item => item.owner));
+  const repeatOwners = repeat.analysis.owners.filter(owner => repeatIds.has(owner.id));
   if (planEffectRows({
-    owners: repeat.analysis.owners.filter(owner => repeatIds.has(owner.id)),
+    owners: repeatOwners,
     rows: repeat.analysis.solution.rows,
     sources: repeat.analysis.sources,
+    omitAnnotations: trivialAnnotations({ analysis: repeat.analysis, owners: repeatOwners }),
   }).edits.length !== 0) throw new Error('Effect tidy is not idempotent.');
   for (const edit of plan.edits) {
     if (!selected.has(path.resolve(edit.file))) throw new Error('Tidy attempted to edit an unselected file.');

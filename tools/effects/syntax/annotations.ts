@@ -4,6 +4,8 @@ import type { EffectDefinition } from '../models/registry.ts';
 import { EffectSyntaxError, parseEffects } from './expression.ts';
 import { parseUnsafeSuppression, UNSAFE_SUPPRESSION_TAG, type UnsafeEffectSuppression } from './suppression.ts';
 
+export const MODULE_EFFECTS_TAG = '@effectsModule';
+
 export type Annotation = { start: number, end: number, effects: readonly Effect[] };
 type DirectiveComment = { start: number, end: number, text: string, offsets: readonly number[], tag: string, body: number };
 
@@ -59,6 +61,11 @@ export function readContractComments({ anchor, definitions }: { anchor: ts.Node,
     rest satisfies Record<PropertyKey, never>;
     try {
       switch (tag) {
+      case MODULE_EFFECTS_TAG:
+        if (!directiveComments({ anchor: moduleCommentAnchor({ source: anchor.getSourceFile() }) }).some(header => header.start === start)) {
+          throw new EffectSyntaxError({ message: `${MODULE_EFFECTS_TAG} must be in the file header, before the first statement.`, offset: -body });
+        }
+        break; // The source-file owner reads this independent contract.
       case '@effects':
         if (annotation !== undefined) throw new EffectSyntaxError({ message: 'Multiple effect declarations for the same owner.', offset: -body });
         annotation = { start, end, effects: parseEffects({ text: text.slice(body), definitions }) };
@@ -87,10 +94,45 @@ export function unsafeDirectiveLocations({ source }: { source: ts.SourceFile }):
   const found = new Map<number, { start: number, end: number }>();
   const visit = (node: ts.Node): void => {
     for (const comment of directiveComments({ anchor: node })) {
-      if (comment.tag !== '@effects') found.set(comment.start, { start: comment.start, end: comment.end });
+      if (comment.tag !== '@effects' && comment.tag !== MODULE_EFFECTS_TAG) found.set(comment.start, { start: comment.start, end: comment.end });
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
   return [...found.values()];
+}
+
+function moduleCommentAnchor({ source }: { source: ts.SourceFile }): ts.Node {
+  return source.statements[0] ?? source.endOfFileToken;
+}
+
+/** Module contracts occupy leading file trivia, independently of callable comments. */
+export function readModuleAnnotation({ source, definitions }: { source: ts.SourceFile, definitions: readonly EffectDefinition[] }): Annotation | undefined {
+  if (!source.text.includes(MODULE_EFFECTS_TAG)) return undefined;
+  const headers = directiveComments({ anchor: moduleCommentAnchor({ source }) }).filter(comment => comment.tag === MODULE_EFFECTS_TAG);
+  const starts = new Set(headers.map(comment => comment.start));
+  const visit = (node: ts.Node): void => {
+    for (const comment of directiveComments({ anchor: node })) {
+      if (comment.tag === MODULE_EFFECTS_TAG && !starts.has(comment.start)) {
+        throw new EffectSyntaxError({ message: `${MODULE_EFFECTS_TAG} must be in the file header, before the first statement.`, offset: comment.start });
+      }
+    }
+    // Include closing tokens: comments in an empty block have no statement owner.
+    for (const child of node.getChildren(source)) visit(child);
+  };
+  visit(source);
+  let annotation: Annotation | undefined;
+  for (const comment of headers) {
+    if (annotation !== undefined) throw new EffectSyntaxError({ message: 'Multiple module effect declarations for the same file.', offset: comment.start });
+    let effects: readonly Effect[];
+    try {
+      effects = parseEffects({ text: comment.text.slice(comment.body), definitions });
+      if (effects.some(effect => effect.kind === 'callback')) throw new EffectSyntaxError({ message: 'Module effects cannot reference callable parameters.', offset: 0 });
+    } catch (error) {
+      if (!(error instanceof EffectSyntaxError)) throw error;
+      throw new EffectSyntaxError({ message: error.message, offset: comment.offsets[comment.body + error.offset] ?? comment.start });
+    }
+    annotation = { start: comment.start, end: comment.end, effects };
+  }
+  return annotation;
 }

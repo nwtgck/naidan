@@ -27,7 +27,7 @@ export function connectWatcherCleanups({ owners, edges, registrations, stops }: 
   const dependencies = [...edges];
   const cleanups = new Map<number, ContractOwner>();
   for (const owner of originals) {
-    const { id, label, location, anchor, annotation: _annotation, role: _role, declared, direct, callbackPaths, ...rest } = owner;
+    const { id, label, location, anchor, annotation: _annotation, role: _role, declared, direct, callbackPaths, parameterBoundary: _parameterBoundary, ...rest } = owner;
     rest satisfies Record<PropertyKey, never>;
     const cleanup: ContractOwner = {
       id: owners.length,

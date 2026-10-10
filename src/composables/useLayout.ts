@@ -12,67 +12,67 @@ const activeFocusAreaVersion = ref(0);
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
 const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
-/** @effects `none` */
+/** @effects [] */
 export function useLayout() {
-  /** @effects `none` */
+  /** @effects [] */
   const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setSidebarOpen = ({ open }: { open: boolean }) => {
     isSidebarOpen.value = open;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const toggleDebug = () => {
     isDebugOpen.value = !isDebugOpen.value;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setDebugOpen = ({ open }: { open: boolean }) => {
     isDebugOpen.value = open;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const toggleWeshTerminal = () => {
     isWeshTerminalOpen.value = !isWeshTerminalOpen.value;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isWeshTerminalOpen.value = open;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const toggleChatWeshTerminal = () => {
     isChatWeshTerminalOpen.value = !isChatWeshTerminalOpen.value;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setChatWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isChatWeshTerminalOpen.value = open;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setActiveFocusArea = ({ area }: { area: FocusArea }) => {
     activeFocusArea.value = area;
     activeFocusAreaVersion.value += 1;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setMediaShelfVisibility = ({ visibility }: { visibility: MediaShelfVisibility }) => {
     mediaShelfVisibility.value = visibility;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const setPreferredEditorMode = ({ mode }: { mode: 'advanced' | 'textarea' }) => {
     preferredEditorMode.value = mode;
   };
 
-  /** @effects `none` */
+  /** @effects [] */
   const toggleMediaShelf = () => {
-    mediaShelfVisibility.value = (/** @effects `none` */ () => {
+    mediaShelfVisibility.value = (/** @effects [] */ () => {
       switch (mediaShelfVisibility.value) {
       case 'visible': return 'hidden';
       case 'hidden': return 'visible';

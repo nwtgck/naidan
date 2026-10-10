@@ -47,7 +47,7 @@ function use({ enabled }: { enabled: boolean }) {
 function write() { localStorage.clear(); }
 function read() { localStorage.getItem('x'); }
 function use({ enabled }: { enabled: boolean }) {
-  const actions = { /** @effects \`none\` */ run: () => {}, ...(enabled ? { run: write } : { run: read }) };
+  const actions = { /** @effects [] */ run: () => {}, ...(enabled ? { run: write } : { run: read }) };
   actions.run();
 }
 `,
@@ -115,8 +115,8 @@ function use({ enabled }: { enabled: boolean }) { actions[enabled ? 'read' : 'wr
   it('checks every destination when a conditional key is used for a write', () => {
     const result = analyze({
       source: `\
-const actions = { /** @effects \`none\` */ read: () => {}, /** @effects \`localstorage.write(*)\` */ write: () => {} };
-/** @effects \`localstorage.write(*)\` */ function writer() { localStorage.clear(); }
+const actions = { /** @effects [] */ read: () => {}, /** @effects ["localstorage.write(*)"] */ write: () => {} };
+/** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
 function install({ enabled }: { enabled: boolean }) { actions[enabled ? 'read' : 'write'] = writer; }
 `,
     });

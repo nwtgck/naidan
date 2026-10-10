@@ -5,7 +5,7 @@ import { createFixture } from '../test-support/project-fixture.ts';
 
 const hooks = `\
 const tricky = {
-  /** @effects \`localstorage.write(*)\` */
+  /** @effects ["localstorage.write(*)"] */
   toString() { localStorage.clear(); return '2'; },
 };
 `;
@@ -19,7 +19,8 @@ describe('runtime witnesses for implicit operations', () => {
     'const number = +(tricky as unknown as number); void number;',
     'const number = (tricky as unknown as number) + 1; void number;',
   ])('does not certify a TypeScript-valid hidden conversion: %s', expression => {
-    const source = `${hooks}\n/** @effects \`none\` */ function run() { ${expression} }\nrun();`;
+    const source = `${hooks}
+/** @effects [] */ function run() { ${expression} }\nrun();`;
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {
       const analysis = fixture.check();
@@ -42,10 +43,10 @@ describe('runtime witnesses for implicit operations', () => {
 
   it('charges executing a stored function, not installing it', () => {
     const source = `\
-const actions = { /** @effects \`localstorage.write(*)\`, \`hoge\` */ run: () => {} };
-/** @effects \`localstorage.write(*)\` */ function writer() { localStorage.clear(); }
-/** @effects \`none\` */ function install() { actions.run = writer; }
-/** @effects \`localstorage.write(*)\`, \`hoge\` */ function execute() { actions.run(); }
+const actions = { /** @effects ["localstorage.write(*)","hoge"] */ run: () => {} };
+/** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
+/** @effects [] */ function install() { actions.run = writer; }
+/** @effects ["localstorage.write(*)","hoge"] */ function execute() { actions.run(); }
 `;
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {

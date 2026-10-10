@@ -3,20 +3,38 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import config from '../../../effects.config.ts';
+import productionConfig from '../../../effects.config.ts';
 import { createEffectsProgram, typescriptDiagnostics } from '../project.ts';
 import { analyzeEffects } from '../index.ts';
 import { planEffectFix } from '../fixes/plan.ts';
 import { printEffect } from '../contracts/effects.ts';
+import { UNVERIFIED_EFFECT_NOTE } from '../maintenance/unverified.ts';
 
 const root = path.resolve(import.meta.dirname, '../../..');
+const probeBoundaryMessage = 'Global property showDirectoryPicker needs a checked default-library identity; a member name is not a native model.';
+const probeBoundaryStart = fs.readFileSync(path.join(root, 'src/utils/opfs-detection.ts'), 'utf8').indexOf('.showDirectoryPicker') + 1;
 const file = path.join(root, 'src/utils/opfs-detection.ts');
+const config = { ...productionConfig, files: ['src/utils/opfs-detection.ts'] };
 
 function check({ source }: { source: string | undefined }) {
   const overlays = source === undefined ? new Map() : new Map([[file, source]]);
   const program = createEffectsProgram({ root, config, overlays });
   expect(typescriptDiagnostics({ program })).toEqual([]);
-  return analyzeEffects({ program, root, config });
+  const analysis = analyzeEffects({ program, root, config });
+  // Keep the real draft warnings asserted without masking any probe
+  // diagnostic or removing its marker from source/overlays.
+  const markers = ['src/utils/opfs-detection.ts'];
+  expect(analysis.diagnostics.filter(item => item.message === UNVERIFIED_EFFECT_NOTE).map(item => item.file).sort()).toEqual(markers.map(file => path.join(root, file)).sort());
+  const initializers = analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'));
+  expect(initializers).toEqual([]);
+  expect(initializers.every(item => item.code === 'unsupported')).toBe(true);
+  const boundaries = analysis.diagnostics.filter(item => item.code === 'boundary' && item.message === probeBoundaryMessage);
+  expect(boundaries.map(item => ({ file: item.file, message: item.message, start: item.start, length: item.length }))).toEqual(analysis.coverage.files.includes(path.join(root, 'src/utils/opfs-detection.ts'))
+    ? [{ file: path.join(root, 'src/utils/opfs-detection.ts'), message: probeBoundaryMessage, start: probeBoundaryStart, length: 'showDirectoryPicker'.length }] : []);
+
+  // These source regressions inspect callable rows only after asserting that
+  // strict checking still reports every draft, unknown initializer and native-identity boundary.
+  return { ...analysis, diagnostics: analysis.diagnostics.filter(item => item.message !== UNVERIFIED_EFFECT_NOTE && !initializers.includes(item) && !boundaries.includes(item)) };
 }
 
 describe('real OPFS capability-probe exception', () => {
@@ -35,14 +53,14 @@ describe('real OPFS capability-probe exception', () => {
   it('exposes added network work and preserves the reviewed OPFS exception during fix', () => {
     const original = fs.readFileSync(file, 'utf8');
     const source = original.replace('export async function checkOPFSSupport(): Promise<boolean> {', "export async function checkOPFSSupport(): Promise<boolean> { await fetch('/unexpected');")
-      + '\n/** @effects `none` */ export async function callerForEffectTest() { return checkOPFSSupport(); }\n';
+      + '\n/** @effects [] */ export async function callerForEffectTest() { return checkOPFSSupport(); }\n';
     const analysis = check({ source });
     expect(analysis.diagnostics.filter(item => item.code !== 'exceeds')).toEqual([]);
     const audit = analysis.unsafeSuppressions[0]!;
     expect(audit.outward.map(effect => printEffect({ effect }))).toEqual(['network.http(*)']);
     const edits = planEffectFix({ analysis }).edits;
     expect(edits).toHaveLength(1);
-    expect(edits[0]!.after).toContain('@effectsUNSAFE `opfs.read(*)`, `opfs.write(*)`');
+    expect(edits[0]!.after).toContain('@effectsUNSAFE {"effects":["opfs.read(*)","opfs.write(*)"]');
     const after = check({ source: edits[0]!.after });
     expect(after.diagnostics).toEqual([]);
     expect(planEffectFix({ analysis: after }).edits).toEqual([]);

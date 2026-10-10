@@ -15,19 +15,24 @@ export function commonStringEvidence({ values }: { values: readonly Extract<Valu
   return undefined;
 }
 
-/** Mutable storage retains its contract, not its first URL or image-candidate state. */
-export function withoutSourceEvidence({ value }: { value: Value }): Value {
+// Fresh records retain evaluated undefined; stored mutable fields cannot prove it.
+/** Mutable storage retains its contract, not its first URL, image, or absence fact. */
+export function withoutSourceEvidence({ value, undefinedFact }: { value: Value, undefinedFact: 'preserve' | 'forget' }): Value {
   switch (value.kind) {
   case 'scalar': {
-    const { stringEvidence: _stringEvidence, ...rest } = value;
-    return rest;
+    const { stringEvidence: _stringEvidence, knownUndefined, ...rest } = value;
+    switch (undefinedFact) {
+    case 'preserve': return knownUndefined === true ? { ...rest, knownUndefined: true } : rest;
+    case 'forget': return knownUndefined === true ? { ...rest, truthiness: 'unknown' } : rest;
+    default: { const exhaustive: never = undefinedFact; throw new Error(String(exhaustive)); }
+    }
   }
-  case 'choice': return { kind: 'choice', values: value.values.map(item => withoutSourceEvidence({ value: item })) };
+  case 'choice': return { kind: 'choice', values: value.values.map(item => withoutSourceEvidence({ value: item, undefinedFact })) };
   case 'record': return {
     ...value,
-    fields: new Map([...value.fields].map(([key, field]) => [key, { ...field, value: withoutSourceEvidence({ value: field.value }) }])),
-    reflected: value.reflected === undefined ? undefined : withoutSourceEvidence({ value: value.reflected }),
-    indexValue: value.indexValue === undefined ? undefined : withoutSourceEvidence({ value: value.indexValue }),
+    fields: new Map([...value.fields].map(([key, field]) => [key, { ...field, value: withoutSourceEvidence({ value: field.value, undefinedFact }) }])),
+    reflected: value.reflected === undefined ? undefined : withoutSourceEvidence({ value: value.reflected, undefinedFact }),
+    indexValue: value.indexValue === undefined ? undefined : withoutSourceEvidence({ value: value.indexValue, undefinedFact }),
   };
   case 'native': return value.name === FRESH_IMAGE ? { kind: 'native', name: 'HTMLImageElement', receiver: undefined } : value;
   case 'function': case 'promise': case 'unknown': return value;

@@ -9,12 +9,12 @@ describe('module and callable contract ownership', () => {
     const fixture = createFixture({
       files: {
         'storage.ts': `\
-/** @effects \`localstorage.write(*)\` */
+/** @effects ["localstorage.write(*)"] */
 export function save() { localStorage.clear(); }
 `,
         'main.ts': `\
 import { save } from './storage';
-/** @effects \`localstorage.write(*)\` */
+/** @effects ["localstorage.write(*)"] */
 export function invoke() { save(); }
 `,
       },

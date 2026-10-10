@@ -1,84 +1,136 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { executeEffectsCommand } from '../cli.ts';
+import { runEffects } from '../index.ts';
 import { describe, expect, it } from 'vitest';
 import { createFixture } from '../test-support/project-fixture.ts';
 
-const repository = path.resolve(import.meta.dirname, '../../..');
-
-function execute({ root, script, args }: { root: string, script: string, args: readonly string[] }) {
-  return spawnSync(process.execPath, ['--import', path.join(repository, 'node_modules/tsx/dist/loader.mjs'),
-    path.join(repository, 'tools/effects', script), ...args], { cwd: root, encoding: 'utf8', timeout: 60_000 });
-}
-
-function configuredFixture({ files, entries, extraRules }: {
-  files: Readonly<Record<string, string>>, entries: readonly string[], extraRules: Readonly<Record<string, string>>,
-}) {
+function configuredFixture({ files, entries }: { files: Readonly<Record<string, string>>, entries: readonly string[] }) {
   const fixture = createFixture({ files, entries });
   fs.writeFileSync(path.join(fixture.root, 'effects.config.ts'), 'export default ' + JSON.stringify(fixture.config) + ';');
-  // Child phases use genuine ESLint, typed parser services and the production
-  // effects rule. Absolute imports are fixture wiring, not product configuration.
-  const url = ({ relative }: { relative: string }) => pathToFileURL(path.join(repository, relative)).href;
-  fs.writeFileSync(path.join(fixture.root, 'eslint.config.mjs'), `import parser from ${JSON.stringify(url({ relative: 'node_modules/@typescript-eslint/parser/dist/index.js' }))};
-import { tsImport } from ${JSON.stringify(url({ relative: 'node_modules/tsx/dist/esm/api/index.mjs' }))};
-const { createEffectsRule } = await tsImport(${JSON.stringify(path.join(repository, 'eslint-local-rules/effects.ts'))}, import.meta.url);
-const config = ${JSON.stringify(fixture.config)};
-export default [{
-  files: ['**/*.ts'],
-  languageOptions: { parser, parserOptions: { project: './tsconfig.json', tsconfigRootDir: import.meta.dirname } },
-  plugins: { 'local-effects': { rules: { contracts: createEffectsRule({ root: import.meta.dirname, config }) } } },
-  rules: { 'local-effects/contracts': 'error', ...${JSON.stringify(extraRules)} },
-}];
-`);
   return fixture;
 }
 
 describe('maintenance commands use the production engine', () => {
-  it('defaults tidy to preview, writes only with --write, and emits no change on a second run', () => {
-    const source = '/** @effects `network.http(*)` */ export function run() {}';
-    const fixture = configuredFixture({ files: { 'main.ts': source }, entries: ['main.ts'], extraRules: {} });
+  it('defaults tidy to preview, writes only with --write, and emits no change on a second run', async () => {
+    const source = '/** @effects ["network.http(*)"] */ export function run() {}';
+    const fixture = configuredFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {
-      const preview = execute({ root: fixture.root, script: 'cli.ts', args: ['tidy', '--json'] });
+      const preview = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--json'] });
       expect(preview.stderr).toBe('');
-      expect(preview.status).toBe(0);
+      expect(preview.exitCode).toBe(0);
       expect(JSON.parse(preview.stdout)).toMatchObject({ changedFiles: [], tidy: { mode: 'preview', changes: [{ label: 'run', before: ['network.http(*)'], after: [] }] } });
       expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-      const written = execute({ root: fixture.root, script: 'cli.ts', args: ['tidy', '--write', '--json'] });
-      expect(written.status).toBe(0);
+      const textPreview = await executeEffectsCommand({ root: fixture.root, argv: ['tidy'] });
+      expect(textPreview.exitCode).toBe(0);
+      expect(textPreview.stdout).toContain('run (annotation removed)');
+      const written = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--write', '--json'] });
+      expect(written.exitCode).toBe(0);
       expect(JSON.parse(written.stdout).changedFiles).toHaveLength(1);
-      const repeated = execute({ root: fixture.root, script: 'cli.ts', args: ['tidy', '--json'] });
-      expect(repeated.status).toBe(0);
+      const repeated = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--json'] });
+      expect(repeated.exitCode).toBe(0);
       expect(JSON.parse(repeated.stdout).tidy.changes).toEqual([]);
     } finally {
       fixture.dispose();
     }
   }, 30_000);
 
-  it('treats --file as a tidy selection, not a replacement of the validated scope', () => {
+  it('uses --file as analysis entries for tidy preview and write without unrelated configured blockers', async () => {
+    const main = '/** @effects ["network.http(*)"] */ export function run() {}';
+    const other = '/** @effects [] */ export function invalid() { fetch("/x"); }';
     const fixture = configuredFixture({
       files: {
-        'main.ts': '/** @effects `network.http(*)` */ export function run() {}',
-        'other.ts': '/** @effects `none` */ export function invalid() { fetch("/x"); }',
+        'main.ts': main,
+        'other.ts': other,
       },
-      entries: ['main.ts', 'other.ts'],
-      extraRules: {},
+      entries: ['other.ts'],
     });
     try {
-      const result = execute({ root: fixture.root, script: 'cli.ts', args: ['tidy', '--file', 'main.ts', '--write'] });
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain('clean ordinary check');
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('network.http');
+      const preview = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts', '--json'] });
+      expect(preview.stderr).toBe('');
+      expect(preview.exitCode).toBe(0);
+      expect(JSON.parse(preview.stdout)).toMatchObject({
+        scope: { files: [path.join(fixture.root, 'main.ts')] },
+        changedFiles: [],
+        tidy: { changes: [{ label: 'run', before: ['network.http(*)'], after: [] }] },
+      });
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(main);
+      const written = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts', '--write', '--json'] });
+      expect(written.stderr).toBe('');
+      expect(written.exitCode).toBe(0);
+      expect(JSON.parse(written.stdout).changedFiles).toEqual([path.join(fixture.root, 'main.ts')]);
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).not.toContain('@effects');
+      expect(fs.readFileSync(path.join(fixture.root, 'other.ts'), 'utf8')).toBe(other);
     } finally {
       fixture.dispose();
     }
-  });
+  }, 30_000);
 
-  it.each(['check', 'fix'])('rejects --write on %s without editing', mode => {
-    const fixture = configuredFixture({ files: { 'main.ts': 'function run() {}' }, entries: ['main.ts'], extraRules: {} });
+  it('validates reached dependencies while preserving their bounds outside the tidy edit selection', async () => {
+    const dependency = '/** @effects ["localstorage.read(*)", "network.http(*)"] */ export function read() { localStorage.getItem("key"); }';
+    const fixture = configuredFixture({
+      files: {
+        'main.ts': 'import { read } from "./dependency"; /** @effects ["localstorage.read(*)", "network.http(*)", "opfs.read(*)"] */ export function run() { read(); }',
+        'dependency.ts': dependency,
+        'other.ts': '/** @effects [] */ export function invalid() { fetch("/x"); }',
+      },
+      entries: ['other.ts'],
+    });
     try {
-      const result = execute({ root: fixture.root, script: 'cli.ts', args: [mode, '--write'] });
-      expect(result.status).toBe(2);
+      const preview = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts', '--json'] });
+      expect(preview.stderr).toBe('');
+      expect(preview.exitCode).toBe(0);
+      const report = JSON.parse(preview.stdout);
+      expect(report.scope.files).toEqual(expect.arrayContaining([path.join(fixture.root, 'main.ts'), path.join(fixture.root, 'dependency.ts')]));
+      expect(report.scope.files).toHaveLength(2);
+      expect(report.tidy.changes).toMatchObject([{ file: 'main.ts', after: ['localstorage.read(*)', 'network.http(*)'] }]);
+      expect(report.tidy.selections).toEqual(expect.arrayContaining([expect.objectContaining({ file: 'dependency.ts', disposition: 'preserve' })]));
+      expect(fs.readFileSync(path.join(fixture.root, 'dependency.ts'), 'utf8')).toBe(dependency);
+      fs.writeFileSync(path.join(fixture.root, 'dependency.ts'), dependency.replace('localStorage.getItem("key");', 'localStorage.clear();'));
+      const blocked = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts'] });
+      expect(blocked.exitCode).toBe(2);
+      expect(blocked.stderr).toContain('clean ordinary check');
+    } finally {
+      fixture.dispose();
+    }
+  }, 30_000);
+
+  it('uses --file analysis entries for unresolved tidy and writes candidates only in the edit selection', async () => {
+    const main = 'import { marker } from "./dependency"; export class Transport { send() { fetch("/x"); return marker; } }';
+    const dependency = 'export const marker = 1;';
+    const other = 'export function unrelated() { localStorage.clear(); }';
+    const fixture = configuredFixture({
+      files: { 'main.ts': main, 'dependency.ts': dependency, 'other.ts': other },
+      entries: ['other.ts'],
+    });
+    try {
+      const preview = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts', '--allow-unresolved', '--json'] });
+      expect(preview.stderr).toBe('');
+      expect(preview.exitCode).toBe(0);
+      const report = JSON.parse(preview.stdout);
+      expect(report.verification).toBe('unverified');
+      expect(report.scope.files).toEqual(expect.arrayContaining([path.join(fixture.root, 'main.ts'), path.join(fixture.root, 'dependency.ts')]));
+      expect(report.scope.files).toHaveLength(2);
+      expect(report.unresolved).toMatchObject({ mode: 'tidy', write: 'preview', plannedFiles: ['main.ts'] });
+      expect(report.changedFiles).toEqual([]);
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(main);
+      const written = await executeEffectsCommand({ root: fixture.root, argv: ['tidy', '--file', 'main.ts', '--allow-unresolved', '--write', '--json'] });
+      expect(written.stderr).toBe('');
+      expect(written.exitCode).toBe(0);
+      expect(JSON.parse(written.stdout).changedFiles).toEqual([path.join(fixture.root, 'main.ts')]);
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('UNVERIFIED effect candidates');
+      expect(fs.readFileSync(path.join(fixture.root, 'dependency.ts'), 'utf8')).toBe(dependency);
+      expect(fs.readFileSync(path.join(fixture.root, 'other.ts'), 'utf8')).toBe(other);
+    } finally {
+      fixture.dispose();
+    }
+  }, 30_000);
+
+  it.each(['check', 'fix'])('rejects --write on %s without editing', async mode => {
+    const fixture = configuredFixture({ files: { 'main.ts': 'function run() {}' }, entries: ['main.ts'] });
+    try {
+      const result = await executeEffectsCommand({ root: fixture.root, argv: [mode, '--write'] });
+      expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain('--write is valid only for tidy');
       expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe('function run() {}');
     } finally {
@@ -87,192 +139,100 @@ describe('maintenance commands use the production engine', () => {
   });
 });
 
-describe('lint fix orchestrates separate typed analysis epochs', () => {
-  it('repairs ordinary lint, widens dependency contracts, then validates with the real effects rule', () => {
-    const fixture = configuredFixture({
-      files: {
-        'main.ts': "import { save } from './dep'; export function run() { save();; }",
-        'dep.ts': 'export function save() { localStorage.clear(); }',
-      },
-      entries: ['main.ts'],
-      extraRules: { 'no-extra-semi': 'error' },
-    });
+describe('explicit effect edit selection', () => {
+  const unsafe = '/** @effectsUNSAFE {"effects":["network.http(*)"],"reason":"Reviewed author exception."} */';
+  const main = `\
+import { read } from '../shared/dependency';
+/** @effects ["localstorage.read(*)","network.http(*)"] */
+export function run() { return read(); }
+/** @effects [] */
+${unsafe}
+export function probe() { fetch('/probe'); }
+`;
+  const dependency = 'export function read() { return localStorage.getItem("key"); }';
+  const sources = {
+    'feature/main.ts': main,
+    'feature/second.ts': 'export function save() { localStorage.clear(); }',
+    'feature/main.test.ts': 'export function fixture() { fetch("/test"); }',
+    'feature/ambient.d.ts': 'declare const ignoredAmbient: string;',
+    'feature/excluded.ts': 'export function excluded() { fetch("/excluded"); }',
+    'feature/node_modules/pkg/index.ts': 'export function external() { fetch("/package"); }',
+    'shared/dependency.ts': dependency,
+    'other.ts': 'export function unrelated() { fetch("/unrelated"); }',
+  };
+
+  function selectionFixture({ files, entries }: { files: Readonly<Record<string, string>>, entries: readonly string[] }) {
+    const fixture = configuredFixture({ files, entries });
+    const configFile = path.join(fixture.root, 'tsconfig.json');
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    config.exclude = ['**/*.test.ts', 'feature/excluded.ts', 'effects.config.ts'];
+    fs.writeFileSync(configFile, JSON.stringify(config));
+    return fixture;
+  }
+
+  it.each([
+    { name: 'one file', selectors: ['feature/main.ts'], entries: ['feature/main.ts'], expected: ['feature/main.ts'] },
+    { name: 'multiple files', selectors: ['feature/main.ts', 'feature/second.ts'], entries: ['feature/main.ts', 'feature/second.ts'], expected: ['feature/main.ts', 'feature/second.ts'] },
+    { name: 'a directory', selectors: ['feature'], entries: ['feature/main.ts', 'feature/second.ts'], expected: ['feature/main.ts', 'feature/second.ts'] },
+    { name: 'overlapping file and directory', selectors: ['feature/main.ts', 'feature'], entries: ['feature/main.ts', 'feature/second.ts'], expected: ['feature/main.ts', 'feature/second.ts'] },
+    { name: 'the root directory', selectors: ['.'], entries: ['feature/main.ts', 'feature/second.ts', 'other.ts', 'shared/dependency.ts'], expected: ['feature/main.ts', 'feature/second.ts', 'other.ts', 'shared/dependency.ts'] },
+    { name: 'no selector', selectors: undefined, entries: ['feature/main.ts'], expected: ['feature/main.ts', 'shared/dependency.ts'] },
+  ])('limits draft writes for $name, preserves authors and matches the API preview', async ({ selectors, entries, expected }) => {
+    const fixture = selectionFixture({ files: sources, entries: selectors === undefined ? entries : ['other.ts'] });
     try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts', '--json'] });
+      const preview = runEffects({ root: fixture.root, config: { ...fixture.config, files: entries }, mode: 'fix', inputSnapshots: new Map(), files: selectors === undefined ? undefined : entries, unresolved: { mode: 'fix', write: 'preview' } });
+      expect(preview.changedFiles).toEqual([]);
+      expect(preview.unresolved?.plannedFiles.map(file => path.relative(fixture.root, file)).sort()).toEqual(expected);
+      for (const [file, source] of Object.entries(sources)) expect(fs.readFileSync(path.join(fixture.root, file), 'utf8')).toBe(source);
+      const result = await executeEffectsCommand({ root: fixture.root, argv: ['fix', '--allow-unresolved', '--json', ...(selectors ?? []).flatMap(file => ['--file', file])] });
+      expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe('');
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        exitCode: 0,
-        stages: [{ phase: 'ordinary-fix', status: 0 }, { phase: 'validation', status: 0 }],
-        effects: { status: 'checked', diagnostics: [] },
-      });
-      expect(JSON.parse(result.stdout).effects.changedFiles).toHaveLength(2);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).not.toContain(';;');
-      expect(fs.readFileSync(path.join(fixture.root, 'dep.ts'), 'utf8')).toContain('@effects');
-      const repeat = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts', '--json'] });
-      expect(repeat.status).toBe(0);
-      expect(JSON.parse(repeat.stdout).effects.changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
-  }, 45_000);
-
-  it('updates enrolled callers when only a dependency was selected for ordinary lint', () => {
-    const fixture = configuredFixture({
-      files: {
-        'main.ts': "import { save } from './dep'; /** @effects `none` */ export function run() { save(); }",
-        'dep.ts': 'export function save() { localStorage.clear(); }',
-      },
-      entries: ['main.ts'],
-      extraRules: {},
-    });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['dep.ts', '--json'] });
-      expect(result.stderr).toBe('');
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout).effects.changedFiles).toHaveLength(2);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('localstorage.write');
-    } finally {
-      fixture.dispose();
-    }
-  }, 20_000);
-
-  it('does not hide ordinary unfixable errors or run the effects update after them', () => {
-    const fixture = configuredFixture({
-      files: {
-        'main.ts': 'const unused = 1; export function run() { localStorage.clear();; }',
-      },
-      entries: ['main.ts'],
-      extraRules: { 'no-unused-vars': 'error', 'no-extra-semi': 'error' },
-    });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts', '--json'] });
-      expect(result.status).toBe(1);
-      expect(JSON.parse(result.stdout).stages).toHaveLength(1);
-      const text = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      expect(text).not.toContain(';;'); // Documented non-transactional ordinary fixes.
-      expect(text).not.toContain('@effects');
-    } finally {
-      fixture.dispose();
-    }
-  });
-
-  it('refuses unsupported effect boundaries rather than ignoring their exit status', () => {
-    const fixture = configuredFixture({ files: { 'main.ts': 'export function run(value: unknown) { return Promise.resolve(value); }' }, entries: ['main.ts'], extraRules: {} });
-    try {
-      const before = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts'] });
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain('Effect fix refused');
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(before);
-    } finally {
-      fixture.dispose();
-    }
-  });
-
-  it('never runs tidy as part of lint fix', () => {
-    const source = '/** @effects `network.http(*)` */ export function empty() {}';
-    const fixture = configuredFixture({ files: { 'main.ts': source }, entries: ['main.ts'], extraRules: {} });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts', '--json'] });
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout).effects.changedFiles).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-    } finally {
-      fixture.dispose();
-    }
-  }, 20_000);
-
-  it('does not enroll unrelated product files or ordinary tests', () => {
-    const fixture = configuredFixture({
-      files: {
-        'main.ts': '/** @effects `none` */ export function entry() {}',
-        'other.ts': 'export function other() { localStorage.clear(); }',
-        'ordinary.test.ts': 'function testCallback() { localStorage.clear(); }',
-      },
-      entries: ['main.ts', 'other.ts', 'ordinary.test.ts'],
-      extraRules: {},
-    });
-    try {
-      fixture.config.files = ['main.ts'];
-      fs.writeFileSync(path.join(fixture.root, 'effects.config.ts'), 'export default ' + JSON.stringify(fixture.config) + ';');
-      // ESLint can see all ordinary source via tsconfig, while only main is enrolled.
-      const configFile = path.join(fixture.root, 'eslint.config.mjs');
-      const configText = fs.readFileSync(configFile, 'utf8');
-      fs.writeFileSync(configFile, configText.replace('"files":["main.ts","other.ts","ordinary.test.ts"]', '"files":["main.ts"]'));
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['other.ts', 'ordinary.test.ts', '--json'] });
-      expect(result.stderr).toBe('');
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout).effects.status).toBe('not-relevant');
-      expect(fs.readFileSync(path.join(fixture.root, 'other.ts'), 'utf8')).not.toContain('@effects');
-      expect(fs.readFileSync(path.join(fixture.root, 'ordinary.test.ts'), 'utf8')).not.toContain('@effects');
-    } finally {
-      fixture.dispose();
-    }
-  }, 20_000);
-
-  it('prints existing unsafe boundaries on successful lint fix', () => {
-    const fixture = configuredFixture({
-      files: {
-        'main.ts': `/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Intentional probe boundary." */
-export function probe() { localStorage.clear(); }
-`,
-      },
-      entries: ['main.ts'],
-      extraRules: {},
-    });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts'] });
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain('UNSAFE effect suppression:');
-      expect(result.stdout).toContain('Intentional probe boundary.');
-    } finally {
-      fixture.dispose();
-    }
-  }, 20_000);
-
-  it('validates options instead of passing arbitrary flags or commands to a shell', () => {
-    const fixture = configuredFixture({ files: { 'main.ts': '' }, entries: ['main.ts'], extraRules: {} });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['--max-warnings', 'NaN', 'main.ts'] });
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain('--max-warnings');
-      expect(execute({ root: fixture.root, script: 'lint-fix.ts', args: ['--ignore-all-errors'] }).status).toBe(2);
-    } finally {
-      fixture.dispose();
-    }
-  });
-
-  it('honors warnings as errors when requested', () => {
-    const fixture = configuredFixture({ files: { 'main.ts': 'const unused = 1; export function run() {}' }, entries: ['main.ts'], extraRules: { 'no-unused-vars': 'warn' } });
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['--max-warnings', '0', 'main.ts', '--json'] });
-      expect(result.status).toBe(1);
-      expect(JSON.parse(result.stdout).stages).toHaveLength(1);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).not.toContain('@effects');
-    } finally {
-      fixture.dispose();
-    }
-  });
-});
-
-describe('lint fix final validation is not optional', () => {
-  it('returns final lint errors introduced by new comments instead of declaring success', () => {
-    const fixture = configuredFixture({ files: { 'main.ts': 'export function run() { localStorage.clear(); }' }, entries: ['main.ts'], extraRules: {} });
-    const eslintConfig = path.join(fixture.root, 'eslint.config.mjs');
-    const text = fs.readFileSync(eslintConfig, 'utf8');
-    fs.writeFileSync(eslintConfig, text.replace("'local-effects/contracts': 'error',", "'local-effects/contracts': 'error', 'max-lines': ['error', { max: 1, skipComments: false }],"));
-    try {
-      const result = execute({ root: fixture.root, script: 'lint-fix.ts', args: ['main.ts', '--json'] });
-      expect(result.stderr).toBe('');
-      expect(result.status).toBe(1);
       const report = JSON.parse(result.stdout);
-      expect(report.stages).toMatchObject([{ status: 0 }, { status: 1 }]);
-      expect(report.stages[1].results[0].messages.some((message: { ruleId: string }) => message.ruleId === 'max-lines')).toBe(true);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects');
+      expect(report.verification).toBe('unverified');
+      expect(report.unresolved.plannedFiles.sort()).toEqual(expected);
+      expect(report.changedFiles.map((file: string) => path.relative(fixture.root, file)).sort()).toEqual(expected);
+      const actual = Object.entries(sources).flatMap(([file, source]) => fs.readFileSync(path.join(fixture.root, file), 'utf8') === source ? [] : [file]).sort();
+      expect(actual).toEqual(expected);
+      for (const file of expected) expect(fs.readFileSync(path.join(fixture.root, file), 'utf8')).toBe(preview.analysis.sources.get(path.join(fixture.root, file)));
+      const authored = fs.readFileSync(path.join(fixture.root, 'feature/main.ts'), 'utf8');
+      expect(authored).toContain('/** @effects ["localstorage.read(*)","network.http(*)"] */');
+      expect(authored).toContain(unsafe);
+      expect(report.unsafeSuppressions).toEqual([expect.objectContaining({ reason: 'Reviewed author exception.' })]);
+      if (!expected.includes('shared/dependency.ts')) {
+        expect(report.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ file: path.join(fixture.root, 'shared/dependency.ts'), code: 'missing' })]));
+      }
     } finally {
       fixture.dispose();
     }
-  }, 20_000);
+  }, 30_000);
+
+  it.each([
+    { name: 'one file with a checked dependency', selectors: ['feature/main.ts'], cleanDependency: true, exitCode: 0, expected: ['feature/main.ts'] },
+    { name: 'a directory with a checked dependency', selectors: ['feature'], cleanDependency: true, exitCode: 0, expected: ['feature/main.ts', 'feature/second.ts'] },
+    { name: 'an unchecked unselected dependency', selectors: ['feature/main.ts'], cleanDependency: false, exitCode: 2, expected: [] },
+    { name: 'no selector with an unchecked dependency', selectors: undefined, cleanDependency: false, exitCode: 0, expected: ['feature/main.ts', 'shared/dependency.ts'] },
+  ])('keeps strict closure validation for $name', async ({ selectors, cleanDependency, exitCode, expected }) => {
+    const entry = main.replace('/** @effects ["localstorage.read(*)","network.http(*)"] */', '');
+    const fixture = selectionFixture({ files: { ...sources, 'feature/main.ts': entry, 'shared/dependency.ts': (cleanDependency ? '/** @effects ["localstorage.read(*)"] */ ' : '') + dependency }, entries: ['feature/main.ts'] });
+    const before = new Map(Object.keys(sources).map(file => [file, fs.readFileSync(path.join(fixture.root, file), 'utf8')]));
+    try {
+      const argv = ['fix', '--json', ...(selectors ?? []).flatMap(file => ['--file', file])];
+      const result = await executeEffectsCommand({ root: fixture.root, argv });
+      expect(result.exitCode).toBe(exitCode);
+      const actual = [...before].flatMap(([file, source]) => fs.readFileSync(path.join(fixture.root, file), 'utf8') === source ? [] : [file]).sort();
+      expect(actual).toEqual(expected);
+      expect(fs.readFileSync(path.join(fixture.root, 'feature/main.ts'), 'utf8')).toContain(unsafe);
+      if (exitCode === 2) {
+        expect(result.stderr).toContain('Missing @effects contract for read.');
+        expect(result.stderr).toContain('Effect fix did not verify before writing');
+      } else {
+        expect(JSON.parse(result.stdout).diagnostics).toEqual([]);
+        const repeated = await executeEffectsCommand({ root: fixture.root, argv });
+        expect(repeated.exitCode).toBe(0);
+        expect(JSON.parse(repeated.stdout).changedFiles).toEqual([]);
+      }
+    } finally {
+      fixture.dispose();
+    }
+  }, 30_000);
 });

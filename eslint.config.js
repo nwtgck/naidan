@@ -1,4 +1,5 @@
 import { tsImport } from 'tsx/esm/api';
+import effectsBrowserProject from './tsconfig.effects-browser.json' with { type: 'json' };
 import requireDtozod from './eslint-local-rules/require-dtozod.js';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
@@ -99,7 +100,7 @@ export default tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
     // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**', 'tools/effects/fixtures/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -221,9 +222,10 @@ export default tseslint.config(
     },
   },
   {
-    files: effectsConfig.files,
+    files: ['src/**/*.ts'],
+    ignores: ['**/*.d.ts', ...effectsBrowserProject.exclude],
     languageOptions: {
-      parserOptions: { project: ['./tsconfig.effects-scope.json'] },
+      parserOptions: { project: [effectsConfig.tsconfig] },
     },
     plugins: { 'local-effects': { rules: { contracts: createEffectsRule({ root: import.meta.dirname, config: effectsConfig }) } } },
     rules: { 'local-effects/contracts': 'error' },

@@ -6,9 +6,9 @@ import { printEffect } from '../contracts/effects.ts';
 import { planEffectFix } from '../fixes/plan.ts';
 
 type Analysis = ReturnType<ReturnType<typeof createFixture>['check']>;
-const unsafeWrite = '/** @effectsUNSAFE `localstorage.write(*)` -- "Reviewed local probe." */';
-const none = '/** @effects `none` */';
-const writes = '/** @effects `localstorage.write(*)` */';
+const unsafeWrite = '/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Reviewed local probe."} */';
+const none = '/** @effects [] */';
+const writes = '/** @effects ["localstorage.write(*)"] */';
 
 function row({ analysis, label }: { analysis: Analysis, label: string }) {
   const owner = analysis.owners.find(item => item.label === label && item.role !== 'body');
@@ -64,7 +64,7 @@ ${none} function caller() { probe(); }
       expect(fixed.changedFiles).toHaveLength(1);
       const after = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
       expect(after).toContain(unsafeWrite);
-      expect(after.match(/@effects `network.http\(\*\)`/g)).toHaveLength(2);
+      expect(after.match(/@effects \["network.http\(\*\)"\]/g)).toHaveLength(2);
       expect(fixture.fix().changedFiles).toEqual([]);
     } finally {
       fixture.dispose();
@@ -94,7 +94,7 @@ ${none} function caller() { probe(); }
   it('does not make a read-only exception suppress writes', () => {
     const source = `\
 ${none}
-/** @effectsUNSAFE \`localstorage.read(*)\` -- "Read probe only." */
+/** @effectsUNSAFE {"effects":["localstorage.read(*)"],"reason":"Read probe only."} */
 function probe() { localStorage.getItem('x'); localStorage.clear(); }
 ${none} function caller() { probe(); }
 `;
@@ -210,7 +210,7 @@ ${none} ${unsafeWrite} function outer() {
   it('supports a concrete callback call without exempting the callback declaration', () => {
     const fixture = fixtureFor({
       source: `\
-/** @effects \`call(arg0.operation)\` */
+/** @effects ["call(arg0.operation)"] */
 function invoke({ operation }: { operation: () => void }) { operation(); }
 ${writes} function write() { localStorage.clear(); }
 ${none} ${unsafeWrite} function probe() { invoke({ operation: write }); }
@@ -230,7 +230,7 @@ ${none} function caller() { probe(); }
   it('refuses an unrepresentable residual effect row instead of hiding symbolic callbacks', () => {
     const fixture = fixtureFor({
       source: `\
-/** @effects \`call(arg0.operation)\` */ ${unsafeWrite}
+/** @effects ["call(arg0.operation)"] */ ${unsafeWrite}
 function probe({ operation }: { operation: () => void }) { localStorage.clear(); operation(); }
 `,
     });
@@ -300,7 +300,7 @@ ${none} function caller() { probe(); }
   it('includes destructured default expressions in the body before filtering', () => {
     const source = `\
 ${none}
-/** @effectsUNSAFE \`localstorage.read(*)\` -- "Default capability lookup." */
+/** @effectsUNSAFE {"effects":["localstorage.read(*)"],"reason":"Default capability lookup."} */
 function probe({ value = localStorage.getItem('x') }: { value?: string | null }) { return value; }
 ${none} function caller() { probe({}); }
 `;
@@ -317,7 +317,7 @@ ${none} function caller() { probe({}); }
   it('checks a default callback against its declared parameter contract', () => {
     const source = `\
 ${writes} function write() { localStorage.clear(); }
-interface Options { /** @effects \`none\` */ callback: () => void; }
+interface Options { /** @effects [] */ callback: () => void; }
 ${none} function invoke({ callback = write }: Options) { if (callback) callback(); }
 `;
     const fixture = fixtureFor({ source });
@@ -354,7 +354,7 @@ ${none} function invoke({ callback = write }: Options) { if (callback) callback(
   it.each([
     `${none} ${unsafeWrite} function f() {}`,
     `${writes} ${unsafeWrite} function f() { localStorage.clear(); }`,
-    `${none} /** @effectsUNSAFE \`localstorage.write("x")\` -- "Not a wildcard." */ function f() { localStorage.clear(); }`,
+    `${none} /** @effectsUNSAFE {"effects":["localstorage.write(\\"x\\")"],"reason":"Not a wildcard."} */ function f() { localStorage.clear(); }`,
   ])('rejects unused, contradictory or insufficiently precise exceptions: %s', source => {
     const fixture = fixtureFor({ source });
     try {

@@ -1,12 +1,11 @@
 # Static effect contracts
 
-This is a **scoped production implementation**, not a claim that all Naidan
-functions, browser operations, worker protocols or Vue components are covered.
-The eventual product scope remains all functions and methods, except that ordinary
-`.test.ts` files do not require effect annotations. Scope expansion is explicit.
+Default checking selects production TypeScript under `src`. Selection does not
+mean that every function, browser operation or worker protocol is modeled.
+Unsupported paths and UNVERIFIED candidates remain strict errors. Vue templates
+and JavaScript are outside the current entry selection.
 
 No effect tokens, wrappers or runtime permission objects are added to the app.
-The application changes in this implementation are comments only.
 
 ## Commands and rollout
 
@@ -15,34 +14,105 @@ npm run effects:check
 npm run effects:fix
 npm run effects:tidy               # Preview only
 npm run effects:tidy -- --write     # Explicit maintenance
-npm run lint:fix -- src/utils/opfs-detection.ts
+npm run effects:fix -- --allow-unresolved  # Draft candidates despite diagnostics
+npm run effects:tidy -- --allow-unresolved # Draft maintenance preview
+npm run lint
+npm run lint:fix
 npm run typecheck:effects
 npm run test:effects
 ```
 
-The initial entries in `effects.config.ts` are:
+Effects command tests call `executeEffectsCommand` in the current process and
+check returned output, exit codes and file updates. The thin CLI entry writes
+that output and sets the process exit code.
 
-- `src/utils/opfs-detection.ts`
-- `src/utils/ollama-detection.ts`
-- `src/composables/useCodeBlockSettings.ts`
-- `src/composables/useStoragePersistence.ts`
-- `src/composables/useLayout.ts`
-- `src/composables/useOverlay.ts`
+`--allow-unresolved` lets `fix` and `tidy` continue before every path is modeled.
+It retains existing upper bounds and unsafe exceptions, adds a file-header
+`TODO(effects): UNVERIFIED` note, and reports remaining diagnostics with
+`verification: "unverified"`. Successful writes/previews return zero; I/O failures
+still fail. Candidate `[]` does not prove the absence of communication. Strict
+`check` reports the note, and ordinary `fix` removes it only after the remaining
+blockers are resolved. Draft tidy only removes already trivial empty annotations;
+it does not shrink unresolved bounds. Files with syntax errors receive the note
+without rewriting their contracts.
+Unannotated callable signatures remain unresolved; a partial implementation row
+does not choose a shared public bound.
+Draft runs leave already exempt trivial-only files untouched when they have no
+local diagnostics, annotation changes or module initialization effects; existing
+UNVERIFIED notes remain until an ordinary successful fix clears them.
+Draft fix also retains earlier candidate bounds. To compare a fresh inference
+after correcting a model, regenerate from a saved pre-candidate source copy;
+draft tidy is not a general candidate rollback or narrowing operation.
 
-Only those entries and their local static dependencies are traversed. A file being
-included in another TypeScript project does not automatically enroll it. Local
-functions and callbacks in an enrolled module are checked independently, even when
-not reached from an exported entry. Test modules are excluded; importing one from a
-product module is a diagnostic, not a pure boundary.
+`effects.config.ts` expands the `src` directory through the existing entry
+selector. `tsconfig.effects-browser.json` extends the app project and keeps its
+browser/worker libraries without ambient Node globals (`types: []`). Its excludes
+cover generated catalogs, ordinary tests, reviewed test-only support and offline
+build tools. Product fixtures and helpers remain selected when used by runtime
+code; names such as `fixtures` or `test-stream` are not blanket exclusions.
+The effects ESLint override shares these exclusions and this browser project.
+The separate `tsconfig.effects.json` checks the Node-based checker implementation.
+There is no temporary entry allowlist.
+
+Selected entries and their local static dependencies are traversed. Exclusions
+control entry selection, not a trust boundary for imported implementations. Local
+functions and callbacks in a reached module are checked independently, even when
+not reached from an exported entry. Importing an ordinary test from product code
+is a diagnostic, not a pure boundary.
+
+Zero-argument arrows and ordinary function declarations/expressions may omit an
+implementation annotation when their body is empty or directly returns a fixed
+primitive literal. For example, `() => {}`, `function noop() {}`, `() => 123`,
+and `function label() { return 'ready'; }` have an implicit `none` bound.
+String, number, bigint, boolean and null literals, fixed template literals and
+`void 0` qualify; identifiers such as `undefined` and arbitrary scalar-typed
+expressions do not. Extra body statements, methods and callback type signatures
+remain subject to explicit contracts.
+
+Canonical Boundary Strings messages may also omit the implementation annotation
+when a single required, flat object parameter has directly written primitive
+field types and the body returns only an untagged template interpolating those
+bindings. Static field renaming and parentheses are allowed. Defaults, optional
+fields, aliases, calls, property reads, casts, conditions, additional statements,
+async functions and generators do not qualify. This uses the existing Strings
+import boundary and direct object argument validation from lint and the build;
+it does not exempt ordinary destructured functions or other helpers in a message
+module. For example, the exported `AboutTab__version` message returning
+`Version ${version}` qualifies, while `count.toLocaleString()` does not.
+
+Omission only changes the need to write an empty bound. Parameter and body
+analysis, unsupported diagnostics, budget failures, caller propagation and
+nonempty effects remain checked. Eligibility uses local syntax and stays the
+same when a type-shape budget is exhausted. Automatic empty-annotation cleanup
+preserves nonempty author bounds; explicitly selected tidy narrowing keeps its
+existing behavior.
+
+Callable storage still has a stable upper bound;
+assigning an effectful function to an implicitly empty slot is a contract error.
+The widening fix adds an explicit bound when such a slot must widen, and preserves
+existing explicit annotations, including deliberately wider ones.
 
 For a deliberate local experiment, entries can be overridden without changing the
-checked-in rollout:
+default selection:
 
 ```sh
 npm run effects:check -- --file src/path/to/module.ts --json
+npm run effects:fix -- --file src/path/to/feature --allow-unresolved --json
 ```
 
-An override follows dependencies and may therefore uncover unsupported constructs.
+`--file` accepts a literal `.ts` file or directory and can be repeated. Directories
+select their `.ts` files recursively using the existing TypeScript project's
+exclusions; declaration files, tests and node_modules are excluded. This explicit
+selection replaces the default production entries. Overlapping selections are
+deduplicated. `--file .` selects all eligible files below the project root,
+including tooling files unless the project excludes them.
+
+All three commands analyze the selected entries and their reached dependencies.
+With `--file`, fix and tidy edit only the selected files. Dependency diagnostics
+remain visible. Ordinary fix refuses all writes if unselected dependencies still
+need contract fixes; `--allow-unresolved` can write local UNVERIFIED candidates
+while retaining those diagnostics. Without `--file`, fix keeps its existing
+whole-closure behavior and tidy edits the configured entries.
 Do not add an ignore or a false `none` declaration merely to make an entry pass.
 
 `check` exits with 0 for no diagnostics, 1 for diagnostics, and 2 for configuration
@@ -52,32 +122,28 @@ diagnostics, contracts and `unsafeSuppressions` for a completed analysis; comman
 Successful text-mode checks also list every unsafe suppression, so a zero-diagnostic
 result is not presented without its explicit exceptions.
 
-## Integrated lint fixes and optional declaration maintenance
+`analysisBudget` is applied separately to the function-body queue and propagation
+edge visits. The type-shape converter counts every entry call, including primitive
+and cached-callable paths. After this many calls, nontrivial shapes return unresolved
+with an `unsupported` diagnostic; existing primitive and modeled native fast paths
+still retain their known shapes. Body analysis keeps known effects and declared
+bounds, and candidate fixes remain unverified. This is not a time or heap-memory limit.
+Callback references below an unexpanded type path are reported as unsupported,
+not proven invalid syntax. That includes fields whose existence or callable shape
+has not been checked. These paths do not become legal callback bindings; strict
+checks still fail and candidate output remains unverified.
 
-`npm run lint:fix -- <paths...>` now runs three explicit phases:
+After a record budget cutoff, a direct parameter reference or one parameter property
+can recover a modeled native leaf only when its original type contains that native
+and its reference has one matching library native identity. The cutoff marker alone
+is not native proof. Local record aliases, casts, getters and ordinary unknowns are
+not recovered this way; unresolved-access diagnostics and the unverified state remain.
 
-1. ESLint's ordinary fixes, deferring only `local-effects/contracts`.
-2. The shared widening effect fix, if a linted file belongs to the configured
-   effects project. This updates the **complete enrolled dependency scope**,
-   including affected callers and dependencies outside the ordinary lint paths.
-3. Fresh, non-fixing ESLint validation with the effects rule enabled, covering
-   both the ordinary linted files and the affected effects scope.
+Known local class method bodies can contribute candidate effects at otherwise
+unchecked direct method calls. Construction, dispatch, property access and return
+values remain unchecked; this does not validate the class boundary.
 
-No arguments selects `.` for ordinary lint (as before). Explicit paths replace
-that default instead of implicitly linting the whole repository. Supported flags
-are `--max-warnings`, `--effects-config`, and `--json`; this entry point is not a
-transparent wrapper for all ESLint flags. Use direct ESLint for unrelated flags.
-The independent `effects:check` and `effects:fix` commands remain available.
-ESLint editor single-file fixes still do not perform project-wide effect edits.
-
-Ordinary unfixable errors, configuration failures, unsupported effect boundaries
-and final validation errors are not ignored. Each ESLint phase runs in a fresh
-process so typed parser/config caches cannot describe pre-edit source. There is
-no subprocess per file, broad `|| true`, or effect propagation via ESLint's fix
-iteration count. Ordinary fixes may already be written when a later phase fails;
-this is explicitly **not** an all-or-nothing repository transaction. Effect edits
-retain the guarded multi-file validation described below. Unsafe boundaries
-remain visible. Tests do not run the full application lint implicitly.
+## Declaration maintenance
 
 `tidy` is separate from normal checking and widening fixes. Excess valid
 permissions are not ordinary diagnostics.
@@ -90,17 +156,30 @@ npm run effects:tidy -- --file src/utils/ollama-detection.ts --write
 Without `--write`, source files are never edited. JSON contains the planned
 before/after source, contract changes and the reason each owner is selected or
 preserved. Its analysis describes the projected source, not a claim that preview
-has changed the files. `--file` narrows only the tidy selection: the configured
-project and all reached dependencies are still validated.
+has changed the files. `--file` replaces the configured analysis entries, as in
+check/fix, and selects which files tidy can edit. Reached dependencies are still
+validated and their contracts remain fixed. Unrelated configured entries are
+outside this local run.
 
-The initial tidy implementation targets **function declarations with checked
-bodies** in the selected files. Callable variable/property slots, methods,
-signature contracts, expression-owned callbacks, modules and unselected files
-remain fixed, even when their current initializer does nothing. It is not a
-global rewrite of every contract or a deletion of `none` annotations. Exported
-function declarations in an explicitly selected file can be narrowed; callers
-outside the configured project are not inspected. Extending owner selection
-requires explicit compatibility tests.
+Tidy narrows **function declarations with checked bodies** in the selected files.
+It also removes a dedicated `@effects []` comment from an already empty, trivial
+implementation allowed by the shared annotation policy above, including arrows
+and fixed primitive returns. A selected declaration narrowed to an empty row can
+omit its comment when the same policy applies. The preview reports comment
+removal even when the effect row stays empty. Ordinary widening fixes preserve
+explicit comments and do not re-add these optional annotations.
+
+Wider expression-owned bounds, callable aliases, methods, type signatures and
+unselected files remain fixed. Removing an implementation's empty comment does
+not change its expected callback signature or its implicit empty storage bound.
+Unsafe comments and reasons are preserved. Mixed prose/JSDoc is not searched for
+tags to delete; only recognized dedicated effect comments can be removed. In
+particular, an initializer comment in `const noop = /** @effects [] */ () => {}`
+is not currently recognized at the variable-statement anchor and is preserved;
+use `/** @effects [] */ const noop = () => {}` for a binding contract.
+Exported function declarations in an explicitly selected file can be narrowed;
+callers outside the configured project are not inspected. Extending owner
+selection requires explicit compatibility tests.
 
 Tidy first requires a clean ordinary check. It clears only selected declaration
 seeds and recomputes the least fixed point from operations, assignments, callback
@@ -214,10 +293,8 @@ refinement; it does not resurrect through a shallow copy after replacement.
 
 The standalone TypeScript fixtures cover local/network acquisition, source evaluation,
 coercion refusal, shadows, casts, writable aliases, copies, caller propagation,
-unsafe boundaries and explicit tidy. The default six application modules are unchanged;
-this is not Vue template support or an audit of all application images. Browser probes
-in the handoff are separate from checker fixture tests; network acquisition was blocked
-by the sandbox's administrator policy, while the in-memory Blob probes were executable.
+unsafe boundaries and explicit tidy. These fixtures do not verify Vue template
+handlers or every application image, and do not replace browser integration checks.
 
 Sources: [HTML images](https://html.spec.whatwg.org/multipage/images.html),
 [URL Standard](https://url.spec.whatwg.org/),
@@ -229,21 +306,21 @@ A declaration is an **upper bound**, not a list of operations that must occur.
 
 ```ts
 const actions = {
-  /** @effects `localstorage.read(*)`, `localstorage.write(*)` */
+  /** @effects ["localstorage.read(*)","localstorage.write(*)"] */
   run: () => {},
 };
 
-/** @effects `localstorage.write(*)` */
+/** @effects ["localstorage.write(*)"] */
 function save() {
   localStorage.clear();
 }
 
-/** @effects `none` */
+/** @effects [] */
 function install() {
   actions.run = save;
 }
 
-/** @effects `localstorage.read(*)`, `localstorage.write(*)` */
+/** @effects ["localstorage.read(*)","localstorage.write(*)"] */
 function execute() {
   actions.run();
 }
@@ -287,22 +364,76 @@ Use a separate, dedicated documentation comment, adjacent to the callable or slo
 
 ```ts
 /** Existing explanation stays unchanged. */
-/** @effects `opfs.read(*)`, `opfs.write(*)` */
+/** @effects ["opfs.read(*)","opfs.write(*)"] */
 async function save() {
   // ...
 }
 ```
 
-One code span contains one effect. Newlines between items are supported. Comma and
-ampersand separators both mean the same upper-bound set, but cannot be mixed in a
-single declaration. The printer uses commas. `none` must be the only item.
+The payload is a strict JSON array of strings. Each string contains exactly one
+operation, such as `"opfs.read(*)"`, or symbolic callback, such as
+`"call(arg0.operation)"`. An empty array `[]` means no tracked effects. Multiple
+items form an upper-bound union. Multiline JSON is supported. Backtick rows,
+`none` items, ampersand separators and trailing commas are rejected.
 
-The TypeScript scanner finds the actual comment ranges. A bounded recursive-descent
-parser reads the effect expressions, including resource strings and callback paths.
-There is no regular-expression tag extraction, comma splitting, `eval` or generated
-runtime expression. Unknown names, malformed terms, duplicate dedicated declarations
-and unbound callback references are diagnostics. Resource strings support JSON
-escapes; the printer escapes backticks and the JavaScript comment terminator.
+The TypeScript scanner finds the actual comment ranges. `JSON.parse` reads the
+payload, Zod validates its shape, and a bounded atom parser reads resource strings
+and callback paths. The same row schema and atom parser validate reviewed model
+configuration and Vue template metadata. There is no regular-expression source
+extraction, comma splitting, `eval` or generated runtime expression. Unknown
+names, malformed terms, duplicate dedicated declarations and unbound callback
+references are diagnostics. Resource strings use JSON escapes inside the atom
+string; the outer JSON layer escapes the JavaScript comment terminator without
+changing the decoded resource.
+
+Module initialization has an independent file-header contract:
+
+```ts
+/** @effectsModule ["messaging.crossorigin.send(*)"] */
+import './dependency';
+/** @effects ["messaging.crossorigin.send(*)"] */
+function ready() { window.parent.postMessage('ready', '*'); }
+ready();
+```
+
+Place this dedicated comment before the first statement, after a hashbang when
+present. It uses the same JSON array and operation validation as `@effects`,
+but cannot reference callable parameters. Duplicate or misplaced module tags
+are diagnostics. A first callable's `@effects` remains its own contract.
+Module-level unsafe suppression is not supported.
+
+Top-level calls and runtime static imports/reexports contribute initialization
+effects, including transitive and cyclic dependencies. Defining a function does
+not invoke its body. Whole `import type` / `export type` declarations have no
+runtime edge; inline type specifiers can retain empty runtime imports with
+`verbatimModuleSyntax`. An unchecked runtime import remains a diagnostic: ambient
+declarations and operation models do not establish empty package initialization.
+Literal dynamic imports of local TypeScript modules propagate known initialization
+and checked export calls at the import call site. Loading and namespace settlement
+always remain unsupported; this is not complete loader-effect verification.
+Computed, option-bearing, virtual and external imports remain unchecked.
+
+An unannotated module needs a contract when its solved initialization row is
+nonempty. Empty modules do not require mechanical `[]` comments. Explicit bounds,
+including `[]`, are checked; fix widens them and opt-in tidy may narrow selected
+module bounds while retaining unselected dependency contracts. Candidate mode
+preserves author bounds and unresolved diagnostics with the UNVERIFIED header.
+An empty partial row with unresolved paths is not a proof of no communication.
+
+Vue template metadata uses a JSON event map immediately before its element:
+
+```vue
+<!-- @effects {"@click":["network.http(*)"],"@input":[]} -->
+<button @click="send()" @input="update()">Send</button>
+```
+
+The syntax reader uses the Vue compiler AST and the shared JSON/Zod row parser.
+Each map binds the next sibling element in the same parent. Keys use the base
+event name: `@click` includes `@click.stop` and `v-on:click` handlers on that element.
+Duplicate JSON keys, unmatched static event names, and annotated elements with
+dynamic event names or an object of listeners are rejected. This metadata
+reader does not yet enroll `.vue` files in effect checking or prove the handler
+contracts; template analysis remains a separate rollout requirement.
 
 Free-form prose and fenced examples are not interpreted as contracts. The initial
 reader deliberately does **not** parse general mixed TSDoc documents. An annotation
@@ -320,10 +451,9 @@ implementation performs no input/output. The implementation remains fully checke
 within the supported analysis scope.
 
 ```ts
-/** @effects `none` */
+/** @effects [] */
 /**
- * @effectsUNSAFE `opfs.read(*)`, `opfs.write(*)`
- * -- "Capability probe only; temporary-file creation/removal is intentionally hidden from callers. Cleanup remains best-effort."
+ * @effectsUNSAFE {"effects":["opfs.read(*)","opfs.write(*)"],"reason":"Capability probe only; temporary-file creation/removal is intentionally hidden from callers. Cleanup remains best-effort."}
  */
 export async function checkOPFSSupport(): Promise<boolean> {
   // The existing probe body still reads, creates and removes its temporary file.
@@ -332,11 +462,11 @@ export async function checkOPFSSupport(): Promise<boolean> {
 ```
 
 The ordinary `@effects` describes the **remaining public upper bound**. The
-separate `@effectsUNSAFE` lists specific registered operation effects to suppress,
-followed by `--` and exactly one nonblank JSON string explaining the exception.
-The reason must be a single line of at most 2048 UTF-16 code units. Commas or
-ampersands are supported, as for ordinary declarations; do not mix separators.
-`none`, global wildcards, unknown operation names and symbolic `call(...)` terms
+separate `@effectsUNSAFE` requires a strict JSON object with exactly `effects`
+and `reason`. Its effect row lists specific registered operations to suppress.
+The nonblank reason must be a single line of at most 2048 UTF-16 code units;
+its original text is preserved. Duplicate object keys and extra properties are
+rejected. Empty rows, global wildcards, unknown operation names and symbolic `call(...)` terms
 are not valid suppression entries. A resource wildcard such as `opfs.write(*)`
 only covers that operation family, but covers **all** resources in that family.
 
@@ -412,15 +542,18 @@ Nothing is erased from the runtime behavior by this annotation.
 
 ESLint imports the TypeScript rule once through the existing `tsx` development
 dependency. It does not spawn a checker for every file or install an app runtime.
-Results are shared by TypeScript Program identity. Reviewed models and disk snapshots
-are rechecked, and editor/Program mismatches are reported rather than reused silently.
-The initial integration is a saved-file check; it does not promise full unsaved editor
-project virtualization.
+Results are shared by TypeScript Program identity. A new analysis checks all source
+snapshots; each file checks reviewed model pins and matches its current text against
+the analyzed snapshot and typed Program. The rule reports each selected file at its
+own location and summarizes diagnostics outside the selection without treating them
+as success. Full dependency freshness requires an updated typed Program: changing
+only a dependency while reusing the same Program is not detected by a caller-text
+check. This saved-file rule has no autofixer. CLI fixes still validate every input
+snapshot before writing.
 
-ESLint reports diagnostics, but does not provide a multi-file rule fixer.
-`effects:fix` computes the full transitive change once. ESLint's fix-loop iteration
-limit is not the propagation algorithm. Ordinary `lint:fix` does not automatically
-widen contracts across the repository.
+ESLint reports diagnostics. `effects:fix` plans selected contract edits and
+validates the full transitive analysis, while `effects:tidy` provides explicit
+declaration maintenance.
 
 ## Browser and library models
 
@@ -572,14 +705,14 @@ component rendering and general callback forwarding are not silently certified.
 ```ts
 const name = ref('');
 
-/** @effects `none` */
+/** @effects [] */
 function setName({ value }: { value: string }) {
   name.value = value;
 }
 
-/** @effects `localstorage.write(*)` */
+/** @effects ["localstorage.write(*)"] */
 function install() {
-  watch(name, /** @effects `localstorage.write(*)` */ value => {
+  watch(name, /** @effects ["localstorage.write(*)"] */ value => {
     localStorage.setItem('name', value);
   }, { flush: 'sync' });
 }
@@ -662,7 +795,8 @@ belongs only to that callable, not to module initialization. Matching method nam
 not establish a connection. Type-only imports do not execute module initialization.
 
 The command discovers literal entry files. For ESLint, the typed Program must also
-include these entries (list them in the scoped TypeScript configuration). Missing
+include these entries. The default browser project includes production TypeScript
+throughout `src`; custom projects must include their worker entries too. Missing
 entries are errors, not empty worker bodies.
 
 Worker startup is charged to creation, while method effects flow only through the
@@ -675,10 +809,10 @@ Naidan's independent RPC (Remote Procedure Call) protocol are not implemented he
 A factory returning a remote needs an explicit readonly returned-method contract when
 the inferred mapped signature is outside the supported subset.
 
-The bridge is tested on isolated TypeScript fixture projects. No real Naidan worker
-has been enrolled in the default production rollout in this commit. Earlier handoff
-prototypes exercised a broader worker subset; their results are not silently counted
-as tests of this new TypeScript implementation.
+The bridge is tested on isolated TypeScript fixture projects. The default production
+configuration includes real Naidan worker sources and entries, but provider-method
+effects reaching client calls have not been verified on those application paths;
+opaque boundaries and analysis-budget diagnostics remain.
 
 ## Fix safety and failure behavior
 
@@ -699,22 +833,23 @@ Checks intentionally do not certify arbitrary JavaScript. The initial supported
 subset is narrow and has explicit failure diagnostics. Arrays/Map/class contracts,
 general generic and asynchronous value conditions, complete Vue support, general
 TSDoc comments, all browser storage/network lifecycles and persistent incremental
-caching remain follow-ups. The implementation does not claim to have ported all
-features or all tests from the independent prototypes.
+caching remain follow-ups.
 
 ## Validation and continuous integration
 
 The effect tooling has an isolated Node-based Vitest configuration and a strict
 TypeScript configuration. Existing application test setup is not imported.
 `test:effects` uses the repository's failed-only, non-interactive test script.
-A dedicated CI job runs the scoped check, tooling typecheck and checker tests.
+A dedicated CI job runs the default production check, tooling typecheck and checker tests.
+The standard ESLint command uses the same production selection. Unresolved
+contracts fail both checks; applying candidate comments does not make CI green.
 
 Tests include contract subsets, writable aliases, callbacks, cyclic and generated
 graphs, cross-file fixes, parser rejection, read/write separation, literal worker
 bindings, hidden object members, coercion witnesses in a mock runtime, command exit
 codes, input pin changes, concurrent edit refusal and rollback. Runtime mock tests do
-not touch browser storage or use the network. Initial selected product utilities are
-also tested locally without running the entire Naidan suite.
+not touch browser storage or use the network. Representative product scenarios are
+also tested with explicit entries without running the entire Naidan suite.
 
 
 ## Explicit Window messages and internal broadcast

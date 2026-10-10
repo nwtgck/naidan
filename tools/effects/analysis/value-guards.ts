@@ -24,6 +24,10 @@ export function isPromiseValue(value: Value): value is Extract<Value, { kind: 'p
   return value.kind === 'promise';
 }
 
+export function isChoiceValue(value: Value): value is Extract<Value, { kind: 'choice' }> {
+  return value.kind === 'choice';
+}
+
 /** Only evidence-backed own data shapes are safe for implicit native conversions. */
 export function passiveData({ value, seen }: { value: Value, seen: Set<Value> }): boolean {
   if (seen.has(value)) return false;

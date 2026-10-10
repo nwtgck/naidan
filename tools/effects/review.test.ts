@@ -17,14 +17,14 @@ function review({ source, label, budget }: { source: string, label: string, budg
 
 describe('effect contract review is explanatory, not an automatic unexpected-effect policy', () => {
   it('explains a direct browser operation even if its comment already includes the effect', () => {
-    const result = review({ source: '/** @effects `indexeddb.read(*)` */ function inspect() { indexedDB.databases(); }', label: 'inspect', budget: 100 });
+    const result = review({ source: '/** @effects ["indexeddb.read(*)"] */ function inspect() { indexedDB.databases(); }', label: 'inspect', budget: 100 });
     expect(result.missing).toEqual([]);
     expect(result.witnesses[0]?.basis).toBe('modeled-operation');
     expect(result.witnesses[0]?.path.at(-1)?.reason).toContain('Modeled operation: indexedDB.databases');
   });
 
   it('distinguishes a deliberately broad contract from an executed operation', () => {
-    const result = review({ source: '/** @effects `localstorage.write(*)`, `hoge` */ function noop() {}', label: 'noop', budget: 100 });
+    const result = review({ source: '/** @effects ["localstorage.write(*)","hoge"] */ function noop() {}', label: 'noop', budget: 100 });
     expect(result.outward).toEqual(['hoge', 'localstorage.write(*)']);
     expect(result.witnesses.every(item => item.basis === 'declared-upper-bound')).toBe(true);
   });
@@ -59,10 +59,10 @@ function entry() { middle(); }
   it('does not trace a suppressed operation back into a caller', () => {
     const result = review({
       source: `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Isolated test-only probe boundary." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Isolated test-only probe boundary."} */
 function hidden() { localStorage.clear(); }
-/** @effects \`none\` */
+/** @effects [] */
 function caller() { hidden(); }
 `,
       label: 'caller',
@@ -75,8 +75,8 @@ function caller() { hidden(); }
   it('uses a separate unsuppressed path for an operation also hidden on another path', () => {
     const result = review({
       source: `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Isolated probe." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Isolated probe."} */
 function hidden() { localStorage.clear(); }
 function ordinary() { localStorage.setItem('x', 'y'); }
 function caller() { hidden(); ordinary(); }
@@ -89,11 +89,11 @@ function caller() { hidden(); ordinary(); }
 
   it('explains a callback substitution using that call site, not another invocation', () => {
     const source = `\
-/** @effects \`call(arg0.operation)\` */
+/** @effects ["call(arg0.operation)"] */
 function invoke({ operation }: { operation: () => void }) { operation(); }
-/** @effects \`localstorage.read(*)\` */
+/** @effects ["localstorage.read(*)"] */
 function reader() { localStorage.getItem('x'); }
-/** @effects \`localstorage.write(*)\` */
+/** @effects ["localstorage.write(*)"] */
 function writer() { localStorage.clear(); }
 function readOnly() { invoke({ operation: reader }); }
 function writeOnly() { invoke({ operation: writer }); }
@@ -106,7 +106,7 @@ function writeOnly() { invoke({ operation: writer }); }
   });
 
   it('retains unresolved callback contracts as symbolic witnesses', () => {
-    const result = review({ source: '/** @effects `call(arg0)` */ function invoke(callback: () => void) { callback(); }', label: 'invoke', budget: 100 });
+    const result = review({ source: '/** @effects ["call(arg0)"] */ function invoke(callback: () => void) { callback(); }', label: 'invoke', budget: 100 });
     expect(result.outward).toEqual(['call(arg0)']);
     expect(result.witnesses[0]?.basis).toBe('declared-upper-bound');
   });
@@ -132,7 +132,7 @@ function c() { a(); localStorage.clear(); }
   });
 
   it('validates the review budget without changing the analysis', () => {
-    const fixture = createFixture({ files: { 'main.ts': '/** @effects `none` */ function a() {}' }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ function a() {}' }, entries: ['main.ts'] });
     try {
       const analysis = fixture.check();
       for (const budget of [0, -1, 0.5, NaN, Infinity]) expect(() => reviewEffects({ analysis, budget })).toThrow('budget');
@@ -145,7 +145,7 @@ function c() { a(); localStorage.clear(); }
 
 describe('effect review guards', () => {
   it('does not shrink an already broad declaration just because a native model became more precise', () => {
-    const source = '/** @effects `indexeddb.read(*)`, `indexeddb.write(*)` */ function compare() { indexedDB.cmp(1, 2); }';
+    const source = '/** @effects ["indexeddb.read(*)","indexeddb.write(*)"] */ function compare() { indexedDB.cmp(1, 2); }';
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {
       const result = fixture.fix();

@@ -16,6 +16,9 @@ npm run strings:catalogs:test
 The first command updates catalogs. `:check` compares without writing and exits
 nonzero when a catalog is missing or differs. `:test` runs only the generator and
 catalog-reader tests, without application plugins or browser inference artifacts.
+Those tests call `executeStringCatalogCommand({ argv, root })` in process without starting
+an external command. The thin script wrapper resolves the repository root from
+its own location; its process startup is not covered by those tests.
 `npm run strings:catalogs -- --help` describes the command-line options.
 
 ### Inputs and outputs
@@ -60,8 +63,9 @@ failure does not truncate that destination. The locale set is not a multi-file
 transaction: after an interrupted run, rerun generation and `:check`.
 
 These commands are explicit maintenance tools, not automatic dev/build hooks.
-The implementation is in `build/boundary-strings/generate-catalogs.ts`; the script
-only selects the mode, resolves the repository root, and reports results.
+The generator is in `build/boundary-strings/generate-catalogs.ts`, and its command
+API is in `build/boundary-strings/catalog-command.ts`. The script resolves the
+repository root and forwards arguments and the command's exit status.
 
 ## Release Start (`release_start.py`)
 

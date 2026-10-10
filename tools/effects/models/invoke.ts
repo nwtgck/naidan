@@ -1,13 +1,14 @@
 import ts from 'typescript';
 import { evaluateBrowserOperation } from './browser/operations.ts';
+import { scalarArguments as checkedScalarArguments } from './browser/guards.ts';
 import type { OperationDecision } from './operation.ts';
 import type { EffectsConfig } from '../config.ts';
 import type { EffectDiagnostic } from '../diagnostics.ts';
 import { type Effect } from '../contracts/effects.ts';
-import { parseEffects } from '../syntax/expression.ts';
+import { parseEffectRow } from '../syntax/expression.ts';
 import type { ContractOwner, FunctionValue, Value } from '../analysis/values.ts';
 import { SCALAR, UNKNOWN } from '../analysis/values.ts';
-import { isCallableValue, isRecordValue, isScalarValue, passiveData } from '../analysis/value-guards.ts';
+import { isCallableValue, isRecordValue, isScalarValue } from '../analysis/value-guards.ts';
 
 export type NativeModelContext = {
   config: EffectsConfig,
@@ -25,6 +26,29 @@ export type NativeModelContext = {
   replacementShape: (input: { source: Value, target: Value, node: ts.Node, depth: number }) => void,
 };
 
+function lockSignal({ value }: { value: Value }): boolean {
+  switch (value.kind) {
+  // Primitives are absent/undefined or fail Web IDL's interface brand check;
+  // neither path invokes object coercion hooks or proves a valid signal.
+  case 'scalar': return true;
+  case 'native': return value.name === 'AbortSignal';
+  case 'choice': return value.values.length > 0 && value.values.every(item => lockSignal({ value: item }));
+  case 'record': case 'function': case 'promise': case 'unknown': return false;
+  default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+  }
+}
+
+function initialReadableStreamPullPossible({ node }: { node: ts.Node }): boolean {
+  const strategy = ts.isNewExpression(node) ? node.arguments?.[1] : undefined;
+  if (strategy === undefined || !ts.isObjectLiteralExpression(strategy)) return true;
+  let highWaterMark: ts.Expression | undefined;
+  for (const property of strategy.properties) {
+    if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name)) return true;
+    if (property.name.text === 'highWaterMark') highWaterMark = property.initializer;
+  }
+  return highWaterMark === undefined || !ts.isNumericLiteral(highWaterMark) || Number(highWaterMark.text) !== 0;
+}
+
 /** Models describe operations; the analyzer owns identity, scopes and contract propagation. */
 export function evaluateNative({ context, callable, args, owner, node }: {
   context: NativeModelContext, callable: Extract<Value, { kind: 'native' }>, args: readonly Value[], owner: ContractOwner | undefined, node: ts.Node,
@@ -39,7 +63,7 @@ export function evaluateNative({ context, callable, args, owner, node }: {
   if (name.startsWith('model:')) {
     const model = context.config.models.find(item => `model:${item.file}#${item.export}` === name);
     if (model === undefined) throw new Error('Missing selected external effect model.');
-    for (const text of model.effects) context.addEffects({ owner, effects: parseEffects({ text: '`' + text + '`', definitions: context.config.definitions }), node, reason: `Reviewed external model: ${model.file}#${model.export}` });
+    context.addEffects({ owner, effects: parseEffectRow({ value: model.effects, definitions: context.config.definitions }), node, reason: `Reviewed external model: ${model.file}#${model.export}` });
     switch (model.returnValue) {
     case 'scalar-value':
       context.issue({ node, code: 'unsupported', message: 'A modeled scalar value is not callable.' }); return UNKNOWN;
@@ -51,13 +75,85 @@ export function evaluateNative({ context, callable, args, owner, node }: {
   const browser = evaluateBrowserOperation({ context, callable, args, owner, node, access: ts.isNewExpression(node) ? 'construct' : 'call' });
   if (browser !== undefined) return browser;
   if (name === 'navigator.locks.request') {
-    const callback = args.at(-1);
+    // Web IDL converts the name and options before granting a lock. Unchecked
+    // conversion hooks must not disappear merely because the callback is modeled.
+    // Source: https://w3c.github.io/web-locks/#api-lock-manager
+    checkedScalarArguments({ context, callable, args: [args[0] ?? UNKNOWN], node });
+    if (args.length >= 3) {
+      const options = args[1] ?? UNKNOWN;
+      const actual = isRecordValue(options) && isRecordValue(options.reflected) ? options.reflected : options;
+      // A dictionary reads only these known fields. Unused data fields need not
+      // be serializable, and an AbortSignal is not generic passive message data.
+      // Source: https://webidl.spec.whatwg.org/#es-dictionary
+      if (isRecordValue(actual) && actual.shape === 'closed' && actual.indexValue === undefined) {
+        checkedScalarArguments({
+          context,
+          callable,
+          args: ['mode', 'ifAvailable', 'steal'].flatMap(key => {
+            const value = actual.fields.get(key)?.value;
+            return value === undefined ? [] : [value];
+          }),
+          node,
+        });
+        const signal = actual.fields.get('signal')?.value;
+        if (signal !== undefined && !lockSignal({ value: signal })) {
+          context.issue({ node, code: 'unsupported', message: 'Lock options signal needs checked native AbortSignal identity; casts and unknown objects are not evidence.' });
+        }
+      } else if (!isScalarValue(actual)) {
+        context.issue({ node, code: 'unsupported', message: 'Lock options need a checked closed dictionary; hidden field getters require a dedicated model.' });
+      }
+    }
+    // Extra arguments are evaluated by the analyzer but ignored by Web IDL.
+    const callback = args[args.length >= 3 ? 2 : 1];
     if (callback === undefined) {
       context.issue({ node, code: 'unsupported', message: 'Missing lock callback.' }); return UNKNOWN;
     }
     const result = context.invoke({ callable: callback, args: [UNKNOWN], owner, node });
     return promise({ value: context.settle({ value: result, node }) });
   }
+  if (name === 'ReadableStream' && ts.isNewExpression(node)) {
+    // This partial slice exposes startup callbacks without claiming a complete
+    // stream/controller/strategy/consumer contract. Cancellation is not startup.
+    context.issue({ node, code: 'unsupported', message: 'ReadableStream startup callbacks are analyzed; controllers, strategy conversion, consumption and cancellation still require an explicit effect model.' });
+    const source = args[0];
+    const actual = isRecordValue(source) && isRecordValue(source.reflected) ? source.reflected : source;
+    if (isRecordValue(actual) && actual.shape === 'closed' && actual.indexValue === undefined) {
+      for (const key of ['start', 'pull'] as const) {
+        if (key === 'pull' && !initialReadableStreamPullPossible({ node })) continue;
+        const callback = actual.fields.get(key)?.value;
+        if (callback === undefined || isScalarValue(callback)) continue;
+        const result = context.invoke({ callable: callback, args: [UNKNOWN], owner, node });
+        context.settle({ value: result, node });
+      }
+    }
+    return UNKNOWN;
+  }
+  if (name === 'Promise' && ts.isNewExpression(node)) {
+    const executor = args[0] ?? UNKNOWN;
+    // The executor runs synchronously; its return value is ignored. Its body
+    // (including callbacks that it starts) still contributes to the caller row.
+    context.invoke({ callable: executor, args: [], owner, node });
+    switch (executor.kind) {
+    case 'function': {
+      if (executor.parameters.length === 0) return promise({ value: SCALAR });
+      const resolve = executor.parameters[0];
+      if (resolve?.kind === 'native' && resolve.name === 'Promise.executor.resolve') return promise({ value: resolve.receiver ?? UNKNOWN });
+      break;
+    }
+    case 'native': case 'choice': case 'record': case 'promise': case 'scalar': case 'unknown': break;
+    default: { const exhaustive: never = executor; throw new Error(String(exhaustive)); }
+    }
+    context.issue({ node, code: 'unsupported', message: 'Promise construction needs a direct inline executor with checked resolve/reject callbacks.' });
+    return promise({ value: UNKNOWN });
+  }
+  if (name === 'Promise.executor.resolve') {
+    // Resolving assimilates thenables. Reuse the checked settlement boundary;
+    // a custom or hidden then member must not become an implicitly pure call.
+    const settled = context.settle({ value: args[0] ?? SCALAR, node });
+    context.compatible({ source: settled, target: receiver ?? UNKNOWN, node, mode: 'value' });
+    return SCALAR;
+  }
+  if (name === 'Promise.executor.reject') return SCALAR;
   if (name === 'Promise.resolve') return promise({ value: context.settle({ value: args[0] ?? SCALAR, node }) });
   if (name === 'Promise.reject') return promise({ value: SCALAR });
   if (['Promise.then', 'Promise.catch', 'Promise.finally'].includes(name) && receiver?.kind === 'promise') {

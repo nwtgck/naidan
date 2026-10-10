@@ -19,7 +19,7 @@ function createLinter({ root, config, typed }: { root: string, config: EffectsCo
 
 describe('TypeScript effects ESLint integration', () => {
   it('uses the same transitive contract diagnostics as the command', async () => {
-    const fixture = createFixture({ files: { 'main.ts': "import { save } from './storage';\n/** @effects `none` */ export function run() { save(); }", 'storage.ts': '/** @effects `none` */ export function save() { localStorage.clear(); }' }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': "import { save } from './storage';\n/** @effects [] */ export function run() { save(); }", 'storage.ts': '/** @effects [] */ export function save() { localStorage.clear(); }' }, entries: ['main.ts'] });
     try {
       const linter = createLinter({ root: fixture.root, config: fixture.config, typed: true });
       const [result] = await linter.lintFiles(['main.ts']);
@@ -28,6 +28,36 @@ describe('TypeScript effects ESLint integration', () => {
       expect(result?.messages.every(message => message.fix === undefined)).toBe(true);
     } finally { fixture.dispose(); }
   });
+  it('reports each selected source diagnostic at its own location without duplicating other selected files', async () => {
+    const fixture = createFixture({ files: {
+      'main.ts': '/** @effects [] */ export function run() { localStorage.clear(); }',
+      'other.ts': '/** @effects [] */ export function save() { sessionStorage.clear(); }',
+    }, entries: ['main.ts', 'other.ts'] });
+    try {
+      const results = await createLinter({ root: fixture.root, config: fixture.config, typed: true }).lintFiles(['main.ts', 'other.ts']);
+      expect(results.map(result => result.errorCount)).toEqual([1, 1]);
+      expect(results[0]?.messages[0]?.message).toContain('localstorage.write(*)');
+      expect(results[1]?.messages[0]?.message).toContain('sessionstorage.write(*)');
+      expect(results.every(result => result.messages[0]?.column === 20)).toBe(true);
+    } finally { fixture.dispose(); }
+  });
+
+  it('keeps dependency-only failures visible across repeated lint calls', async () => {
+    const fixture = createFixture({ files: {
+      'main.ts': "import './storage';\n/** @effects [] */ export function run() {}",
+      'storage.ts': '/** @effects [] */ export function save() { localStorage.clear(); }',
+    }, entries: ['main.ts'] });
+    try {
+      const linter = createLinter({ root: fixture.root, config: fixture.config, typed: true });
+      for (let invocation = 0; invocation < 2; invocation++) {
+        const [result] = await linter.lintFiles(['main.ts']);
+        expect(result?.errorCount).toBe(1);
+        expect(result?.messages[0]?.message).toContain('outside the configured entries');
+        expect(result?.messages[0]?.message).toContain('storage.ts');
+      }
+    } finally { fixture.dispose(); }
+  });
+
   it('does not analyze or require annotations in a selected ordinary test file', async () => {
     const fixture = createFixture({ files: { 'example.test.ts': 'function testBody() { localStorage.clear(); }' }, entries: ['example.test.ts'] });
     try {
@@ -43,7 +73,7 @@ describe('TypeScript effects ESLint integration', () => {
     } finally { fixture.dispose(); }
   });
   it('does not treat unrelated files in the typed lint Program as effect entries', async () => {
-    const fixture = createFixture({ files: { 'main.ts': '/** @effects `none` */ function inspect() {}', 'unrelated.ts': 'function notRolledOut() { localStorage.clear(); }' }, entries: ['main.ts', 'unrelated.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ function inspect() {}', 'unrelated.ts': 'function notRolledOut() { localStorage.clear(); }' }, entries: ['main.ts', 'unrelated.ts'] });
     fixture.config.files = ['main.ts'];
     try {
       const results = await createLinter({ root: fixture.root, config: fixture.config, typed: true }).lintFiles(['main.ts', 'unrelated.ts']);
@@ -52,11 +82,13 @@ describe('TypeScript effects ESLint integration', () => {
   });
   it('fails a changed reviewed model without accepting a cached analysis', async () => {
     const declaration = 'export declare function foreign(): void;';
-    const fixture = createFixture({ files: { 'main.ts': "import { foreign } from './model';\n/** @effects `none` */ function run() { foreign(); }", 'model.d.ts': declaration }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': "import { foreign } from './model';\n/** @effects [] */ function run() { foreign(); }", 'model.d.ts': declaration }, entries: ['main.ts'] });
     fixture.config.models = [{ file: 'model.d.ts', export: 'foreign', effects: [], returnValue: 'scalar', sha256: digest({ content: declaration }) }];
     try {
       const linter = createLinter({ root: fixture.root, config: fixture.config, typed: true });
-      expect((await linter.lintFiles(['main.ts']))[0]?.messages).toEqual([]);
+      const initialMessages = (await linter.lintFiles(['main.ts']))[0]?.messages;
+      expect(initialMessages).toHaveLength(1);
+      expect(initialMessages?.[0]?.message).toContain('Runtime import initialization has no checked module body');
       fs.appendFileSync(path.join(fixture.root, 'model.d.ts'), '\n// changed');
       expect((await linter.lintFiles(['main.ts']))[0]?.messages[0]?.message).toContain('Reviewed effect model changed');
     } finally { fixture.dispose(); }
@@ -66,10 +98,10 @@ describe('TypeScript effects ESLint integration', () => {
 describe('explicit exception integration with typed ESLint', () => {
   it('respects the exception without giving the rule a blanket ignore', async () => {
     const source = `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Reviewed fixture." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Reviewed fixture."} */
 function probe() { localStorage.clear(); }
-/** @effects \`none\` */ function caller() { probe(); }
+/** @effects [] */ function caller() { probe(); }
 `;
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {
@@ -80,10 +112,10 @@ function probe() { localStorage.clear(); }
   });
   it('still reports an added operation in both the function and its caller', async () => {
     const source = `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Reviewed fixture." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Reviewed fixture."} */
 function probe() { localStorage.clear(); fetch('/unexpected'); }
-/** @effects \`none\` */ function caller() { probe(); }
+/** @effects [] */ function caller() { probe(); }
 `;
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {

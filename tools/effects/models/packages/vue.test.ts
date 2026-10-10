@@ -118,7 +118,7 @@ watch(name, value => { localStorage.setItem('name', value); });
       expect(result.analysis.diagnostics).toEqual([]);
       expect(result.changedFiles).toEqual([path.join(fixture.root, 'main.ts')]);
       expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain(`\
-/** @effects \`none\` */
+/** @effects [] */
 function setName`);
       expect(fixture.fix().changedFiles).toEqual([]);
     } finally {
@@ -143,7 +143,13 @@ framework.watch(state, () => { localStorage.clear(); });
       extra: { 'barrel.ts': "export { ref } from './framework';" },
     });
     try {
-      supported({ analysis: fixture.check() });
+      const analysis = fixture.check();
+      const unknown = analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'));
+      expect(unknown).toHaveLength(2); // namespace import and barrel reexport
+      expect(unknown.every(item => item.code === 'unsupported')).toBe(true);
+      supported({ analysis: { ...analysis, diagnostics: analysis.diagnostics.filter(item => !unknown.includes(item)) } });
+      expect(row({ analysis, label: 'set' })).toEqual([]);
+      expect(() => fixture.fix()).toThrow('Effect fix refused');
     } finally {
       fixture.dispose();
     }

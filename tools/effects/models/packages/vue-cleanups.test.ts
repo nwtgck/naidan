@@ -114,8 +114,8 @@ function stop() { outer(); }
   it('does not leak an outer unsafe exemption into an independently deferred cleanup', () => {
     const analysis = check({
       source: `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "Only the registration surface is exempt." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"Only the registration surface is exempt."} */
 function callback() { onWatcherCleanup(() => { localStorage.clear(); }); }
 const handle = watchEffect(callback);
 function stop() { handle(); }
@@ -128,8 +128,8 @@ function stop() { handle(); }
   it('honors an unsafe exemption on the actual cleanup implementation', () => {
     const analysis = check({
       source: `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.write(*)\` -- "This exact cleanup is intentionally exempt." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.write(*)"],"reason":"This exact cleanup is intentionally exempt."} */
 function cleanup() { localStorage.clear(); }
 const handle = watchEffect(() => { onWatcherCleanup(cleanup); });
 function stop() { handle.stop(); }
@@ -189,7 +189,7 @@ function stop() { handle(); }
   it('keeps declared ordinary bounds but does not manufacture cleanup registration facts', () => {
     const analysis = check({
       source: `\
-/** @effects \`localstorage.write(*)\` */
+/** @effects ["localstorage.write(*)"] */
 function callback() {}
 const handle = watchEffect(callback);
 function stop() { handle(); }

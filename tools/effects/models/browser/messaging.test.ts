@@ -197,8 +197,8 @@ describe('serialization and transport identity are not waived by internal delive
 
   it('does not disguise unknown Window-message data with an unsafe effect boundary', () => {
     const result = inspect({
-      source: `/** @effects \`none\` */
-/** @effectsUNSAFE \`messaging.crossorigin.send(*)\` -- "Only a reviewed outward exception." */
+      source: `/** @effects [] */
+/** @effectsUNSAFE {"effects":["messaging.crossorigin.send(*)"],"reason":"Only a reviewed outward exception."} */
 function entry({ message }: { message: unknown }) { parent.postMessage(message, '*'); }`,
     });
     expect(result.diagnostics.some(item => item.message.includes('Message serialization'))).toBe(true);
@@ -210,7 +210,7 @@ function entry({ message }: { message: unknown }) { parent.postMessage(message, 
     `window.postMessage('x', undefined as unknown as string, []);`,
     `window.postMessage('x', { targetOrigin: undefined as unknown as string });`,
   ])('does not erase a shadowed undefined conversion hook: %s', statement => {
-    const result = inspect({ source: `function entry() { const undefined = { /** @effects \`localstorage.write(*)\` */ toString() { localStorage.clear(); return '*'; } }; ${statement} }` });
+    const result = inspect({ source: `function entry() { const undefined = { /** @effects ["localstorage.write(*)"] */ toString() { localStorage.clear(); return '*'; } }; ${statement} }` });
     expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
     expect(result.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
     expect(() => planEffectFix({ analysis: result })).toThrow();
@@ -251,7 +251,7 @@ describe('message contracts share the ordinary maintenance pipeline', () => {
   it('tidies a stale external upper bound only when selected delivery is internal', () => {
     const fixture = createFixture({
       files: {
-        'main.ts': `/** @effects \`messaging.crossorigin.send(*)\` */
+        'main.ts': `/** @effects ["messaging.crossorigin.send(*)"] */
 export function entry() { window.parent.postMessage({ value: 'x' }, '/'); }`,
       },
       entries: ['main.ts'],
@@ -260,7 +260,7 @@ export function entry() { window.parent.postMessage({ value: 'x' }, '/'); }`,
       expect(fixture.check().diagnostics).toEqual([]);
       const tidied = runEffectTidy({ root: fixture.root, config: fixture.config, write: 'write', files: ['main.ts'], inputSnapshots: new Map() });
       expect(tidied.analysis.diagnostics).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects `none`');
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects []');
       expect(fixture.fix().changedFiles).toHaveLength(0);
     } finally {
       fixture.dispose();

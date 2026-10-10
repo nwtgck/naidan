@@ -1,25 +1,30 @@
+import { UNVERIFIED_EFFECT_NOTE, unverifiedEffectNotes } from '../maintenance/unverified.ts';
 import { withoutSourceEvidence } from './source-evidence.ts';
+import { boundaryStringMessages, mayOmitEffectAnnotation } from './annotation-policy.ts';
 import { FRESH_IMAGE } from '../models/browser/dom.ts';
 import { selectTidyOwners, type TidySelection } from '../maintenance/selection.ts';
 import { evaluateBrowserOperation } from '../models/browser/operations.ts';
+import { webStorageReadOperation } from '../models/browser/web-storage.ts';
 import type { OperationDecision } from '../models/operation.ts';
 import path from 'node:path';
 import { connectWatcherCleanups, type WatcherCleanupUse } from './watcher-cleanups.ts';
 import { evaluateVue, isVueOperation, isScalarRefName } from '../models/packages/vue.ts';
 import { evaluateNative, type NativeModelContext } from '../models/invoke.ts';
-import { discoverWorkerEntries, literalWorkerEntry } from '../bridges/worker-transport.ts';
+import { discoverWorkerEntries, literalWorkerEntry, isNativeWorkerSymbol } from '../bridges/worker-transport.ts';
 import ts from 'typescript';
 import type { EffectsConfig } from '../config.ts';
 import { effectCovered, mergeEffects, printEffect, type Effect } from '../contracts/effects.ts';
 import { compareDiagnostics, type EffectDiagnostic, type SourceLocation } from '../diagnostics.ts';
-import { readAnnotation, readContractComments, unsafeDirectiveLocations } from '../syntax/annotations.ts';
+import { readAnnotation, readContractComments, readModuleAnnotation, unsafeDirectiveLocations } from '../syntax/annotations.ts';
 import { UNSAFE_SUPPRESSION_TAG, type UnsafeEffectSuppression } from '../syntax/suppression.ts';
 import { EffectSyntaxError } from '../syntax/expression.ts';
 import { solveEffects, type EffectEdge, type EffectSolution } from './solve.ts';
-import { containsContract, SCALAR, UNKNOWN, type ContractOwner, type FunctionValue, type Value, type Field } from './values.ts';
+import { containsContract, SCALAR, UNDEFINED, UNDEFINED_TYPE, UNKNOWN, type ContractOwner, type FunctionValue, type Value, type Field } from './values.ts';
 
 import { choiceValue, logicalValue, spreadRecords } from './records.ts';
-import { isCallableValue, isRecordValue, isScalarValue, isNativeValue, isPromiseValue, passiveData } from './value-guards.ts';
+import { isCallableValue, isRecordValue, isScalarValue, isNativeValue, isPromiseValue, isChoiceValue, passiveData } from './value-guards.ts';
+
+const LIBRARY_NATIVE_TYPES = ['FileSystemDirectoryHandle', 'FileSystemFileHandle', 'FileSystemWritableFileStream', 'FileSystemSyncAccessHandle', 'Response', 'Headers', 'AbortSignal', 'Error', 'DOMException', 'Blob', 'File', 'HTMLImageElement', 'HTMLIFrameElement', 'Location', 'Window', 'BroadcastChannel'];
 
 type Implementation = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
 type FunctionInfo = { declaration: Implementation, value: FunctionValue, scope: Map<ts.Symbol, Value> };
@@ -88,12 +93,16 @@ export class EffectsAnalyzer {
   readonly diagnostics: EffectDiagnostic[] = [];
   readonly assumptions = new Set<string>();
   readonly sources = new Map<string, string>();
+  private absentCallbackOwner: ContractOwner | undefined;
+  private boundaryStringMessages: ReadonlySet<ts.Node> = new Set();
   private readonly ownerByAnchor = new Map<ts.Node, ContractOwner>();
   private readonly valueByDeclaration = new Map<ts.Node, Value>();
   private readonly functionByDeclaration = new Map<ts.SignatureDeclaration, FunctionValue>();
   private readonly pending: FunctionInfo[] = [];
   private readonly busy = new Set<ts.Node | ts.Type>();
+  private typeExpansionSteps = 0;
   private readonly moduleOwners = new Map<ts.SourceFile, ContractOwner>();
+  private readonly locations = new Map<ts.Node, SourceLocation>();
   private readonly diagnosticKeys = new Set<string>();
   private readonly symbolScope = new Map<ts.Symbol, Value>();
   private readonly excludedTests: string[] = [];
@@ -144,8 +153,13 @@ export class EffectsAnalyzer {
   }
 
   location({ node }: { node: ts.Node }): SourceLocation {
+    const cached = this.locations.get(node);
+    if (cached !== undefined) return cached;
     const file = node.getSourceFile();
-    return { file: path.resolve(file.fileName), start: node.getStart(file), length: Math.max(1, node.getWidth(file)) };
+    const start = node.getStart(file);
+    const location = { file: path.resolve(file.fileName), start, length: Math.max(1, node.getEnd() - start) };
+    this.locations.set(node, location);
+    return location;
   }
 
   issue({ node, message, code }: { node: ts.Node, message: string, code: EffectDiagnostic['code'] }): void {
@@ -193,13 +207,22 @@ export class EffectsAnalyzer {
   private owner({ anchor, role, label, symbolic }: {
     anchor: ts.Node, role: ContractOwner['role'], label: string, symbolic: Effect | undefined,
   }): ContractOwner {
-    const existing = this.ownerByAnchor.get(anchor);
+    // A symbolic parameter belongs to this caller/path, even when its interface
+    // member declaration is shared with another parameter or concrete signature.
+    let cacheable: boolean;
+    switch (role) {
+    case 'symbolic': cacheable = false; break;
+    case 'implementation': case 'signature': case 'slot': case 'module': case 'body': cacheable = true; break;
+    default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+    }
+    const existing = cacheable ? this.ownerByAnchor.get(anchor) : undefined;
     if (existing !== undefined) return existing;
     let annotation;
     let suppression: UnsafeEffectSuppression | undefined;
     try {
       switch (role) {
-      case 'module': case 'body': break; // Source-file trivia can include the first callable's annotation.
+      case 'body': break;
+      case 'module': annotation = readModuleAnnotation({ source: anchor.getSourceFile(), definitions: this.config.definitions }); break;
       case 'implementation': case 'signature': case 'slot': case 'symbolic':
         ({ annotation, suppression } = readContractComments({ anchor, definitions: this.config.definitions })); break;
       default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
@@ -220,7 +243,7 @@ export class EffectsAnalyzer {
       callbackPaths: new Set(),
     };
     this.owners.push(owner);
-    this.ownerByAnchor.set(anchor, owner);
+    if (cacheable) this.ownerByAnchor.set(anchor, owner);
     if (suppression !== undefined) {
       switch (role) {
       case 'implementation':
@@ -294,6 +317,22 @@ export class EffectsAnalyzer {
     return this.program.isSourceFileDefaultLibrary(declaration.getSourceFile());
   }
 
+  private partialDomGlobal({ symbol }: { symbol: ts.Symbol }): Value | undefined {
+    if (symbol.name !== 'localStorage' && symbol.name !== 'navigator') return undefined;
+    const declarations = symbol.declarations ?? [];
+    const canonical = declarations.find(declaration => this.isLibraryDeclaration({ declaration })
+      && ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name) && declaration.name.text === symbol.name
+      && declaration.type !== undefined && ts.isTypeReferenceNode(declaration.type)
+      && ts.isIdentifier(declaration.type.typeName) && declaration.type.typeName.text === (symbol.name === 'localStorage' ? 'Storage' : 'Navigator'));
+    if (canonical === undefined || !ts.isVariableDeclaration(canonical) || canonical.type === undefined) return undefined;
+    const type = this.checker.getTypeFromTypeNode(canonical.type);
+    if (!declarations.every(declaration => ts.isVariableDeclaration(declaration) && declaration.getSourceFile().isDeclarationFile
+      && declaration.type !== undefined && this.checker.getTypeFromTypeNode(declaration.type) === type)) return undefined;
+    // Retain the unknown alternative: a DOM declaration is only a candidate origin.
+    this.assumptions.add(`Partial DOM candidate: ${symbol.name} has a default-library declaration, but mixed ambient identity remains unverified.`);
+    return { kind: 'choice', values: [UNKNOWN, this.native({ name: symbol.name, receiver: undefined })] };
+  }
+
   private isVueDeclaration({ declaration }: { declaration: ts.Node }): boolean {
     return this.config.vueModels.some(model => path.resolve(this.root, model.file) === path.resolve(declaration.getSourceFile().fileName));
   }
@@ -312,21 +351,31 @@ export class EffectsAnalyzer {
   private typeValue({ type, anchor, callbackPath, depth }: {
     type: ts.Type, anchor: ts.Node, callbackPath: readonly string[] | undefined, depth: number,
   }): Value {
+    this.typeExpansionSteps++;
     if (depth > 24) {
       this.issue({ node: anchor, code: 'unsupported', message: 'Effect type nesting exceeds the supported depth.' }); return UNKNOWN;
     }
     if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter | ts.TypeFlags.Conditional)) return UNKNOWN;
+    if (type.flags & ts.TypeFlags.Undefined) return UNDEFINED_TYPE;
     if (type.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.ESSymbolLike | ts.TypeFlags.Void | ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Never)) {
       return type.isStringLiteral() ? { kind: 'scalar', keys: [type.value], truthiness: type.value.length === 0 ? 'falsy' : 'truthy' } : SCALAR;
+    }
+    const name = type.getSymbol()?.name;
+    const declarations = type.getSymbol()?.getDeclarations() ?? [];
+    const library = declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration }));
+    if (!type.isUnion() && library && name !== undefined && LIBRARY_NATIVE_TYPES.includes(name)) {
+      return this.native({ name, receiver: undefined });
+    }
+    if (this.typeExpansionSteps > this.config.analysisBudget) {
+      this.issue({ node: anchor, code: 'unsupported', message: 'Effect type expansion exceeded its explicit analysis budget.' });
+      return callbackPath !== undefined && (type.flags & (ts.TypeFlags.Object | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0
+        ? { kind: 'unknown', reason: 'Effect type expansion exceeded its explicit analysis budget.', budgetTypePath: callbackPath } : UNKNOWN;
     }
     if (type.isUnion()) {
       const values = type.types.map(item => this.typeValue({ type: item, anchor, callbackPath, depth: depth + 1 }));
       if (values.every(value => value.kind === 'scalar')) return { kind: 'scalar', keys: values.every(value => value.keys !== undefined) ? values.flatMap(value => value.keys ?? []) : undefined, truthiness: 'unknown' };
       return { kind: 'choice', values };
     }
-    const name = type.getSymbol()?.name;
-    const declarations = type.getSymbol()?.getDeclarations() ?? [];
-    const library = declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration }));
     if (name === 'Ref' && declarations.length > 0 && declarations.every(declaration => this.isVueDeclaration({ declaration }))) {
       const [inner] = this.checker.getTypeArguments(type as ts.TypeReference);
       if (inner === undefined || !isScalarValue(this.typeValue({ type: inner, anchor, callbackPath: undefined, depth: depth + 1 }))) {
@@ -338,14 +387,22 @@ export class EffectsAnalyzer {
       const [inner] = this.checker.getTypeArguments(type as ts.TypeReference);
       return { kind: 'promise', value: inner === undefined ? UNKNOWN : this.typeValue({ type: inner, anchor, callbackPath: undefined, depth: depth + 1 }) };
     }
-    if (library && name !== undefined && ['FileSystemDirectoryHandle', 'FileSystemFileHandle', 'FileSystemWritableFileStream', 'FileSystemSyncAccessHandle', 'Response', 'Headers', 'AbortSignal', 'Error', 'DOMException', 'Blob', 'File', 'HTMLImageElement', 'Location', 'Window', 'BroadcastChannel'].includes(name)) {
-      return this.native({ name, receiver: undefined });
-    }
     if (this.checker.isArrayType(type) || this.checker.isTupleType(type)) {
       const elementTypes = this.checker.getTypeArguments(type as ts.TypeReference);
       const values = elementTypes.map(item => this.typeValue({ type: item, anchor, callbackPath: undefined, depth: depth + 1 }));
       if (values.some(value => containsContract({ value, seen: new Set() }))) this.issue({ node: anchor, code: 'unsupported', message: 'Arrays containing effect contracts need an explicit element-slot model.' });
       return this.native({ name: 'Array', receiver: SCALAR });
+    }
+    // Default-library methods are native boundaries, not application callback
+    // slots. Expanding an unmodeled built-in invents owners in lib.d.ts and can
+    // attach the same method declaration to unrelated callback paths.
+    if (library && (type.getCallSignatures().length > 0 || type.getProperties().some(property => {
+      const member = property.valueDeclaration ?? property.declarations?.[0];
+      return member !== undefined && (ts.isGetAccessor(member) || ts.isSetAccessor(member)
+        || this.checker.getTypeOfSymbolAtLocation(property, anchor).getCallSignatures().length > 0);
+    }))) {
+      this.issue({ node: anchor, code: 'unsupported', message: `Built-in type ${name ?? '<anonymous>'} needs an explicit effect model.` });
+      return UNKNOWN;
     }
     const signatures = type.getCallSignatures();
     if (signatures.length > 0) {
@@ -397,7 +454,7 @@ export class EffectsAnalyzer {
     return { kind: 'record', fields, shape: 'open', reflected: undefined, indexValue: indexType === undefined ? undefined : this.typeValue({ type: indexType, anchor, callbackPath: undefined, depth: depth + 1 }) };
   }
 
-  private bindPattern({ name, value, scope, owner }: { name: ts.BindingName, value: Value, scope: Map<ts.Symbol, Value>, owner: ContractOwner | undefined }): void {
+  private bindPattern({ name, value, scope, owner, defaults }: { name: ts.BindingName, value: Value, scope: Map<ts.Symbol, Value>, owner: ContractOwner | undefined, defaults: 'evaluate' | 'parameter' }): void {
     if (ts.isIdentifier(name)) {
       const symbol = this.symbol({ node: name });
       if (symbol !== undefined) scope.set(symbol, value);
@@ -407,22 +464,37 @@ export class EffectsAnalyzer {
       // Scalar array elements are handled by the ordinary TypeScript checker.
       for (const item of name.elements) if (ts.isBindingElement(item)) this.bindPattern({
         name: item.name,
-        value: this.typeValue({ type: this.checker.getTypeAtLocation(item.name), anchor: item, callbackPath: undefined, depth: 0 }),
+        value: this.bindingDefault({ element: item, value: this.typeValue({ type: this.checker.getTypeAtLocation(item.name), anchor: item, callbackPath: undefined, depth: 0 }), absent: false, scope, owner, defaults }),
         scope,
         owner,
+        defaults,
       });
       return;
     }
     for (const item of name.elements) {
       if (item.dotDotDotToken !== undefined) this.issue({ node: item, code: 'unsupported', message: 'Object rest requires a checked own-property shape.' });
       const key = simpleName({ node: item.propertyName ?? item.name });
+      if (key === undefined) this.issue({ node: item, code: 'unsupported', message: 'Computed binding properties require an explicit effect model.' });
       const field = key === undefined || value.kind !== 'record' ? undefined : value.fields.get(key);
       // Native binding reads (notably document.cookie and Storage.length) are
       // operations too. Do not lose them merely because there is no dot access.
       const member = key !== undefined && (value.kind === 'native' || value.kind === 'choice')
-        ? this.property({ receiver: value, key, node: item, owner }) : field?.value ?? UNKNOWN;
-      this.bindPattern({ name: item.name, value: member, scope, owner });
+        ? this.property({ receiver: value, key, node: item, owner })
+        : key !== undefined && value.kind === 'unknown' && value.budgetTypePath !== undefined
+          ? { ...value, budgetTypePath: [...value.budgetTypePath, key] } : field?.value ?? UNKNOWN;
+      const assigned = this.bindingDefault({ element: item, value: member, absent: value.kind === 'record' && value.shape === 'closed' && key !== undefined && field === undefined, scope, owner, defaults });
+      this.bindPattern({ name: item.name, value: assigned, scope, owner, defaults });
     }
+  }
+
+  private bindingDefault({ element, value, absent, scope, owner, defaults }: {
+    element: ts.BindingElement, value: Value, absent: boolean, scope: Map<ts.Symbol, Value>, owner: ContractOwner | undefined, defaults: 'evaluate' | 'parameter',
+  }): Value {
+    // Parameter defaults are checked against their stable parameter contracts by
+    // parameterDefaults; local bindings retain both possible resulting values.
+    if (defaults === 'parameter' || element.initializer === undefined) return value;
+    const fallback = withoutSourceEvidence({ value: this.expression({ expression: element.initializer, owner, scope }), undefinedFact: 'forget' });
+    return absent ? fallback : choiceValue({ values: [value, fallback] });
   }
 
   /** Default initializers execute on entry and must also fit their destination contract. */
@@ -453,21 +525,45 @@ export class EffectsAnalyzer {
     if (cached !== undefined) return cached;
     const anchor = this.anchor({ declaration });
     const owner = this.owner({ anchor, role: isImplementation(declaration) ? 'implementation' : 'signature', label: simpleName({ node: declaration.name }) ?? (ts.isVariableDeclaration(declaration.parent) || ts.isPropertyAssignment(declaration.parent) ? simpleName({ node: declaration.parent.name }) : undefined) ?? '<anonymous>', symbolic: undefined });
+    if (ts.isFunctionDeclaration(declaration) && declaration.body === undefined) {
+      this.issue({
+        node: declaration,
+        code: hasModifier({ node: declaration, kind: ts.SyntaxKind.DeclareKeyword }) || declaration.getSourceFile().isDeclarationFile ? 'boundary' : 'unsupported',
+        message: 'A function declaration without a body is not a checked implementation; ambient functions need a reviewed model and overloads need an explicit boundary model.',
+      });
+    }
+    if (this.boundaryStringMessages.has(declaration)) owner.parameterBoundary = 'boundary-string';
     const value: FunctionValue = { kind: 'function', owner, parameters: [], returns: UNKNOWN, declaration, transport: 'local' };
     this.functionByDeclaration.set(declaration, value);
     const scope = new Map(inheritedScope);
+    // Only a direct executor of the proven native constructor receives these
+    // special callbacks. A shared function must keep its ordinary slot bounds.
+    const construction = declaration.parent;
+    const constructor = ts.isNewExpression(construction) && construction.arguments?.[0] === declaration && ts.isIdentifier(construction.expression)
+      ? this.identifier({ expression: construction.expression, scope: inheritedScope }) : undefined;
+    const promiseExecutor = constructor?.kind === 'native' && constructor.name === 'Promise';
+    const promiseType = promiseExecutor ? this.typeValue({ type: this.checker.getTypeAtLocation(construction), anchor: construction, callbackPath: undefined, depth: 0 }) : UNKNOWN;
     value.parameters = declaration.parameters.map((parameter, index) => {
       if (parameter.dotDotDotToken !== undefined) this.issue({ node: parameter, code: 'unsupported', message: 'Rest-parameter contract forwarding is not implemented yet.' });
       const type = this.checker.getTypeAtLocation(parameter);
-      const result = this.typeValue({ type, anchor: parameter, callbackPath: [`arg${index}`], depth: 0 });
-      this.bindPattern({ name: parameter.name, value: result, scope, owner: undefined });
+      const result = promiseExecutor && index < 2
+        ? this.native({ name: index === 0 ? 'Promise.executor.resolve' : 'Promise.executor.reject', receiver: isPromiseValue(promiseType) ? promiseType.value : UNKNOWN })
+        : this.typeValue({ type, anchor: parameter, callbackPath: [`arg${index}`], depth: 0 });
+      this.bindPattern({ name: parameter.name, value: result, scope, owner: undefined, defaults: 'parameter' });
       return result;
     });
     this.lexicalScopes.set(declaration, scope);
     const tokens = new Set<string>();
+    const budgetPaths: (readonly string[])[] = [];
     const collect = ({ item }: { item: Value }): void => {
       switch (item.kind) {
       case 'function':
+        // Concrete callees' captured paths belong to their own lexical scopes.
+        switch (item.owner.role) {
+        case 'symbolic': break;
+        case 'implementation': case 'slot': case 'signature': case 'module': case 'body': return;
+        default: { const exhaustive: never = item.owner.role; throw new Error(String(exhaustive)); }
+        }
         for (const effect of item.owner.declared) {
           switch (effect.kind) {
           case 'callback': tokens.add(printEffect({ effect })); break;
@@ -477,7 +573,9 @@ export class EffectsAnalyzer {
         }
         break;
       case 'record': for (const field of item.fields.values()) collect({ item: field.value }); break;
-      case 'scalar': case 'native': case 'unknown': case 'promise': case 'choice': break;
+      case 'choice': for (const value of item.values) collect({ item: value }); break;
+      case 'unknown': if (item.budgetTypePath !== undefined) budgetPaths.push(item.budgetTypePath); break;
+      case 'scalar': case 'native': case 'promise': break;
       default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
       }
     };
@@ -486,7 +584,12 @@ export class EffectsAnalyzer {
     for (const captured of inheritedScope.values()) collect({ item: captured });
     owner.callbackPaths = tokens;
     for (const effect of owner.declared) if (effect.kind === 'callback' && !tokens.has(printEffect({ effect }))) {
-      this.issue({ node: anchor, code: 'syntax', message: `Unbound effect reference: ${printEffect({ effect })}.` });
+      const budgetBlocked = budgetPaths.some(prefix => prefix.every((part, index) => effect.path[index] === part));
+      this.issue({
+        node: anchor,
+        code: budgetBlocked ? 'unsupported' : 'syntax',
+        message: budgetBlocked ? `Effect type expansion budget prevented validation of effect reference: ${printEffect({ effect })}.` : `Unbound effect reference: ${printEffect({ effect })}.`,
+      });
     }
     if (declaration.type !== undefined) {
       value.returns = this.typeValue({ type: this.checker.getTypeFromTypeNode(declaration.type), anchor: declaration.type, callbackPath: undefined, depth: 0 });
@@ -565,7 +668,7 @@ export class EffectsAnalyzer {
     }
     const immutableStringBinding = ts.isVariableDeclaration(declaration) && ts.isVariableDeclarationList(declaration.parent)
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0 && ts.isIdentifier(declaration.name);
-    if (!immutableStringBinding || result.kind === 'record') result = withoutSourceEvidence({ value: result });
+    if (!immutableStringBinding || result.kind === 'record') result = withoutSourceEvidence({ value: result, undefinedFact: ts.isPropertyAssignment(declaration) ? 'preserve' : 'forget' });
     this.busy.delete(declaration);
     this.valueByDeclaration.set(declaration, result);
     return result;
@@ -579,13 +682,14 @@ export class EffectsAnalyzer {
     const declarations = symbol.declarations ?? [];
     // Intrinsic undefined has no declaration. A parameter/local/import with the
     // same spelling can hold executable conversion hooks and must keep its value.
-    if (symbol.name === 'undefined' && declarations.length === 0 && (symbol.flags & ts.SymbolFlags.Transient) !== 0) return SCALAR;
+    if (symbol.name === 'undefined' && declarations.length === 0 && (symbol.flags & ts.SymbolFlags.Transient) !== 0) return UNDEFINED;
     // TypeScript represents the intrinsic globalThis namespace without source
     // declarations. A local parameter/binding named globalThis has declarations
     // and must keep its ordinary contract instead of becoming a native root.
     if (symbol.name === 'globalThis' && declarations.length === 0 && (symbol.flags & ts.SymbolFlags.ValueModule) !== 0) {
       return this.native({ name: 'globalThis', receiver: undefined });
     }
+    if (isNativeWorkerSymbol({ symbol, program: this.program })) return this.native({ name: 'Worker', receiver: undefined });
     if (declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration }))) return this.native({ name: symbol.name, receiver: undefined });
     const vue = this.vueExport({ symbol });
     if (vue !== undefined) return vue;
@@ -610,7 +714,7 @@ export class EffectsAnalyzer {
     }
     if (declaration.getSourceFile().isDeclarationFile && !ts.isSourceFile(declaration)) {
       this.issue({ node: expression, code: 'boundary', message: `Ambient value ${symbol.name} needs a reviewed effect model; a declaration is not an implementation.` });
-      return UNKNOWN;
+      return this.partialDomGlobal({ symbol }) ?? UNKNOWN;
     }
     if (declaration.getSourceFile().fileName.endsWith('.test.ts')) {
       this.issue({ node: expression, code: 'boundary', message: 'Production effect contracts cannot depend on excluded test implementations.' });
@@ -694,7 +798,56 @@ export class EffectsAnalyzer {
     this.issue({ node, code: 'unsupported', message: `Unsupported or unresolved effect value conversion: ${source.kind} to ${target.kind}.` });
   }
 
+  private bindAbsentCallbacks({ formal, bindings, node }: { formal: Value, bindings: Map<string, number>, node: ts.Node }): void {
+    switch (formal.kind) {
+    case 'function':
+      switch (formal.owner.role) {
+      case 'symbolic': {
+        const empty = this.absentCallbackOwner ??= this.owner({ anchor: node, role: 'body', label: '<absent callback>', symbolic: undefined });
+        for (const token of formal.owner.declared) bindings.set(printEffect({ effect: token }), empty.id);
+        break;
+      }
+      case 'implementation': case 'slot': case 'signature': case 'module': case 'body': break;
+      default: { const exhaustive: never = formal.owner.role; throw new Error(String(exhaustive)); }
+      }
+      break;
+    case 'record': for (const field of formal.fields.values()) this.bindAbsentCallbacks({ formal: field.value, bindings, node }); break;
+    case 'choice':
+      if (formal.values.filter(value => !isScalarValue(value)).length > 1) this.issue({ node, code: 'unsupported', message: 'Ambiguous absent callback alternatives require an explicit contract.' });
+      else for (const value of formal.values) this.bindAbsentCallbacks({ formal: value, bindings, node });
+      break;
+    case 'scalar': case 'native': case 'unknown': case 'promise': break;
+    default: { const exhaustive: never = formal; throw new Error(String(exhaustive)); }
+    }
+  }
+
   private bindCallbacks({ actual, formal, bindings, node }: { actual: Value, formal: Value, bindings: Map<string, number>, node: ts.Node }): void {
+    if (isChoiceValue(actual)) {
+      const candidates = actual.values.filter(value => !isScalarValue(value));
+      if (candidates.length === 1) {
+        this.bindCallbacks({ actual: candidates[0]!, formal, bindings, node }); return;
+      }
+      if (candidates.length > 1) {
+        this.issue({ node, code: 'unsupported', message: 'Ambiguous callback argument alternatives require an explicit contract.' }); return;
+      }
+    }
+    if (isChoiceValue(formal) && isScalarValue(actual) && actual.knownUndefined === true
+      && formal.values.some(value => isScalarValue(value) && value.allowsUndefined === true)) {
+      const candidates = formal.values.filter(value => !isScalarValue(value));
+      if (candidates.length !== 1) {
+        this.issue({ node, code: 'unsupported', message: 'Absent callback needs a sole optional contract alternative.' }); return;
+      }
+      this.bindAbsentCallbacks({ formal: candidates[0]!, bindings, node }); return;
+    }
+    if (isChoiceValue(formal)) {
+      const candidates = formal.values.filter(value => isScalarValue(actual) ? isScalarValue(value) : !isScalarValue(value));
+      if (candidates.length === 1) {
+        this.bindCallbacks({ actual, formal: candidates[0]!, bindings, node }); return;
+      }
+      if (candidates.length > 1) {
+        this.issue({ node, code: 'unsupported', message: 'Ambiguous callback parameter alternatives require an explicit contract.' }); return;
+      }
+    }
     if (formal.kind === 'function' && actual.kind === 'function') {
       switch (formal.owner.role) {
       case 'symbolic':
@@ -710,6 +863,7 @@ export class EffectsAnalyzer {
       for (const [key, field] of formal.fields) {
         const source = actual.fields.get(key);
         if (source !== undefined) this.bindCallbacks({ actual: source.value, formal: field.value, bindings, node });
+        else if (actual.shape === 'closed' && isChoiceValue(field.value)) this.bindCallbacks({ actual: UNDEFINED, formal: field.value, bindings, node });
         else if (containsContract({ value: field.value, seen: new Set() })) this.issue({ node, code: 'unsupported', message: `Unresolved callback argument: ${key}.` });
       }
     } else if (!isScalarValue(formal) || !isScalarValue(actual)) {
@@ -801,6 +955,36 @@ export class EffectsAnalyzer {
     return evaluateNative({ context: this.nativeModels, callable, args, owner, node });
   }
 
+  private budgetNativeLeaf({ expression, value }: { expression: ts.Expression, value: Value }): Value | undefined {
+    if (value.kind !== 'unknown' || value.budgetTypePath === undefined || this.typeExpansionSteps <= this.config.analysisBudget) return undefined;
+    const root = ts.isPropertyAccessExpression(expression) ? expression.expression : expression;
+    if (!ts.isIdentifier(root)) return undefined;
+    const binding = this.symbol({ node: root })?.valueDeclaration;
+    let parameter: ts.Node | undefined = binding;
+    while (parameter !== undefined && (ts.isBindingElement(parameter) || ts.isObjectBindingPattern(parameter) || ts.isArrayBindingPattern(parameter))) parameter = parameter.parent;
+    if (binding === undefined || parameter === undefined || !ts.isParameter(parameter)) return undefined;
+    if (ts.isPropertyAccessExpression(expression)) {
+      const member = this.symbol({ node: expression.name })?.valueDeclaration;
+      if (member === undefined || !ts.isPropertySignature(member) && !ts.isPropertyDeclaration(member)) return undefined;
+    }
+    const type = this.checker.getTypeAtLocation(expression);
+    const name = type.getSymbol()?.name;
+    const declarations = type.getSymbol()?.getDeclarations() ?? [];
+    if (type.isUnion() || name === undefined || !LIBRARY_NATIVE_TYPES.includes(name)
+      || declarations.length === 0 || !declarations.every(declaration => this.isLibraryDeclaration({ declaration }))) return undefined;
+    const original = this.checker.getTypeAtLocation(binding);
+    const field = ts.isPropertyAccessExpression(expression) ? original.getProperty(expression.name.text) : undefined;
+    const member = field?.valueDeclaration;
+    if (ts.isPropertyAccessExpression(expression) && (member === undefined || !ts.isPropertySignature(member) && !ts.isPropertyDeclaration(member))) return undefined;
+    const leaf = field === undefined ? original : this.checker.getTypeOfSymbolAtLocation(field, binding);
+    const candidates = leaf.isUnion() ? leaf.types : [leaf];
+    return candidates.some(candidate => {
+      const declarations = candidate.getSymbol()?.getDeclarations() ?? [];
+      return candidate.getSymbol()?.name === name && declarations.length > 0
+        && declarations.every(declaration => this.isLibraryDeclaration({ declaration }));
+    }) ? this.native({ name, receiver: undefined }) : undefined;
+  }
+
   private property({ receiver, key, node, owner }: { receiver: Value, key: string, node: ts.Node, owner: ContractOwner | undefined }): Value {
     switch (receiver.kind) {
     case 'record': {
@@ -826,8 +1010,22 @@ export class EffectsAnalyzer {
       if (['window', 'parent', 'top', 'opener', 'Window'].includes(prefix) && key === 'postMessage') {
         return this.native({ name: 'Window.postMessage', receiver });
       }
-      if (prefix === 'window' || prefix === 'globalThis' || prefix === 'self') return this.native({ name: key, receiver: undefined });
-      const modeled = evaluateBrowserOperation({ context: this.nativeModels, callable: { kind: 'native', name: `${prefix}.${key}`, receiver }, args: [], owner, node, access: 'read' });
+      if (prefix === 'window' || prefix === 'globalThis' || prefix === 'self') {
+        // Aliases and destructuring still refer to canonical global members.
+        // A property name alone does not establish default-library identity.
+        const global = this.checker.resolveName('globalThis', undefined, ts.SymbolFlags.Value, false);
+        const symbol = global === undefined ? undefined : this.checker.getTypeOfSymbolAtLocation(global, node).getProperty(key);
+        const declarations = symbol?.declarations ?? [];
+        if (symbol?.name === 'undefined' && declarations.length === 0 && (symbol.flags & ts.SymbolFlags.Transient) !== 0) return UNDEFINED;
+        if (symbol?.name === 'globalThis' && declarations.length === 0 && (symbol.flags & ts.SymbolFlags.ValueModule) !== 0) return this.native({ name: 'globalThis', receiver: undefined });
+        if (symbol !== undefined && (isNativeWorkerSymbol({ symbol, program: this.program })
+          || declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration })))) {
+          return this.native({ name: key, receiver: undefined });
+        }
+        this.issue({ node, code: 'boundary', message: `Global property ${key} needs a checked default-library identity; a member name is not a native model.` });
+        return symbol === undefined ? UNKNOWN : this.partialDomGlobal({ symbol }) ?? UNKNOWN;
+      }
+      const modeled = evaluateBrowserOperation({ context: this.nativeModels, callable: { kind: 'native', name: webStorageReadOperation({ storage: prefix, key }) ?? `${prefix}.${key}`, receiver }, args: [], owner, node, access: 'read' });
       if (modeled !== undefined) return modeled;
       if (['Error', 'DOMException'].includes(prefix) && ['name', 'message', 'stack'].includes(key)) return SCALAR;
       return this.native({ name: `${prefix}.${key}`, receiver });
@@ -843,7 +1041,15 @@ export class EffectsAnalyzer {
       }
       return UNKNOWN;
     }
-    case 'function': case 'unknown':
+    case 'unknown': {
+      this.issue({ node, code: 'unsupported', message: `Unverified property access: ${key}.` });
+      const access = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : undefined;
+      if (access === undefined) return UNKNOWN;
+      const nativeReceiver = this.budgetNativeLeaf({ expression: access.expression, value: receiver });
+      if (nativeReceiver !== undefined) return this.property({ receiver: nativeReceiver, key, node, owner });
+      return this.budgetNativeLeaf({ expression: access, value: receiver }) ?? UNKNOWN;
+    }
+    case 'function':
       this.issue({ node, code: 'unsupported', message: `Unverified property access: ${key}.` }); return UNKNOWN;
     default: { const exhaustive: never = receiver; throw new Error(String(exhaustive)); }
     }
@@ -878,7 +1084,7 @@ export class EffectsAnalyzer {
       } else value = UNKNOWN;
       fields.set(key, { value, access: 'writable' });
     }
-    return withoutSourceEvidence({ value: { kind: 'record', fields, shape: 'closed', reflected: undefined, indexValue: undefined } });
+    return withoutSourceEvidence({ value: { kind: 'record', fields, shape: 'closed', reflected: undefined, indexValue: undefined }, undefinedFact: 'preserve' });
   }
 
   private replacementShape({ source, target, node, depth }: { source: Value, target: Value, node: ts.Node, depth: number }): void {
@@ -950,7 +1156,7 @@ export class EffectsAnalyzer {
   expression({ expression, owner, scope }: { expression: ts.Expression, owner: ContractOwner | undefined, scope: Map<ts.Symbol, Value> }): Value {
     if (ts.isIdentifier(expression)) return this.identifier({ expression, scope });
     if (ts.isStringLiteralLike(expression)) return { kind: 'scalar', keys: [expression.text], truthiness: expression.text.length === 0 ? 'falsy' : 'truthy', stringEvidence: { kind: 'literal', values: [expression.text] } };
-    if (ts.isNumericLiteral(expression) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(expression.kind)) return SCALAR;
+    if (ts.isNumericLiteral(expression) || ts.isBigIntLiteral(expression) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(expression.kind)) return SCALAR;
     if (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
       // Type assertions never erase the original effect value or its own-property evidence.
       return this.expression({ expression: expression.expression, owner, scope });
@@ -975,7 +1181,17 @@ export class EffectsAnalyzer {
         this.issue({ node: expression, code: 'unsupported', message: 'Element access requires finite literal keys.' }); return UNKNOWN;
       }
       const values = key.keys.map(item => this.property({ receiver, key: item, node: expression, owner }));
-      return values.length === 1 ? values[0]! : { kind: 'choice', values };
+      return choiceValue({ values });
+    }
+    if (ts.isCallExpression(expression) && expression.expression.kind === ts.SyntaxKind.ImportKeyword
+      && expression.arguments.length === 1 && ts.isStringLiteral(expression.arguments[0]!)) {
+      const imported = this.importedSource({ specifier: expression.arguments[0]! });
+      const dependency = imported === undefined ? undefined : this.moduleOwners.get(imported);
+      this.issue({ node: expression, code: 'unsupported', message: 'Dynamic import loading and namespace settlement are not fully checked.' });
+      if (dependency === undefined || imported === undefined) return UNKNOWN;
+      this.link({ source: dependency, target: owner, node: expression, reason: 'dynamic module initialization', bindings: new Map() });
+      const namespace = this.declaredValue({ declaration: imported, scope });
+      return { kind: 'promise', value: this.settle({ value: namespace, node: expression }) };
     }
     if (ts.isCallExpression(expression) || ts.isNewExpression(expression)) {
       const callable = this.expression({ expression: expression.expression, owner, scope });
@@ -997,6 +1213,18 @@ export class EffectsAnalyzer {
         }
         return this.expression({ expression: argument, owner, scope });
       });
+      // Collect candidates from a local body without validating construction or dispatch.
+      // The original unknown call and return remain below.
+      if (callable.kind === 'unknown' && ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
+        const declarations = this.symbol({ node: expression.expression.name })?.declarations;
+        const method = declarations?.length === 1 ? declarations[0] : undefined;
+        if (method !== undefined && ts.isMethodDeclaration(method) && method.body !== undefined
+          && (ts.isClassDeclaration(method.parent) || ts.isClassExpression(method.parent))
+          && !method.getSourceFile().isDeclarationFile && this.sources.has(path.resolve(method.getSourceFile().fileName))
+          && !method.getSourceFile().fileName.endsWith('.test.ts')) {
+          this.invoke({ callable: this.functionValue({ declaration: method, inheritedScope: this.lexicalScope({ node: method }) }), args, owner, node: expression });
+        }
+      }
       return this.invoke({ callable, args, owner, node: expression });
     }
     if (ts.isAwaitExpression(expression)) return this.settle({ value: this.expression({ expression: expression.expression, owner, scope }), node: expression });
@@ -1025,7 +1253,7 @@ export class EffectsAnalyzer {
     if (ts.isTypeOfExpression(expression) || ts.isVoidExpression(expression) || ts.isPrefixUnaryExpression(expression) || ts.isPostfixUnaryExpression(expression)) {
       const operand = this.expression({ expression: 'operand' in expression ? expression.operand : expression.expression, owner, scope });
       if ((ts.isPostfixUnaryExpression(expression) || ts.isPrefixUnaryExpression(expression) && expression.operator !== ts.SyntaxKind.ExclamationToken) && !isScalarValue(operand)) this.issue({ node: expression, code: 'unsupported', message: 'Numeric conversion may execute user-defined hooks.' });
-      return SCALAR;
+      return ts.isVoidExpression(expression) ? UNDEFINED : SCALAR;
     }
     if (ts.isTemplateExpression(expression)) {
       for (const span of expression.templateSpans) {
@@ -1047,7 +1275,7 @@ export class EffectsAnalyzer {
       for (const declaration of statement.declarationList.declarations) {
         const value = this.declaredValue({ declaration, scope });
         if (declaration.initializer !== undefined) this.expression({ expression: declaration.initializer, owner, scope });
-        this.bindPattern({ name: declaration.name, value, scope, owner });
+        this.bindPattern({ name: declaration.name, value, scope, owner, defaults: 'evaluate' });
       }
       return;
     }
@@ -1081,7 +1309,7 @@ export class EffectsAnalyzer {
       this.statement({ statement: statement.tryBlock, owner, scope, result });
       if (statement.catchClause !== undefined) {
         const local = new Map(scope);
-        if (statement.catchClause.variableDeclaration !== undefined) this.bindPattern({ name: statement.catchClause.variableDeclaration.name, value: UNKNOWN, scope: local, owner });
+        if (statement.catchClause.variableDeclaration !== undefined) this.bindPattern({ name: statement.catchClause.variableDeclaration.name, value: UNKNOWN, scope: local, owner, defaults: 'evaluate' });
         this.statement({ statement: statement.catchClause.block, owner, scope: local, result });
       }
       if (statement.finallyBlock !== undefined) this.statement({ statement: statement.finallyBlock, owner, scope, result });
@@ -1098,8 +1326,26 @@ export class EffectsAnalyzer {
     if (ts.isWhileStatement(statement) || ts.isDoStatement(statement)) {
       this.expression({ expression: statement.expression, owner, scope }); this.statement({ statement: statement.statement, owner, scope, result }); return;
     }
+    if (ts.isForStatement(statement)) {
+      const initializer = statement.initializer;
+      if (initializer !== undefined) {
+        if (ts.isVariableDeclarationList(initializer)) {
+          if ((initializer.flags & ts.NodeFlags.Using) !== 0) this.issue({ node: initializer, code: 'unsupported', message: 'Resource disposal requires its own effect model.' });
+          for (const declaration of initializer.declarations) {
+            const value = this.declaredValue({ declaration, scope });
+            if (declaration.initializer !== undefined) this.expression({ expression: declaration.initializer, owner, scope });
+            this.bindPattern({ name: declaration.name, value, scope, owner, defaults: 'evaluate' });
+          }
+        } else this.expression({ expression: initializer, owner, scope });
+      }
+      if (statement.condition !== undefined) this.expression({ expression: statement.condition, owner, scope });
+      this.statement({ statement: statement.statement, owner, scope, result });
+      if (statement.incrementor !== undefined) this.expression({ expression: statement.incrementor, owner, scope });
+      return;
+    }
     if (ts.isForOfStatement(statement)) {
       const type = this.checker.getTypeAtLocation(statement.expression);
+      const elementType = type.getNumberIndexType();
       if (!this.checker.isArrayType(type) && !this.checker.isTupleType(type)) this.issue({ node: statement, code: 'unsupported', message: 'An arbitrary iterator may execute unmodeled effects.' });
       this.expression({ expression: statement.expression, owner, scope });
       if (ts.isVariableDeclarationList(statement.initializer)) for (const declaration of statement.initializer.declarations) this.bindPattern({
@@ -1107,6 +1353,14 @@ export class EffectsAnalyzer {
         value: this.typeValue({ type: this.checker.getTypeAtLocation(declaration.name), anchor: declaration, callbackPath: undefined, depth: 0 }),
         scope,
         owner,
+        defaults: 'evaluate',
+      });
+      else this.assign({
+        left: statement.initializer,
+        right: elementType === undefined ? UNKNOWN : this.typeValue({ type: elementType, anchor: statement.initializer, callbackPath: undefined, depth: 0 }),
+        owner,
+        scope,
+        node: statement.initializer,
       });
       this.statement({ statement: statement.statement, owner, scope, result }); return;
     }
@@ -1116,9 +1370,10 @@ export class EffectsAnalyzer {
         const imported = this.importedSource({ specifier });
         if (imported?.fileName.endsWith('.test.ts')) this.issue({ node: statement, code: 'boundary', message: 'A product module imports an excluded test module.' });
         const typeOnly = ts.isImportDeclaration(statement) ? statement.importClause?.isTypeOnly === true : statement.isTypeOnly;
-        if (!typeOnly && imported !== undefined) {
-          const dependency = this.moduleOwners.get(imported);
+        if (!typeOnly) {
+          const dependency = imported === undefined ? undefined : this.moduleOwners.get(imported);
           if (dependency !== undefined) this.link({ source: dependency, target: owner, node: statement, reason: 'module initialization', bindings: new Map() });
+          else this.issue({ node: statement, code: 'unsupported', message: 'Runtime import initialization has no checked module body; type declarations and operation models do not establish an empty module effect.' });
         }
       }
       return;
@@ -1288,6 +1543,15 @@ export class EffectsAnalyzer {
         const imported = this.importedSource({ specifier: statement.moduleSpecifier });
         if (imported !== undefined) queue.push(imported);
       }
+      const visitDynamicImport = ({ node }: { node: ts.Node }): void => {
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
+          && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]!)) {
+          const imported = this.importedSource({ specifier: node.arguments[0]! });
+          if (imported !== undefined) queue.push(imported);
+        }
+        ts.forEachChild(node, child => visitDynamicImport({ node: child }));
+      };
+      ts.forEachChild(source, node => visitDynamicImport({ node }));
     }
     for (const source of selected) {
       const file = path.resolve(source.fileName);
@@ -1304,10 +1568,14 @@ export class EffectsAnalyzer {
       if (!file.endsWith('.ts') || file.endsWith('.d.ts')) {
         this.issue({ node: source, code: 'unsupported', message: 'This rollout supports TypeScript modules; Vue/JavaScript must be integrated explicitly.' }); continue;
       }
+      for (const note of unverifiedEffectNotes({ source: source.text })) {
+        this.diagnostics.push({ file, start: note.start, length: note.end - note.start, code: 'unsupported', message: UNVERIFIED_EFFECT_NOTE, related: [] });
+      }
       this.activeSources.push(source);
       const owner = this.owner({ anchor: source, role: 'module', label: '<module>', symbolic: undefined });
       this.moduleOwners.set(source, owner);
     }
+    this.boundaryStringMessages = boundaryStringMessages({ root: this.root, sources: this.activeSources });
     for (const source of this.activeSources) {
       const scope = new Map<ts.Symbol, Value>();
       for (const statement of source.statements) this.statement({ statement, owner: this.moduleOwners.get(source)!, scope, result: undefined });
@@ -1321,7 +1589,7 @@ export class EffectsAnalyzer {
       const bodyOwner = this.bodyOwners.get(info.value.owner.id) ?? info.value.owner;
       info.declaration.parameters.forEach((parameter, index) => {
         const expected = info.value.parameters[index] ?? UNKNOWN;
-        this.bindPattern({ name: parameter.name, value: expected, scope: info.scope, owner: bodyOwner });
+        this.bindPattern({ name: parameter.name, value: expected, scope: info.scope, owner: bodyOwner, defaults: 'parameter' });
         this.parameterDefaults({ parameter, expected, owner: bodyOwner, scope: info.scope });
       });
       if (ts.isBlock(body)) this.statement({ statement: body, owner: bodyOwner, scope: info.scope, result: info.value.returns });
@@ -1350,8 +1618,10 @@ export class EffectsAnalyzer {
       });
     }
     for (const owner of this.owners) {
-      if (owner.role === 'module' || owner.role === 'symbolic' || owner.role === 'body') continue;
-      if (owner.annotation === undefined) this.diagnostics.push({ ...owner.location, code: 'missing', message: `Missing @effects contract for ${owner.label}.`, related: [] });
+      if (owner.role === 'symbolic' || owner.role === 'body') continue;
+      const module = owner.role === 'module';
+      const effects = solution.rows.get(owner.id) ?? [];
+      if (owner.annotation === undefined && (module ? effects.length > 0 : !mayOmitEffectAnnotation({ owner }))) this.diagnostics.push({ ...owner.location, code: 'missing', message: `Missing ${module ? '@effectsModule' : '@effects'} contract for ${owner.label}.`, related: [] });
       for (const effect of solution.rows.get(owner.id) ?? []) {
         if (effect.kind === 'callback' && !owner.callbackPaths.has(printEffect({ effect }))) {
           this.issue({ node: owner.anchor, code: 'unsupported', message: `Cannot move callback reference ${printEffect({ effect })} outside its lexical contract.` }); continue;

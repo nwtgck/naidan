@@ -1,3 +1,4 @@
+import { UNDEFINED } from './values.ts';
 import { commonStringEvidence } from './source-evidence.ts';
 import type { Field, Value } from './values.ts';
 import { isScalarValue } from './value-guards.ts';
@@ -15,6 +16,7 @@ export function choiceValue({ values }: { values: readonly Value[] }): Value {
   const flattened = values.flatMap(value => alternatives({ value }));
   if (flattened.length === 1) return flattened[0]!;
   if (flattened.length > 0 && flattened.every(isScalarValue)) {
+    if (flattened.every(value => value.knownUndefined === true)) return UNDEFINED;
     const first = flattened[0]!;
     return {
       kind: 'scalar',

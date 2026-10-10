@@ -28,7 +28,8 @@ function stop() { handle(); }
     try {
       const result = fixture.check();
       expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(result.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+      expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Replacing a Vue watch handle'))).toBe(true);
+      expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Runtime import initialization'))).toBe(true);
       expect(() => fixture.fix()).toThrow();
     } finally {
       fixture.dispose();

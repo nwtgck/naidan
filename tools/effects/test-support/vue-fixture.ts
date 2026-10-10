@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { createFixture } from './project-fixture.ts';
 import { digest } from '../project.ts';
 
@@ -17,11 +19,21 @@ export declare function onScopeDispose(callback: () => void): void;
 export declare function onWatcherCleanup(callback: () => void): void;
 export declare function customRef<T>(factory: () => { get: () => T; set: (value: T) => void }): Ref<T>;
 `;
-const imports = "import { ref, shallowRef, watch, watchEffect, watchSyncEffect, watchPostEffect, onMounted, onUnmounted, onWatcherCleanup, onScopeDispose, customRef, type Ref } from './framework';";
+const globalDeclaration = VUE_FIXTURE_DECLARATION.replaceAll('export ', '');
 
 export function vueFixture({ source, extra }: { source: string, extra: Readonly<Record<string, string>> }) {
-  const fixture = createFixture({ files: { 'framework.d.ts': VUE_FIXTURE_DECLARATION, 'main.ts': `${imports}\n${source}`, ...extra }, entries: ['main.ts'] });
-  fixture.config.vueModels = [{ file: 'framework.d.ts', sha256: digest({ content: VUE_FIXTURE_DECLARATION }) }];
+  // Model-only cases use reviewed ambient globals, so they do not assert that a
+  // package import has an empty initializer. Explicit import cases retain the
+  // exported declaration and must report that separate unknown boundary.
+  const fixture = createFixture({ files: { 'framework.d.ts': VUE_FIXTURE_DECLARATION, 'framework-global.d.ts': globalDeclaration, 'main.ts': source + '\nexport {};', ...extra }, entries: ['main.ts'] });
+  const config = path.join(fixture.root, 'tsconfig.json');
+  const value = JSON.parse(fs.readFileSync(config, 'utf8')) as { files: string[] };
+  value.files.push('framework-global.d.ts');
+  fs.writeFileSync(config, JSON.stringify(value));
+  fixture.config.vueModels = [
+    { file: 'framework.d.ts', sha256: digest({ content: VUE_FIXTURE_DECLARATION }) },
+    { file: 'framework-global.d.ts', sha256: digest({ content: globalDeclaration }) },
+  ];
   return fixture;
 }
 

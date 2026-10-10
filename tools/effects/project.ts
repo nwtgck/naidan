@@ -25,6 +25,31 @@ export function resolveProjectPath({ root, relative }: { root: string, relative:
   return target;
 }
 
+/** Expand explicit directory entries with TypeScript's inherited project exclusions. */
+export function selectEffectEntries({ root, config, files }: { root: string, config: Pick<EffectsConfig, 'tsconfig'>, files: readonly string[] }): readonly string[] {
+  const selected = new Set<string>();
+  for (const file of files) {
+    const absolute = resolveProjectPath({ root, relative: file });
+    if (!fs.statSync(absolute).isDirectory()) {
+      selected.add(absolute);
+      continue;
+    }
+    const project = resolveProjectPath({ root, relative: config.tsconfig });
+    const directory = path.relative(root, absolute).split(path.sep).join('/') || '.';
+    const parsed = ts.parseJsonConfigFileContent({ extends: project, files: [], include: [directory + '/**/*.ts'] }, ts.sys, root);
+    if (parsed.errors.length > 0) throw new Error(parsed.errors.map(error => ts.flattenDiagnosticMessageText(error.messageText, '\n')).join('\n'));
+    const matches = parsed.fileNames.filter(candidate => {
+      const relative = path.relative(absolute, candidate);
+      return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+        && candidate.endsWith('.ts') && !candidate.endsWith('.d.ts') && !candidate.endsWith('.test.ts')
+        && !path.relative(root, candidate).split(path.sep).includes('node_modules');
+    });
+    if (matches.length === 0) throw new Error(`No effect entry files in directory: ${file}`);
+    for (const candidate of matches) selected.add(resolveProjectPath({ root, relative: candidate }));
+  }
+  return [...selected];
+}
+
 export function checkModelInputs({ root, config }: { root: string, config: EffectsConfig }): void {
   const seen = new Set<string>();
   for (const model of [...config.models, ...config.vueModels.map(model => ({ ...model, export: '<vue>' })), ...config.workerTransports.map(transport => ({ ...transport, export: transport.wrapExport + "/" + transport.exposeExport }))]) {
@@ -43,16 +68,24 @@ export function createEffectsProgram({ root, config, overlays }: {
   if (!Number.isSafeInteger(config.analysisBudget) || config.analysisBudget <= 0) throw new Error('analysisBudget must be a positive safe integer.');
   checkModelInputs({ root, config });
   const inputs = new Map<string, string>();
-  const capture = ({ file, content }: { file: string, content: string | undefined }): string | undefined => {
+  const capture = ({ file, content, original }: { file: string, content: string | undefined, original: boolean }): string | undefined => {
     const absolute = path.resolve(file);
     const relative = path.relative(path.resolve(root), absolute);
-    if (content !== undefined && !relative.split(path.sep).includes('node_modules') && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) inputs.set(absolute, content);
+    if (content !== undefined && !relative.split(path.sep).includes('node_modules') && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) {
+      // TypeScript's reader strips a UTF-8 BOM. Keep source offsets and exact
+      // input snapshots aligned with the original bytes; overlays already are.
+      if (original && !content.startsWith('\uFEFF')) {
+        const bytes = fs.readFileSync(absolute);
+        if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) content = '\uFEFF' + content;
+      }
+      inputs.set(absolute, content);
+    }
     return content;
   };
   const configFile = resolveProjectPath({ root, relative: config.tsconfig });
   const parsed = ts.getParsedCommandLineOfConfigFile(configFile, { noEmit: true, incremental: false, composite: false }, {
     ...ts.sys,
-    readFile: file => capture({ file, content: ts.sys.readFile(file) }),
+    readFile: file => capture({ file, content: ts.sys.readFile(file), original: true }),
     onUnRecoverableConfigFileDiagnostic: diagnostic => {
       throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
     },
@@ -62,7 +95,10 @@ export function createEffectsProgram({ root, config, overlays }: {
   delete options.tsBuildInfoFile;
   const host = ts.createCompilerHost(options, true);
   const originalRead = host.readFile.bind(host);
-  host.readFile = file => capture({ file, content: overlays.get(path.resolve(file)) ?? originalRead(file) });
+  host.readFile = file => {
+    const overlay = overlays.get(path.resolve(file));
+    return capture({ file, content: overlay ?? originalRead(file), original: overlay === undefined });
+  };
   // Ambient declarations from the scoped tsconfig provide ordinary types without
   // enrolling other product implementations or silently expanding the effect scope.
   const roots = new Set([

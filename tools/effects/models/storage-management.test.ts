@@ -7,7 +7,7 @@ import { printEffect } from '../contracts/effects.ts';
 // behavior and argument-spread refusal remain covered.
 describe('browser storage accounting/policy is intentionally outside tracked I/O', () => {
   it.each(['persist', 'persisted', 'estimate'])('explicitly models navigator.storage.%s as none', method => {
-    const fixture = createFixture({ files: { 'main.ts': `/** @effects \`none\` */ function inspect() { navigator.storage.${method}(); }` }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': `/** @effects [] */ function inspect() { navigator.storage.${method}(); }` }, entries: ['main.ts'] });
     try {
       const analysis = fixture.check();
       expect(analysis.diagnostics).toEqual([]);
@@ -29,7 +29,7 @@ describe('browser storage accounting/policy is intentionally outside tracked I/O
     const fixture = createFixture({
       files: {
         'main.ts': `\
-/** @effects \`none\` */
+/** @effects [] */
 function inspect() { navigator.storage.persist(); localStorage.clear(); navigator.storage.getDirectory(); fetch('/x'); }
 `,
       },
@@ -49,7 +49,7 @@ function inspect() { navigator.storage.persist(); localStorage.clear(); navigato
 
 describe('the policy boundary is explicit, not an ambient StorageManager exemption', () => {
   it.each(['persist', 'persisted', 'estimate'])('keeps content access visible beside %s', method => {
-    const fixture = createFixture({ files: { 'main.ts': `/** @effects \`none\` */ function inspect() { navigator.storage.${method}(); localStorage.clear(); }` }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': `/** @effects [] */ function inspect() { navigator.storage.${method}(); localStorage.clear(); }` }, entries: ['main.ts'] });
     try {
       const analysis = fixture.check();
       expect(analysis.diagnostics).toHaveLength(1);
@@ -61,7 +61,7 @@ describe('the policy boundary is explicit, not an ambient StorageManager exempti
   });
 
   it.each(['storage.manage', 'storage.metadata.read', 'storage.persistence.request'])('rejects retired %s instead of silently aliasing it to none', name => {
-    const fixture = createFixture({ files: { 'main.ts': `/** @effects \`${name}(*)\` */ function inspect() { navigator.storage.persist(); }` }, entries: ['main.ts'] });
+    const fixture = createFixture({ files: { 'main.ts': `/** @effects ["${name}(*)"] */ function inspect() { navigator.storage.persist(); }` }, entries: ['main.ts'] });
     try {
       expect(fixture.check().diagnostics.some(item => item.code === 'syntax')).toBe(true);
       expect(() => fixture.fix()).toThrow();
@@ -74,7 +74,7 @@ describe('the policy boundary is explicit, not an ambient StorageManager exempti
     const fixture = createFixture({
       files: {
         'main.ts': `\
-/** @effects \`localstorage.read(*)\`, \`localstorage.write(*)\` */
+/** @effects ["localstorage.read(*)","localstorage.write(*)"] */
 function inspect() { navigator.storage.persisted(); }
 `,
       },
@@ -91,8 +91,8 @@ function inspect() { navigator.storage.persisted(); }
     const fixture = createFixture({
       files: {
         'main.ts': `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`localstorage.read(*)\` -- "Key probe only." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["localstorage.read(*)"],"reason":"Key probe only."} */
 function inspect() { navigator.storage.persisted(); localStorage.getItem('x'); localStorage.clear(); }
 function caller() { inspect(); }
 `,

@@ -1,16 +1,11 @@
 import type { Effect } from '../contracts/effects.ts';
 import { mergeEffects, printEffect } from '../contracts/effects.ts';
 import type { EffectDefinition } from '../models/registry.ts';
+import { EffectSyntaxError } from './error.ts';
+import { parseJsonPayload } from './json.ts';
+import { effectRowSchema, parseEffectMetadata } from './schema.ts';
 
-export class EffectSyntaxError extends Error {
-  readonly offset: number;
-
-  constructor({ message, offset }: { message: string, offset: number }) {
-    super(message);
-    this.name = 'EffectSyntaxError';
-    this.offset = offset;
-  }
-}
+export { EffectSyntaxError } from './error.ts';
 
 function identifierStart({ character }: { character: string | undefined }): boolean {
   if (character === undefined) return false;
@@ -22,19 +17,13 @@ function identifierContinue({ character }: { character: string | undefined }): b
   return identifierStart({ character }) || character !== undefined && character >= '0' && character <= '9';
 }
 
-/** A bounded recursive-descent grammar. It never evaluates source expressions. */
-export function parseEffectPrefix({ text, definitions, terminator }: { text: string, definitions: readonly EffectDefinition[], terminator: '--' | undefined }): { effects: Effect[], end: number } {
-  if (text.length > 65_536) throw new EffectSyntaxError({ message: 'Effect declaration is too long.', offset: 0 });
+/** Parse exactly one operation or symbolic callback, never a union or source expression. */
+export function parseEffectAtom({ text, definitions }: { text: string, definitions: readonly EffectDefinition[] }): Effect {
+  if (text.length > 65_536) throw new EffectSyntaxError({ message: 'Effect atom is too long.', offset: 0 });
   const registry = new Map(definitions.map(definition => [definition.name, definition.arguments]));
   let position = 0;
-  const terms: Effect[] = [];
-  let hasNone = false;
-  let separator: ',' | '&' | undefined;
   const fail = ({ message }: { message: string }): never => {
     throw new EffectSyntaxError({ message, offset: position });
-  };
-  const whitespace = () => {
-    while (' \t\r\n'.includes(text[position] ?? '\0')) position++;
   };
   const expect = ({ character }: { character: string }) => {
     if (text[position] !== character) fail({ message: `Expected ${JSON.stringify(character)}.` });
@@ -58,7 +47,7 @@ export function parseEffectPrefix({ text, definitions, terminator }: { text: str
     let escaped = false;
     for (; position < text.length; position++) {
       const character = text[position]!;
-      if (character === '\n' || character === '\r' || character === '`') fail({ message: 'Escape line breaks and backticks inside resource strings.' });
+      if (character === '\n' || character === '\r') fail({ message: 'Escape line breaks inside resource strings.' });
       if (!escaped && character === '"') {
         position++;
         try {
@@ -74,63 +63,60 @@ export function parseEffectPrefix({ text, definitions, terminator }: { text: str
     }
     return fail({ message: 'Unterminated string.' });
   };
-  whitespace();
-  if (position === text.length) fail({ message: 'Use `none` for an empty effect row.' });
-  while (position < text.length) {
-    expect({ character: '`' });
-    const parts = reference();
-    const name = parts.join('.');
-    if (name === 'none') {
-      hasNone = true;
-    } else if (name === 'call') {
+  const name = reference().join('.');
+  if (name === 'none') fail({ message: 'Use [] for an empty effect row.' });
+  let effect: Effect;
+  if (name === 'call') {
+    expect({ character: '(' });
+    const path = reference();
+    expect({ character: ')' });
+    effect = { kind: 'callback', path };
+  } else {
+    const argumentKind = registry.get(name);
+    if (argumentKind === undefined) fail({ message: `Unknown effect: ${name}.` });
+    switch (argumentKind) {
+    case 'resource': {
       expect({ character: '(' });
-      const path = reference();
+      const target = text[position] === '*'
+        ? (position++, { kind: 'all' as const })
+        : { kind: 'literal' as const, value: quoted() };
       expect({ character: ')' });
-      terms.push({ kind: 'callback', path });
-    } else {
-      const argumentKind = registry.get(name);
-      if (argumentKind === undefined) fail({ message: `Unknown effect: ${name}.` });
-      switch (argumentKind) {
-      case 'resource': {
-        expect({ character: '(' });
-        const target = text[position] === '*'
-          ? (position++, { kind: 'all' as const })
-          : { kind: 'literal' as const, value: quoted() };
-        expect({ character: ')' });
-        terms.push({ kind: 'operation', name, target });
-        break;
-      }
-      case 'none': terms.push({ kind: 'operation', name, target: undefined }); break;
-      case undefined: return fail({ message: `Unknown effect: ${name}.` });
-      default: { const exhaustive: never = argumentKind; throw new Error(String(exhaustive)); }
-      }
+      effect = { kind: 'operation', name, target };
+      break;
     }
-    expect({ character: '`' });
-    whitespace();
-    if (position === text.length || terminator !== undefined && text.startsWith(terminator, position)) break;
-    const next = text[position];
-    if (next !== ',' && next !== '&') fail({ message: 'Expected a comma or an ampersand between effect spans.' });
-    if (separator !== undefined && separator !== next) fail({ message: 'Do not mix effect separators.' });
-    separator = next as ',' | '&';
-    position++;
-    whitespace();
-    if (position === text.length) fail({ message: 'Trailing separators are not permitted.' });
-    if (hasNone) fail({ message: '`none` must be the only item.' });
+    case 'none': effect = { kind: 'operation', name, target: undefined }; break;
+    case undefined: return fail({ message: `Unknown effect: ${name}.` });
+    default: { const exhaustive: never = argumentKind; throw new Error(String(exhaustive)); }
+    }
   }
-  if (hasNone && terms.length > 0) fail({ message: '`none` must be the only item.' });
-  return { effects: mergeEffects({ groups: [terms] }), end: position };
+  if (position !== text.length) fail({ message: 'Each effect row item must contain exactly one atom.' });
+  return effect;
+}
+
+/** Shared by TypeScript comments, Vue event maps and reviewed model configuration. */
+export function parseEffectRow({ value, definitions }: { value: unknown, definitions: readonly EffectDefinition[] }): Effect[] {
+  const row = parseEffectMetadata({ schema: effectRowSchema, value });
+  const effects = row.map((text, index) => {
+    try {
+      return parseEffectAtom({ text, definitions });
+    } catch (error) {
+      if (!(error instanceof EffectSyntaxError)) throw error;
+      // Decoded atom offsets are not source offsets in the outer JSON payload.
+      throw new EffectSyntaxError({ message: `Effect item ${index + 1}: ${error.message}`, offset: 0 });
+    }
+  });
+  return mergeEffects({ groups: [effects] });
 }
 
 export function parseEffects({ text, definitions }: { text: string, definitions: readonly EffectDefinition[] }): Effect[] {
-  return parseEffectPrefix({ text, definitions, terminator: undefined }).effects;
+  return parseEffectRow({ value: parseJsonPayload({ text }), definitions });
+}
+
+export function effectRowValues({ effects }: { effects: readonly Effect[] }): string[] {
+  return mergeEffects({ groups: [effects] }).map(effect => printEffect({ effect }));
 }
 
 export function printEffects({ effects }: { effects: readonly Effect[] }): string {
-  const atoms = mergeEffects({ groups: [effects] });
-  if (atoms.length === 0) return '`none`';
-  return atoms.map(effect => {
-    // Escape comment delimiters and code-span delimiters in JSON resource strings.
-    const text = printEffect({ effect }).replaceAll('*/', '*\\u002f').replaceAll('`', '\\u0060');
-    return '`' + text + '`';
-  }).join(', ');
+  // Escape at the outer JSON layer so decoded resource strings remain unchanged.
+  return JSON.stringify(effectRowValues({ effects })).replaceAll('*/', '*\\u002f');
 }

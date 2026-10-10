@@ -42,7 +42,7 @@ function hasExportModifier({ node }: { node: ts.Node }): boolean {
     && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
 }
 
-function findMessageFunction({ key, sourceFile }: { key: string; sourceFile: ts.SourceFile }): FunctionLike {
+export function findMessageFunction({ key, sourceFile }: { key: string; sourceFile: ts.SourceFile }): FunctionLike {
   const matches: FunctionLike[] = [];
   for (const statement of sourceFile.statements) {
     if (
@@ -88,7 +88,7 @@ function staticPropertyName({ name }: { name: ts.PropertyName }): string | undef
   return undefined;
 }
 
-function parameterNamesFromFunction({ key, messageFunction }: {
+export function parameterNamesFromFunction({ key, messageFunction }: {
   key: string;
   messageFunction: FunctionLike;
 }): readonly string[] {

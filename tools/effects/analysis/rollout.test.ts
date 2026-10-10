@@ -1,20 +1,60 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import config from '../../../effects.config.ts';
+import productionConfig from '../../../effects.config.ts';
 import { createEffectsProgram, typescriptDiagnostics } from '../project.ts';
 import { analyzeEffects } from '../index.ts';
 import { planEffectFix } from '../fixes/plan.ts';
 import { printEffect } from '../contracts/effects.ts';
+import { UNVERIFIED_EFFECT_NOTE } from '../maintenance/unverified.ts';
 
 const root = path.resolve(import.meta.dirname, '../../..');
+const probeBoundaryMessage = 'Global property showDirectoryPicker needs a checked default-library identity; a member name is not a native model.';
+const probeBoundaryStart = fs.readFileSync(path.join(root, 'src/utils/opfs-detection.ts'), 'utf8').indexOf('.showDirectoryPicker') + 1;
+// These real-source scenarios inspect the original contracts and representative utilities.
+const config = {
+  ...productionConfig,
+  files: [
+    'src/utils/opfs-detection.ts',
+    'src/utils/ollama-detection.ts',
+    'src/composables/useCodeBlockSettings.ts',
+    'src/composables/useStoragePersistence.ts',
+    'src/composables/useLayout.ts',
+    'src/composables/useOverlay.ts',
+    'src/features/naidan-piping-duplex/role.ts',
+    'src/features/wesh/commands/_shared/ascii-order.ts',
+    'src/features/wesh/commands/git/branch.ts',
+  ],
+};
 const codeBlock = path.join(root, 'src/composables/useCodeBlockSettings.ts');
 const persistence = path.join(root, 'src/composables/useStoragePersistence.ts');
+const markedFiles = [
+  'src/composables/useOverlay.ts',
+  'src/composables/useStoragePersistence.ts',
+  'src/features/naidan-piping-duplex/role.ts',
+  'src/features/wesh/commands/_shared/ascii-order.ts',
+  'src/features/wesh/commands/git/branch.ts',
+  'src/utils/opfs-detection.ts',
+].map(file => path.join(root, file));
 
 function check({ overlays }: { overlays: ReadonlyMap<string, string> }) {
-  const program = createEffectsProgram({ root, config, overlays });
+  const entries = overlays.size === 0 ? config : { ...config, files: [...overlays.keys()].map(file => path.relative(root, file)) };
+  const program = createEffectsProgram({ root, config: entries, overlays });
   expect(typescriptDiagnostics({ program })).toEqual([]);
-  return analyzeEffects({ program, root, config });
+  const analysis = analyzeEffects({ program, root, config: entries });
+  // The real enrolled sources include draft rollout markers. Assert their
+  // exact files separately before inspecting the existing concrete rows.
+  expect(analysis.diagnostics.filter(item => item.message === UNVERIFIED_EFFECT_NOTE).map(item => item.file).sort()).toEqual(markedFiles.filter(file => analysis.coverage.files.includes(file)).sort());
+  const initializers = analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'));
+  expect(initializers.map(item => item.file).sort()).toEqual(['src/composables/useCodeBlockSettings.ts', 'src/composables/useLayout.ts', 'src/composables/useOverlay.ts'].map(file => path.join(root, file)).filter(file => analysis.coverage.files.includes(file)).sort());
+  expect(initializers.every(item => item.code === 'unsupported')).toBe(true);
+  const boundaries = analysis.diagnostics.filter(item => item.code === 'boundary' && item.message === probeBoundaryMessage);
+  expect(boundaries.map(item => ({ file: item.file, message: item.message, start: item.start, length: item.length }))).toEqual(analysis.coverage.files.includes(path.join(root, 'src/utils/opfs-detection.ts'))
+    ? [{ file: path.join(root, 'src/utils/opfs-detection.ts'), message: probeBoundaryMessage, start: probeBoundaryStart, length: 'showDirectoryPicker'.length }] : []);
+
+  // These source regressions inspect callable rows only after asserting that
+  // strict checking still reports every draft, unknown initializer and native-identity boundary.
+  return { ...analysis, diagnostics: analysis.diagnostics.filter(item => item.message !== UNVERIFIED_EFFECT_NOTE && !initializers.includes(item) && !boundaries.includes(item)) };
 }
 
 function row({ analysis, file, label }: { analysis: ReturnType<typeof check>, file: string, label: string }) {
@@ -24,11 +64,35 @@ function row({ analysis, file, label }: { analysis: ReturnType<typeof check>, fi
 }
 
 describe('enrolled Naidan source (not extracted helper replacements)', () => {
-  it('checks the six actual source modules and needs no annotation edits', () => {
+  it('keeps the actual draft marker visible to strict checking and refuses a verified fix', () => {
+    const program = createEffectsProgram({ root, config, overlays: new Map() });
+    expect(typescriptDiagnostics({ program })).toEqual([]);
+    const analysis = analyzeEffects({ program, root, config });
+    expect(analysis.diagnostics.filter(item => item.message === UNVERIFIED_EFFECT_NOTE).map(item => item.file).sort()).toEqual([...markedFiles].sort());
+    expect(analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'))).toHaveLength(3);
+    expect(analysis.diagnostics.filter(item => item.code === 'boundary').map(item => ({ file: item.file, message: item.message, start: item.start, length: item.length }))).toEqual([{ file: path.join(root, 'src/utils/opfs-detection.ts'), message: probeBoundaryMessage, start: probeBoundaryStart, length: 'showDirectoryPicker'.length }]);
+    expect(analysis.diagnostics).toHaveLength(markedFiles.length + 4);
+    expect(() => planEffectFix({ analysis })).toThrow('refused');
+  });
+
+  it('checks the original source contracts and additional real utilities without annotation edits', () => {
     const analysis = check({ overlays: new Map() });
     expect(analysis.diagnostics).toEqual([]);
-    expect(analysis.coverage.files).toHaveLength(6);
-    expect(analysis.coverage.functions).toBe(26);
+    const originalFiles = new Set([
+      'src/utils/opfs-detection.ts', 'src/utils/ollama-detection.ts',
+      'src/composables/useCodeBlockSettings.ts', 'src/composables/useStoragePersistence.ts',
+      'src/composables/useLayout.ts', 'src/composables/useOverlay.ts',
+    ].map(file => path.join(root, file)));
+    expect(analysis.coverage.files).toEqual(expect.arrayContaining([...originalFiles]));
+    expect(analysis.owners.filter(owner => owner.role === 'implementation' && originalFiles.has(owner.location.file))).toHaveLength(26);
+    for (const [file, label] of [
+      ['src/features/naidan-piping-duplex/role.ts', 'isInitiator'],
+      ['src/features/wesh/commands/_shared/ascii-order.ts', 'compareAsciiStrings'],
+      ['src/features/wesh/commands/git/branch.ts', 'branchRefName'],
+    ] as const) {
+      expect(analysis.coverage.files).toContain(path.join(root, file));
+      expect(row({ analysis, file: path.join(root, file), label })).toEqual([]);
+    }
     expect(planEffectFix({ analysis }).edits).toEqual([]);
     expect(row({ analysis, file: codeBlock, label: 'toggleLineWrap' })).toEqual([]);
     expect(row({ analysis, file: persistence, label: 'useStoragePersistence' })).toEqual([]);

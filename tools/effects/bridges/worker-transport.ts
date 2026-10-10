@@ -8,6 +8,15 @@ export type WorkerTransportModel = {
   exposeExport: string,
 };
 
+/** Type-only Worker augmentation does not replace the DOM constructor binding. */
+export function isNativeWorkerSymbol({ symbol, program }: { symbol: ts.Symbol, program: ts.Program }): boolean {
+  const value = symbol.valueDeclaration;
+  return symbol.name === 'Worker' && value !== undefined
+    && program.isSourceFileDefaultLibrary(value.getSourceFile())
+    && (symbol.declarations ?? []).every(declaration =>
+      program.isSourceFileDefaultLibrary(declaration.getSourceFile()) || ts.isInterfaceDeclaration(declaration));
+}
+
 function builtinIdentifier({ expression, name, checker, program, seen }: {
   expression: ts.Expression, name: string, checker: ts.TypeChecker, program: ts.Program, seen: Set<ts.Symbol>,
 }): boolean {
@@ -17,6 +26,7 @@ function builtinIdentifier({ expression, name, checker, program, seen }: {
   seen.add(symbol);
   if (symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   const declarations = symbol.declarations ?? [];
+  if (name === 'Worker' && isNativeWorkerSymbol({ symbol, program })) return true;
   if (symbol.name === name && declarations.length > 0 && declarations.every(declaration => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))) return true;
   const declaration = symbol.valueDeclaration;
   if (declaration !== undefined && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined

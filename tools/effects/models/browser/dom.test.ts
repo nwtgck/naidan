@@ -181,7 +181,7 @@ describe('image origins participate in maintenance', () => {
     try {
       const fixed = fixture.fix();
       expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects `network.http(*)`');
+      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects ["network.http(*)"]');
       expect(fixture.fix().changedFiles).toEqual([]);
     } finally {
       fixture.dispose();
@@ -203,9 +203,9 @@ describe('image origins participate in maintenance', () => {
 describe('DOM policy preservation and explicit tidy', () => {
   it('previews and writes a narrower image implementation without shrinking a shared slot', () => {
     const source = `\
-/** @effects \`network.http(*)\` */
+/** @effects ["network.http(*)"] */
 export function localImage() { const image = new Image(); image.src = 'blob:null/token'; }
-export const actions = { /** @effects \`network.http(*)\` */ run: () => {} };
+export const actions = { /** @effects ["network.http(*)"] */ run: () => {} };
 `;
     const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
     try {
@@ -217,8 +217,8 @@ export const actions = { /** @effects \`network.http(*)\` */ run: () => {} };
       const written = runEffectTidy({ ...input, write: 'write' });
       expect(written.changedFiles).toHaveLength(1);
       const text = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      expect(text).toContain('/** @effects `none` */');
-      expect(text).toContain('/** @effects `network.http(*)` */ run');
+      expect(text).toContain('/** @effects [] */');
+      expect(text).toContain('/** @effects ["network.http(*)"] */ run');
       expect(fixture.fix().changedFiles).toEqual([]);
       expect(runEffectTidy({ ...input, write: 'preview' }).changes).toEqual([]);
     } finally {
@@ -229,8 +229,8 @@ export const actions = { /** @effects \`network.http(*)\` */ run: () => {} };
   it('does not let image-network suppression hide unsupported document execution', () => {
     const result = inspect({
       source: `\
-/** @effects \`none\` */
-/** @effectsUNSAFE \`network.http(*)\` -- "Explicit network suppression for a test boundary." */
+/** @effects [] */
+/** @effectsUNSAFE {"effects":["network.http(*)"],"reason":"Explicit network suppression for a test boundary."} */
 function entry() { window.open('data:text/html,<script>1</script>'); fetch('https://other.invalid/'); }
 `,
     });

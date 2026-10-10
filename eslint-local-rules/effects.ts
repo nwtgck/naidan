@@ -4,8 +4,8 @@ import type ts from 'typescript';
 import { analyzeEffects } from '../tools/effects/index.ts';
 import { checkModelInputs } from '../tools/effects/project.ts';
 import { assertEffectSnapshots } from '../tools/effects/fixes/apply.ts';
-import type { EffectsAnalysis } from '../tools/effects/analysis/analyze.ts';
 import type { EffectsConfig } from '../tools/effects/config.ts';
+import type { EffectDiagnostic } from '../tools/effects/diagnostics.ts';
 
 /** Parser services are supplied by typescript-eslint, not by user source text. */
 function isTypeScriptProgram(value: unknown): value is ts.Program {
@@ -16,7 +16,7 @@ function isTypeScriptProgram(value: unknown): value is ts.Program {
 
 export function createEffectsRule({ root, config }: { root: string, config: EffectsConfig }): Rule.RuleModule {
   // Program identity changes on editor updates. Never cache by path/mtime alone.
-  const cache = new WeakMap<ts.Program, EffectsAnalysis>();
+  const cache = new WeakMap<ts.Program, { sources: ReadonlyMap<string, string>, diagnosticsByFile: ReadonlyMap<string, readonly EffectDiagnostic[]>, foreignSummary: string | undefined }>();
   const selected = new Set(config.files.map(file => path.resolve(root, file)));
   return {
     meta: {
@@ -37,28 +37,44 @@ export function createEffectsRule({ root, config }: { root: string, config: Effe
           }
           try {
             checkModelInputs({ root, config });
-            let analysis = cache.get(program);
-            if (analysis === undefined) {
-              analysis = analyzeEffects({ program, root, config }); cache.set(program, analysis);
+            let cached = cache.get(program);
+            if (cached === undefined) {
+              const analysis = analyzeEffects({ program, root, config });
+              assertEffectSnapshots({ root, plan: { edits: [], snapshots: analysis.sources } });
+              const diagnosticsByFile = new Map<string, EffectDiagnostic[]>();
+              let foreignCount = 0;
+              let firstForeign: EffectDiagnostic | undefined;
+              for (const diagnostic of analysis.diagnostics) {
+                const target = path.resolve(diagnostic.file);
+                if (diagnostic.file !== '' && selected.has(target)) {
+                  const diagnostics = diagnosticsByFile.get(target) ?? [];
+                  diagnostics.push(diagnostic);
+                  diagnosticsByFile.set(target, diagnostics);
+                } else {
+                  foreignCount++;
+                  firstForeign ??= diagnostic;
+                }
+              }
+              const origin = firstForeign?.file === '' ? '<project>' : firstForeign === undefined ? '' : path.relative(root, firstForeign.file);
+              const foreignSummary = firstForeign === undefined ? undefined
+                : `${foreignCount} effect diagnostics outside the configured entries. First: ${origin}: [${firstForeign.code}] ${firstForeign.message} Use effects:check for complete dependency diagnostics.`;
+              cached = { sources: analysis.sources, diagnosticsByFile, foreignSummary };
+              cache.set(program, cached);
             }
-            assertEffectSnapshots({ root, plan: { edits: [], snapshots: analysis.sources } });
             const source = program.getSourceFile(file);
-            if (source === undefined || source.text !== context.sourceCode.text) {
+            if (source === undefined || source.text !== context.sourceCode.text || cached.sources.get(file) !== context.sourceCode.text) {
               context.report({ node, messageId: 'configuration', data: { message: 'Effect analysis and editor text differ; refresh the typed lint Program before applying changes.' } });
               return;
             }
-            for (const diagnostic of analysis.diagnostics) {
-              // Dependency failures still fail a scoped lint even when only the caller was requested.
-              const local = path.resolve(diagnostic.file) === file;
-              const index = local ? Math.min(diagnostic.start, context.sourceCode.text.length) : 0;
+            for (const diagnostic of cached.diagnosticsByFile.get(file) ?? []) {
               context.report({
-                loc: context.sourceCode.getLocFromIndex(index),
+                loc: context.sourceCode.getLocFromIndex(Math.min(diagnostic.start, context.sourceCode.text.length)),
                 messageId: 'violation',
-                data: {
-                  message: `${local ? '' : `${path.relative(root, diagnostic.file)}: `}[${diagnostic.code}] ${diagnostic.message} Use effects:fix for project-wide contract updates.`,
-                },
+                data: { message: `[${diagnostic.code}] ${diagnostic.message} Use effects:fix for project-wide contract updates.` },
               });
             }
+            // Keep dependency-only failures visible on every invocation, including cached Programs.
+            if (cached.foreignSummary !== undefined) context.report({ node, messageId: 'violation', data: { message: cached.foreignSummary } });
           } catch (error) {
             context.report({ node, messageId: 'configuration', data: { message: error instanceof Error ? error.message : String(error) } });
           }
